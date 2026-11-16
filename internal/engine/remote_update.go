@@ -192,7 +192,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 		}
 		// Another scope is another question: none of the run's answers (-y, --trust, the hook
 		// flags) travels into it.
-		display := slices.DeleteFunc(slices.Clone(req.Rerun), trustArg)
+		display := slices.DeleteFunc(slices.Clone(req.Rerun), consentArg)
 		return nil, errs.WithHints(err, "update at user scope only: "+e.ProfileRun([]Scope{{Kind: target.User}}, slices.Concat(args, display)...))
 	}
 	// The profiles lock comes first, and its sweep finishes an interrupted --update before the
@@ -433,7 +433,7 @@ func (e *Engine) updateNames(sc Scope, given []Scope, req ProfileUpdateRequest) 
 		return e.RemoteProfileNames()
 	case len(req.Names) == 0:
 		// A hint for profiles never named answers no question for them: no -y or --trust.
-		display := slices.DeleteFunc(slices.Clone(req.Rerun), trustArg)
+		display := slices.DeleteFunc(slices.Clone(req.Rerun), consentArg)
 		return nil, errs.WithHints(errors.New("--update needs the remote profiles to update, or --all"),
 			"update every one: "+e.ProfileRun(given, append([]string{"--update", "--all"}, display...)...))
 	}
@@ -626,7 +626,7 @@ func (e *Engine) updateScopes(res *ProfileUpdateResult, scopes []Scope, uses []s
 // of a project, which changes there you have not trusted, since its --trust never answered them.
 func narrowUpdate(err error, prefix string, scopes []Scope, failed int, unscoped bool, e *Engine, args []string) error {
 	msg := prefix + untrusted.CleanErr(err).Error()
-	run := slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "-y" || trustArg(a) })
+	run := slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "-y" || consentArg(a) })
 	var narrowed []string
 	for i, s := range scopes {
 		if i == failed {
@@ -670,7 +670,10 @@ func (e *Engine) refuseUnnamedTrust(req ProfileUpdateRequest, scopes []Scope, ru
 		}
 		// The run with --trust covering the kinds the project's changes need too.
 		arg := (req.Trust | need).Arg()
-		args := append(slices.DeleteFunc(run(), trustArg), arg)
+		args := append(slices.DeleteFunc(run(), consentArg), arg)
+		if slices.Contains(req.Rerun, "--unseen") {
+			args = append(args, "--unseen")
+		}
 		return errs.WithHints(fmt.Errorf("project %s has changes you have not trusted (%s), which its sync asks about, and no flag named it: "+
 			"--trust then answers only for the remote profiles", shown(s.ProjectDir), andJoin(mods)),
 			"name it, and trust them: "+e.ProfileRun([]Scope{s}, args...),

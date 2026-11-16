@@ -1,7 +1,9 @@
 package cli_test
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -56,22 +58,31 @@ var _ = Describe("install scripts off a terminal", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\npre_install: ci/check.sh\n", "ci/check.sh": "#!/bin/sh\nexit 0\n"})
 		r := lola("install", mod, "-C", proj, "-t", "claude-code", "--json")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(MatchRegexp(`^`+regexp.QuoteMeta(`{`+projectWriteContextJSON(proj)+`"error":"lola install needs your trust for the pre-install script ci/check.sh of this project (new), and there is no terminal to ask on",`+
+		Expect(r.err).To(MatchRegexp(`^`+regexp.QuoteMeta(`{`+projectWriteContextJSON(proj)+`"error":"lola install needs your trust for the pre-install script ci/check.sh (sha256 `)+`[0-9a-f]{64}`+regexp.QuoteMeta(`) of this project (new), and there is no terminal to ask on",`+
 			`"hints":["review it: lola info -C `+proj+` `+mod+` --target claude-code --json",`+
-			`"then consent to it: lola install `+mod+` --json --root `+proj+` --target claude-code --trust=scripts --at example=sha256:`)+`[0-9a-f]{64}"\]\}\n$`),
+			`"lola has not shown you this script; see it with lola install `+mod+` --json --root `+proj+` --target claude-code --trust=scripts --at example=sha256:`)+
+			`[0-9a-f]{64}`+regexp.QuoteMeta(` -n, then consent to it: lola install `+mod+` --json --root `+proj+` --target claude-code --trust=scripts --at example=sha256:`)+
+			`[0-9a-f]{64}",`+regexp.QuoteMeta(`"or add --unseen to consent without seeing it: `)+`[^"]* --unseen"\]\}\n$`),
 			"the consent pins the version shown")
 
+		r = lola("install", mod, "-C", proj, "-t", "claude-code", "--json", "--trust=scripts")
+		Expect(r.code).To(Equal(1), "a refusal names the script, path and sha256, but does not show it: %s", r.err)
+		r = lola("install", mod, "-C", proj, "-t", "claude-code", "--json", "--trust=scripts", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring(`"body": "#!/bin/sh\nexit 0\n"`), "the dry run shows it in full")
 		r = lola("install", mod, "-C", proj, "-t", "claude-code", "--json", "--trust=scripts")
 		Expect(r.code).To(Equal(0), r.err)
 		var doc struct {
 			Trusted []map[string]string `json:"trusted"`
-			Scripts []map[string]string `json:"scripts"`
+			Scripts []map[string]any    `json:"scripts"`
 			Notices []map[string]string `json:"notices"`
 		}
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
 		Expect(doc.Trusted).To(Equal([]map[string]string{{"kind": "scripts", "item": "pre-install ci/check.sh", "change": "new"}}))
-		Expect(doc.Scripts).To(Equal([]map[string]string{{"event": "pre-install", "source": "project", "path": "ci/check.sh", "module": "example",
-			"target": "claude-code", "status": "ran"}}))
+		Expect(doc.Scripts).To(ConsistOf(And(HaveLen(11), HaveKeyWithValue("trusted", true), HaveKeyWithValue("trust_run", ""), HaveKeyWithValue("new", false), HaveKeyWithValue("body", "#!/bin/sh\nexit 0\n"),
+			HaveKeyWithValue("event", "pre-install"), HaveKeyWithValue("source", "project"),
+			HaveKeyWithValue("path", "ci/check.sh"), HaveKeyWithValue("sha256", MatchRegexp(`^[0-9a-f]{64}$`)), HaveKeyWithValue("module", "example"),
+			HaveKeyWithValue("target", "claude-code"), HaveKeyWithValue("status", "ran"))))
 
 		yml := filepath.Join(proj, ".lola", "project.yml")
 		b, err := os.ReadFile(yml)
@@ -83,8 +94,9 @@ var _ = Describe("install scripts off a terminal", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		doc.Scripts = nil
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
-		Expect(doc.Scripts).To(Equal([]map[string]string{{"event": "post-install", "source": "project", "path": "ci/after.sh", "module": "example",
-			"target": "claude-code", "status": "declined"}}))
+		Expect(doc.Scripts).To(ConsistOf(And(HaveLen(11), HaveKeyWithValue("trusted", true), HaveKeyWithValue("trust_run", ""), HaveKeyWithValue("new", true), HaveKeyWithValue("event", "post-install"), HaveKeyWithValue("source", "project"),
+			HaveKeyWithValue("path", "ci/after.sh"), HaveKeyWithValue("sha256", MatchRegexp(`^[0-9a-f]{64}$`)), HaveKeyWithValue("module", "example"),
+			HaveKeyWithValue("target", "claude-code"), HaveKeyWithValue("status", "declined"))))
 		Expect(doc.Notices).To(ContainElement(map[string]string{"level": "warn", "class": "safety", "text": "example: post-install script ci/after.sh (project) skipped without " +
 			"your trust; review and run it: lola sync -C " + proj + " example, or trust it without asking: lola sync -C " + proj + " example --trust=scripts"}))
 		b, err = os.ReadFile(filepath.Join(proj, ".lola", "lock.json"))
@@ -104,9 +116,9 @@ var _ = Describe("install scripts in a dry run", func() {
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 	})
 	// scriptsOf is the scripts array of a JSON document.
-	scriptsOf := func(out string) []map[string]string {
+	scriptsOf := func(out string) []map[string]any {
 		var doc struct {
-			Scripts []map[string]string `json:"scripts"`
+			Scripts []map[string]any `json:"scripts"`
 		}
 		Expect(json.Unmarshal([]byte(out), &doc)).To(Succeed())
 		return doc.Scripts
@@ -118,20 +130,23 @@ var _ = Describe("install scripts in a dry run", func() {
 		args := []string{"install", mod, "-C", proj, "-t", "claude-code", "-n", "--post-install", filepath.Join(tmp, "flag", "post.sh")}
 		r := lola(args...)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("→ example pre-install script " + filepath.Join(tmp, "bin", "pre.sh") + " (user, claude-code): would run\n" +
-			"→ example pre-install script ci/check.sh (project at " + proj + ", claude-code): would run, needs --trust=scripts\n" +
-			"→ example post-install script " + filepath.Join(tmp, "flag", "post.sh") + " (flag, claude-code): would run\n"))
+		sum := fmt.Sprintf("%x", sha256.Sum256([]byte("#!/bin/sh\n")))
+		Expect(r.out).To(ContainSubstring("→ example pre-install script " + filepath.Join(tmp, "bin", "pre.sh") + " (user, sha256 " + sum + ", claude-code): would run\n" +
+			"→ example pre-install script ci/check.sh (project at " + proj + ", sha256 " + sum + ", claude-code): would run, needs --trust=scripts\n" +
+			"    | #!/bin/sh\n" +
+			"→ example post-install script " + filepath.Join(tmp, "flag", "post.sh") + " (flag, sha256 " + sum + ", claude-code): would run\n"))
 		r = lola(append(args, "--plain")...)
-		Expect(r.out).To(ContainSubstring("script\texample\tpre-install\tproject\tci/check.sh\tclaude-code\twould-run\n"))
+		Expect(r.out).To(ContainSubstring("script\texample\tpre-install\tproject\tci/check.sh\tclaude-code\twould-run\t"+sum+"\tfalse\tlola sync -C "+proj+" --trust=scripts --plain\n"), "untrusted: trusted false, with the run that trusts it")
 		r = lola(append(args, "--json")...)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(scriptsOf(r.out)).To(Equal([]map[string]string{
-			{"event": "pre-install", "source": "user", "path": filepath.Join(tmp, "bin", "pre.sh"), "module": "example", "target": "claude-code", "status": "would-run"},
-			{"event": "pre-install", "source": "project", "path": "ci/check.sh", "module": "example", "target": "claude-code", "status": "would-run"},
-			{"event": "post-install", "source": "flag", "path": filepath.Join(tmp, "flag", "post.sh"), "module": "example", "target": "claude-code", "status": "would-run"},
+		Expect(scriptsOf(r.out)).To(Equal([]map[string]any{
+			{"event": "pre-install", "source": "user", "path": filepath.Join(tmp, "bin", "pre.sh"), "sha256": sum, "module": "example", "target": "claude-code", "status": "would-run", "trusted": true, "trust_run": ""},
+			{"event": "pre-install", "source": "project", "path": "ci/check.sh", "sha256": sum, "body": "#!/bin/sh\n", "new": false, "module": "example", // the human -n above showed it
+				"target": "claude-code", "status": "would-run", "trusted": false, "trust_run": "lola sync -C " + proj + " --trust=scripts --json"},
+			{"event": "post-install", "source": "flag", "path": filepath.Join(tmp, "flag", "post.sh"), "sha256": sum, "module": "example", "target": "claude-code", "status": "would-run", "trusted": true, "trust_run": ""},
 		}))
 		r = lola(append(args, "--trust=scripts")...)
-		Expect(r.out).To(ContainSubstring("→ example pre-install script ci/check.sh (project at "+proj+", claude-code): would run\n"), "covered, it needs nothing more")
+		Expect(r.out).To(ContainSubstring("→ example pre-install script ci/check.sh (project at "+proj+", sha256 "+sum+", claude-code): would run\n"), "covered, it needs nothing more")
 		Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
 	})
 
@@ -147,7 +162,7 @@ var _ = Describe("install scripts in a dry run", func() {
 		r := lola("info", mod, "-C", proj, "-t", "claude-code", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(MatchRegexp("(?m)^script\tpre-install\tproject\tci/check.sh\t[0-9a-f]{64}\ttrue$"))
-		Expect(lola("install", mod, "-C", proj, "-t", "claude-code", "--trust=scripts").code).To(Equal(0))
+		Expect(lola("install", mod, "-C", proj, "-t", "claude-code", "--trust=scripts", "--unseen").code).To(Equal(0))
 		r = lola("info", mod, "-C", proj, "-t", "claude-code", "--plain")
 		Expect(r.out).To(MatchRegexp("(?m)^script\tpre-install\tproject\tci/check.sh\t[0-9a-f]{64}\tfalse$"), "its consent is recorded")
 	})
@@ -157,7 +172,7 @@ var _ = Describe("install scripts in a dry run", func() {
 		r := lola("info", mod, "-C", proj, "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(MatchRegexp(`(?m)^  pre-install script ci/check\.sh \(project at ` + regexp.QuoteMeta(proj) + `, sha256 [0-9a-f]{64}\), around its install with your trust$`))
-		Expect(lola("install", mod, "-C", proj, "-t", "claude-code", "--trust=scripts").code).To(Equal(0))
+		Expect(lola("install", mod, "-C", proj, "-t", "claude-code", "--trust=scripts", "--unseen").code).To(Equal(0))
 		r = lola("info", mod, "-C", proj, "-t", "claude-code")
 		Expect(r.out).To(MatchRegexp(`(?m)^  pre-install script ci/check\.sh \(project at `+regexp.QuoteMeta(proj)+`, sha256 [0-9a-f]{64}\), around its install$`),
 			"its consent is recorded")
@@ -207,7 +222,7 @@ var _ = Describe("install scripts in a dry run", func() {
 				}
 			}
 			Expect(rows).To(HaveLen(1), "one row, never split")
-			Expect(strings.Split(rows[0], "\t")).To(HaveLen(7))
+			Expect(strings.Split(rows[0], "\t")).To(HaveLen(10))
 			r = lola(append(args, "--json")...)
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(scriptsOf(r.out)).To(ConsistOf(HaveKeyWithValue("path", shown)))

@@ -42,7 +42,7 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 		req.Scope = &given[0]
 	}
 	p := a.prompter(cmd) // never asks under --json
-	stderr := style{color: a.color(cmd.ErrOrStderr())}
+	stderr := style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}
 	// Unpaged, the content is capped, naming the command that lists all of a profile's, picked or
 	// named; paged, it is not.
 	printer := func(rps []engine.RemoteProfile) func(io.Writer, style) {
@@ -69,7 +69,7 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 			return askYes(p, Question{Show: printer(rps), Prompt: question})
 		}
 	}
-	if p.Interactive() {
+	if p.Interactive() && !f.yes { // -y asks no question: no picker
 		req.Pick = func(names []string, invalid int) ([]string, error) {
 			return p.Profiles(ProfileStep{Source: rf.source, Names: names, Invalid: invalid})
 		}

@@ -169,7 +169,7 @@ resolved).
 
 `--plain` rows are the module's, then `mention` (component, mentioned), `notice` (level, text),
 `hook` (event, script, sha256), `script` (event, source, path, sha256, needs_trust),
-`runtime-hook` (as `lola install --plain` prints them), `mcp` (name, assistant, command line,
+`runtime-hook` (as `lola install --plain` prints them, without `new` or `seen`), `mcp` (name, assistant, command line,
 URL), `refusal` (scope, error) each followed by its `hint` rows, `consent`, `from` (scope,
 layer), `component` (scope, kind/name, state, origin, new), `change` (scope, command), `follow` (scope, command), the steps,
 `install`, `no_scope` or `no_assistant` (the sentence), and `hint` rows.

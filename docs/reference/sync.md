@@ -28,7 +28,8 @@ rules](../usage.md#safety-rules).
 | Flag | What it does |
 |---|---|
 | `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask: `entries` (the changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write), `profiles` (the changes to its active project profiles, and a project profile taking your profile's place), `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all`; bare `--trust` is `entries,profiles`, which run no code. It never bypasses a refusal ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
-| `-y`, `--yes` | Confirm removals, and only removals: it never trusts changes. |
+| `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines. Refused without one of those kinds in `--trust`; `--force` never implies it. |
+| `-y`, `--yes` | Open no scope picker (the scope is the one found off a terminal, or the run is refused as it is there), and confirm removals, and only removals: it never trusts changes. |
 | `--update` | Fetch the refs again and re-pin the modules of the run. |
 | `--at <module>=<version>` | Install the module only at this version: a git module's commit (any case), or a folder's or archive's `sha256:<digest>` (the digest the diff prints). Repeatable; given twice alike it counts once; a module the run does not include is refused (with `--scope both`, only one no scope includes). A run given it applies only the versions it names: one its source no longer serves, and any other module whose version would change, are refused before anything is written. A refusal's hint adds one for each new version it showed (a pin it would write, a folder whose content changed), so the run it hints answers only what was listed. |
 | `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |
@@ -48,7 +49,7 @@ Refusals:
     your cache, so the refusal shows its new version's files; an `--update` that finds nothing new
     needs no trust and is not refused.
   - The files a version read this way no longer ships, as your picks and settings would install
-    it, are listed under `removals:`, and the message adds `and your confirmation to remove the
+    it, are listed under `To remove:`, and the message adds `and your confirmation to remove the
     files <module>'s new version drops`.
   - The accept hint carries `-y` only when every removal it would confirm is listed; that is the
     guarantee.

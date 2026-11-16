@@ -64,6 +64,57 @@ How selections work and how the install flow runs. It has its own page: [Selecti
 
 Each interactive surface as a state machine: its screens, transitions and exits. It has its own page: [TUI flows](architecture/tui-flows.md).
 
+## Run reports
+
+- `printReport` (`internal/cli/report.go`) is the one renderer of a run's human report. Callers
+  build a `report`: `installReport`, `printSync`'s adapter, uninstall's, and the install review's
+  `NoticesOnly` block. Under `--plain` it prints rows (`printPlainReport`) instead.
+- `reportBuf` (`internal/cli/reportbuf.go`) holds a report's text and folds. `printFold` and
+  `printFoldFooter` hand them to a `folder` (a `reportBuf`) or print them; `Folded()` renders every
+  fold closed, `Opened()` every fold open without the footer (a question's text printed inline or
+  paged, where nothing can open a fold, and what `fits` measures), and the viewer opens them
+  (`renderLines`). Under `-v` or `--plain` `printFold` prints the detail.
+- `promptBreak` (`internal/cli/promptbreak.go`) draws the blank line and rule before a prompt. It is
+  called only where a prompt line or form is drawn: `app.ask`, `huhForms.Ask`'s accessible branch
+  and `huhForms.runIn`, which on a full terminal draws it once per run of forms (`huhForms.ruled`,
+  cleared by a question).
+- Progress: `engine.Options.Progress` (an `engine.Progress`; also `ChoicesRequest.Progress` and
+  `Engine.Update`'s argument) is told each slow step a run starts. `Step` takes the ordinary ones:
+  a source fetched or read (`resolveVersion` in a sync, `resolve` in an install, `lola cache
+  update`), counted `(3/12)` among the run's modules, a module rendered, an assistant run for its
+  version on a probe-cache miss. These are where measured runs spend their time; the fetch
+  dominates. `Hold` takes a step that hands the terminal on: a script or hook (not kept), which
+  gets `HookOutput`, the real stderr, untouched; a fetch or reachability check through ssh
+  (`source.UsesSSH`, kept), since ssh may ask for a passphrase or a host key on the terminal.
+  The CLI's `app.progress` (`internal/cli/progress.go`) shows them on stderr: under `--json` or
+  `--plain`, or off a terminal, nothing; in accessible mode a line per step, held ones too;
+  otherwise one line it redraws, nothing for 300ms after the run (or the last output) began, then
+  at most every 100ms (`WithProgressPace` in specs), cut to the terminal's width at each draw (80
+  when unknown). A held step clears the line and cancels any pending draw; a kept one is then
+  printed as a line that stays; nothing draws until the next `Step`. Nothing else is written over
+  the line: `app.holdProgress` clears it, and restarts the delay when the output is done, at the
+  start of every form and question (`huhForms.runIn`, `app.ask`), every printed or paged report
+  (`app.pageThen`, which `app.emit` and the trust diff print through) and the engine callbacks
+  that print without asking (`app.receipt` under `-y` or off a terminal, `ShowResolved`). Every
+  other callback a progress-wired run makes (`Ask`, `AskScript`, `AskRuntimeHooks`, `AskWhere`,
+  `Trust`, `ConfirmRemovals`, `ConfirmBack`, `ConfirmThen`, `Show`) asks or pages first, and its
+  echo lines print after that. Each caller defers `done` over the engine call and also runs it as
+  the call returns, before an error or a refusal prints. Streams are never wrapped: terminal
+  checks, the forms, the pager and the hooks need the `*os.File`.
+- State versus event: `isState` (`internal/engine/seen.go`) is the allowlist of findings that say
+  what a module is; `safetyKey` keys an artifact `--force` rendered (`Finding.Forced`) apart from
+  the same artifact skipped. `markNew` runs in `prepare` against `lock.json` as the run read it, and
+  `markEvents` at the end of `InstallAll`, `Sync` and `Uninstall` marks the rest new. The entries a
+  run builds carry `Safety`, which `plan.Apply` writes, so a run that changes nothing records too
+  and the record does not depend on the output mode. Runtime hooks are a state fact too:
+  `consentRuntimeHooks` adds each hook's `runtimeHookKey` (module, settings file, the hook as
+  consent shows it, and `declined`, or `granted` for granted and consented alike) to the entry,
+  sets `RuntimeHook.New` from it (a hook consented in an earlier run is never new) and the
+  `runtime-hooks-declined` findings' `New` from their destination's hooks, and drops what
+  `--force` rendered of the declined intents, since nothing was rendered. The consent digest
+  keeps the module version, so a new version asks again; the key leaves it out, so an unchanged
+  hook asked about again stays seen.
+
 ## Plans and the ledger
 
 Maintainer notes on Plans and the ledger. It has its own page: [Plans and the ledger](architecture/plans-and-the-ledger.md).
@@ -355,7 +406,8 @@ names have no `/`, and gives each project and scope its own consent. A recorded 
 `--trust=runtime-hooks` or a yes from the CLI's prompt (each recorded after the run's receipt is
 answered yes, before the first write) keeps the intents; a dry run makes the same decision without
 asking or recording; otherwise the intents are dropped with `<target>/runtime-hooks-declined`, per
-settings hooks and per component.
+settings hooks and per component. A run's report shows a target's declined settings hooks in their
+block, ending with that warning's hint, in place of the warning.
 
 Dropping them is what makes consent fail closed: the planner sees the module's installed groups and
 components as orphans and removes them. The consent view (`engine.RuntimeHook`) reads handler fields

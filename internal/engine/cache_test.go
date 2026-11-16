@@ -41,25 +41,32 @@ var _ = Describe("store operations", func() {
 	})
 
 	It("Update re-fetches each head, reports whether it moved, and says installs keep their versions", func() {
-		up, err := e.Update(ctx, nil)
+		up, err := e.Update(ctx, nil, engine.Progress{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(up.Updates).To(HaveLen(1))
 		Expect(up.Updates[0].Changed).To(BeFalse())
 		Expect(up.Notices).To(BeEmpty())
 		writeTree(src, map[string]string{"commands/a.md": "B"})
-		up, err = e.Update(ctx, []string{"example"})
+		up, err = e.Update(ctx, []string{"example"}, engine.Progress{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(up.Updates[0].Changed).To(BeTrue())
 		Expect(up.Updates[0].To).NotTo(Equal(up.Updates[0].From))
 		Expect(up.Notices).To(Equal([]engine.Notice{{Level: engine.LevelInfo,
 			Text: "installed modules keep the versions they were installed at; update them with lola update, or one with lola install <module>"}}))
-		_, err = e.Update(ctx, []string{"nope"})
+		_, err = e.Update(ctx, []string{"nope"}, engine.Progress{})
 		Expect(err).To(MatchError("nope is not in your cache"))
+	})
+
+	It("Update tells Progress each source it reads, each module counted", func() {
+		var steps []string
+		_, err := e.Update(ctx, nil, engine.Progress{Step: func(s string) { steps = append(steps, s) }})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(steps).To(Equal([]string{"reading example (1/1) from " + src}))
 	})
 
 	It("Update refuses a source that renamed its module", func() {
 		writeTree(src, map[string]string{"lola.yml": "name: renamed\n"})
-		_, err := e.Update(ctx, []string{"example"})
+		_, err := e.Update(ctx, []string{"example"}, engine.Progress{})
 		Expect(err).To(MatchError(ContainSubstring(`now declares module "renamed"`)))
 	})
 

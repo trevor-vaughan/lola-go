@@ -22,6 +22,10 @@ Maintainer notes on Security model. It is split out of [architecture](../archite
     and the module version, so everything they could run from the module copy is covered.
   - They go to the per-user settings file, never the shared one, and only when git cannot commit
     it.
+  - `--trust`'s consent kinds grant only content lola has printed in full to this user before (the
+    shown record, [Trust kinds](trust-kinds.md#the-shown-record)), so a pull that changes a hook
+    through an entry's vars or targets, or a project script, cannot ride on a flag given for
+    something else; `--unseen` lifts that, by name, for CI.
 - **Sources are not trusted.**
   - A symlink in module content is copied as the regular file it names only when it is relative and
     resolves, through at most 8 links and no linked directory, to a regular file inside the source

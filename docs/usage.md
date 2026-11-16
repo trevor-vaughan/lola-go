@@ -335,6 +335,8 @@ the change to make to the module: usually an entry in the component's `.targets.
 [attribute file](guides/templating.md), such as `gemini-cli: {hooks: null}`, or a template
 branch on `target` in its `.md.liquid` file. Or the hint is a command. A forceable skip's hint
 ends with your run plus `--force`, for example `or render it anyway: lola install ./kit --force`.
+After `lola install`'s questions it is the one equivalent command the review lists plus `--force`
+(none when the review lists several).
 
 A hint that tells the module's author what to change in its files is printed by `lola check`
 and kept in `--json`; `install`, `sync`, `update` and `lola profile` print only the rest (the
@@ -405,7 +407,7 @@ the run, `lola check` included: they are never skip findings.
 | `opencode/escaped-arguments` | warn | no | A command has a Claude-escaped `\$N` or `\$ARGUMENTS`; OpenCode has no escape and still replaces it with arguments, so reword the text. |
 | `opencode/env-reference` | info | no | `${VAR}` in an MCP server becomes OpenCode's `{env:VAR}`. |
 | `opencode/env-default-dropped` | warn | no | OpenCode has no defaults for environment references: `${VAR:-default}` becomes `{env:VAR}`. |
-| `claude-code/runtime-hooks-declined` | warn | no | You did not consent to the module's runtime hooks, so they (or the skill, command or agent whose frontmatter has hooks, or the agent with inline MCP servers) are not installed and any installed earlier are removed; its hint is your run with `--trust=` the kinds you gave and `runtime-hooks` (without `-n`: a dry run's hint is the run that installs them), or answer the prompt on a terminal. |
+| `claude-code/runtime-hooks-declined` | warn | no | You did not consent to the module's runtime hooks, so they (or the skill, command or agent whose frontmatter has hooks, or the agent with inline MCP servers) are not installed and any installed earlier are removed; its hint is your run with `--trust=` the kinds you gave and `runtime-hooks` (without `-n`: a dry run's hint is the run that installs them), or answer the prompt on a terminal. For a target's settings hooks the report prints that hint under the declined hooks instead of the warning. |
 | `claude-code/allowed-tools` | warn | no | A skill, command or agent pre-approves tools with `allowed-tools`; Claude Code runs them without asking. Installed as written. |
 | `claude-code/permission-mode` | warn | no | An agent sets the permission mode Claude Code runs it in with `permissionMode`; the finding names the mode. Claude Code v2.1.267+ ignores `bypassPermissions` in a subagent's frontmatter. Installed as written. |
 | `claude-code/runtime-hook-path-unsafe` | skip | yes, unless a path holds a quote, `$`, a backquote or `\` | A shell-form hook needs the paths of the module copy and of the plugin data to hold only letters, digits and `/ . _ + -`, or an exec-form command contains `=` or starts with `-`. |
@@ -424,6 +426,53 @@ the run, `lola check` included: they are never skip findings.
 
 lola only reports what its own rendering loses. For general advice on writing skills, commands
 and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenjam/skillsaw).
+
+### Reading a run's report
+
+`install`, `sync`, `update`, `uninstall` and the `lola profile` actions that apply end with a
+report. Its sections come in this order, each under a header and left out when empty:
+
+1. **Runtime hooks — new**, **Warnings — new** and **Skipped — new**: safety findings and runtime
+   hooks you have not been shown for that module before, in full. After the install review's Apply
+   (or its summary printed under `-y` or `--force`), those the review showed are one fold instead,
+   first in the report: `▸ 2 warnings, 2 runtime hooks shown in the review above`.
+2. **Hooks and scripts** and **MCP servers**: the install hooks and scripts that ran or would run,
+   and the servers a module declares, except those the trust diff above the report already listed.
+3. **Notices**: notices, and the detail findings counted per module with the `lola check` that
+   lists them.
+4. **Unchanged since last run**: what you were shown before, in one fold.
+5. **Files**: what the run writes, a fold per module.
+6. **Removed** (**To remove** in a dry run or before a question): the files the run deletes,
+   among them the hooks and components lola installed under a consent the run declined
+   (`✗ kit: claude-code (runtime hooks declined)`): a module's new version needs your consent
+   again, and without it lola removes what it installed. A dry run asks nothing, so it lists
+   them as `(unless you consent to its runtime hooks)`: the real run on a terminal asks first.
+7. The outcome (`✓ installed kit`, `✓ already in sync`).
+
+A dry run of `lola install`, `lola sync` or `lola update` that would change nothing prints only
+its outcome: `→ already in sync`, or for an install `→ kit already up to date (claude-code)`, as
+the real run words it. A runtime hook waiting for your consent that you have not seen declined
+before, a warning or skip you have not seen, or a warning notice (a module from outside the project, other modules out of sync) is
+something to show: that dry run prints its full report. So, under `-v`, is any finding, notice or
+runtime hook, which `-v` prints in full.
+
+**New** means lola has not shown it for that module before. lola remembers in `lock.json` what a
+module is rather than what a run did: a component's pre-approved tools and permission mode, a load
+warning, a native executable, a skipped artifact or one `--force` rendered anyway, runtime hooks
+you declined or installed. The next run counts those, and the runtime hooks you consented to
+earlier, under "Unchanged since last run", with the `lola check` or `lola info` that lists them.
+Change a module's tool list, or a hook, and it is new again; a hook you declined or granted stays
+seen when only the rest of its module changes, though lola asks for your consent again. Every
+other warning or skip is new every run; an info finding (such as `probe/unknown-version`) is
+neither new nor seen. The record is written on every
+run that is not a dry run, whatever its output mode.
+
+Lines marked `▸` are folded. In the viewer, `tab` and `shift+tab` move a highlight between them
+and `space` opens or closes the highlighted one; Esc clears the highlight. Printed output, and a
+pipe, keeps them closed and ends with `→ ▸ lines are folded; -v prints them in full`. `-v`
+prints everything open, and so does a question, such as `Uninstall kit? [y/N]`, that prints its
+text above the prompt rather than in the viewer. `--plain` and `--json` are always complete; `--json` marks a finding `"new": true|false`, and
+`--plain` has a `seen` column ([Output contract](reference/output-contract.md)).
 
 ### Native executables
 
@@ -610,6 +659,8 @@ binary. Each step below was run against a throwaway `HOME`.
 ## Output contract
 
 The output formats lola's commands share. It has its own page: [Output contract](reference/output-contract.md).
+On a terminal, a long `update`, `sync`, `install` or `cache update` shows what it is doing on one line it redraws;
+scripts, `--json` and `--plain` get nothing of it.
 `install --json` lists the versions it records in `target_versions` (`{scope, target, version,
 previous, source, file, era}`, `source` `installed`, `chosen` or `flag`); `sync --json` lists the
 modules it rewrites for another era in `rewrites` (`{module, target, from, to}`).

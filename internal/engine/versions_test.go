@@ -321,7 +321,7 @@ var _ = Describe("the assistant version an install writes for", func() {
 				Expect(recorded(res)).To(ConsistOf(HaveSuffix("in " + p.Config + " (target_versions): files are written for quill >=1.0 <2.0")))
 				Expect(chosen(res)).To(Equal([]target.Finding{{Severity: target.SeverityWarn, Target: "quill", Kind: "assistant", Code: "version/chosen-era",
 					Text: "this machine's quill 2.1.0 reads files written for >=2.0; these are written for >=1.0 <2.0 (commands in old/)",
-					Hint: "to write for what this machine's quill 2.1.0 reads (>=2.0): -t quill@2.1.0"}}), "dry run %v", dry)
+					Hint: "to write for what this machine's quill 2.1.0 reads (>=2.0): -t quill@2.1.0", New: new(true)}}), "dry run %v", dry)
 			}
 			elsewhere()
 			res, err = install(false, at(project(), map[string]string{"quill": "1.1"}))

@@ -118,9 +118,20 @@ type DestResult struct {
 	NotMigrated []Item                `json:"not_migrated"`
 	Steps       []plan.Step           `json:"steps"`
 	Modules     []engine.ModuleResult `json:"modules"`
+	Scripts     []engine.ScriptRun    `json:"scripts"`
 	Findings    []target.Finding      `json:"findings"`
 	Notices     []engine.Notice       `json:"notices"`
 }
+
+// Run is the destination's install result as a run's report reads it: its modules (their install
+// and runtime hooks) and install scripts.
+func (dr *DestResult) Run() *engine.Result {
+	return &engine.Result{Modules: dr.Modules, Scripts: dr.Scripts}
+}
+
+// ShownKeys is the shown record keys of the consent items the destination lists in full
+// (engine.Result.ShownKeys), which a --json document of the migration prints.
+func (dr *DestResult) ShownKeys() []string { return dr.Run().ShownKeys() }
 
 // InstallItem is one module lola-go installs (or found installed) at a destination.
 type InstallItem struct {
@@ -487,7 +498,7 @@ func where(d *Destination) string {
 func newDestResult(d *Destination) *DestResult {
 	dr := &DestResult{ID: d.ID, Scope: d.Scope.Kind.String(), Status: StatusPlanned, Hints: []string{}, Installs: []InstallItem{},
 		Replaced: []Moved{}, Moved: []Moved{}, Kept: []Kept{}, Unmappable: d.Unmappable, NotMigrated: slices.Clone(d.NotMigrated),
-		Steps: []plan.Step{}, Modules: []engine.ModuleResult{}, Findings: []target.Finding{}, Notices: []engine.Notice{}}
+		Steps: []plan.Step{}, Modules: []engine.ModuleResult{}, Scripts: []engine.ScriptRun{}, Findings: []target.Finding{}, Notices: []engine.Notice{}}
 	if d.Scope.Kind == target.Project {
 		dr.Root = d.Root
 	}
@@ -633,7 +644,7 @@ func (r *runner) collectHolds(p *Plan, results []*engine.InstallResult, leds []*
 
 // addInstall records an install's result and the lola-go names of its modules.
 func (dr *DestResult) addInstall(res *engine.InstallResult) {
-	dr.Steps, dr.Modules = append(dr.Steps, res.Steps...), append(dr.Modules, res.Modules...)
+	dr.Steps, dr.Modules, dr.Scripts = append(dr.Steps, res.Steps...), append(dr.Modules, res.Modules...), append(dr.Scripts, res.Scripts...)
 	dr.Findings, dr.Notices = append(dr.Findings, res.Findings...), append(dr.Notices, res.Notices...)
 	n := 0
 	for i := range dr.Installs {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // trustFlag is --trust[=kind,…], one definition for every command that can ask a
@@ -23,6 +24,7 @@ type trustFlag struct {
 	values []string
 	at     []int
 	kinds  engine.TrustKinds
+	unseen bool // --unseen, which a command that takes a consent kind has
 }
 
 func (t *trustFlag) String() string { return strings.Join(t.values, ",") }
@@ -78,6 +80,10 @@ func addTrustFlag(cmd *cobra.Command, t *trustFlag, command, usage string) {
 	}
 	_ = cmd.Flags().SetAnnotation("trust", trustShownKey, []string{shown}) // the flag was just added
 	_ = cmd.RegisterFlagCompletionFunc("trust", completeTrust(command))
+	if engine.CommandTrust(command)&engine.TrustConsent != 0 {
+		cmd.Flags().BoolVar(&t.unseen, "unseen", false,
+			"let --trust's scripts, hooks and runtime-hooks consent to content lola has not shown you in full (for CI and fresh machines)")
+	}
 }
 
 // completeTrust completes --trust=<kinds>: the kinds command takes that the value does not name yet,
@@ -104,6 +110,16 @@ func completeTrust(command string) cobra.CompletionFunc {
 // --trust is refused first, then whatever engine.ParseTrust refuses; each hint is the run (args are
 // its names) with --trust as it would work. noun is what command's arguments name.
 func (t *trustFlag) parse(cmd *cobra.Command, args []string, command, noun string) (engine.TrustKinds, error) {
+	k, err := t.parseKinds(cmd, args, command, noun)
+	if err == nil && t.unseen && k&engine.TrustConsent == 0 {
+		return 0, errs.WithHints(fmt.Errorf("--unseen widens a consent kind of --trust (%s), and --trust gives none", strings.ReplaceAll(engine.TrustConsent.String(), ",", ", ")),
+			runWithout(cmd, args, "unseen"))
+	}
+	return k, err
+}
+
+// parseKinds is parse but for --unseen.
+func (t *trustFlag) parseKinds(cmd *cobra.Command, args []string, command, noun string) (engine.TrustKinds, error) {
 	if len(t.values) == 0 {
 		return 0, nil
 	}
@@ -145,9 +161,14 @@ func (t *trustFlag) parse(cmd *cobra.Command, args []string, command, noun strin
 }
 
 // fixedRun is the user's run, its names args, without the flags named in drop, with --trust
-// granting k in place of the --trust given; none for 0.
+// granting k in place of the --trust given; none for 0. --unseen stays only beside a consent kind
+// of k, which it widens.
 func fixedRun(cmd *cobra.Command, args []string, k engine.TrustKinds, drop ...string) string {
-	run := runWithout(cmd, args, append([]string{"trust"}, drop...)...)
+	drop = append([]string{"trust"}, drop...)
+	if k&engine.TrustConsent == 0 {
+		drop = append(drop, "unseen")
+	}
+	run := runWithout(cmd, args, drop...)
 	if k != 0 {
 		run += " " + k.Arg()
 	}
@@ -164,6 +185,40 @@ func trustRun(cmd *cobra.Command, args []string) func(engine.TrustKinds) string 
 // hint is the run that installs what it consents to, as lola sync -n's is.
 func consentRun(cmd *cobra.Command, args []string) func(engine.TrustKinds) string {
 	return func(k engine.TrustKinds) string { return fixedRun(cmd, args, k, "dry-run") }
+}
+
+// reviewedConsents is the consent items, as the receipt names them, whose every runtime hook the
+// install review of r listed in full: a module's runtime hooks in a settings file, all of them new
+// (or seen, under -v, which prints those too).
+func reviewedConsents(r *engine.Result, verbose bool) map[engine.Consent]bool {
+	listed, partial := map[engine.Consent]bool{}, map[engine.Consent]bool{}
+	for _, m := range r.Modules {
+		for _, h := range m.RuntimeHooks {
+			c := engine.Consent{Kind: engine.TrustRuntimeHooks.String(),
+				Item: untrusted.Text(m.Name, len(m.Name)) + " in " + untrusted.Text(h.Settings, len(h.Settings))}
+			if hookIsNew(h) || verbose {
+				listed[c] = true
+			} else {
+				partial[c] = true
+			}
+		}
+	}
+	for c := range partial {
+		delete(listed, c)
+	}
+	return listed
+}
+
+// appliedReceipt is receipt for a run whose review the user answered Apply: an item the review
+// listed (listed, by kind and item) was confirmed by that answer, so a receipt of those alone
+// neither prints nor asks; one with any other item is receipt's, in full.
+func appliedReceipt(receipt func([]engine.Consent) (bool, error), listed map[engine.Consent]bool) func([]engine.Consent) (bool, error) {
+	return func(items []engine.Consent) (bool, error) {
+		if !slices.ContainsFunc(items, func(c engine.Consent) bool { return !listed[engine.Consent{Kind: c.Kind, Item: c.Item}] }) {
+			return true, nil
+		}
+		return receipt(items)
+	}
 }
 
 // receiptNext is the question a --trust record's viewer is followed by: "Proceed?", the receipt,
@@ -187,8 +242,9 @@ func (a *app) receipt(cmd *cobra.Command, given engine.TrustKinds, yes bool) fun
 		show := func(w io.Writer, s style) { printReceipt(w, s, given, items) }
 		p := a.prompter(cmd) // never asks under --json
 		if yes || !p.Interactive() {
+			defer a.holdProgress()()
 			w := cmd.ErrOrStderr()
-			show(w, style{color: a.color(w)})
+			show(w, style{color: a.color(w), bold: a.bold(w)})
 			return true, nil
 		}
 		ok, err := askYes(p, Question{Show: show, Prompt: "Proceed?"})
@@ -213,7 +269,8 @@ func printReceipt(w io.Writer, s style, given engine.TrustKinds, items []engine.
 	}
 }
 
-// trustHelp is the help of --trust for command (engine.CommandTrust's name): the kinds it takes.
+// trustHelp is the help of --trust for command (engine.CommandTrust's name): the kinds it takes,
+// and, for one that takes a consent kind, what --unseen widens.
 func trustHelp(command string) string {
 	takes := engine.CommandTrust(command)
 	out := "--trust=<kinds> answers, without asking, what the run would ask about of the kinds named:\n" +
@@ -221,6 +278,16 @@ func trustHelp(command string) string {
 	if b := takes & engine.TrustBare; b != 0 {
 		out += "Bare --trust is " + b.String() + ", which run no code.\n"
 	}
-	return out + "It lists what it covers before anything is written, and on a terminal asks once (-y\n" +
+	if takes&engine.TrustConsent != 0 {
+		out += "Scripts, hooks and runtime-hooks consent only to what lola has shown you in full, every\n" +
+			"line, in any output (a dry run, a question, a report; not a refusal); --unseen consents to\n" +
+			"the rest too, for CI and fresh machines.\n"
+	}
+	out += "It lists what it covers before anything is written, and on a terminal asks once (-y\n" +
 		"answers); a grant is recorded as a yes at the prompt is."
+	if command == "install" {
+		out += "\nAfter the review, Apply is that answer for what the review listed: only an item it did not\n" +
+			"list is asked about again."
+	}
+	return out
 }

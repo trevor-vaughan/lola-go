@@ -155,6 +155,7 @@ type probeEntry struct {
 type probeRun struct {
 	e        *Engine
 	ctx      context.Context
+	progress Progress // the run's Options.Progress, told each assistant run for its version
 	versions map[string]string
 	findings []target.Finding
 	exposed  map[string]string            // settingsExposed by project-relative file, once known
@@ -360,6 +361,7 @@ func (r *probeRun) execVersion(id string, m target.ProbeMethod) (v string, found
 	stderr := &headWriter{max: probeOutputLimit}
 	cmd.Stderr = stderr
 	run := untrusted.Text(bin+" "+strings.Join(m.Args, " "), untrusted.MaxName)
+	r.progress.working("asking %s for its version: %s", id, run)
 	if err := cmd.Run(); err != nil {
 		text := fmt.Sprintf("%s failed: %v", run, untrusted.CleanErr(err))
 		if why := strings.Join(strings.Fields(string(stderr.buf)), " "); why != "" {

@@ -221,7 +221,7 @@ var _ = Describe("an install's staged run", func() {
 		}, func(err error) { Expect(err).To(MatchError("cancelled")) }),
 		Entry("a declined receipt", func() engine.Options {
 			hooked()
-			return engine.Options{Trust: engine.TrustHooks, Receipt: func([]engine.Consent) (bool, error) { return false, nil }}
+			return engine.Options{Trust: engine.TrustHooks, Unseen: true, Receipt: func([]engine.Consent) (bool, error) { return false, nil }}
 		}, func(err error) { Expect(err).To(MatchError(engine.ErrDeclined)) }),
 	)
 

@@ -135,8 +135,9 @@ type huhForms struct {
 	out           io.Writer
 	tty           bool
 	accessible    bool
-	color         bool
-	width, height int // of the terminal stderr is on; 0 when unknown
+	color, bold   bool
+	verbose       bool // -v: a question's text prints its folds in full
+	width, height int  // of the terminal stderr is on; 0 when unknown
 	// home and cwd are where path prompts read ~ and relative answers from.
 	home, cwd string
 	// dark resolves the background lolaTheme draws for (app.darkBackground); theme calls it once,
@@ -144,10 +145,15 @@ type huhForms struct {
 	dark   func() (bool, error)
 	isDark *bool
 	ask    func(Question) (rune, error) // a question on the full terminal (app.ask), on stderr
+	hold   func() func()                // holds the progress line over a form (app.holdProgress); nil for none
 	// cancelRun stops the full-terminal form running; stdinEnded says stdin's end of input did.
 	// Both are set from the form's input goroutine and read after the form returns.
 	cancelRun  context.CancelFunc
 	stdinEnded bool
+	// ruled says a form on the full terminal drew its break (promptBreak) and no question was
+	// asked since: a form leaves nothing on the terminal, so the next one, or the same one after
+	// Esc, draws none, and a run of forms sits under one rule.
+	ruled bool
 }
 
 // accessible reports whether forms use huh's line prompts: LOLA_ACCESSIBLE=1 or TERM=dumb, read
@@ -159,8 +165,9 @@ func (a *app) accessible() bool {
 // huhPrompter builds the huh adapter over the command's streams.
 func (a *app) huhPrompter(cmd *cobra.Command) Prompter {
 	h := &huhForms{stdin: cmd.InOrStdin(), in: &eofReader{r: cmd.InOrStdin()}, out: cmd.ErrOrStderr(), tty: interactive(cmd),
-		accessible: a.accessible(), color: a.color(cmd.ErrOrStderr()), dark: func() (bool, error) { return a.darkBackground(cmd) },
-		ask: func(q Question) (rune, error) { return a.ask(cmd, q) }}
+		accessible: a.accessible(), color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr()), verbose: a.style(cmd).verbose,
+		dark: func() (bool, error) { return a.darkBackground(cmd) },
+		ask:  func(q Question) (rune, error) { return a.ask(cmd, q) }, hold: a.holdProgress}
 	if p, err := paths.Resolve(a.getenv); err == nil {
 		h.home = p.Home
 	}
@@ -207,8 +214,16 @@ func (h *huhForms) theme() (huh.Theme, error) {
 // huh v2.0.3's accessible number prompts return the last answer they rejected when input
 // ends, and Select and MultiSelect then index their options with it and panic. That panic, an
 // index out of range in accessible mode after input ended, is end of input too, so it cancels;
-// any other panic is not ours to hide.
+// any other panic is not ours to hide. A run of forms is drawn under one break (promptBreak, see
+// ruled); in accessible mode, whose prompts stay on the terminal, every form is.
 func (h *huhForms) runIn(t huh.Theme, nav Nav, fields ...huh.Field) (err error) {
+	if h.hold != nil {
+		defer h.hold()()
+	}
+	if !h.ruled {
+		promptBreak(h.out, style{color: h.color, bold: h.bold}, h.width, h.accessible)
+		h.ruled = !h.accessible
+	}
 	f, exit := h.form(t, nav, fields...)
 	defer func() {
 		if r := recover(); r != nil {
@@ -862,15 +877,19 @@ func (h *huhForms) Background() (bool, error) {
 	return choice == config.ThemeDark, nil
 }
 
-// Ask asks q: in accessible mode its text, then askLine's line prompt; otherwise through ask,
-// inline or in the viewer.
+// Ask asks q: in accessible mode its text, its folds open (reportBuf.Opened), then askLine's line
+// prompt; otherwise through ask, inline or in the viewer.
 func (h *huhForms) Ask(q Question) (rune, error) {
 	if !h.accessible {
+		h.ruled = false // its prompt line stays under its own break
 		return h.ask(q)
 	}
 	if q.Show != nil {
-		q.Show(h.out, style{color: h.color, asking: true})
+		var text reportBuf
+		q.Show(&text, style{color: h.color, bold: h.bold, asking: true, verbose: h.verbose})
+		fmt.Fprint(h.out, text.Opened())
 	}
+	promptBreak(h.out, style{color: h.color, bold: h.bold}, h.width, true)
 	return h.askLine(q)
 }
 
@@ -1185,15 +1204,17 @@ var reviewLabels = map[string]string{ReviewApply: "Apply", ReviewScope: "Change 
 // (Ask): y applies, n cancels, q quits, Esc goes back to the last step, and c opens the menu of
 // the steps to change (the Change entries of st.Options, or back to the review, which Esc also
 // goes back to), whose answer the flow asks again before it comes back to the review; with no step
-// to change, the question is "[y/n]". In accessible mode the summary is printed, then the menu of
-// every entry, with no default: a blank line asks again. Either way the summary is headed by the
+// to change, the question is "[y/n]". In accessible mode the summary is printed, its folds open
+// (reportBuf.Opened), then the menu of every entry, with no default: a blank line asks again. Either way the summary is headed by the
 // review's number when the pass asked other steps.
 func (h *huhForms) Review(st ReviewStep) (string, error) {
 	if st.Step.Of > 1 {
-		st.Summary = st.Step.title(0, "Review") + "\n" + st.Summary
+		head := textReport(st.Step.title(0, "Review") + "\n")
+		st.Summary.ReplayTo(head)
+		st.Summary = head
 	}
 	if h.accessible {
-		fmt.Fprint(h.out, st.Summary)
+		fmt.Fprint(h.out, st.Summary.Opened())
 		choice, err := h.menu("Apply these changes?", st.Options, "", st.Nav)
 		if err == nil && choice == ReviewQuit {
 			return "", ErrAborted
@@ -1201,7 +1222,7 @@ func (h *huhForms) Review(st ReviewStep) (string, error) {
 		return choice, err
 	}
 	changes := slices.DeleteFunc(slices.Clone(st.Options), func(o string) bool { return o == ReviewApply || o == ReviewQuit })
-	q := Question{Show: func(w io.Writer, _ style) { fmt.Fprint(w, st.Summary) }, Prompt: "Apply these changes?", Answers: "ycn", Nav: st.Nav}
+	q := Question{Show: func(w io.Writer, _ style) { st.Summary.ReplayTo(w) }, Prompt: "Apply these changes?", Answers: "ycn", Nav: st.Nav}
 	if len(changes) == 0 {
 		q.Answers = "yn"
 	}

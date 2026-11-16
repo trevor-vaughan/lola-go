@@ -92,7 +92,7 @@ var _ = Describe("last_used", func() {
 			step(func() { ok(e.Fetch(ctx, archive)) }),
 			step(func() { ok(e.Info(ctx, info(src))) }),
 			step(func() { ok(e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: src}}, claude)) }),
-			step(func() { ok(e.Update(ctx, nil)) }),
+			step(func() { ok(e.Update(ctx, nil, engine.Progress{})) }),
 			step(func() {
 				ok(e.Sync(ctx, engine.SyncRequest{Scope: sc, Update: true,
 					Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }}))

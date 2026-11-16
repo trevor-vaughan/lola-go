@@ -129,7 +129,7 @@ var _ = Describe("install paths", func() {
 			[]string{"-t", "claude-code"}, []string{"scope", "modules", "components:project.yml › review-kit", "review"},
 			[]string{cli.ReviewApply, cli.ReviewScope, cli.ReviewModules, cli.ReviewComponents, cli.ReviewQuit},
 			func(_ result, p *scripted) {
-				Expect(p.reviewSteps[0].Summary).To(ContainSubstring("    → for claude-code (from -t)\n"))
+				Expect(p.reviewSteps[0].Summary.Folded()).To(ContainSubstring("    → for claude-code (from -t)\n"))
 			}),
 		Entry("install: start --component flag--> scope", &scripted{
 			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project")},
@@ -202,8 +202,8 @@ var _ = Describe("install paths", func() {
 		r := lolaP(p, "install")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"scope", "modules", "components:project.yml › review-kit", "empty:review-kit", "review"}))
-		Expect(p.reviewSteps[0].Summary).NotTo(ContainSubstring("review-kit"))
-		Expect(p.reviewSteps[0].Summary).To(ContainSubstring("deploy: + command/deploy"))
+		Expect(p.reviewSteps[0].Summary.Folded()).NotTo(ContainSubstring("review-kit"))
+		Expect(p.reviewSteps[0].Summary.Folded()).To(ContainSubstring("deploy: + command/deploy"))
 		Expect(filepath.Join(proj, ".claude/commands/deploy.md")).To(BeARegularFile())
 		Expect(filepath.Join(proj, ".claude/skills")).NotTo(BeADirectory())
 	})
@@ -290,7 +290,7 @@ var _ = Describe("install paths", func() {
 			"components:project.yml › review-kit", "review", "components:project.yml › review-kit", "review"}))
 		Expect(ticked(p.pages[1])).To(Equal([]string{"skill/review", "skill/slow-lint", "rule/style"}))
 		Expect(ticked(p.pages[2])).To(Equal([]string{"skill/review", "skill/slow-lint"}))
-		Expect(p.reviewSteps[2].Summary).To(ContainSubstring("review-kit: + skill/review, + skill/slow-lint\n"))
+		Expect(p.reviewSteps[2].Summary.Folded()).To(ContainSubstring("review-kit: + skill/review, + skill/slow-lint\n"))
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit --scope project -t claude-code " +
 			"--skip review-kit:command/ship --skip review-kit:rule/style"}))
 	})
@@ -308,7 +308,7 @@ var _ = Describe("install paths", func() {
 		Expect(p.calls).To(Equal([]string{"scope", "modules", "components:project.yml › review-kit", "review",
 			"components:project.yml › review-kit", "review", "modules", "review", "modules", "components:project.yml › review-kit", "review"}))
 		Expect(ticked(p.pages[2])).To(Equal([]string{"skill/review", "skill/slow-lint", "rule/style"}), "the answer of Change components")
-		Expect(p.reviewSteps[3].Summary).To(ContainSubstring("review-kit: + skill/review, + skill/slow-lint\n"), "the review lists the page's last answer")
+		Expect(p.reviewSteps[3].Summary.Folded()).To(ContainSubstring("review-kit: + skill/review, + skill/slow-lint\n"), "the review lists the page's last answer")
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install deploy review-kit --scope project -t claude-code " +
 			"--skip review-kit:command/ship --skip review-kit:rule/style"}))
 
@@ -329,7 +329,7 @@ var _ = Describe("install paths", func() {
 	reviewedAgain := func(p *scripted) {
 		GinkgoHelper()
 		Expect(p.reviewSteps).To(HaveLen(2))
-		Expect(p.reviewSteps[1].Summary).To(Equal(p.reviewSteps[0].Summary))
+		Expect(p.reviewSteps[1].Summary.Folded()).To(Equal(p.reviewSteps[0].Summary.Folded()))
 		Expect(p.reviewSteps[1].Options).To(Equal(p.reviewSteps[0].Options))
 		Expect(p.reviewSteps[1].Step).To(Equal(p.reviewSteps[0].Step), "numbered, so titled, as it was")
 	}
@@ -493,8 +493,8 @@ var _ = Describe("install paths through the version question", func() {
 		r := lolaP(p, "install", "--project")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"modules", "assistants", "version:opencode", "review", "modules", "components:project.yml › k", "review"}))
-		Expect(p.reviewSteps[1].Summary).To(ContainSubstring("→ for opencode (picked)\n"))
-		Expect(p.reviewSteps[1].Summary).To(ContainSubstring("opencode >=1.0 <2.0"))
+		Expect(p.reviewSteps[1].Summary.Folded()).To(ContainSubstring("→ for opencode (picked)\n"))
+		Expect(p.reviewSteps[1].Summary.Folded()).To(ContainSubstring("opencode >=1.0 <2.0"))
 		Expect(p.reviewSteps[1].Options).To(Equal([]string{cli.ReviewApply, cli.ReviewModules, cli.ReviewAssistants, cli.ReviewVersions,
 			cli.ReviewComponents, cli.ReviewQuit}))
 		Expect(declared()).To(Equal(map[string]string{"opencode": "1.0"}))

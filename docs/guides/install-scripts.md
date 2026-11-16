@@ -102,11 +102,17 @@ wrap the project's modules only. `default.yml` refuses the keys; yours belong in
   for a pre-install script; `-n` still says the post-install one needs it. A dry run of a sync that
   would run a pending script counts its module as changed; without the trust it needs, it marks
   the script and says it stays pending, as the run would.
-- `-n` lists every script in run order with its source, and says which project script still
-  needs `--trust=scripts`; JSON has `scripts` (`event`, `source`, `path`, `module`, `target`,
-  `status`: `would-run`, `ran`, `failed` or `declined`), and `--plain` a `script` row for each
-  (module, event, source, path, assistant, status). `lola info` lists
-  them too.
+- `-n` lists every script in run order with its source and sha256, and says which project script
+  still needs `--trust=scripts`; a project script's body follows in full until lola has shown it.
+  JSON has `scripts` (`event`, `source`, `path`, `sha256`, a project script's `body` and `new`,
+  `module`, `target`, `status`: `would-run`, `ran`, `failed`, `declined`, or `later` for each
+  project script a sync with nothing to install checks, `trusted` and `trust_run`), and `--plain` a `script` row for
+  each (module, event, source, path, assistant, status, sha256, trusted, trust_run) and a `script-line` row per line
+  of a project script. `lola info` lists them too, by path and sha256. A project script `-n` (or
+  a question) has shown you in full is one `--trust=scripts` consents to; one it has not is
+  refused or declined until it is shown, or given `--unseen` ([What lola has shown
+  you](install-trust-kinds.md#what-lola-has-shown-you)). A refusal names the script but does not
+  show it.
 - When lola refuses a run for want of trust, it hints the run with every kind it would still be
   refused for, not only the one refused: a module's pre-install hook and the project's
   pre-install script, both untrusted, hint `--trust=scripts,hooks`.

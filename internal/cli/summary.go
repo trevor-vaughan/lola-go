@@ -225,13 +225,10 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 	for _, in := range files {
 		fmt.Fprintf(w, "  %s:\n%s", in, strings.Join(entries[in], ""))
 	}
-	var found strings.Builder
-	printNotices(&found, style{verbose: fl.a.style(fl.cmd).verbose}, &engine.Result{Findings: planned.Findings, Notices: append(slices.Clone(pv.Notices), planned.EraNotices...)})
-	for _, line := range strings.SplitAfter(found.String(), "\n") {
-		if line != "" {
-			fmt.Fprint(w, "  "+line)
-		}
-	}
+	found := &reportBuf{Indent: "  "}
+	printReport(found, style{bold: fl.a.bold(fl.cmd.ErrOrStderr()), verbose: fl.a.style(fl.cmd).verbose, shown: &fl.summaryShown}, report{NoticesOnly: true, Result: &engine.Result{DryRun: true,
+		Modules: planned.Modules, Findings: planned.Findings, Notices: append(slices.Clone(pv.Notices), planned.EraNotices...)}})
+	found.ReplayTo(w)
 	for _, d := range []struct {
 		n   int
 		why string

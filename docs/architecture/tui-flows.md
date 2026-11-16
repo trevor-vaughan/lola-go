@@ -91,7 +91,8 @@ Guards are facts of the run that skip a screen or decide where an input leads.
 | `-t` | the assistant picker is not asked; `-t <id>@<version>` also answers that assistant's version question |
 | a declared `target_versions` | that assistant's version question is not asked at that destination |
 | `--skip`, `--only`, `--unskip` | no component page is asked |
-| `-y`, `--force` | no review menu and no version question (the installed version is taken): the other open steps are still asked, then the summary is printed and applied |
+| `--force` | no review menu and no version question (the installed version is taken): the other open steps are still asked, then the summary is printed and applied |
+| `-y` | no question but consent, and no review: a run off a terminal, so every picker takes that run's choice, or the run is refused as it is, with the same hints; a consent question (hooks, runtime hooks, a project script) is still asked on a terminal, since only `--trust` consents |
 | `-n` | the run ends in a dry run: the review is shown, Apply writes nothing |
 | `--json`, or no terminal | nothing is asked |
 | single option | an assistant taken as the only one installed (or the only target set up), and a module with one component and no exclusion, are not asked |
@@ -231,7 +232,7 @@ usual one).
 | start | run | `-C` missing and `-n` | next step | prints `would create <dir>`, plans for an empty directory, creates nothing |
 | start | run | every answer given, lola chose nothing | apply | no review |
 | start | run | the only assistant installed is taken | review | the review says "the only assistant found" |
-| start | run | `-y` or `--force` | next step | the steps still open are asked (component pages included), but no version question and no review menu: the summary is printed on stderr and applied |
+| start | run | `-y` or `--force` | next step | under `--force` the steps still open are asked (component pages included), but no version question and no review menu: the summary is printed on stderr and applied; under `-y` no step opens: each takes the choice a run off a terminal would, or the run is refused as that run is, and it is applied. Either still asks a consent question on a terminal, which only `--trust` answers |
 | start | run | `--json` or no terminal | apply | nothing is asked |
 | -C confirm | yes | | next step | creates the directory |
 | -C confirm | no | | cancelled | |
@@ -637,13 +638,13 @@ directory, which is offered without a `.lola/`.
 | start | run | lola profile --split | scope | `Split where?` |
 | start | run | lola profile --remove | scope | `Check which scope before removing it?` |
 | start | scope flag | | next step | `--project`, `--user`, `-C <dir>` or `--scope`: nothing asked |
-| start | run | -n, -y or --force | scope | none of them names a scope |
+| start | run | -n or --force | scope | neither names a scope; `-y` opens no picker (below) |
 | start | run | --json | next step | nothing asked: the project found from here, else `default_scope`, else refused with the runs that name a scope |
 | scope | answer | | next step | the command runs at the scope ticked |
 | scope | answer | two ticked, one scope | scope | problem "pick one scope" |
 | scope | answer | two ticked, sync or update | next step | each scope in turn, the project first, stopping at the first that fails or is declined |
 | scope | answer | Project is the home directory, refused | scope | problem "the project here is your home directory; tick User instead", nothing ticked |
-| scope | answer | Project is the home directory, accepted | next step | tidy, repair and uninstall run at the project there |
+| scope | answer | Project is the home directory, accepted | next step | repair and uninstall run at the project there |
 | scope | answer | Project has no .lola/ | refused | `lola sync`: `no project.yml in <dir>`, hinting `lola install --project <source>` |
 | scope | answer | Other ticked | directory | |
 | scope | esc | | scope | first screen: key help note |
@@ -857,8 +858,7 @@ stateDiagram-v2
 ```
 
 Every screen also goes to `cancelled` on `ctrl+c` or `q`. The move picker is the first screen of
-tidy's own: Esc there stays, also after the scope picker. Under `-y` the pickers still run and the
-closing question is not asked.
+tidy's own: Esc there stays, also after the scope picker. `-y` opens no picker: it finds the scope and refuses a run without names as off a terminal does.
 
 ### States
 
@@ -880,19 +880,17 @@ closing question is not asked.
 | start | names | | confirm | first screen: Esc stays |
 | start | names | -y | done | moves what the names select; nothing asked |
 | start | names | --force | done | also what git tracks; nothing asked |
-| start | run | --force, no names | refused | `--force needs names or --all: N items can move`; never the picker |
+| start | run | -y or --force, no names | refused | `--force needs names or --all: N items can move`, or the off-terminal refusal under `-y`; never the picker |
 | start | run | --all | confirm | first screen: Esc stays |
 | start | run | --scope both | refused | hints the run at each scope |
 | start | run | -n | dry run | lists what would move and what is locked; asks nothing |
 | start | run | --keep or --unkeep | done | edits `keep.yaml`, with no question on a terminal too; moves nothing |
 | move | answer | | keep | the rest offered; nothing is written yet |
 | move | answer | every name ticked | confirm | no keep picker |
-| move | answer | -y, every name ticked | done | the move follows the pick |
 | move | empty submit | | keep | it then needs a pick |
 | move | esc | | move | first screen: key help note |
 | move | ctrl+c | | cancelled | |
 | keep | answer | | confirm | |
-| keep | answer | -y | done | |
 | keep | empty submit | something moves | confirm | keeps nothing |
 | keep | empty submit | nothing moves | keep | refused with the "nothing selected" note; Esc or Ctrl+C is the way out |
 | keep | esc | | move | the move ticks kept; the keep ticks dropped |
@@ -1469,7 +1467,7 @@ stateDiagram-v2
   [*] --> runtime: Claude Code hooks without consent
   [*] --> script: a project script without consent
   [*] --> later: a sync with nothing to install
-  [*] --> receipt: --trust covers it
+  [*] --> receipt: --trust covers it, shown
   [*] --> done: consent recorded, -n
   [*] --> refused: no terminal, a pre-install hook or script
   hooks --> script: yes
@@ -1496,11 +1494,11 @@ else the receipt when `--trust` covers something, else the run's writes.
 
 | state | what the user sees | asked when |
 |---|---|---|
-| hooks | `<m> has install hooks. They run as you, unconfined:`, each `<event>: <script> (sha256 <digest>)`, then `Run <m>'s install hooks?` under it (default No) | a module the run installs has hooks without a consent recorded for their digest, on a terminal, without `--json`, `-n` or a `--trust` covering hooks |
-| runtime | `<m> has Claude Code hooks:` (`… and agent MCP servers:`), each with what it runs or where it connects, then `Install <m>'s Claude Code hooks?` (`… and agent MCP servers?`) (default No) | a module's Claude Code hooks without a consent recorded for their digest at that settings file, on the same terms |
-| script | `The project at <root> has a <event> script. It runs as you, unconfined, for every module lola installs there:`, `<path> (sha256 <digest>)`, then `Run this project's <event> script?` (default No) | the project's pre-install or post-install script without a consent recorded for its digest, when the run installs a copy for it to wrap, on the same terms |
+| hooks | `<m> has install hooks. They run as you, unconfined:`, each `<event>: <script> (sha256 <digest>)` and its body in full (`| …`), then `Run <m>'s install hooks?` under it (default No) | a module the run installs has hooks without a consent recorded for their digest, on a terminal, without `--json`, `-n` or a `--trust` covering hooks that lola has shown you (or `--unseen`) |
+| runtime | `<m> has Claude Code hooks:` (`… and agent MCP servers:`), each with what it runs or where it connects, or, when the install review of the run listed every one, the one line `<m>'s Claude Code hooks are the hooks listed in the review above. …`; then `Install <m>'s Claude Code hooks?` (`… and agent MCP servers?`) (default No) | a module's Claude Code hooks without a consent recorded for their digest at that settings file, on the same terms, unless you answered No to them, as they are, before |
+| script | `The project at <root> has a <event> script. It runs as you, unconfined, for every module lola installs there:`, `<path> (sha256 <digest>)` and its body in full (`| …`), then `Run this project's <event> script?` (default No) | the project's pre-install or post-install script without a consent recorded for its digest, when the run installs a copy for it to wrap, on the same terms |
 | later | the same listing, then `Trust this project's pre-install script for later runs?` (default No) | `lola sync` with nothing to install, the project's pre-install script without consent |
-| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question)) | `--trust` covers something, on a terminal, without `-y` |
+| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question)) | `--trust` covers something, on a terminal, without `-y`, that the review answered Apply did not list (Apply confirms what it listed) |
 
 ### Transitions
 
@@ -1512,7 +1510,7 @@ else the receipt when `--trust` covers something, else the run's writes.
 | start | run | lola sync, nothing to install | later | a pre-install script with no copy to wrap is asked about for later runs |
 | start | run | consent recorded | done | the consent recorded for the same digest answers; nothing asked |
 | start | run | -y or --force | hooks | neither answers consent |
-| start | run | --trust | receipt | the kinds it names are not asked; each item is listed on the receipt |
+| start | run | --trust | receipt | the kinds it names are not asked about what lola has shown you (or anything, with `--unseen`); each item is listed on the receipt |
 | start | run | -n | done | asks nothing and records nothing; the hooks and scripts are listed as would-run |
 | start | run | --json or no terminal, a pre-install hook or script | refused | hints `lola info` of the version and the run with `--trust=<kind>` |
 | start | run | --json or no terminal, post-install only | done | declined and pending in lock.json, with the sync that runs it |
@@ -1523,7 +1521,7 @@ else the receipt when `--trust` covers something, else the run's writes.
 | hooks | esc | | hooks | `first step — q quits` |
 | hooks | q | | cancelled | a quit; nothing written |
 | runtime | yes | | next step | the hooks written to the assistant's settings; the consent recorded |
-| runtime | no | | next step | the rest installed without the Claude Code hooks; the next sync asks again |
+| runtime | no | | next step | the rest installed without the Claude Code hooks; no run asks about them again until they change, and the report folds them as `declined earlier` with the run that consents to them |
 | runtime | ctrl+c | | cancelled | nothing written |
 | runtime | esc | | runtime | `first step — q quits` |
 | runtime | q | | cancelled | a quit; nothing written |
@@ -1622,12 +1620,15 @@ stateDiagram-v2
 
 Rules are tried in the order of the `start` rows below; the first that matches decides. The viewer
 reads its keys from stdin, or from the terminal when stdin is not one; the viewer draws on
-stdout, and prints its text whole there once it closes, so the text
+stdout, and prints its text there once it closes, with the folds the user opened, so the text
 stays in the terminal's scrollback. A plan that fits is printed on stderr before its question; one in
 the viewer goes to stdout, which is a terminal too whenever the viewer opens.
 
 The viewer's own inputs: *scroll* is `↑`/`↓` or `j`/`k` (a line), `PgUp`/`PgDn` or `b`/space (a
 page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal changing size.
+With a fold in the text, `tab`/`shift+tab` move a highlight between fold summaries and `space`
+opens or closes the highlighted one; `space` with none highlighted pages. The key line then adds
+`tab  next fold · space  open`.
 
 ### States
 
@@ -1635,7 +1636,7 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 |---|---|---|
 | printed | the text as it is, on stdout (a plan on stderr, before its question) | a `start` row says so |
 | pager | the user's `$LOLA_PAGER`, its stdin the text, uncapped; `LESS=FRX` unless `LESS` is set | `$LOLA_PAGER` is set and is not `cat` |
-| viewer | the text wrapped to the width on the alternate screen; under it a bold rule across the width, `━━ lines 41–80 of 312 · ↓ 232 more ━━` (`· end` once the last line shows), then the key line `q quit · ↑↓ space b  scroll · g G  top/end · /  search`, cut from the right on a narrow terminal (j/k, PgUp/PgDn and Home/End work too); before a picker, `q  continue to: <title>` in place of `q quit` | the text is taller than the terminal |
+| viewer | the text wrapped to the width on the alternate screen, a report's folds closed (`▸ summary`) until opened; under it a bold rule across the width, `━━ lines 41–80 of 312 · ↓ 232 more ━━` (`· end` once the last line shows), then the key line `q quit · ↑↓ space b  scroll · g G  top/end · /  search`, wrapped to two rows when one does not hold it, and the second cut from the right on a narrow terminal (j/k, PgUp/PgDn and Home/End work too); before a picker, `q  continue to: <title>` in place of `q quit` | the text is taller than the terminal |
 | search | the key line `/<term>█  enter search · esc cancel` while the term is typed; once searched, `/<term> 2 of 7` (or `no match`) and `n N  next/prev` before the keys, the current match in reverse video | `/` in the viewer or a review |
 | quit | the prompt line's note `Quit? your answers so far are dropped — nothing has been changed [y/N]` | `q` at a question with two or more answers held |
 | inline | the text printed on stderr, then the prompt line `Uninstall mymod? [y/N] █` under it (`[y/N]` bold, nothing in color); a hint or note after the field on the same line; `· esc back` at its end with a screen before | a question whose text and prompt line fit the terminal, or the viewer bypassed |
@@ -1665,7 +1666,10 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | viewer | / | | search | |
 | viewer | n or N | | viewer | the next or the previous match, wrapping at the ends; nothing without a search |
 | viewer | q | | done | the text printed; a question that follows is asked next |
-| viewer | esc | | done | as `q`; the key line names only `q` |
+| viewer | esc | no fold highlighted | done | as `q`; the key line names only `q` |
+| viewer | tab or shift+tab | | viewer | the next or previous fold's summary in reverse video, scrolled into view, wrapping at the ends; nothing without a fold |
+| viewer | space | a fold highlighted | viewer | the fold opens (`▾`, its detail under it) or closes (`▸`); the text wrapped again, the top line kept |
+| viewer | esc | a fold highlighted | viewer | the highlight cleared |
 | viewer | ctrl+c | nothing asked after | done | the text printed; exit 0 |
 | viewer | ctrl+c | a question follows | cancelled | the text printed; the question is not asked |
 | viewer | y, c or n | | viewer | nothing |
@@ -1698,7 +1702,9 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | prompt | q | two or more answers | quit | |
 | prompt | ctrl+c | | cancelled | the prompt line left with its field empty |
 | prompt | end of input | | refused | the text and the unanswered prompt line printed to stderr, then the error |
-| prompt | resize | | prompt | the text wrapped again; the prompt line wraps, the key line is cut from the right |
+| prompt | resize | | prompt | the text wrapped again; the prompt line wraps, the key line wraps to two rows, the second cut from the right |
+| prompt | tab or shift+tab | | prompt | as in the viewer |
+| prompt | space | a fold highlighted | prompt | as in the viewer |
 | quit | n, enter or esc | inline | inline | where it was |
 | quit | n, enter or esc | in the viewer | prompt | where it was |
 | quit | y | | cancelled | a quit |

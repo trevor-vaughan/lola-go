@@ -339,6 +339,9 @@ var _ = Describe("lola info", func() {
 		Expect(info.Install[0].Scope).To(Equal("project"))
 		Expect(info.Install[0].Targets).To(Equal([]string{"claude-code"}))
 		Expect(info.Install[0].Steps).To(Equal(dry.Steps))
+		for i := range dry.Findings {
+			dry.Findings[i].New = nil // info leaves out what is new to you
+		}
 		Expect(info.Install[0].Findings).To(Equal(dry.Findings))
 		Expect(info.Install[0].Digest).To(Equal(info.Digest))
 	})
@@ -354,7 +357,7 @@ var _ = Describe("lola info", func() {
 			"review the hooks listed above, then, if you want to install them, consent to them: lola install kit --trust=hooks,runtime-hooks")), "the install info names, not --trust alone")
 
 		sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
-		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "kit"}}, engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustHooks})
+		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "kit"}}, engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustHooks, Unseen: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.Remove(filepath.Join(proj, "hook-ran"))).To(Succeed())
 		info, err = e.Info(ctx, claudeHere())
@@ -511,7 +514,7 @@ var _ = Describe("lola info", func() {
 			after()
 			sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
 			res, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: installBy.arg, Ref: installBy.ref, Path: installBy.path}},
-				engine.Options{Targets: []string{"claude-code"}, Trust: installBy.kinds})
+				engine.Options{Targets: []string{"claude-code"}, Trust: installBy.kinds, Unseen: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Modules[0].Digest).To(Equal(info.Digest))
 		},
@@ -558,7 +561,7 @@ var _ = Describe("lola info", func() {
 			kit = testenv.ServeGit(filepath.Join(tmp, "srv")) + "/kit.git"
 			sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit, Ref: "v1"}}, engine.Options{Targets: []string{"claude-code"},
-				Trust: engine.TrustHooks | engine.TrustRuntimeHooks})
+				Trust: engine.TrustHooks | engine.TrustRuntimeHooks, Unseen: true})
 			Expect(err).NotTo(HaveOccurred())
 			_, err = e.Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kit}) // the default branch, which info shows
 			Expect(err).NotTo(HaveOccurred())

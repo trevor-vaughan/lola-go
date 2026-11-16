@@ -118,7 +118,7 @@ func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Sc
 	if sp.sc.Kind == target.Project {
 		if e.unlisted(user, t, modules, runs) != nil {
 			args := e.acrossArgs(MoveRequest{To: baseName}, &moveStack{sc: user}, &moveStack{sc: sp.sc}, "", modules, false)
-			hint("meant for every project", "", "?", user, args)
+			hint("meant for every project? move it from this project into your user base", "", ":", user, args)
 		}
 		return out
 	}

@@ -7,10 +7,64 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   `cut -f1` reads it.
 - Human output merges four or more warnings that differ only in the artifact (same module,
   target, kind, code, text and hint) into one line, `⚠ ecc: opencode agent: model dropped:
-  opencode needs a string matching ^[^/]+/.+$ (71 agents: a11y-architect, agent-evaluator,
-  architect, …; --json lists each)`, with the artifact's name shown as `…` in the text and
-  `<artifact>` in the hint. Run with `--json` to see every warning; `--plain`, `--json` and
-  `--strict` are unchanged.
+  opencode needs a string matching ^[^/]+/.+$ (71 agents)`, with the artifact's name shown as `…`
+  in the text and `<artifact>` in the hint, then one indented line per artifact (`a11y-architect`,
+  `agent-evaluator`, …). In a run's report those lines are the group's detail: shown in full under
+  a section of new findings, folded under "Unchanged since last run" until you open the fold or
+  pass `-v`. `--plain`, `--json` and `--strict` are unchanged, and `--json` lists every finding.
+- A run's report (`install`, `uninstall`, `sync`, `update` and the `lola profile` actions that
+  apply) has these sections, each under a `Title:` line (bold on a terminal) and omitted when
+  empty: `Runtime hooks — new`, `Warnings — new`, `Skipped — new`, `Hooks and scripts`, `MCP
+  servers`, `Notices`, `Unchanged since last run`, `Files`, `Removed` (`To remove` in a plan),
+  then the outcome. A dry run of `install`, `sync` or `update` that would change nothing (no
+  step, edit, pin or removal, no runtime hook granted or declined unlike before, no warning or
+  skip new to the user, no warning among its notices, and under `-v` no finding, notice or
+  runtime hook for it to print) prints only its outcome (`already in sync`, or an install's
+  `<module> already up to date (<targets>)`), without the plan header. Any other install dry run
+  ends, as the real run does, with `→ <module> already up to date (<targets>)` for each module it
+  would leave as it is, under `--force` too unless its install hooks would run again.
+  - A safety warning or skip, or a runtime hook, is new when lola has not shown it for that module
+    before. In `lock.json` a module's entry records `safety`, the keys of its state findings
+    (pre-approved tools, permission modes, load warnings, native executables, skipped artifacts and those
+    `--force` rendered anyway, a fact apart from the skip, and runtime hooks, declined or
+    installed), on every run that is not a dry run, whatever the output mode; a changed tool list,
+    or a changed hook, is new again, while an unchanged one stays seen when its module changes.
+    Every other warning or skip is new on every run; an `info` finding is neither new nor seen. A
+    runtime hook consented to in an earlier run is seen; one granted in this run is new unless an
+    earlier run installed it as it is (a new module version asks again), and one declined is new
+    unless an earlier run declined it as it is.
+  - A target's declined settings hooks print in their block under `Runtime hooks — new` (or in the
+    fold once seen), ending with the hint that consents to them, in place of their
+    `runtime-hooks-declined` warning; `--plain` and `--json` keep that finding.
+  - What is seen is one fold, `▸ N warnings, M skips, K runtime hooks seen before`, with each
+    module's count and the `lola check` or `lola info` that lists them. Runtime hooks declined
+    before, which the run did not ask about again, count apart (`; 1 runtime hook declined
+    earlier`), their block's status `declined earlier`.
+  - Under `Hooks and scripts`, each install hook and install script names its sha256:
+    `kit pre-install hook hooks/pre.sh (sha256 …, claude-code): would run`; a hook's or project
+    script's body follows once, in full, `    | ` before each line (a tab expanded to 8-column
+    stops, control characters replaced), until lola has shown it, then as a fold (`▸
+    hooks/pre.sh: 12 lines`); an empty one is shown by its line. One withheld (too large or not
+    text) prints `(not shown: too large; inspect <file>; only --unseen consents to it)`. A dry run
+    with a hook or script lola has not shown prints it, never only its outcome. Each project
+    script (pre- or post-install) a dry run with nothing to install checks is listed alone,
+    `pre-install script ci/check.sh (project at …, sha256 …): trusted; nothing to wrap now`
+    (`status` `later`), or, for one without the trust a run would need, `not trusted yet; to trust
+    it: lola sync --project --trust=scripts` (with `--unseen` added for one lola cannot show).
+    Every script in `--json` carries `trusted` (a boolean: `false` for a project script a dry run
+    lists without the trust a run needs for it) and `trust_run` (for a script that is not trusted,
+    `would-run` or `later`, the command that trusts it, with your output flags; `""` otherwise). A `--plain`
+    `script` row ends with `sha256`, `trusted` (`true` or `false`) and `trust_run` (`-` when
+    empty). Not to be confused with the run's top-level `trusted`, the kinds `--trust` covered.
+  - After the install review's Apply (or its summary printed under `--force`), the new
+    warnings, skips and runtime hooks the review showed, the same text and hint, are one fold
+    first, with no header: `▸ N warnings, M skips, K runtime hooks shown in the review above`.
+  - The files are a fold per module (`▸ kit: 12 changes (claude-code 6, opencode 6)`).
+  - A closed fold prints its summary, marked `▸`; printed output, and a pipe, keeps every fold
+    closed and ends with `→ ▸ lines are folded; -v prints them in full`. `-v` prints each fold's
+    detail, and `--plain` and `--json` are always complete. The text of a question printed above
+    its prompt, or handed to `$LOLA_PAGER`, has every fold open and no footer, since nothing
+    there can open one; the viewer keeps them closed for you to open.
 - `install`, `sync`, `update` and the `lola profile` actions that apply print safety findings
   and notices in full ([Findings](#findings)) and the detail ones as one line per module:
   `→ ecc: 61 notices (claude-code 20, gemini-cli 21, opencode 20) — lola check --project ecc
@@ -25,6 +79,19 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - Under `--scope both` each scope has its own line and check.
   - `-v`/`--verbose` prints them all, grouped as above, without the author's hints, in the review
     before Apply too; `--plain` prints a row each and `--json` lists each with its `class`.
+- In a run, a finding in `--json` carries `new` (`true` or `false`) when it is a safety warning
+  or skip; an `info` finding (such as `probe/unknown-version`), and `lola check` and `lola info`
+  findings, do not carry it. A runtime hook's `status` is `granted`,
+  `consented` or `declined`, and in a run it carries `new` too. In `--plain`, a run's `finding` row
+  for a safety warning or skip ends with `new` or `seen`, and its `runtime-hook` row has `new` or
+  `seen`; `lola check` and `lola info` rows have no such column. A `runtime-hook` row is
+  `runtime-hook<TAB>module<TAB>target<TAB>event<TAB>type<TAB>status<TAB>component`, the component
+  (`<kind> <name>`) whose frontmatter has the hook, `-` for a hook in a settings file, then `new` or
+  `seen` in a run. Every `runtime-hook` row ends with
+  the hook in full, its lines joined by `; ` (`Stop: command; runs: ./stop.sh`), and a run's
+  `hook` and `script` rows end with the script's sha256, each followed by its body, a row per line:
+  `hook-line<TAB>module<TAB>event<TAB>script<TAB>line`, `script-line<TAB>module<TAB>event<TAB>path<TAB>line`,
+  or, for a body withheld, `withheld<TAB>reason<TAB>file`.
 - A notice in JSON is `level`, `text` and `class`, and `hints` when it has commands that act on it
   (a list, absent otherwise, such as the one for an assistant with versions that is not installed);
   human output prints each hint under it as a `hint:` line. When stdout and stderr are both a
@@ -45,7 +112,9 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     `base` (`name`, `kind`, `path`), `profile` (`name`, `kind`, `path`, `bundle`, `members`, or
     `null` when only the base is loaded), `writes_to` (the file `install` and `uninstall` edit, as
     `name`, `kind`, `path`, else `null`) and, when lola could not tell the profile on, `error`. In
-    each object `profile` and `writes_to` may be `null`; arrays never are.
+    each object `profile` and `writes_to` are `null` only where lola could read the scope and
+    there is none; when it could not (`error` is set) they are objects whose strings are all `""`
+    (and `members` `[]`), where an empty value means unknown. Arrays never are `null`.
   - `--plain`: each scope's context is a row on stderr, beside where the human line goes, so stdout
     keeps the command's rows: `context`, the scope, its root (empty at user scope), its base, the
     profile on by qualified name, `-` when none is on or `unknown` when lola could not read the
@@ -59,6 +128,12 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     (remote:x not on this machine yet → lola sync --user) over default`.
   - While a file or link is in its place, `error` names it instead
     (`<path> is in the way of it; move it aside`).
+- Progress: on a terminal, `lola update`, `lola sync` (and the `lola profile` changes that sync),
+  `lola install` and `lola cache update` show what a long run is doing (`… fetching kit (3/12)
+  from <source>`) on one line of stderr that they redraw and clear before anything else prints;
+  in accessible mode each step is a line of its own. A fetch over ssh prints its step as a line
+  that stays, since ssh may ask on the terminal, and nothing is drawn while ssh, a script or a
+  hook runs. Scripts, `--json` and `--plain` get none.
 - Errors: `error: <message>` on stderr with indented `hint:` lines; under `--json`, one line
   `{"error": "...", "hints": [...]}`, which some refusals extend:
   - A sync refused for want of an answer adds `trust` (its `status`, and `changes: []` when only
@@ -87,7 +162,24 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
 - The results of `install`, `uninstall`, `update` and `sync` (and so of `profile --on`, `--off`
   and `--switch`) carry `scripts`: each install script the run ran, would
   run, declined or saw fail, per module and assistant, in run order (`[]` when none; [Install
-  scripts](../guides/choosing-what-to-install.md#install-scripts)); its `path` is shown as configured, with control characters replaced.
+  scripts](../guides/choosing-what-to-install.md#install-scripts)); its `path` is shown as configured, with control characters replaced,
+  and `sha256` is the script's digest when the run planned it; a project script carries `body`,
+  the script's text raw, so its sha256 can be checked (JSON escapes control characters), and
+  `new`, whether lola had not shown it. A run's `hooks` carry `body` and `new` the same way. A
+  script larger than 64 KiB, or not UTF-8 text, or holding a NUL, has `body` `""` and `withheld`
+  `too_large` or `not_text`: output never shows it, so only `--unseen` consents to it.
+- A runtime hook in a run's JSON carries `declined_earlier: true` when it was declined, as it is,
+  by an earlier run, so this one did not ask about it; it is absent otherwise.
+- Output that prints an install hook, project script or runtime hook in full (human output of what
+  is not folded, a run's `--plain` rows and `--json` document, `lola migrate`'s preview, a
+  question, and the runtime hooks `lola info` renders) adds it to
+  `$XDG_STATE_HOME/lola/shown.json`, which `--trust`'s consent kinds grant from ([What lola has
+  shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). So does a confirmation
+  refused off a terminal (`… needs confirmation, and there is no terminal to ask on`), whose plan
+  prints the bodies in human output and carries them under `--json`. A consent refusal (a
+  pre-install hook or script without consent), which names a script but prints no body, a folded
+  line and `lola info`'s first lines of a hook do not. When the record cannot be written the run still
+  succeeds, with a warning on stderr (none under `--json`).
 - `sync`, `profile`, `install`, `update` and `migrate` under `--json` carry `trusted`: each item
   the run's `--trust` covered, `{kind, item, change}` with `change` `new` or `changed`, `[]` when
   none; under `-n`, what it would cover ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)).
@@ -103,6 +195,9 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - A second Ctrl+C ends it at once.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
+- Bold (section headers, rules): on a terminal, where `NO_COLOR` and `LOLA_COLOR=0` keep it, as
+  emphasis rather than color; never into a pipe or a file, under `TERM=dumb` or under `--plain`;
+  `LOLA_COLOR=1` forces it.
 - Picker colors are chosen to read at a contrast of at least 4.5:1 on your terminal's
   background, which lola takes from the first of:
   - `theme: dark` or `theme: light` in `config.yaml`;
@@ -130,7 +225,19 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
       viewer, where `n` is an answer, they are Ctrl+N and Ctrl+P.
     - Esc stops typing, and Enter on an empty term clears the search.
     - A term split across a wrapped line is not found.
-  - On quit the full text is printed, so it stays in your scrollback.
+    - A closed fold's lines are not searched; when only they hold the term, the key line says so:
+      `/curl no match (2 in closed folds — tab, space to open)`.
+  - A report with folds shows `tab  next fold · space  open` in the key line. `tab`/`shift+tab`
+    move a highlight between the folds' summaries and `space` opens or closes the highlighted one
+    (with none, `space` pages), scrolling a fold it opens into view: as much of its detail as
+    fits, its summary at the top when it does not all fit. Esc clears a highlight before it
+    quits; in a question that has a step before it, Esc goes back.
+  - On quit the full text is printed, with the folds you opened open, so it stays in your
+    scrollback.
+  - Before a question, a picker or a form, lola draws a blank line and a bold rule of `━` across
+    the terminal (`---` in accessible mode), so the eye finds where to answer. A run of pickers
+    and forms, such as `lola install`'s steps, which leave nothing behind, shares one rule; each
+    question gets its own.
   - A yes/no question (`uninstall`, `cache rm`, `cache clean`, `migrate`, a bare `init`, the
     removals `sync` asks about, the profiles `profile --add` and `--update` ask about, hook consent,
     `Proceed?`) and the install review sit under the text they ask about: printed, the prompt
@@ -186,9 +293,11 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - Top level: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, `rewrites`
     (`[]` when none: one `{module, target, from, to}` per module whose files the sync rewrites for
     another era of a target, `from` and `to` the eras' `since`), `equivalent_commands` (in a dry run that is not in sync, the command that applies the plan,
-    with the `--trust=` kinds it needs off a terminal; when the plan removes files, off a terminal
-    that command is refused until you add `-y`, which it carries only when you gave it; otherwise
-    `[]`), and the plan's `modules`, `steps`,
+    with the `--trust=` kinds it needs off a terminal, and `-y` when the plan removes files it lists
+    in full (not while a module's new version is unread, whose removals the run lists and asks
+    about). That `-y` confirms whatever the run it starts removes, which differs from the dry
+    run's list when a source or `project.yml` changes between them; otherwise `[]`), and the
+    plan's `modules`, `steps`,
     `findings` and `notices`.
   - `trust` has `status` (`trusted`, `new`, `changed`, or `not_applicable` at user scope),
     `recorded` (this run wrote the trust record), `targets` (the top-level targets' `field`,
@@ -211,16 +320,24 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
       against the version installed), `runs`, `env` as `NAME=value` strings and `headers` as
       `Name: value` strings (each sorted and `[]` when none), `cwd` (`""` when unset), and, only
       for a `changed` one, `previous`: its installed form with the same keys but `change`.
+    - `pre_approved` (`[]` when none): `kind` (`skill`, `command` or `agent`), `name` and `tools`:
+      what a component's `allowed-tools` pre-approve that the version installed did not (all of
+      them with none to compare).
     - `hooks`: `kind` (`install`, `runtime` or `mcp_server`), `target`, `event`, `detail` and
       `change`: `added`, `changed` (an install hook whose script file changed), `unchanged` or
-      `removed`.
+      `removed`; `consent_again: true` on an `unchanged` runtime hook or agent MCP server of a
+      version other than the one installed, which lola installed under a consent that covered
+      that version and that has no consent recorded for the new one, so the run asks again
+      (absent otherwise, a hook declined before included).
   - `trust.replacements` (`[]` when none): per project profile an activation puts in place of
     your active namesake, `profile`, `replaces` (the profile it replaces) and `modules` (those it
     changes); `status` is `changed` when only a replacement needs trust.
   - `pins`: `module`, `profile` (the project profile the pin is written into; absent for the
     manifest's), `ref`, `commit`, `digest`, `previous_digest`, `reason` (`unpinned` or
     `update`), `written` (false in a dry run).
-  - `removals`: `module`, `targets`, `whole_module`, `paths` (each `target` and `path`), `scope`
+  - `removals`: `module`, `targets`, `whole_module`, `paths` (each `target` and `path`; for a JSON
+    member lola wrote, such as a server in `.mcp.json`, `path` is the file, a space, then the
+    member's key: `.mcp.json /mcpServers/gh`), `scope`
     (`project` or `user`), and `why` when the run itself is not the reason. An install's removals
     at two scopes (`--scope both`) add `where` (`project <root>` or `user scope (<home>)`), which
     the human list prints after each block's reason.
@@ -232,7 +349,12 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - `--plain` adds `pin` (module, digest, reason) and `remove` (module, target, path, scope) rows
     after the plan's; every `remove` row has the scope column (`project` or `user`), one scope or
     two, and a refusal that lists removals (`install`, `sync`, `update`, `lola profile`) prints the
-    same rows on stderr.
+    same rows on stderr. A run's report adds a `remove` row for each settings hook group (its file,
+    a space and its key, `.claude/settings.local.json /hooks/Stop`) or component file it deletes
+    because it declined runtime hooks lola installed under an earlier consent; under `Removed`
+    their line says `(runtime hooks declined)`, and under a dry run's `To remove`, which asked
+    nothing, `(unless you consent to its runtime hooks)`. `--json` has them as `delete` steps,
+    not in `removals`.
   - In a dry run, `--plain` prints `trust` rows (module, change, and the project profile the
     change is in, empty for `project.yml`; the top-level targets' row has an empty module and
     the change `targets`, and a `target_versions` change has a row per target, with an empty

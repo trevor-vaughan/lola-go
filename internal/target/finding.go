@@ -59,6 +59,11 @@ type Finding struct {
 	Forceable bool     `json:"forceable,omitempty"` // a skip that --force may render anyway
 	Forced    bool     `json:"forced,omitempty"`    // a forceable skip that --force rendered
 	Class     Class    `json:"class"`               // "" is ClassSafety
+	// New is, on the safety warnings and skips of an install, uninstall, sync, update or profile
+	// switch, true when lola has not shown the finding for its module before and false when
+	// lock.json records it as shown (a state finding, see the engine); nil elsewhere, an info
+	// finding's included, so lola check and lola info leave it out.
+	New *bool `json:"new,omitempty"`
 	// AuthorHint says Hint, as the target made it, tells the module's author what to change in
 	// its files: lola check prints it, and install, sync, update and profile switches print
 	// UserHint in its place.

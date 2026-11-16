@@ -35,6 +35,7 @@ type installFlags struct {
 	dry, force, strict, rules, noRules, global, yes, exact, withMentions bool
 	override                                                             bool // --override (engine.TargetRequest)
 	trust                                                                engine.TrustKinds
+	unseen                                                               bool              // --unseen: trust's consent kinds reach what lola has not shown
 	at                                                                   []string          // lola install's --at, as given
 	pinned                                                               map[string]string // --at parsed (parseAt)
 	// edit, when not nil, says the run is lola profile <edit> --edit <module>...: edit holds the
@@ -111,7 +112,9 @@ type installFlow struct {
 	created                     []string                       // directories -C's creation made in this run, outermost first
 	wouldCreate                 string                         // -C's directory a dry run would create, planned as an empty one
 	applied                     bool                           // the install's Apply committed, so the directories stay
-	done                        int                            // fields the pickers asked in this pass, for the next step's number
+	done                        int                            // fields the steps before the next one asked or hold, for its number: those the pickers asked in this pass and those of answers held from an earlier one
+	ofAsked                     map[string]int                 // stage → the total its step was last numbered with (floored)
+	fields                      map[string]int                 // stage → the fields its picker last asked, which a pass that holds its answer counts again (numbered)
 	reviewStep                  Steps                          // the review's number as last shown, which a pass that asks nothing (Esc back to it) keeps
 	auto                        bool                           // lola chose an assistant the user did not name: the only one installed
 	picks                       map[string]map[string][]string // destination (Scope.Key) → module → selected kind/name
@@ -128,6 +131,15 @@ type installFlow struct {
 	overrides                   map[string]string                                      // module → the file an override of its inherited entry writes, as its page names it (targetOf)
 	dropShown                   bool                                                   // the review showed the removal of what lola profile --edit's page unticked
 	thenConfirmed               map[string][]engine.Removal                            // per later scope, the removals of what the page unticked answered yes before any write (confirmThen); nil until asked
+	// reviewShown is the planned result whose findings and runtime hooks the review showed before Apply
+	// in this run; nil when no review was shown. The report folds them and consent points at them.
+	reviewShown *engine.Result
+	// summaryShown is the shown record keys of what the review's summary printed in full, which it
+	// records once the review (or the summary -y or --force prints) has shown it.
+	summaryShown []string
+	// reviewApplied says the user answered Apply at the review: the confirmation of what it listed
+	// (appliedReceipt).
+	reviewApplied bool
 }
 
 // keptVersions are the answers the review's Change versions asks again, which Esc on its first
@@ -169,6 +181,7 @@ type whereKey struct{ scope, module string }
 type answeredPage struct {
 	module string
 	keys   []string
+	lists  int // the fields the page asked, for the numbers of the steps after it
 }
 
 // runInstall runs the install flow.
@@ -231,6 +244,9 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 		return errs.WithHints(err, runWithout(cmd, args, append([]string{"global"}, consentFlags...)...))
 	}
 	p := a.prompter(cmd)
+	if f.yes && f.keep == nil { // -y asks no question: each picker takes what an off-terminal run would, or refuses as it does; lola profile --edit is its editor
+		p = noPrompter{}
+	}
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
 		edits: edits, picker: &scopePicker{p: p, eng: eng, cwd: cwd, refuseHome: true, create: true}, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
 	if fl.f.targets, fl.flagVersions, err = splitTargets(eng, f.targets, a.root != "", func(ts []string) string { return fl.typedRun(nil, ts, false) }); err != nil {
@@ -259,7 +275,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	}()
 	err = fl.run()
 	if ut, ok := errors.AsType[*engine.UntrustedTargetsError](err); ok && ut.Report != nil && !a.json { // human under --plain too, as a sync's refusal
-		printTrustDiff(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}, ut.File, "lola sync", *ut.Report, "")
+		printTrustDiff(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}, ut.File, "lola sync", *ut.Report, "")
 	}
 	fl.removeAbandoned()
 	return coachSource(strings.Fields(cmd.CommandPath()), cmd, fl.hintArgs(args), err)
@@ -742,9 +758,9 @@ func (fl *installFlow) run() error {
 				if err != nil {
 					return err
 				}
-				var summary strings.Builder
-				printCreated(&summary, style{}, planned.Created, true)
-				if done, err := fl.reviewed(summary.String()); !done || err != nil {
+				summary := &reportBuf{}
+				printCreated(summary, style{bold: fl.a.bold(fl.cmd.ErrOrStderr())}, planned.Created, true)
+				if done, err := fl.reviewed(summary); !done || err != nil {
 					if err != nil {
 						return err
 					}
@@ -819,27 +835,33 @@ func (fl *installFlow) run() error {
 				return `choose "Change versions"`
 			}
 		}
+		var done func()
+		dry.Options.Progress, done = fl.a.progress(fl.cmd)
+		defer done()
 		planned, err := fl.eng.InstallAll(fl.cmd.Context(), dry)
+		done()
 		if err != nil {
 			return err
 		}
-		var summary strings.Builder
-		if err := fl.printSummary(&summary, spec, pv, planned); err != nil {
+		summary := &reportBuf{}
+		fl.summaryShown = nil
+		if err := fl.printSummary(summary, spec, pv, planned); err != nil {
 			return err
 		}
-		printRemovals(&summary, style{}, engine.PickDeletes(spec, planned)) // what Apply would delete is shown
+		printRemovals(summary, style{bold: fl.a.bold(fl.cmd.ErrOrStderr())}, engine.PickDeletes(spec, planned)) // what Apply would delete is shown
 		fl.droppedModule, fl.droppedScope = 0, 0
 		if gone := fl.dropped(); fl.f.keep != nil && len(gone) > 0 { // the review lists the removal it leads to
 			plan, err := fl.dropPlan(gone)
 			if err != nil {
 				return err
 			}
-			summary.WriteString(plan)
+			plan.ReplayTo(summary)
 			fl.dropShown = true
 		}
-		if done, err := fl.reviewed(summary.String()); err != nil {
+		if done, err := fl.reviewed(summary); err != nil {
 			return err
 		} else if done {
+			fl.reviewShown = planned.Result
 			break
 		}
 	}
@@ -851,21 +873,35 @@ func (fl *installFlow) run() error {
 		return err
 	}
 	spec.Options.Receipt, spec.Options.Rerun = fl.a.receipt(fl.cmd, fl.f.trust, fl.f.yes), consentRun(fl.cmd, fl.hintArgs(fl.args))
+	if fl.reviewApplied && fl.reviewShown != nil {
+		spec.Options.Receipt = appliedReceipt(spec.Options.Receipt, reviewedConsents(fl.reviewShown, fl.a.style(fl.cmd).verbose))
+	}
 	if fl.cmd.Name() == "install" { // lola install takes --at; lola profile --edit does not
 		spec.Options.PinConsent, spec.At = true, fl.f.pinned
 		spec.AtFresh = runWithout(fl.cmd, fl.hintArgs(fl.args), "at", "dry-run") + " -n"
 	}
 	fl.a.hookOptions(fl.cmd, &spec.Options)
+	if spec.Options.AskRuntimeHooks != nil && fl.reviewShown != nil { // the review listed them: consent points there
+		p, shown := fl.a.prompter(fl.cmd), shownHooks(fl.reviewShown)
+		spec.Options.AskRuntimeHooks = func(module string, hooks []engine.RuntimeHook) (bool, error) {
+			return askRuntimeHooks(p, module, hooks, shown)
+		}
+	}
 	// The review, when there was one, already showed where each address resolved, before Apply.
 	if !fl.a.json && !fl.reviews() {
 		s := fl.a.style(fl.cmd)
 		spec.Options.ShowResolved = func(lines []string) {
+			defer fl.a.holdProgress()()
 			for _, l := range lines {
 				fmt.Fprintln(fl.cmd.ErrOrStderr(), s.info(l))
 			}
 		}
 	}
+	var done func()
+	spec.Options.Progress, done = fl.a.progress(fl.cmd)
+	defer done()
 	res, err := fl.eng.InstallAll(fl.cmd.Context(), spec)
+	done()
 	fl.applied = err == nil
 	if err != nil {
 		err = fl.a.deletesRefusal(fl.cmd, err)
@@ -902,10 +938,9 @@ func (fl *installFlow) run() error {
 		eq = []string{apply}
 	}
 	return fl.a.emit(fl.cmd, func(w io.Writer, s style) {
-		printInstall(w, s, res)
-		if apply != "" && !s.plain {
-			fmt.Fprintln(w, s.info("to apply: "+apply))
-		}
+		rep := installReport(res)
+		rep.ToApply, rep.Alone, rep.Reviewed = apply, true, fl.reviewShown
+		printReport(w, s, rep)
 	}, installOutput{InstallResult: res, EquivalentCommands: eq})
 }
 
@@ -933,10 +968,10 @@ func (fl *installFlow) askDrop(gone []string) ([]string, error) {
 		return nil, err
 	}
 	if fl.f.yes || fl.f.force {
-		fmt.Fprint(fl.cmd.ErrOrStderr(), plan)
+		fmt.Fprint(fl.cmd.ErrOrStderr(), plan.Folded())
 		return gone, nil
 	}
-	ok, err := askYes(fl.p, Question{Show: func(w io.Writer, _ style) { fmt.Fprint(w, plan) },
+	ok, err := askYes(fl.p, Question{Show: func(w io.Writer, _ style) { plan.ReplayTo(w) },
 		Prompt: "Remove " + untrusted.Text(strings.Join(gone, ", "), untrusted.MaxName) + " from " + fl.f.keepLabel + "?", Nav: fl.nav(ReviewApply)})
 	if err != nil || !ok {
 		return nil, err
@@ -948,20 +983,23 @@ func (fl *installFlow) askDrop(gone []string) ([]string, error) {
 // the question: lola uninstall --profile's plan at the run's first scope (the entry, and the files
 // it deletes where the profile is on), then each later scope the profile is on, which applies it
 // after, asking what it removes there.
-func (fl *installFlow) dropPlan(gone []string) (string, error) {
+func (fl *installFlow) dropPlan(gone []string) (*reportBuf, error) {
 	sc := fl.scopes[0].Scope
 	preview, err := fl.eng.Uninstall(fl.cmd.Context(), sc, gone, engine.Options{DryRun: true, Force: fl.f.force, Display: outputFlags(fl.cmd),
 		ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Target: fl.target(), AskWhere: fl.where, Then: choiceScopes(fl.scopes[1:])})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	var b strings.Builder
-	fmt.Fprintln(&b, "Remove "+untrusted.Text(strings.Join(gone, ", "), untrusted.MaxName)+" from "+fl.f.keepLabel+", as you unticked "+destWhere(sc)+":")
-	printResult(&b, style{}, "", preview)
+	b := &reportBuf{}
+	fmt.Fprintln(b, "Remove "+untrusted.Text(strings.Join(gone, ", "), untrusted.MaxName)+" from "+fl.f.keepLabel+", as you unticked "+destWhere(sc)+":")
+	// The review or question this goes into applies the removal, or -y and --force apply it unasked;
+	// -v, as its footer says, prints the steps.
+	unasked := fl.f.yes || fl.f.force
+	printReport(b, style{bold: fl.a.bold(fl.cmd.ErrOrStderr()), asking: !unasked, applied: unasked, verbose: given(fl.cmd, "verbose")}, report{Result: preview})
 	for _, c := range fl.scopes[1:] {
-		fmt.Fprintln(&b, "then apply the removal "+destWhere(c.Scope)+", where "+fl.f.keepLabel+" is on too, asking what it removes there")
+		fmt.Fprintln(b, "then apply the removal "+destWhere(c.Scope)+", where "+fl.f.keepLabel+" is on too, asking what it removes there")
 	}
-	return b.String(), nil
+	return b, nil
 }
 
 // confirmThen asks, before the run writes anything, what removing gone from the profile removes in
@@ -980,7 +1018,7 @@ func (fl *installFlow) confirmThen(gone []string) error {
 		return nil // no way to ask: the sync after the write refuses as lola sync does
 	}
 	_, err := fl.eng.Uninstall(fl.cmd.Context(), fl.scopes[0].Scope, gone, engine.Options{DryRun: true, Display: outputFlags(fl.cmd),
-		ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Target: fl.target(), AskWhere: fl.where, Then: choiceScopes(fl.scopes[1:]), Trust: fl.f.trust,
+		ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Target: fl.target(), AskWhere: fl.where, Then: choiceScopes(fl.scopes[1:]), Trust: fl.f.trust, Unseen: fl.f.unseen,
 		ConfirmThen: func(o engine.Scope, rs []engine.Removal) (bool, error) {
 			ok, err := confirm(rs)
 			if ok && err == nil {
@@ -1076,10 +1114,15 @@ func (fl *installFlow) removeDropped(res *engine.InstallResult, gone []string) e
 					return confirm(rs)
 				}
 			}
-			r, err := fl.eng.Sync(fl.cmd.Context(), engine.SyncRequest{Scope: c.Scope, ConfirmRemovals: ask, Display: outputFlags(fl.cmd),
-				Options: engine.Options{Force: fl.f.force, ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Trust: fl.f.trust, Display: outputFlags(fl.cmd)}})
+			req := engine.SyncRequest{Scope: c.Scope, ConfirmRemovals: ask, Display: outputFlags(fl.cmd),
+				Options: engine.Options{Force: fl.f.force, ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Trust: fl.f.trust, Unseen: fl.f.unseen, Display: outputFlags(fl.cmd)}}
+			var done func()
+			req.Options.Progress, done = fl.a.progress(fl.cmd)
+			defer done()
+			r, err := fl.eng.Sync(fl.cmd.Context(), req)
+			done()
 			if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !fl.a.json {
-				printSyncRefusal(fl.cmd.ErrOrStderr(), style{color: fl.a.color(fl.cmd.ErrOrStderr()), plain: fl.a.plain}, manifestName(c.Scope), "lola sync", refusal, "")
+				printSyncRefusal(fl.cmd.ErrOrStderr(), style{color: fl.a.color(fl.cmd.ErrOrStderr()), bold: fl.a.bold(fl.cmd.ErrOrStderr()), plain: fl.a.plain}, manifestName(c.Scope), "lola sync", refusal, "")
 			}
 			if errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted) {
 				err = errors.New("you declined its removals there")
@@ -1093,14 +1136,16 @@ func (fl *installFlow) removeDropped(res *engine.InstallResult, gone []string) e
 	}
 	return fl.a.emit(fl.cmd, func(w io.Writer, s style) {
 		if res != nil {
-			printInstall(w, s, res)
+			rep := installReport(res)
+			rep.Alone, rep.Reviewed = removed == nil && len(also) == 0, fl.reviewShown
+			printReport(w, s, rep)
 		}
 		if removed != nil {
-			printResult(w, s, "uninstalled", removed)
+			printReport(w, s, report{Result: removed, Verb: "uninstalled"})
 		}
 		for _, a := range also {
 			fmt.Fprintln(w, destLabel(a.Scope)+":")
-			printSync(w, s, manifestName(a.Scope), a.SyncResult, nil, "")
+			printSync(w, s, manifestName(a.Scope), a.SyncResult, nil, "", false)
 		}
 		for _, n := range notes {
 			fmt.Fprintln(w, s.info(n))
@@ -1111,7 +1156,7 @@ func (fl *installFlow) removeDropped(res *engine.InstallResult, gone []string) e
 // answer fills every answer the pass lacks, in the flow's order, and returns the stage whose
 // question failed with the error.
 func (fl *installFlow) answer() (string, error) {
-	if err := fl.ensureScopes(); err != nil {
+	if err := fl.numbered(ReviewScope, fl.ensureScopes); err != nil {
 		return ReviewScope, err
 	}
 	if err := fl.coach(); err != nil {
@@ -1120,7 +1165,7 @@ func (fl *installFlow) answer() (string, error) {
 	if err := fl.ensureChoices(); err != nil {
 		return ReviewScope, err
 	}
-	if err := fl.ensureModules(); err != nil {
+	if err := fl.numbered(ReviewModules, fl.ensureModules); err != nil {
 		return ReviewModules, err
 	}
 	if fl.f.create && len(fl.modules) == 0 && len(fl.args) == 0 { // a new profile made empty: nothing to install, so no assistant, version or page
@@ -1130,13 +1175,34 @@ func (fl *installFlow) answer() (string, error) {
 		delete(fl.shown, ReviewComponents)
 		return ReviewComponents, nil
 	}
-	if err := fl.ensureAssistants(); err != nil {
+	if err := fl.numbered(ReviewAssistants, fl.ensureAssistants); err != nil {
 		return ReviewAssistants, err
 	}
-	if err := fl.ensureVersions(); err != nil {
+	if err := fl.numbered(ReviewVersions, fl.ensureVersions); err != nil {
 		return ReviewVersions, err
 	}
 	return ReviewComponents, fl.ensureComponents()
+}
+
+// numbered runs the step ensure completes for stage and keeps the numbers of the steps after it
+// the same whether this pass asked it or an earlier one did: the fields it asks are recorded, and
+// a pass that holds its answer counts them again, so Esc back to a later step never numbers it
+// from 1.
+func (fl *installFlow) numbered(stage string, ensure func() error) error {
+	before := fl.done
+	if err := ensure(); err != nil {
+		return err
+	}
+	switch {
+	case fl.done > before:
+		if fl.fields == nil {
+			fl.fields = map[string]int{}
+		}
+		fl.fields[stage] = fl.done - before
+	case fl.shown[stage]:
+		fl.done += fl.fields[stage]
+	}
+	return nil
 }
 
 // nav places the question asked at stage (ReviewScope, …, ReviewApply for the review) in the run
@@ -1281,7 +1347,19 @@ func (fl *installFlow) reviews() bool { return fl.ask && (len(fl.shown) > 0 || f
 // steps numbers the step the flow asks at stage (ReviewScope, …): after the fields this pass
 // asked, of those and the fields the flow expects to ask from stage on (remaining).
 func (fl *installFlow) steps(stage string) Steps {
-	return Steps{At: fl.done + 1, Of: fl.done + fl.remaining(stage)}
+	return fl.floored(stage, Steps{At: fl.done + 1, Of: fl.done + fl.remaining(stage)})
+}
+
+// floored is st, the numbering of a step of stage, with a total no lower than the stage was last
+// asked with: going back (Esc, a Change entry) may grow a total, never shrink it, even where the
+// forecast was too high (an assistant taken as the only one installed).
+func (fl *installFlow) floored(stage string, st Steps) Steps {
+	if fl.ofAsked == nil {
+		fl.ofAsked = map[string]int{}
+	}
+	st.Of = max(st.Of, fl.ofAsked[stage])
+	fl.ofAsked[stage] = st.Of
+	return st
 }
 
 // remaining forecasts how many fields the pass asks from stage on, the review included: the scope
@@ -1290,7 +1368,7 @@ func (fl *installFlow) steps(stage string) Steps {
 // questions (versionFields); the component pages still open, unless --skip, --only or --unskip
 // answers them. A step is counted exactly once what decides it is known, and as one field (a
 // component page per module argument) before: an assistant taken as the only one installed, or a
-// module with one component, drops out of the count at the next step.
+// module with one component, drops out of the count at the next step. An answer the run holds counts the fields it was asked with (numbered).
 func (fl *installFlow) remaining(stage string) int {
 	n := 1 // the review
 	stages := []string{ReviewScope, ReviewModules, ReviewAssistants, ReviewVersions, ReviewComponents}
@@ -1308,6 +1386,8 @@ func (fl *installFlow) remaining(stage string) int {
 			n += fl.versionFields()
 		case s == ReviewComponents && len(fl.edits) == 0:
 			n += fl.componentFields()
+		case fl.shown[s]: // an answer held from an earlier pass still has its fields, so a total never drops
+			n += fl.fields[s]
 		}
 	}
 	return n
@@ -1357,9 +1437,10 @@ func (fl *installFlow) componentFields() int {
 // reviewed shows summary in the review and acts on its answer (review): done once Apply confirms
 // it, false when Esc or a Change entry leaves a step to ask again. -y and --force confirm it
 // unasked, the summary printed on stderr (user decision, 2026-10-22).
-func (fl *installFlow) reviewed(summary string) (bool, error) {
+func (fl *installFlow) reviewed(summary *reportBuf) (bool, error) {
 	if fl.f.yes || fl.f.force {
-		fmt.Fprint(fl.cmd.ErrOrStderr(), summary)
+		fmt.Fprint(fl.cmd.ErrOrStderr(), summary.Folded())
+		fl.a.remember(fl.cmd, fl.summaryShown) // it printed them in full, as the review does
 		return true, nil
 	}
 	fl.reopen = nil // what the review shows is held again
@@ -1367,6 +1448,9 @@ func (fl *installFlow) reviewed(summary string) (bool, error) {
 		fl.reviewStep = Steps{At: fl.done + 1, Of: fl.done + 1}
 	}
 	choice, err := fl.p.Review(ReviewStep{Summary: summary, Options: fl.reviewOptions(), Step: fl.reviewStep, Nav: fl.nav(ReviewApply)})
+	if err == nil || errors.Is(err, ErrBack) {
+		fl.a.remember(fl.cmd, fl.summaryShown) // the review showed what it printed in full, whatever the answer
+	}
 	if errors.Is(err, ErrBack) && fl.back(ReviewApply) {
 		return false, nil
 	}
@@ -1392,6 +1476,7 @@ func (fl *installFlow) review(choice string) (bool, error) {
 	}
 	switch choice {
 	case ReviewApply:
+		fl.reviewApplied = true
 		return true, nil
 	case ReviewScope:
 		fl.pins = fl.choices.Versions
@@ -1646,7 +1731,11 @@ func (fl *installFlow) ensureChoices() error {
 	if fl.f.edit != nil { // lola profile --edit asks which file it writes before any page
 		req.AskWhere = fl.where
 	}
+	var done func()
+	req.Progress, done = fl.a.progress(fl.cmd)
+	defer done()
 	ch, err := fl.eng.InstallChoices(fl.cmd.Context(), req)
+	done()
 	fl.choices = ch
 	if err != nil {
 		return err
@@ -2138,7 +2227,7 @@ func (fl *installFlow) ensureVersions() error {
 		}
 		nav := fl.nav(ReviewVersions)
 		nav.Back = nav.Back || k > 0 || again != nil
-		step := Steps{At: fl.done + 1, Of: fl.done + len(open) - k + fl.remaining(ReviewComponents)}
+		step := fl.floored(ReviewVersions, Steps{At: fl.done + 1, Of: fl.done + len(open) - k + fl.remaining(ReviewComponents)})
 		if again != nil {
 			step = Steps{}
 		}
@@ -2272,6 +2361,11 @@ func (fl *installFlow) ensureComponents() error {
 		if m == nil {
 			continue
 		}
+		for _, pa := range fl.pageLog { // the pages of m this pass does not ask: answered, and numbered as they were
+			if pa.module == name && fl.holds(pa) {
+				fl.done += pa.lists
+			}
+		}
 		missing, pages := fl.componentPages(m)
 		if len(missing) == 0 {
 			continue
@@ -2302,7 +2396,7 @@ func (fl *installFlow) ensureComponents() error {
 				}
 				break
 			}
-			pa := answeredPage{module: name}
+			pa := answeredPage{module: name, lists: fl.page(m, dests[0].Scope.Key(), title, nil).lists()}
 			for _, d := range dests {
 				fl.picks[d.Scope.Key()][name] = picked
 				pa.keys = append(pa.keys, d.Scope.Key())
@@ -2593,7 +2687,7 @@ func (fl *installFlow) target() engine.TargetRequest {
 func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	t := fl.target()
 	spec := engine.InstallSpec{Cwd: fl.cwd, Staged: fl.staged, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
-		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.hintArgs(fl.args)), RenderRun: renderRun(fl.cmd, fl.hintArgs(fl.args)), Trust: fl.f.trust, PreInstall: fl.flagScript(fl.f.preInstall),
+		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.hintArgs(fl.args)), RenderRun: renderRun(fl.cmd, fl.hintArgs(fl.args)), Trust: fl.f.trust, Unseen: fl.f.unseen, PreInstall: fl.flagScript(fl.f.preInstall),
 		PostInstall: fl.flagScript(fl.f.postInstall), Display: outputFlags(fl.cmd), Target: t, AskWhere: fl.where,
 		TargetRun: func(sc engine.Scope, id string) string {
 			// At sc, with the version the run writes id's files for there, which a directory not declaring one needs.
@@ -2651,5 +2745,23 @@ func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	if len(spec.Modules) == 0 {
 		return spec, ErrAborted
 	}
-	return spec, spec.AddFlagEdits(fl.edits, fl.f.global)
+	if err := spec.AddFlagEdits(fl.edits, fl.f.global); err != nil {
+		return spec, err
+	}
+	// A run the form answered hints, for --force, the one install it equals (Equivalent commands):
+	// the typed run lacks what the form asked. One that equals several hints none.
+	if fl.reviews() && fl.f.edit == nil && !fl.f.force {
+		var installs []string
+		for _, l := range fl.equivalents(spec) {
+			if strings.HasPrefix(l, "lola install ") {
+				installs = append(installs, l)
+			}
+		}
+		run := ""
+		if len(installs) == 1 {
+			run = installs[0] + " --force"
+		}
+		spec.Options.ForceRun, spec.Options.RenderRun = run, run
+	}
+	return spec, nil
 }

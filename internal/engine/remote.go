@@ -182,7 +182,7 @@ func (e *Engine) remoteContent(ctx context.Context, sc Scope, q string, led *led
 			return nil, err
 		}
 		se.from = ledger.FromProfile(q) // a refusal names the remote profile's layer, not the scope's manifest
-		hooks, err := e.contentHooks(sc, se.v, se.ent, se.from, probes, templates, display)
+		hooks, _, err := e.contentHooks(sc, se.v, se.ent, se.from, probes, templates, display)
 		_, badVars := errors.AsType[*varsRefusal](err)
 		if _, refused := errors.AsType[*TemplateError](err); refused || badVars {
 			return nil, err // it names the module, its component and file itself
@@ -226,7 +226,7 @@ func (e *Engine) remoteEntry(ctx context.Context, sc Scope, q string, ent manife
 		return nil, err
 	}
 	se := &syncEntry{ent: ent, spec: spec, targets: ent.Targets}
-	return se, e.resolveSync(ctx, sc, se, run, nil) // display: only a folder's hint takes it, and a remote entry is never one
+	return se, e.resolveSync(ctx, sc, se, run, nil, Progress{}) // display: only a folder's hint takes it, and a remote entry is never one
 }
 
 // readProfiles takes the profiles lock shared, for a run that reads the remote profiles (sync,

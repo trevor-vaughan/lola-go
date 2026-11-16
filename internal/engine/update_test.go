@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -108,6 +109,7 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 	update := func(req engine.SyncRequest) (*engine.SyncResult, error) {
 		req.Installed, req.Update = true, true
 		req.Options.Trust = engine.TrustAll // trust is covered by its own spec below
+		req.Options.Unseen = true
 		return sync(req)
 	}
 	read := func(rel string) string {
@@ -168,6 +170,53 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		Expect(res.Pins).To(BeEmpty())
 	})
 
+	It("tells Progress what it fetches and renders, each module counted, in order", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"}, engine.InstallRequest{Arg: otherURL, Ref: "main"})
+		push(map[string]string{"commands/ship.md": "Ship v2\n"})
+		var steps []string
+		_, err := update(engine.SyncRequest{Refetch: true, Options: engine.Options{Progress: engine.Progress{Step: func(s string) { steps = append(steps, s) }}}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(steps).To(Equal([]string{
+			"fetching example (1/2) from " + url,
+			"fetching other (2/2) from " + otherURL,
+			"rendering example (1/2)",
+			"rendering other (2/2)",
+		}))
+	})
+
+	It("an install tells Progress what it fetches and renders, each module counted, in order", func() {
+		var steps []string
+		opts := claude
+		opts.Progress.Step = func(s string) { steps = append(steps, s) }
+		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url}, {Arg: otherURL}}, opts)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(steps).To(Equal([]string{
+			"fetching " + url + " (1/2)",
+			"fetching " + otherURL + " (2/2)",
+			"rendering example (1/2)",
+			"rendering other (2/2)",
+		}))
+	})
+
+	It("holds Progress over a fetch through ssh, its step kept on the terminal", func() {
+		var steps []string
+		opts := claude
+		opts.Progress = engine.Progress{Step: func(s string) { steps = append(steps, "step "+s) },
+			Hold: func(s string, keep bool) { steps = append(steps, fmt.Sprintf("hold %s %v", s, keep)) }}
+		loc := "ssh://git@127.0.0.1:1/nothing.git" // port 1: ssh is refused at once
+		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: loc}}, opts)
+		Expect(err).To(HaveOccurred())
+		Expect(steps).To(Equal([]string{"hold fetching " + loc + " (1/1) true"}))
+	})
+
+	It("tells Progress nothing it serves from a fresh cache head", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
+		var steps []string
+		_, err := update(engine.SyncRequest{Options: engine.Options{Progress: engine.Progress{Step: func(s string) { steps = append(steps, s) }}}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(steps).To(Equal([]string{"rendering example (1/1)"}))
+	})
+
 	It("Update-removals: lists the files a new version no longer ships, confirms them like any deletion, and writes nothing unasked", func() {
 		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
 		gitIn(work, "mv", "commands/ship.md", "commands/deploy.md")
@@ -185,7 +234,7 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		_, err = update(engine.SyncRequest{})
 		Expect(err).To(MatchError("lola update needs your confirmation to remove the files example's new version drops, and there is no terminal to ask on"))
 		Expect(state()).To(Equal(before), "a refusal leaves the cache (index.yml, versions) and the project as they were")
-		Expect(errs.Hints(err)).To(ContainElement("then confirm them: lola update --project --trust=entries,profiles,scripts,hooks,runtime-hooks --at example=" +
+		Expect(errs.Hints(err)).To(ContainElement("then confirm them: lola update --project --trust=entries,profiles,scripts,hooks,runtime-hooks --unseen --at example=" +
 			gitIn(work, "rev-parse", "HEAD") + " -y"))
 		Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"), "nothing was written")
 
@@ -514,7 +563,7 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		res, err := update(engine.SyncRequest{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(ContainElement(HaveField("Text",
-			"1 module served from your cache (fetched within cache_fresh_for) → lola update --project --fetch --trust=entries,profiles,scripts,hooks,runtime-hooks")))
+			"1 module served from your cache (fetched within cache_fresh_for) → lola update --project --fetch --trust=entries,profiles,scripts,hooks,runtime-hooks --unseen")))
 	})
 
 	It("notes no cache-served module under Refetch, or when every head was fetched", func() {

@@ -48,7 +48,9 @@ Guidance for coding agents working on lola (Go).
   `lola tidy`'s JSON `path` and `trash`, which carry paths lola wrote, moved or found in its
   destinations, `lola cache clean`'s JSON `path`, which carries a path in its cache as it is on disk
   unless it holds control or format characters, which are replaced, and `lola init`'s JSON `path`,
-  the directory lola writes to, raw but for JSON's escaping of control characters.
+  the directory lola writes to, raw but for JSON's escaping of control characters, and JSON `body`
+  of an install hook or project script, its text raw (valid UTF-8 with no NUL, at most 64 KiB, else
+  withheld; JSON escapes control characters), so its sha256 can be checked against the bytes run.
 - **Vocabulary.** User-facing text (messages, hints, help, docs) says "cache", never "store" or
   "origin" (ADR #245). Internal identifiers (package `store`, `store.Origin`) keep their names.
 - **Aliases** are additive and stable: never repurpose one, never collide with a sibling, use the
@@ -89,10 +91,13 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   viewer with the question in it when that does not fit (`━━ lines` above the prompt); a viewer before a
   picker (`q  continue to:`). `uninstall`, `cache rm`, `info`, `cache add` and
   `market --add` with no args never go interactive; they error with hints.
+  A prompt line or form sits under a blank line and a `━` rule (`---` accessible).
 - **Keys.** Pickers: `x` toggle, `ctrl+a` all/none, `/` filter, `Enter`, `esc` back, `q` quit.
   Questions: type `y`, `n` (`c` at the review), then `Enter`; `Enter` alone takes the capital letter's
-  answer, and the review has none. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`, `q`. `ctrl+c` exits 0 with
-  `nothing changed`. After `q` the viewer reprints its content to scrollback.
+  answer, and the review has none. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`,
+  `tab`/`shift+tab` (fold highlight), `space` (open/close it; pages with none), `esc` (clears the
+  highlight, else closes; back in a question), `q`. `ctrl+c` exits 0 with `nothing changed`. After
+  `q` the viewer reprints its content to scrollback.
 
 ```bash
 sudo dnf install -y tmux; task build
@@ -104,7 +109,7 @@ tmux capture-pane -t v -p | grep -v '^$' | tail -6
 tmux kill-session -t v; tmux kill-session -t holder
 ```
 
-- **Gotchas.** Use `-x 120` or wider (at 80 the viewer footer cuts `/ search` and the paging keys). Pass the isolated
+- **Gotchas.** Use `-x 80` or wider (narrower, the viewer's two key rows cut the last keys). Pass the isolated
   `HOME`/`XDG_*` inside the pane's `bash -c`; a running tmux server does not inherit your env.
   Kill by session name, never `pkill -f` (it matches your own shell). `lola trash --plain` rows start
   with a literal `run` column. `bin/lola` can be stale; `task build` refreshes it.

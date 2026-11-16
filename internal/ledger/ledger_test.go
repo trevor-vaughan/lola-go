@@ -192,6 +192,64 @@ var _ = Describe("ledger", func() {
 		Expect(err).To(MatchError(ContainSubstring("extra")))
 	})
 
+	It("names the file and the field of a wrong JSON type in user terms, with the hint to recover", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		for body, want := range map[string]string{
+			`{"version":1,"modules":{"rich":{"safety":"abc"}}}`:   "modules.rich.safety should be a list, but holds a string",
+			`{"version":1,"modules":{"rich":{"safety":7}}}`:       "modules.rich.safety should be a list, but holds a number",
+			`{"version":1,"modules":{"rich":{"safety":{"a":1}}}}`: "modules.rich.safety should be a list, but holds an object",
+			`{"version":1,"modules":{"rich":{"source":["x"]}}}`:   "modules.rich.source should be a string, but holds a list",
+			`{"version":1,"modules":[]}`:                          "modules should be an object, but holds a list",
+			`{"version":"one","modules":{}}`:                      "version should be a whole number, but holds a string",
+			`{"version":1,"modules":{},"created":{"a":1}}`:        "created should be a list, but holds an object",
+			`{"version":1,"modules":{"rich":{"targets":[1]}}}`:    "modules.rich.targets.0 should be a string, but holds a number",
+			`{"version":1,"modules":{"rich":{"source":true}}}`:    "modules.rich.source should be a string, but holds true or false",
+			"{\n  \"version\": 1,\n  \"modules\": {\n    \"a\": {\"source\": \"s\"},\n    \"b\": {\"targets\": [\"x\", 1]}\n  }\n}\n": "modules.b.targets.1 should be a string, but holds a number",
+		} {
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(HaveOccurred(), body)
+			Expect(err.Error()).To(HavePrefix(path+": "), body)
+			Expect(err.Error()).NotTo(Or(ContainSubstring("unmarshal"), ContainSubstring("Go struct"), ContainSubstring("Ledger.")), body)
+			Expect(err.Error()).To(ContainSubstring(want), body)
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("restore lock.json from a backup")), body)
+		}
+	})
+
+	It("says the file, not an empty field, when the whole lock.json has the wrong type", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(path, []byte(`[]`), 0o600)).To(Succeed())
+		_, err := ledger.Load(path)
+		Expect(err).To(MatchError(path + ": the file should be an object, but holds a list"))
+	})
+
+	It("names the module entry to remove in the hint when the error is inside one", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(path, []byte(`{"version":1,"modules":{"kit":{"safety":"abc"}}}`), 0o600)).To(Succeed())
+		_, err := ledger.Load(path)
+		Expect(errs.Hints(err)).To(ConsistOf("restore lock.json from a backup, or remove the entry for kit (modules.kit) from it and reinstall kit"))
+		Expect(os.WriteFile(path, []byte(`{"version":"x","modules":{}}`), 0o600)).To(Succeed())
+		_, err = ledger.Load(path)
+		Expect(errs.Hints(err)).To(ConsistOf("restore lock.json from a backup, or fix the field the error names"))
+	})
+
+	It("says what is wrong with a lock.json that is not JSON, is empty or has a key lola does not read, with the hint to recover", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		for body, want := range map[string]string{
+			`{"version":1,`:                        "ends before the JSON is complete",
+			``:                                     "is empty",
+			`{"version":1,"x"}`:                    "is not valid JSON",
+			`{"version":1,"modules":{},"extra":1}`: `has a key lola does not read: "extra"`,
+		} {
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(HaveOccurred(), body)
+			Expect(err.Error()).To(ContainSubstring(want), body)
+			Expect(err.Error()).NotTo(ContainSubstring("invalid character"), body)
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("restore lock.json from a backup")), body)
+		}
+	})
+
 	It("rejects malformed entries at load instead of panicking", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		for body, want := range map[string]string{
@@ -481,4 +539,59 @@ var _ = Describe("ledger", func() {
 		_, err := ledger.Load(path)
 		Expect(err).To(MatchError(ContainSubstring("module kit: digest")))
 	})
+})
+
+var _ = Describe("an entry's safety record", func() {
+	var path string
+	key := strings.Repeat("ab", 32)
+	BeforeEach(func() { path = filepath.Join(testenv.Isolate(), "lock.json") })
+
+	write := func(safety string) {
+		GinkgoHelper()
+		doc := `{"version":1,"modules":{"kit":{"source":"s","digest":"sha256:` +
+			strings.Repeat("0", 64) + `","artifacts":[],"safety":` + safety + `}},"created":[]}`
+		Expect(os.WriteFile(path, []byte(doc), 0o600)).To(Succeed())
+	}
+
+	It("round-trips, and a clone holds its own copy", func() {
+		write(`["` + key + `"]`)
+		l, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(l.Modules["kit"].Safety).To(Equal([]string{key}))
+		c := l.Clone()
+		c.Modules["kit"].Safety[0] = strings.Repeat("cd", 32)
+		Expect(l.Modules["kit"].Safety).To(Equal([]string{key}))
+		Expect(l.Save(path)).To(Succeed())
+		b, err := os.ReadFile(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(ContainSubstring(`"safety": [`))
+	})
+
+	It("leaves the key out when nothing is recorded", func() {
+		write(`[]`)
+		l, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(l.Save(path)).To(Succeed())
+		Expect(os.ReadFile(path)).NotTo(ContainSubstring("safety"))
+	})
+
+	It("refuses a value lola never writes, with the restore hint", func() {
+		write(`["not-a-sha256"]`)
+		_, err := ledger.Load(path)
+		Expect(err).To(MatchError(ContainSubstring(`module kit: safety holds "not-a-sha256", which is not a sha256`)))
+		Expect(errs.Hints(err)).NotTo(BeEmpty())
+	})
+
+	DescribeTable("refuses a near miss",
+		func(v string) {
+			write(`["` + v + `"]`)
+			_, err := ledger.Load(path)
+			Expect(err).To(MatchError(ContainSubstring("which is not a sha256")))
+		},
+		Entry("upper-case hex", strings.Repeat("AB", 32)),
+		Entry("one character short", key[:63]),
+		Entry("one character long", key+"a"),
+		Entry("the empty string", ""),
+		Entry("non-hex of the right length", strings.Repeat("zz", 32)),
+	)
 })

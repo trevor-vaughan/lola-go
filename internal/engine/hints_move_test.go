@@ -73,13 +73,13 @@ var _ = Describe("the move hint", func() {
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\n"})
 		Expect(install(sc, claude, notes)).To(Equal([]string{
 			"meant for another profile? lola profile --project --move notes --to me --switch",
-			"meant for every project? lola profile --user --move notes --to base"}))
+			"meant for every project? move it from this project into your user base: lola profile --user --move notes --to base"}))
 	})
 
 	It("with no profile of yours, after a shared write, hints a new one, never a shared file", func() {
 		Expect(install(sc, claude, notes)).To(Equal([]string{
 			"keep it to yourself: lola profile --project --move notes --to mine --switch",
-			"meant for every project? lola profile --user --move notes --to base"}))
+			"meant for every project? move it from this project into your user base: lola profile --user --move notes --to base"}))
 
 		// A profile of another kind named mine would be what --to mine names: the hint picks mine-2.
 		writeTree(proj, map[string]string{".lola/profiles/mine.yml": "version: 1\n"})
@@ -133,12 +133,12 @@ var _ = Describe("the move hint", func() {
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\nmodules:\n  - {name: notes, source: " + notes + "}\n"})
 		Expect(install(sc, claude, notes)).To(Equal([]string{
 			"keep it to yourself: lola profile --project --move notes --to mine --switch",
-			"meant for every project? lola profile --user --move notes --to base"}))
+			"meant for every project? move it from this project into your user base: lola profile --user --move notes --to base"}))
 	})
 
 	It("names -C for a project not found from here, and the two-step without a profile of yours", func() {
 		e.Getwd = func() (string, error) { return tmp, nil }
-		Expect(install(sc, claude, notes)).To(ContainElement("meant for every project? lola profile --user --move notes --to base -C " + proj))
+		Expect(install(sc, claude, notes)).To(ContainElement("meant for every project? move it from this project into your user base: lola profile --user --move notes --to base -C " + proj))
 
 		other := filepath.Join(tmp, "other")
 		writeTree(other, map[string]string{"lola.yml": "name: other\n", "commands/other.md": "O\n"})
@@ -173,6 +173,7 @@ var _ = Describe("the move hint", func() {
 		writeTree(ghost, map[string]string{"lola.yml": "name: ghost\n", "commands/ghost.md": "G\n"})
 		trusted := claude
 		trusted.Trust = engine.TrustHooks
+		trusted.Unseen = true
 		e.Getwd = func() (string, error) { return tmp, nil }
 		install(user, trusted, kit) // installed, its hook consented to at this digest
 		writeTree(p.UserProfiles, map[string]string{

@@ -98,7 +98,7 @@ var _ = Describe("the viewer", func() {
 	// The name stays: keys_paths_internal_test.go's header pins "viewer: viewer --scroll--> viewer" to it.
 	DescribeTable("scrolls by line, page and end, and its footer says where it is",
 		func(want string, ks ...tea.KeyPressMsg) {
-			m := press(newViewer(numbered(30), 40, 11), ks...)
+			m := press(newReportViewer(textReport(numbered(30)), 60, 11), ks...)
 			Expect(ansiStrip(m.footer())).To(HavePrefix(want))
 		},
 		Entry("at the start", "━━ lines 1–9 of 30 · ↓ 21 more"),
@@ -117,15 +117,15 @@ var _ = Describe("the viewer", func() {
 	)
 
 	It("before a picker, says q continues to it, in place of q quit", func() {
-		m := newViewer(numbered(30), 120, 11)
+		m := newReportViewer(textReport(numbered(30)), 120, 11)
 		m.then = "Restore 1 item from the trash?"
 		Expect(m.keyLine()).To(HavePrefix("q  continue to: Restore 1 item from the trash? · ↑↓ space b  scroll"))
 		Expect(m.keyLine()).NotTo(ContainSubstring("q quit"))
-		Expect(newViewer(numbered(30), 120, 11).keyLine()).To(HavePrefix("q quit"))
+		Expect(newReportViewer(textReport(numbered(30)), 120, 11).keyLine()).To(HavePrefix("q quit"))
 	})
 
 	It("shows the lines its rule line names, the rule across the width, and the keys", func() {
-		m := press(newViewer(numbered(30), 100, 11), keySpace)
+		m := press(newReportViewer(textReport(numbered(30)), 100, 11), keySpace)
 		lines := strings.Split(ansiStrip(m.View().Content), "\n")
 		Expect(lines).To(HaveLen(11))
 		Expect(strings.TrimSpace(lines[0])).To(Equal("line 10"))
@@ -137,24 +137,24 @@ var _ = Describe("the viewer", func() {
 	})
 
 	It("wraps the content to the width, and again when the terminal is resized", func() {
-		m := newViewer(strings.Repeat("word ", 30)+"\n", 20, 5)
+		m := newReportViewer(textReport(strings.Repeat("word ", 30)+"\n"), 20, 6)
 		Expect(m.vp.TotalLineCount()).To(Equal(8))
-		next, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 5})
+		next, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 6})
 		m = next.(viewerModel)
 		Expect(m.vp.TotalLineCount()).To(Equal(3))
 		Expect(ansiStrip(m.footer())).To(HavePrefix("━━ lines 1–3 of 3 · end"))
 	})
 
 	It("keeps its place in range when a resize shortens the content", func() {
-		m := press(newViewer(strings.Repeat("word ", 30), 20, 5), keyShG)
+		m := press(newReportViewer(textReport(strings.Repeat("word ", 30)), 20, 6), keyShG)
 		Expect(ansiStrip(m.footer())).To(HavePrefix("━━ lines 6–8 of 8"))
-		next, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 5})
+		next, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 6})
 		Expect(ansiStrip(next.(viewerModel).footer())).To(HavePrefix("━━ lines 1–1 of 1"))
 	})
 
 	DescribeTable("in read mode, q and Esc close it, Ctrl+C cancels, and y, c and n do nothing",
 		func(k tea.KeyPressMsg, quit bool, answer viewAnswer) {
-			m, q := quits(newViewer(numbered(30), 40, 10), k)
+			m, q := quits(newReportViewer(textReport(numbered(30)), 40, 10), k)
 			Expect(q).To(Equal(quit))
 			Expect(m.Answer()).To(Equal(answer))
 		},
@@ -166,17 +166,41 @@ var _ = Describe("the viewer", func() {
 		Entry("n", keyN, false, viewCancel),
 	)
 
-	It("cuts its key line from the right, keeping q quit, at 40 columns", func() {
-		k := newViewer(numbered(30), 40, 11).keyLine()
-		Expect(k).To(HavePrefix("q quit · "))
-		Expect(k).To(HaveSuffix("…"))
-		Expect(ansi.StringWidth(k)).To(BeNumerically("<=", 40))
+	It("wraps its key line to two rows at 80 columns, keeping every key of a question about folded text, / search among them", func() {
+		m := newReportPrompt(foldReport(), Question{Prompt: "Uninstall kit?", Answers: "yN"}, false, 80, 20)
+		rows := strings.Split(m.keyLine(), "\n")
+		Expect(rows).To(HaveLen(2))
+		for _, r := range rows {
+			Expect(ansi.StringWidth(r)).To(BeNumerically("<=", 80), r)
+		}
+		Expect(strings.Join(rows, " · ")).To(Equal(keyLineFor(keysPrompt, m.prompt, "", true)), "nothing cut")
+		Expect(m.keyLine()).To(ContainSubstring("/  search"))
+		lines := strings.Split(ansiStrip(m.View().Content), "\n")
+		Expect(lines).To(HaveLen(20), "the text is shorter by the key line's second row")
+		Expect(lines[len(lines)-2:]).To(Equal(rows))
+
+		m = search(m, "SKILL.md")
+		Expect(m.keyLine()).To(ContainSubstring("next/prev"), "the search keeps the keys that step through it")
+		Expect(strings.Split(m.keyLine(), "\n")).To(HaveLen(2))
 	})
 
-	It("draws its rule in bold and nothing in color, with color on or off", func() {
-		m := newViewer(numbered(30), 100, 11)
+	It("keeps a key line that fits on one row, and cuts the second row from the right where two do not fit", func() {
+		Expect(newReportViewer(textReport(numbered(30)), 80, 11).keyLine()).To(Equal("q quit · ↑↓ space b  scroll · g G  top/end · /  search"))
+		k := strings.Split(newReportViewer(foldReport(), 30, 11).keyLine(), "\n")
+		Expect(k).To(HaveLen(2))
+		Expect(k[0]).To(HavePrefix("q quit · "))
+		Expect(k[1]).To(HaveSuffix("…"))
+		for _, r := range k {
+			Expect(ansi.StringWidth(r)).To(BeNumerically("<=", 30))
+		}
+	})
+
+	It("draws its rule in bold and nothing in color, with color on or off, and no bold when bold is off", func() {
+		m := newReportViewer(textReport(numbered(30)), 100, 11)
+		Expect(sgr.FindAllString(m.View().Content, -1)).To(BeEmpty())
+		m.s = style{bold: true}
 		Expect(sgr.FindAllString(m.View().Content, -1)).To(HaveExactElements("\x1b[1m", "\x1b[22m"))
-		m.s = style{color: true}
+		m.s = style{color: true, bold: true}
 		Expect(sgr.FindAllString(m.View().Content, -1)).To(HaveExactElements("\x1b[1m", "\x1b[22m"))
 	})
 
@@ -216,7 +240,7 @@ var _ = Describe("a.view, the viewer on the terminal", func() {
 
 	It("in read mode shows the text on stdout, then prints it there whole", func() {
 		cmd.SetIn(keys("jjq"))
-		ans, err := a().view(cmd, numbered(30), "")
+		ans, err := a().view(cmd, textReport(numbered(30)), "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ans).To(Equal(viewClose))
 		Expect(out.String()).To(ContainSubstring(altScreen))
@@ -337,7 +361,7 @@ var _ = Describe("which output opens in the viewer", func() {
 	})
 	Describe("search", func() {
 		// 30 lines on a 100×11 terminal; "line 2" holds line 20 to line 29.
-		read := func() viewerModel { return newViewer(numbered(30), 100, 11) }
+		read := func() viewerModel { return newReportViewer(textReport(numbered(30)), 100, 11) }
 
 		It("jumps to the first match and says which it is, with the line in reverse video", func() {
 			m := search(read(), "line 2")
@@ -366,7 +390,7 @@ var _ = Describe("which output opens in the viewer", func() {
 
 		DescribeTable("matches any case for a lowercase term, and exactly for one with a capital",
 			func(term, want string) {
-				m := search(newViewer("Alpha\nbeta\n", 40, 11), term)
+				m := search(newReportViewer(textReport("Alpha\nbeta\n"), 40, 11), term)
 				Expect(ansiStrip(m.footer())).To(ContainSubstring(want))
 			},
 			Entry("lowercase", "alpha", "/alpha 1 of 1"),
@@ -374,6 +398,15 @@ var _ = Describe("which output opens in the viewer", func() {
 			Entry("wrong capitals", "ALPHA", "/ALPHA no match"),
 			Entry("absent", "gamma", "/gamma no match"),
 		)
+
+		It("says how many lines of the closed folds hold a term no line shown holds", func() {
+			m := search(newReportViewer(foldReport(), 80, 12), "claude-code a")
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/claude-code a no match (1 in closed folds — tab, space to open)"))
+			m = search(newReportViewer(foldReport(), 80, 12), "CREATE")
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/CREATE no match ·"), "a capital matches exactly there too")
+			m = search(press(newReportViewer(foldReport(), 80, 12), keyTab, keySpace), "claude-code a")
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("1 of 1"), "found once its fold is open")
+		})
 
 		It("takes q and the other keys as text while typing, and Esc drops the typing", func() {
 			m := press(read(), append([]tea.KeyPressMsg{keySlash}, typed("qn")...)...)
@@ -405,3 +438,92 @@ var _ = Describe("which output opens in the viewer", func() {
 
 // ansiStrip is s without its escape sequences.
 func ansiStrip(s string) string { return sgr.ReplaceAllString(s, "") }
+
+// foldReport is 30 numbered lines, then two folds and the footer.
+func foldReport() *reportBuf {
+	b := textReport(numbered(30))
+	b.Fold("kit: 2 changes (claude-code 2)", []string{"create claude-code a", "create claude-code b"})
+	b.Fold("docs: 1 change (claude-code 1)", []string{"create claude-code c"})
+	b.FoldFooter("→ " + foldFooter)
+	return b
+}
+
+var (
+	keyTab   = tea.KeyPressMsg{Code: tea.KeyTab}
+	keyShTab = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+)
+
+var _ = Describe("the viewer's folds", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("shows folds closed, highlights the next with tab and opens it with space", func() {
+		m := newReportViewer(foldReport(), 80, 12)
+		Expect(m.plain).To(ContainElement("▸ kit: 2 changes (claude-code 2)"))
+		m = press(m, keyTab)
+		Expect(m.hl).To(Equal(0))
+		Expect(m.vp.YOffset()).To(BeNumerically(">", 0), "the highlighted summary scrolled into view")
+		m = press(m, keySpace)
+		Expect(m.plain).To(ContainElements("▾ kit: 2 changes (claude-code 2)", "    create claude-code a", "    create claude-code b"))
+		m = press(m, keyTab, keyShTab)
+		Expect(m.hl).To(Equal(0), "shift+tab goes back")
+		m = press(m, keySpace)
+		Expect(m.plain).To(ContainElement("▸ kit: 2 changes (claude-code 2)"), "space closes it again")
+	})
+
+	It("scrolls a fold it opens into view: all of its detail that fits, its summary kept on screen", func() {
+		opened := func(details int) viewerModel {
+			b := textReport(numbered(30))
+			var d []string
+			for i := range details {
+				d = append(d, fmt.Sprintf("create claude-code %02d", i))
+			}
+			b.Fold("kit: changes", d)
+			_, _ = b.Write([]byte(numbered(5)))
+			return press(newReportViewer(b, 80, 12), keyTab, keySpace)
+		}
+		visible := func(m viewerModel) []string {
+			return m.plain[m.vp.YOffset():min(m.vp.YOffset()+m.vp.Height(), len(m.plain))]
+		}
+		m := opened(8)
+		Expect(visible(m)).To(ContainElements("▾ kit: changes", "    create claude-code 07"), "the whole fold fits")
+		m = opened(20)
+		Expect(visible(m)[0]).To(Equal("▾ kit: changes"), "too tall to fit: the summary at the top")
+		Expect(visible(m)).To(ContainElement("    create claude-code 00"))
+	})
+
+	It("pages with space when no fold is highlighted", func() {
+		m := press(newReportViewer(foldReport(), 100, 12), keySpace)
+		Expect(m.vp.YOffset()).To(Equal(10))
+	})
+
+	It("in read mode clears the highlight with esc, then closes", func() {
+		m, q := quits(press(newReportViewer(foldReport(), 80, 12), keyTab), keyEsc)
+		Expect(q).To(BeFalse())
+		Expect(m.hl).To(Equal(-1))
+		m, q = quits(m, keyEsc)
+		Expect(q).To(BeTrue())
+		Expect(m.Answer()).To(Equal(viewClose))
+	})
+
+	It("names the fold keys on the key line only when the text has a fold", func() {
+		Expect(newReportViewer(foldReport(), 200, 12).keyLine()).To(HavePrefix("q quit · tab  next fold · space  open"))
+		Expect(newReportViewer(textReport(numbered(30)), 200, 12).keyLine()).NotTo(ContainSubstring("next fold"))
+	})
+
+	It("reprints with the folds the user opened open, and no footer once all are", func() {
+		m := press(newReportViewer(foldReport(), 80, 12), keyTab, keySpace)
+		Expect(m.reprint()).To(ContainSubstring("▾ kit: 2 changes (claude-code 2)\n    create claude-code a\n"))
+		Expect(m.reprint()).To(ContainSubstring("▸ docs: 1 change (claude-code 1)\n→ " + foldFooter + "\n"))
+		m = press(m, keyTab, keySpace)
+		Expect(m.reprint()).NotTo(ContainSubstring(foldFooter))
+	})
+
+	It("takes the fold keys with a question in the viewer, never inline", func() {
+		q := Question{Prompt: "Apply these changes?", Answers: "yn"}
+		m := press(newReportPrompt(foldReport(), q, false, 80, 12), keyTab, keySpace)
+		Expect(m.plain).To(ContainElement("▾ kit: 2 changes (claude-code 2)"))
+		Expect(m.field).To(BeEmpty())
+		in := press(newReportPrompt(foldReport(), q, true, 80, 12), keyTab)
+		Expect(in.hl).To(Equal(-1))
+	})
+})

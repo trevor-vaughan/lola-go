@@ -31,6 +31,9 @@ const (
 	TrustAll = TrustEntries | TrustProfiles | TrustScripts | TrustHooks | TrustRuntimeHooks
 	// TrustBare is what --trust with no value grants: the kinds that never run code.
 	TrustBare = TrustEntries | TrustProfiles
+	// TrustConsent is the kinds that run code, whose items --trust grants only once lola has shown
+	// them to you (trustGrants), unless --unseen widens it.
+	TrustConsent = TrustScripts | TrustHooks | TrustRuntimeHooks
 )
 
 // TrustBareValue is the value pflag gives --trust when it is written with no value (NoOptDefVal),
@@ -79,8 +82,117 @@ func (k TrustKinds) Arg() string {
 // trustArg reports whether f, a flag of a run a hint repeats, is --trust in any form.
 func trustArg(f string) bool { return f == "--trust" || strings.HasPrefix(f, "--trust=") }
 
+// consentArg reports whether f, a flag of a run a hint repeats, is --trust in any form or
+// --unseen, which widens it: what a hint into another question drops.
+func consentArg(f string) bool { return trustArg(f) || f == "--unseen" }
+
 // Covers reports whether k has every kind of o.
 func (k TrustKinds) Covers(o TrustKinds) bool { return k&o == o }
+
+// trustGrants reports whether the run's --trust grants, unasked, a consent item of kind whose
+// content is keys (its shown keys): --trust covers kind, and the shown record holds every key, or
+// --unseen widens the kind to what it does not. A dry run counts its items as shown, when output
+// can show them (showable: no body withheld): its report prints them in full, and the CLI records
+// them; one it cannot show is never shown, so --unseen alone consents to it. An item --trust
+// covers that the record alone withholds adds kind to res.unseen, whose hints say how to see it
+// (unseenHints).
+func (e *Engine) trustGrants(opts Options, kind TrustKinds, keys []string, showable bool, res *Result) (bool, error) {
+	if !opts.Trust.Covers(kind) {
+		return false, nil
+	}
+	if opts.Unseen || opts.DryRun && showable {
+		return true, nil
+	}
+	if !showable {
+		res.unseen |= kind
+		return false, nil
+	}
+	ok, err := e.Shown.Holds(keys...)
+	if err == nil && !ok {
+		res.unseen |= kind
+	}
+	return ok, err
+}
+
+// ShownKeys is the shown record key of every consent item r lists: each module's runtime hooks
+// and install hooks, and the project's install scripts; sorted, each once. Output that prints r
+// in full (--json, --plain) adds them to the record.
+func (r *Result) ShownKeys() []string {
+	keys := []string{}
+	for _, m := range r.Modules {
+		for _, h := range m.RuntimeHooks {
+			keys = append(keys, h.ShownKey(m.Name))
+		}
+		for _, h := range m.Hooks {
+			if h.Withheld == "" { // no output shows it
+				keys = append(keys, h.ShownKey())
+			}
+		}
+	}
+	for _, s := range r.Scripts {
+		if s.Withheld == "" {
+			keys = append(keys, s.ShownKey())
+		}
+	}
+	keys = slices.DeleteFunc(keys, func(k string) bool { return k == "" })
+	slices.Sort(keys)
+	return slices.Compact(keys)
+}
+
+// unseenHints are the hints of an item lola has not shown the user, named what ("this hook", "these
+// hooks"; it or them after): run, the run that consents to it, as a dry run, which shows it, then
+// run itself, which is the user's own run when again (its --trust covers the item); or run with
+// --unseen. Without a run ("") they say so in words.
+func unseenHints(run, what, it string, again bool) []string {
+	if run == "" {
+		return []string{"lola has not shown you " + what + "; see " + it + " with a dry run (-n), then run this again",
+			"or add --unseen to consent without seeing " + it}
+	}
+	then := "then run this again"
+	if !again {
+		then = "then consent to " + it + ": " + run
+	}
+	return []string{"lola has not shown you " + what + "; see " + it + " with " + run + " -n, " + then,
+		"or add --unseen to consent without seeing " + it + ": " + run + " --unseen"}
+}
+
+// unseenInstead is hints, a refusal's for want of consent (consentHints), with the hint naming the
+// run that consents replaced by unseenHints of that run (again as there), for an item lola has not
+// shown: that run alone would be refused for it. Hints that name no such run are kept as they are.
+func unseenInstead(hints []string, what, it string, again bool) []string {
+	run := ""
+	hints = slices.DeleteFunc(slices.Clone(hints), func(h string) bool {
+		if r, ok := strings.CutPrefix(h, consentHintPrefix); ok {
+			run = r
+			return true
+		}
+		return false
+	})
+	if run == "" { // no run consents to it: there is nothing to see it before
+		return hints
+	}
+	return append(hints, unseenHints(run, what, it, again)...)
+}
+
+// withheldInstead is hints, a refusal's for want of consent (consentHints), with the hint naming
+// the run that consents replaced by how to consent to what (this hook, this script), which lola
+// cannot show (why, a Body* constant), unseen: inspect file, then that run with --unseen. Hints
+// that name no such run are kept as they are.
+func withheldInstead(hints []string, what, why, file string) []string {
+	run := ""
+	hints = slices.DeleteFunc(slices.Clone(hints), func(h string) bool {
+		if r, ok := strings.CutPrefix(h, consentHintPrefix); ok {
+			run = r
+			return true
+		}
+		return false
+	})
+	if run == "" {
+		return hints
+	}
+	return append(hints, "lola cannot show you "+what+" ("+strings.ReplaceAll(why, "_", " ")+"); inspect "+shown(file)+
+		", then consent to it unseen: "+run+" --unseen")
+}
 
 // CommandTrust is the kinds a command can ask: command is the command after
 // lola, "profile --add" for that action of profile. A command that asks none has none.
@@ -256,6 +368,7 @@ func (e *Engine) confirmTrusted(opts Options, res *Result) error {
 	}
 	if opts.Batch != nil {
 		opts.Batch.add(res.Trusted, res.grants)
+		opts.Batch.noes = append(opts.Batch.noes, res.noes...)
 		res.grants = nil
 		return ErrBatched
 	}
@@ -337,6 +450,9 @@ var ErrBatched = errors.New("collected for the command's one receipt")
 type TrustBatch struct {
 	Items  []Consent
 	grants []grant
+	// noes is the answeredNoKey of each runtime hook its collect pass was answered No about, which
+	// the apply pass records in lock.json as that No.
+	noes []string
 }
 
 func (b *TrustBatch) add(items []Consent, grants []grant) {
@@ -519,4 +635,14 @@ func (e *Engine) hookNeeds(entries []*syncEntry, led *ledger.Ledger) (TrustKinds
 		}
 	}
 	return 0, nil
+}
+
+// answer notes a consent item of kind granted by a yes, or going without one (a no, or never
+// asked): what equivalent may repeat with --trust.
+func (r *Result) answer(kind TrustKinds, yes bool) {
+	if !yes {
+		r.withheld |= kind
+		return
+	}
+	r.said |= kind
 }

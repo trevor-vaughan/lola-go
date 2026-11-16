@@ -14,7 +14,7 @@ forgotten with them. It deletes and moves no file.
 | Flag | What it does |
 |---|---|
 | `-n`, `--dry-run` | List what it would forget and write nothing. |
-| `-y`, `--yes` | Do not ask for confirmation. |
+| `-y`, `--yes` | Do not ask for confirmation, and open no scope picker: the scope is the one found off a terminal. |
 
 It prints `will forget 2 entries in <root>/.lola/lock.json; files are not touched:` and one line
 per entry: `module kit: artifact "../outside.md" on target "claude-code"`, `module kit: target

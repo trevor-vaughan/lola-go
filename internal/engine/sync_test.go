@@ -215,7 +215,7 @@ var _ = Describe("Sync", func() {
 		push(map[string]string{"commands/ship.md": "Ship v2\n"})
 		gitIn(work, "tag", "v1")
 		gitIn(work, "push", "-q", "-f", "--tags", bare)
-		_, err := e.Update(ctx, nil)
+		_, err := e.Update(ctx, nil, engine.Progress{})
 		Expect(err).NotTo(HaveOccurred())
 		head, _, err := e.Store.Head("example", "v1")
 		Expect(err).NotTo(HaveOccurred())
@@ -326,7 +326,7 @@ var _ = Describe("Sync", func() {
 		names, err := e.Store.Names()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(names).To(Equal([]string{"tools"}))
-		_, err = e.Update(ctx, []string{"tools"})
+		_, err = e.Update(ctx, []string{"tools"}, engine.Progress{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(e.Store.Remove("tools")).To(BeTrue())
 		_, err = sync(engine.SyncRequest{Scope: user})
@@ -872,7 +872,7 @@ var _ = Describe("Sync", func() {
 			install(sc, engine.InstallRequest{Arg: src})
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "mods/kit"}}})
 
-			_, err := sync(engine.SyncRequest{Trust: yes, Options: engine.Options{Trust: engine.TrustHooks | engine.TrustRuntimeHooks}})
+			_, err := sync(engine.SyncRequest{Trust: yes, Options: engine.Options{Trust: engine.TrustHooks | engine.TrustRuntimeHooks, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(asked).To(HaveLen(1))
 			c := asked[0].Changes[0]
@@ -920,7 +920,7 @@ var _ = Describe("Sync", func() {
 					`"d":{"command":"d-mcp"}}}`})
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "old.sh"), 0o755)).To(Succeed())
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "pre.sh"), 0o755)).To(Succeed())
-			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.Remove(filepath.Join(kit, "hooks", "old.sh"))).To(Succeed())
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: hooks/pre.sh, post-install: hooks/new.sh}\n", "hooks/new.sh": "#!/bin/sh\n",
@@ -952,6 +952,35 @@ var _ = Describe("Sync", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Trust.Changes[0].MCPServers).To(HaveEach(HaveField("Change", "added")))
 			Expect(res.Trust.Changes[0].Hooks).To(HaveEach(HaveField("Change", "added")))
+		})
+
+		It("says an unchanged runtime hook of a changed module needs consent again, since the consent covers the version", func() {
+			kit := filepath.Join(proj, "mods", "kit")
+			writeTree(kit, map[string]string{".claude-plugin/plugin.json": `{"name":"kit"}`, "commands/k.md": "K\n",
+				"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo stop"}]}]}}`})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustRuntimeHooks, Unseen: true})
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(kit, map[string]string{"commands/k.md": "K v2\n"})
+
+			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Trust.Changes[0].Hooks).To(ConsistOf(And(HaveField("Kind", engine.HookKindRuntime),
+				HaveField("Change", engine.ChangeUnchanged), HaveField("ConsentAgain", BeTrue()))))
+			Expect(res.Modules[0].RuntimeHooks).To(HaveEach(HaveField("Status", engine.RuntimeHooksDeclined)), "the run asks again, as the diff says")
+		})
+
+		It("says a runtime hook declined before, unchanged in a changed module, is plain unchanged", func() {
+			kit := filepath.Join(proj, "mods", "kit")
+			writeTree(kit, map[string]string{".claude-plugin/plugin.json": `{"name":"kit"}`, "commands/k.md": "K\n",
+				"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo stop"}]}]}}`})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets})
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(kit, map[string]string{"commands/k.md": "K v2\n"})
+
+			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Trust.Changes[0].Hooks).To(ConsistOf(And(HaveField("Change", engine.ChangeUnchanged), HaveField("ConsentAgain", BeFalse()))),
+				"no consent was given, so none is needed again")
 		})
 
 		It("shows an --update as a change of the pin with the files it changes, and asks before writing it", func() {
@@ -1101,7 +1130,7 @@ var _ = Describe("Sync", func() {
 			kit := filepath.Join(proj, "mods", "kit")
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\nhooks: {post-install: hooks/post.sh}\n", "hooks/post.sh": "#!/bin/sh\n", "commands/k.md": "K\n"})
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "post.sh"), 0o755)).To(Succeed())
-			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true})
 			Expect(err).NotTo(HaveOccurred())
 			writeTree(kit, map[string]string{"hooks/post.sh": "#!/bin/sh\ntouch /tmp/evil\n"})
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "post.sh"), 0o755)).To(Succeed())
@@ -1181,7 +1210,7 @@ var _ = Describe("Sync", func() {
 			})
 			install(sc, engine.InstallRequest{Arg: src})
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "mods/kit"}}})
-			_, err := sync(engine.SyncRequest{Trust: yes, Options: engine.Options{Trust: engine.TrustRuntimeHooks}})
+			_, err := sync(engine.SyncRequest{Trust: yes, Options: engine.Options{Trust: engine.TrustRuntimeHooks, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			b, err := json.Marshal(asked[0])
 			Expect(err).NotTo(HaveOccurred())
@@ -1998,7 +2027,7 @@ var _ = Describe("Sync", func() {
 			// --update of an entry whose ref serves its pin again, while the cache's head for the
 			// ref is another version: the dry run leaves the head where it is.
 			pinnedCommit := lockFile().Modules["example"].Commit
-			_, err = e.Update(ctx, nil)
+			_, err = e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			head, _, err := e.Store.Head("example", "main")
 			Expect(err).NotTo(HaveOccurred())
@@ -2084,7 +2113,7 @@ var _ = Describe("Sync", func() {
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "pre.sh"), 0o755)).To(Succeed())
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "mods/kit"}}})
 			_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: confirm})
-			Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
+			Expect(err).To(MatchError(HavePrefix("kit has a pre-install hook, and lola runs hooks only with your consent: ")))
 			Expect(p.Consent).NotTo(BeAnExistingFile())
 			Expect(filepath.Join(proj, ".claude", "commands", "fix.md")).NotTo(BeAnExistingFile())
 
@@ -2108,8 +2137,8 @@ var _ = Describe("Sync", func() {
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: hooks/pre.sh}\n", "hooks/pre.sh": "#!/bin/sh\nexit 0\n",
 				"commands/fix.md": "Fix.\n"})
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "pre.sh"), 0o755)).To(Succeed())
-			allow := engine.Options{Trust: engine.TrustHooks}
-			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks})
+			allow := engine.Options{Trust: engine.TrustHooks, Unseen: true}
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true})
 			Expect(err).NotTo(HaveOccurred())
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "example", Source: url, Ref: "v1"}}}) // a pin to write
 			writeTree(kit, map[string]string{"commands/fix.md": "Fix v2.\n", "hooks/pre.sh": "#!/bin/sh\nexit 3\n"})

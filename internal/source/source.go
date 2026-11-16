@@ -379,6 +379,13 @@ func Validate(spec Spec) error {
 	return nil
 }
 
+// UsesSSH reports whether git reaches spec's source through ssh: a git source at an ssh:// URL or
+// in scp form (user@host:path), the only git locations without "://" that validateGitLocation
+// accepts.
+func UsesSSH(spec Spec) bool {
+	return spec.Kind == KindGit && (strings.HasPrefix(strings.ToLower(spec.Location), "ssh://") || !strings.Contains(spec.Location, "://"))
+}
+
 // validateGitLocation accepts an https, loopback http or ssh URL, or scp form, whose host
 // and user name cannot be read as an ssh option. scp form never has a user name starting
 // with '-': checkLocation refuses a location that starts with one.

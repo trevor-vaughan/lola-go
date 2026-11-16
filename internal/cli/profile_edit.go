@@ -103,7 +103,7 @@ func (a *app) profileEdit(cmd *cobra.Command, args []string, ef editFlags, f syn
 	ref, _ := cmd.Flags().GetString("ref")
 	path, _ := cmd.Flags().GetString("path")
 	return a.runInstall(cmd, g, modules, installFlags{targets: ef.targets, skips: ef.skips, onlys: ef.onlys, unskips: ef.unskips, ref: ref, path: path,
-		profile: name, dry: f.dry, force: f.force, yes: f.yes, exact: ef.exact, withMentions: ef.withMentions, override: ef.override, trust: f.trust,
+		profile: name, dry: f.dry, force: f.force, yes: f.yes, exact: ef.exact, withMentions: ef.withMentions, override: ef.override, trust: f.trust, unseen: f.unseen,
 		edit: lead, create: ef.create, scopes: scopes, catalog: catalog, catalogPartial: !complete})
 }
 
@@ -192,7 +192,7 @@ func (a *app) editPage(cmd *cobra.Command, eng *engine.Engine, g argGuide, read 
 	f syncFlags) error {
 	p, sc := a.prompter(cmd), read.Scope
 	t, err := eng.EditTarget(sc, req, a.askWhere(p, nil))
-	install := installFlags{targets: ef.targets, dry: f.dry, force: f.force, yes: f.yes, withMentions: ef.withMentions, override: ef.override, trust: f.trust,
+	install := installFlags{targets: ef.targets, dry: f.dry, force: f.force, yes: f.yes, withMentions: ef.withMentions, override: ef.override, trust: f.trust, unseen: f.unseen,
 		catalog: req.Catalog, catalogPartial: req.CatalogPartial}
 	switch {
 	case engine.IsUnknownProfile(err):
@@ -368,7 +368,7 @@ func (a *app) editBundle(cmd *cobra.Command, eng *engine.Engine, read engine.Sco
 		a.contexts = append(printed, a.contexts...)
 	}
 	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd), ForceRun: force, RenderRun: render}
-	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
+	opts.Trust, opts.Unseen, opts.Receipt = f.trust, f.unseen, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
 	bundle := manifestName(sc)
 	diff := func(rep engine.TrustReport) func(io.Writer, style) {
@@ -430,6 +430,6 @@ func printBundleEdit(w io.Writer, s style, sc engine.Scope, r *engine.BundleEdit
 		if len(r.Also) > 0 && !s.plain {
 			fmt.Fprintln(w, destLabel(a.Scope)+":")
 		}
-		printSync(w, s, manifestName(a.Scope), a.SyncResult, nil, "")
+		printSync(w, s, manifestName(a.Scope), a.SyncResult, nil, "", false)
 	}
 }

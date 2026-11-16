@@ -4,15 +4,19 @@ package ledger
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/activeprofile"
@@ -99,6 +103,11 @@ type Entry struct {
 	// Eras is, by target id, the since of the era of its assistant the module's files were
 	// written for; a target it does not name was written for its newest era.
 	Eras map[string]string `json:"eras,omitempty"`
+	// Safety is the record of what lola has shown the user about the module: the sha256, in hex, of
+	// each state finding's module, target, kind, artifact, code and text, and of each set of runtime
+	// hooks it declined, sorted, each once. A run reports a state finding, or declined hooks, whose
+	// key is here as seen before; nil when nothing is recorded.
+	Safety []string `json:"safety,omitempty"`
 }
 
 // RenderedWith records the inputs of a module's templates that are not its source: Profiles, the scope's profiles a template sees (default at user scope when its file
@@ -211,7 +220,7 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 	dec.DisallowUnknownFields()
 	dec.UseNumber() // rendered_with's vars: an int64 stays exact (module.DecodedVars)
 	if err := dec.Decode(l); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, decodeError(path, b, err)
 	}
 	if l.Version > Version {
 		return nil, fmt.Errorf("%s was written by a newer lola (ledger version %d); upgrade lola", path, l.Version)
@@ -229,6 +238,118 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 	}
 	l.normalize()
 	return l, nil
+}
+
+// decodeError is err, what decoding b, the lock.json at path, failed with, said in the terms of the
+// file: the field and what it holds against what it should, or what is wrong with the JSON, with
+// restoreHint.
+func decodeError(path string, b []byte, err error) error {
+	var typ *json.UnmarshalTypeError
+	var syntax *json.SyntaxError
+	var msg string
+	hint := "restore lock.json from a backup, or correct the JSON by hand"
+	switch field, unknown := strings.CutPrefix(err.Error(), "json: unknown field "); {
+	case errors.As(err, &typ):
+		hint = "restore lock.json from a backup, or fix the field the error names"
+		path, found := valuePath(b, typ.Offset)
+		if !found {
+			path = strings.Split(typ.Field, ".")
+		}
+		field := cmp.Or(untrusted.Text(strings.Join(path, "."), untrusted.MaxName), "the file")
+		msg = fmt.Sprintf("%s should be %s, but holds %s", field, jsonType(typ.Type), jsonValue(typ.Value))
+		if len(path) > 1 && path[0] == "modules" {
+			name := untrusted.Text(path[1], untrusted.MaxName)
+			hint = "restore lock.json from a backup, or remove the entry for " + name + " (modules." + name + ") from it and reinstall " + name
+		}
+	case errors.As(err, &syntax):
+		msg = "is not valid JSON (at byte " + strconv.FormatInt(syntax.Offset, 10) + ")"
+	case errors.Is(err, io.EOF):
+		msg = "is empty"
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		msg = "ends before the JSON is complete"
+	case unknown:
+		hint = "restore lock.json from a backup, or remove the key the error names"
+		msg = "has a key lola does not read: " + untrusted.Text(field, untrusted.MaxName)
+	default:
+		msg = "cannot be read: " + err.Error()
+	}
+	return errs.WithHints(fmt.Errorf("%s: %s", path, msg), hint)
+}
+
+// valuePath is the keys and list indexes from the root of the JSON in b to the value that
+// json.UnmarshalTypeError reports at byte end: where a string, number or boolean ends, or just
+// inside an object or list. It is empty for the whole document. It
+// stands in for UnmarshalTypeError.Field, which names a module or a list element only from Go 1.27
+// on. found is false when no value ends there.
+func valuePath(b []byte, end int64) (path []string, found bool) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	var walk func(at []string) ([]string, bool)
+	walk = func(at []string) ([]string, bool) {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, false
+		}
+		if delim, ok := tok.(json.Delim); ok {
+			if dec.InputOffset() == end { // json reports a misplaced object or list just inside its opener
+				return at, true
+			}
+			for i := 0; dec.More(); i++ {
+				key := strconv.Itoa(i)
+				if delim == '{' {
+					k, err := dec.Token()
+					if err != nil {
+						return nil, false
+					}
+					key, _ = k.(string)
+				}
+				if p, ok := walk(append(at, key)); ok {
+					return p, true
+				}
+			}
+			if _, err := dec.Token(); err != nil { // the closing delimiter
+				return nil, false
+			}
+		}
+		return at, dec.InputOffset() == end
+	}
+	return walk(nil)
+}
+
+// jsonType is what a JSON value must be to decode into t, in the terms of the file.
+func jsonType(t reflect.Type) string {
+	switch t.Kind() {
+	case reflect.Slice, reflect.Array:
+		return "a list"
+	case reflect.Map, reflect.Struct:
+		return "an object"
+	case reflect.Pointer:
+		return jsonType(t.Elem())
+	case reflect.String:
+		return "a string"
+	case reflect.Bool:
+		return "true or false"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return "a whole number"
+	case reflect.Float32, reflect.Float64:
+		return "a number"
+	}
+	return "another kind of value"
+}
+
+// jsonValue is a JSON value's kind as json.UnmarshalTypeError names it, in the terms of the file.
+func jsonValue(kind string) string {
+	switch {
+	case kind == "array":
+		return "a list"
+	case kind == "object":
+		return "an object"
+	case kind == "bool":
+		return "true or false"
+	case strings.HasPrefix(kind, "number"):
+		return "a number"
+	}
+	return "a " + kind
 }
 
 // restoreHint coaches a lock.json lola could not have written and lola repair cannot fix. lola
@@ -471,6 +592,11 @@ func (l *Ledger) validate() error {
 					untrusted.Text(e.Eras[t], untrusted.MaxName)), restoreHint)
 			}
 		}
+		for _, k := range e.Safety {
+			if len(k) != 64 || strings.Trim(k, "0123456789abcdef") != "" {
+				return errs.WithHints(fmt.Errorf("module %s: safety holds %q, which is not a sha256", name, untrusted.Text(k, untrusted.MaxName)), restoreHint)
+			}
+		}
 		for i, a := range e.Artifacts {
 			if a.Target == "" {
 				return fmt.Errorf("module %q has an artifact (%s) with no target", name, a.Path)
@@ -570,7 +696,7 @@ func (l *Ledger) Clone() *Ledger {
 	}
 	for k, e := range l.Modules {
 		ec := *e
-		ec.Artifacts, ec.Targets, ec.Eras = slices.Clone(e.Artifacts), slices.Clone(e.Targets), maps.Clone(e.Eras)
+		ec.Artifacts, ec.Targets, ec.Eras, ec.Safety = slices.Clone(e.Artifacts), slices.Clone(e.Targets), maps.Clone(e.Eras), slices.Clone(e.Safety)
 		c.Modules[k] = &ec
 	}
 	c.normalize()

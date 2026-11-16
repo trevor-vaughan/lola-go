@@ -48,7 +48,7 @@ var _ = Describe("where an inherited edit goes", func() {
 
 	It("asks on a terminal once per run, and the answer's file is written", func() {
 		sp := &scripted{where: []int{1}}
-		r := lolaP(sp, "install", "kit", "--user", "--skip", "skill/b", "-y")
+		r := lolaP(sp, "install", "kit", "--user", "--skip", "skill/b", "--force")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ kit: skipped in profile go: skill/b\n"), "the picks are the entry's, not selections.yaml's")
 		Expect(sp.whereSteps).To(Equal([]cli.WhereStep{{Title: "kit comes from default (base), loaded under every profile at user scope.",
@@ -56,6 +56,15 @@ var _ = Describe("where an inherited edit goes", func() {
 		b, err := os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).To(ContainSubstring("skip: [skill/b]"))
+	})
+
+	It("refuses under -y as it does off a terminal, with the same hints, and asks nothing", func() {
+		sp := &scripted{where: []int{1}}
+		r := lolaP(sp, "install", "kit", "--user", "--skip", "skill/b", "-y")
+		Expect(r.code).To(Equal(1))
+		Expect(sp.whereSteps).To(BeEmpty())
+		Expect(r.err).To(ContainSubstring("lola install needs to know whether to change it there or override it in profile go, and there is no terminal to ask on"))
+		Expect(r.err).To(Equal(lola("install", "kit", "--user", "--skip", "skill/b", "-y").err))
 	})
 
 	It("reviews the picks under the profile the answer writes, never selections.yaml", func() {

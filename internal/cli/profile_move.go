@@ -47,7 +47,7 @@ func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules 
 				return runWithout(cmd, args, slices.Concat(scopeFlags, consentFlags)...) + " --user"
 			},
 		}}
-	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
+	opts.Trust, opts.Unseen, opts.Receipt = f.trust, f.unseen, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
 	req := engine.MoveRequest{Scope: sc, Other: other, Across: a.namesBothScopes(), Modules: modules, To: to, Switch: switchTo, KeepOff: keepOff, Yes: f.yes, Options: opts}
 	req.Source = func(o engine.Scope) { a.addContext(cmd, eng, o, nil) } // the source's file is the move's to name
@@ -77,9 +77,9 @@ func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules 
 	if flagErr, ok := errors.AsType[*engine.MoveFlagError](err); ok {
 		err = errs.WithHints(err, "drop it: "+runWithout(cmd, args, flagErr.Flag))
 	}
-	stderr := style{color: a.color(cmd.ErrOrStderr())}
+	stderr := style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}
 	if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !a.json {
-		printSyncRefusal(cmd.ErrOrStderr(), style{color: stderr.color, plain: a.plain}, name, run, refusal, "")
+		printSyncRefusal(cmd.ErrOrStderr(), style{color: stderr.color, bold: stderr.bold, plain: a.plain}, name, run, refusal, "")
 	}
 	declined, isDeclined := errors.AsType[*engine.RemovalsDeclinedError](err)
 	aborted := errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted)
@@ -169,15 +169,15 @@ func (a *app) moveScopes(cmd *cobra.Command, eng *engine.Engine, args []string) 
 	return user, &proj, nil
 }
 
-// printMove prints a move: a new profile it created, each write, then each scope's sync (the
-// target scope's first, each named when there are two), after the profile it turned on (a dry
-// run's too), then now: and now, the scope's context after a switch, when it is set. --plain
-// prints an edit row per write (action, module, profile, path) and no now: line.
+// printMove prints a move: a new profile it created, then each scope's sync (the target scope's
+// first, each named when there are two), after the profile it turned on (a dry run's too), its
+// report listing the move's writes into that scope's files first, then now: and now, the scope's
+// context after a switch, when it is set. --plain prints an edit row per write (action, module,
+// profile, path) and no now: line.
 func printMove(w io.Writer, s style, res *engine.MoveResult, now string) {
 	if res.Created != "" && !s.plain {
 		fmt.Fprintln(w, s.ok("new profile "+strings.TrimSuffix(filepath.Base(res.Created), ".yml")+"  ("+res.Created+")"))
 	}
-	printEdits(w, s, res.Edits, len(res.Syncs) > 0 && res.Syncs[0].DryRun)
 	for _, r := range res.Syncs {
 		if len(res.Syncs) > 1 && !s.plain { // a move between scopes: whose plan each is
 			where := "user scope:"
@@ -193,7 +193,10 @@ func printMove(w io.Writer, s style, res *engine.MoveResult, now string) {
 		if r.Scope == target.User.String() {
 			name = manifestName(engine.Scope{Kind: target.User})
 		}
-		printSync(w, s, name, r, nil, "")
+		rs, rr := *r, *r.Result // the move's writes into this scope's files head its files section
+		rr.Edits = append(slices.DeleteFunc(slices.Clone(res.Edits), func(ed engine.Edit) bool { return ed.Scope != r.Scope }), r.Edits...)
+		rs.Result = &rr
+		printSync(w, s, name, &rs, nil, "", false)
 	}
 	if now != "" && !s.plain {
 		fmt.Fprintln(w, "now: "+now)

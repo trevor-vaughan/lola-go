@@ -143,7 +143,7 @@ var _ = Describe("selection edits", func() {
 			{Level: engine.LevelWarn, Text: "example comes from " + src + ", outside the project: a teammate's sync will refuse it; " +
 				"share a module through a git repository or an https:// archive"},
 			{Level: engine.LevelInfo, Text: "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch"},
-			{Level: engine.LevelInfo, Text: "meant for every project? lola profile --user --move example --to base -C " + proj}}), "the move hint alone")
+			{Level: engine.LevelInfo, Text: "meant for every project? move it from this project into your user base: lola profile --user --move example --to base -C " + proj}}), "the move hint alone")
 		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
 	})
 
@@ -375,7 +375,7 @@ var _ = Describe("selection edits", func() {
 		It("a failure while applying leaves the selections written and says the next sync converges", func() {
 			writeTree(src, map[string]string{"lola.yml": "name: example\nhooks: {pre-install: hooks/pre.sh}\n", "hooks/pre.sh": "#!/bin/sh\nexit 3\n"})
 			Expect(os.Chmod(filepath.Join(src, "hooks/pre.sh"), 0o755)).To(Succeed())
-			_, err := install(engine.Options{Trust: engine.TrustHooks, HookOutput: GinkgoWriter}, nil, skipShip, src)
+			_, err := install(engine.Options{Trust: engine.TrustHooks, Unseen: true, HookOutput: GinkgoWriter}, nil, skipShip, src)
 			Expect(err).To(HaveOccurred())
 			Expect(errs.Hints(err)).To(ContainElement("your selections were saved to " + p.Selections + "; lola sync -C " + proj + " applies them once the problem is fixed"))
 			Expect(saved()).To(ContainSubstring("skip: [command/ship]"))

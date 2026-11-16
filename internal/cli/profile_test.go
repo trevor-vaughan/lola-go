@@ -281,7 +281,7 @@ var _ = Describe("profiles", func() {
 		Expect(r.out).To(HavePrefix("Profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") + ") → off\n"))
 		r = lola("profile", "default", "--switch", "--user")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HavePrefix("→ already on the base\n"))
+		Expect(r.out).To(HavePrefix("Notices:\n→ already on the base\n"))
 		r = lola("profile", "base", "--off", "--user")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(HaveSuffix("error: the base is always loaded; lola profile --off turns off the profile over it\n"))
@@ -661,7 +661,7 @@ var _ = Describe("profiles", func() {
 		Expect(r.out).To(HavePrefix("Profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") + ") → off\n"))
 		r = lola("profile", "--off", "--user")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(Equal("→ no profile is on\n✓ no files to change\n"))
+		Expect(r.out).To(Equal("Notices:\n→ no profile is on\n✓ no files to change\n"))
 	})
 
 	It("--off and --switch take --force to remove edited files without asking", func() {
@@ -767,7 +767,7 @@ var _ = Describe("profiles", func() {
 		Expect(doc).To(HaveKeyWithValue("changes", BeEmpty()))
 		Expect(doc).To(HaveKeyWithValue("equivalent_commands", ConsistOf("lola profile --user user:go --on")))
 		r = lola("profile", "go", "--on", "--user", "-n")
-		Expect(r.out).To(HaveSuffix("→ to apply: lola profile --user user:go --on\n→ no files to change\n"))
+		Expect(r.out).To(HaveSuffix("→ no files to change\n→ to apply: lola profile --user user:go --on\n"))
 		Expect(p.UserLedger).To(BeARegularFile())
 		after, err := ledger.Load(p.UserLedger)
 		Expect(err).NotTo(HaveOccurred())
@@ -792,18 +792,18 @@ var _ = Describe("profiles", func() {
 		r := lola("profile", "api", "--switch", "--user", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("Profile user:api (" + api + ") → on\n" +
-			"→ to apply: lola profile --user user:api --switch\n" +
-			"→ no files to change\n"))
+			"→ no files to change\n" +
+			"→ to apply: lola profile --user user:api --switch\n"))
 		r = lola("profile", "go", "--on", "--user")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(Equal("→ user:go is already on\n✓ no files to change\n"))
+		Expect(r.out).To(Equal("Notices:\n→ user:go is already on\n✓ no files to change\n"))
 
 		r = lola("profile", "go", "--off", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("Profile user:go (" + goFile + ") → off\n✓ no files to change\nnow: user scope: default\n"))
 		r = lola("profile", "api", "--off", "--user")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(Equal("→ user:api is not on\n✓ no files to change\n"))
+		Expect(r.out).To(Equal("Notices:\n→ user:api is not on\n✓ no files to change\n"))
 	})
 
 	It("prints the new context last after a change of the profile on, and nothing after a dry run or no change", func() {

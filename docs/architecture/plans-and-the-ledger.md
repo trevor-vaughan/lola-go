@@ -76,6 +76,16 @@ the active profile) when a template reads it (`templating.Uses`), and `vars`, th
 overrides as written. An edited, invalid one (vars read by the entry rules, `module.DecodedVars`) is
 read as absent, so the module renders again.
 
+An entry also records `safety` (`ledger.Entry.Safety`): the sorted sha256 hex of each state finding's
+`module\x00target\x00kind\x00artifact\x00code\x00text` (`engine.isState` picks them), so a later
+run reports the same finding as seen. It is validated at load (refused unless each key is 64
+lowercase hex). The entry a run builds carries the run's keys (`ModuleResult`'s unexported
+`safety`), so a module's keys are replaced on each run that writes it: `plan.Compute` swaps the
+run's entry in whenever the run brings one, and when the run brings none (it only keeps artifacts) the old
+entry stays as it was, its `safety` included. A moved module's destination entry gets fresh keys
+rather than a copy of the source's. `ModuleResult.Kept`, an install that leaves an entry as it
+was, ignores `safety`.
+
 `lock.json` and `trust.json` decode with `UseNumber`, a number reading as `int64` when integral and
 in range, else a finite `float64`, so a large integer stays exact and a record still matches its
 hash; a float is written with a point or an exponent (`module.Vars`), and read back as one, so `2.0`

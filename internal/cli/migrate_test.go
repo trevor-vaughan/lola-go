@@ -38,9 +38,10 @@ var _ = Describe("lola migrate", func() {
 	trash := func() string { return filepath.Join(tmp, "state", "lola", "trash") }
 
 	Describe("progress", func() {
-		// onTerminal runs lola migrate -n with stderr a terminal, as it is when a person waits.
+		// onTerminal runs lola migrate -n with stderr a terminal, as it is when a person waits,
+		// drawing every step at once.
 		onTerminal := func() result {
-			root, err := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true))
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true), cli.WithProgressPace(0, 0))
 			Expect(err).NotTo(HaveOccurred())
 			var out, errb bytes.Buffer
 			root.SetOut(&out)
@@ -116,6 +117,32 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.out).NotTo(ContainSubstring("python home:"), "no heading over an empty section")
 	})
 
+	DescribeTable("a Migrate? refused off a terminal shows its plan, the hooks' bodies in full, so --trust consents to them",
+		func(display ...string) {
+			mark := filepath.Join(tmp, "hook-ran")
+			writeTree(src, map[string]string{"lola.yml": "name: review\nhooks: {pre-install: pre.sh}\n", "pre.sh": "#!/bin/sh\ntouch '" + mark + "'\n"})
+			Expect(os.Chmod(filepath.Join(src, "pre.sh"), 0o755)).To(Succeed())
+			r := lola(append([]string{"migrate", "--trust=hooks"}, display...)...)
+			Expect(r.code).To(Equal(1))
+			Expect(r.err).To(ContainSubstring("needs confirmation"))
+			Expect(r.err).To(ContainSubstring("touch "), "the plan holds the body")
+			r = lola("migrate", "--trust=hooks", "-y")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(mark).To(BeAnExistingFile())
+		},
+		Entry("human"),
+		Entry("--json", "--json"),
+	)
+
+	It("--unseen consents to hooks the run has not shown, off a terminal", func() {
+		mark := filepath.Join(tmp, "hook-ran")
+		writeTree(src, map[string]string{"lola.yml": "name: review\nhooks: {pre-install: pre.sh}\n", "pre.sh": "#!/bin/sh\ntouch '" + mark + "'\n"})
+		Expect(os.Chmod(filepath.Join(src, "pre.sh"), 0o755)).To(Succeed())
+		r := lola("migrate", "--trust=hooks", "--unseen", "-y", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(mark).To(BeAnExistingFile())
+	})
+
 	It("--force answers the Migrate? question off a terminal, and never the hooks' consent", func() {
 		mark := filepath.Join(tmp, "hook-ran")
 		writeTree(src, map[string]string{"lola.yml": "name: review\nhooks: {pre-install: pre.sh}\n", "pre.sh": "#!/bin/sh\ntouch '" + mark + "'\n"})
@@ -123,11 +150,14 @@ var _ = Describe("lola migrate", func() {
 		r := lola("migrate", "--force")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("review has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola migrate --force --trust=hooks\n"), "the hint is the command refused")
+		Expect(r.err).To(ContainSubstring("  hint: lola has not shown you this hook; see it with lola migrate --force --trust=hooks -n, then consent to it: lola migrate --force --trust=hooks\n"))
 		Expect(r.err).NotTo(ContainSubstring("needs confirmation"), "--force answered Migrate?")
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal("python ship\n"), "nothing was written")
 		Expect(mark).NotTo(BeAnExistingFile())
 
+		r = lola("migrate", "--force", "--trust=hooks", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("    | touch "), "the preview shows the hook in full")
 		r = lola("migrate", "--force", "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(mark).To(BeAnExistingFile())

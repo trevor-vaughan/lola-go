@@ -80,14 +80,14 @@ var _ = Describe("the viewer's key line", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
 	It("names each mode's keys in table order, what Enter alone answers first and search last", func() {
-		Expect(keyLineFor(keysRead, nil, "")).To(Equal("q quit · ↑↓ space b  scroll · g G  top/end · /  search"))
-		Expect(keyLineFor(keysContinue, nil, "Restore which?")).To(Equal(
+		Expect(keyLineFor(keysRead, nil, "", false)).To(Equal("q quit · ↑↓ space b  scroll · g G  top/end · /  search"))
+		Expect(keyLineFor(keysContinue, nil, "Restore which?", false)).To(Equal(
 			"q  continue to: Restore which? · ↑↓ space b  scroll · g G  top/end · /  search"))
 		q := Question{Prompt: "Uninstall kit?", Answers: "yN"}
-		Expect(keyLineFor(keysPrompt, &q, "")).To(Equal(
+		Expect(keyLineFor(keysPrompt, &q, "", false)).To(Equal(
 			"⏎ alone = no · q quit · ↑↓ space b  scroll · g G  top/end · /  search"))
 		q.Answers = "ycn"
-		Expect(keyLineFor(keysPrompt, &q, "")).To(Equal("q quit · ↑↓ space b  scroll · g G  top/end · /  search"),
+		Expect(keyLineFor(keysPrompt, &q, "", false)).To(Equal("q quit · ↑↓ space b  scroll · g G  top/end · /  search"),
 			"no default: nothing to say about Enter alone")
 	})
 })
@@ -117,13 +117,32 @@ var _ = Describe("Ask, a yes/no question", func() {
 		ans, err := accessible(&out, "maybe", "Yes").Ask(plan)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ans).To(Equal('y'))
-		Expect(out.String()).To(Equal("plan: remove kit\nUninstall kit? [y/N] answer y or n (Enter means no)\nUninstall kit? [y/N] "))
+		Expect(out.String()).To(Equal("plan: remove kit\n\n---\nUninstall kit? [y/N] answer y or n (Enter means no)\nUninstall kit? [y/N] "))
 	})
 
 	It("in accessible mode takes a blank line as the default", func() {
 		ans, err := accessible(&out, "").Ask(plan)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ans).To(Equal('n'))
+	})
+
+	It("in accessible mode prints a fold in its text open, with or without -v, and no footer", func() {
+		folded := Question{Show: func(w io.Writer, s style) {
+			printFold(w, s, "kit: 2 changes", []string{"remove claude-code a", "remove claude-code b"})
+			printFoldFooter(w, s)
+		}, Prompt: "Uninstall kit?", Answers: "yN"}
+		h := accessible(&out, "n")
+		h.verbose = true
+		_, err := h.Ask(folded)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(HavePrefix("kit: 2 changes\n    remove claude-code a\n    remove claude-code b\n\n---\n"))
+		Expect(out.String()).NotTo(ContainSubstring(foldFooter))
+
+		out.Reset()
+		_, err = accessible(&out, "n").Ask(folded)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(HavePrefix("kit: 2 changes\n    remove claude-code a\n    remove claude-code b\n\n---\n"))
+		Expect(out.String()).NotTo(ContainSubstring(foldFooter))
 	})
 
 	It("in accessible mode cancels at end of input, never answering the default", func() {
@@ -218,5 +237,30 @@ var _ = Describe("hook and script consent", func() {
 		Expect(p.asked[2].Prompt).To(Equal("Run this project's pre-install script?"))
 		Expect(ShowText(p.asked[2])).To(ContainSubstring("    ci/check.sh (sha256 cd34)\n"))
 		Expect(errb.String()).To(BeEmpty(), "the hooks are printed with their question, never before it")
+	})
+})
+
+var _ = Describe("promptBreak", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("is a blank line and a bold rule across the width, 80 columns when the width is unknown", func() {
+		var b bytes.Buffer
+		promptBreak(&b, style{bold: true}, 0, false)
+		Expect(b.String()).To(Equal("\n\x1b[1m" + strings.Repeat("━", 80) + "\x1b[22m\n"))
+		b.Reset()
+		promptBreak(&b, style{bold: true}, 12, false)
+		Expect(ansiStrip(b.String())).To(Equal("\n" + strings.Repeat("━", 12) + "\n"))
+	})
+
+	It("draws the rule plain when bold is off", func() {
+		var b bytes.Buffer
+		promptBreak(&b, style{color: true}, 12, false)
+		Expect(b.String()).To(Equal("\n" + strings.Repeat("━", 12) + "\n"))
+	})
+
+	It("is --- with no styling in accessible mode", func() {
+		var b bytes.Buffer
+		promptBreak(&b, style{color: true}, 40, true)
+		Expect(b.String()).To(Equal("\n---\n"))
 	})
 })

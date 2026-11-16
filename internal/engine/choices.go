@@ -17,6 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
+	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
@@ -46,6 +47,8 @@ type ChoicesRequest struct {
 	// AskWhere that answers a question once per run answers the install's with it; without it the
 	// choices assume its first answer.
 	AskWhere func(WhereQuestion) (WhereChoice, error)
+	// Progress is told each source the call reads, as Options.Progress is.
+	Progress Progress
 }
 
 // Choices is everything the install pickers need, computed by the engine. Every
@@ -272,7 +275,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		return nil, err
 	}
 	defer unlock()
-	for _, r := range req.Modules {
+	for i, r := range req.Modules {
 		sc := Scope{Kind: target.User}
 		if len(req.Scopes) > 0 {
 			sc = req.Scopes[0].Scope
@@ -294,7 +297,9 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		for _, ref := range refs {
 			rr := r
 			rr.Ref = ref
-			ent, rv, _, err := e.resolve(ctx, sc, req.Cwd, rr, pinned, "", run, req.Display)
+			ent, rv, _, err := e.resolve(ctx, sc, req.Cwd, rr, pinned, "", run, req.Display, func(from source.Spec) {
+				req.Progress.fetching(from, "%s (%d/%d)", untrusted.Text(from.Location, untrusted.MaxName), i+1, len(req.Modules))
+			})
 			if err != nil {
 				return nil, err
 			}

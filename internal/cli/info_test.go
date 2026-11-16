@@ -93,7 +93,11 @@ var _ = Describe("lola info", func() {
 		doc := readInfo(r.out)
 		Expect(doc.Install[0].Command).To(Equal("lola install kit --json --root " + proj + " --target claude-code --trust=hooks,runtime-hooks"))
 		Expect(lola("info", kit, "-C", proj, "-t", "claude-code").out).To(HaveSuffix(
-			"→ install it: lola install kit --root " + proj + " --target claude-code --trust=hooks,runtime-hooks\n"))
+			"→ see its hooks and scripts in full: lola install kit --root " + proj + " --target claude-code --trust=hooks,runtime-hooks -n\n" +
+				"→ install it: lola install kit --root " + proj + " --target claude-code --trust=hooks,runtime-hooks\n"))
+		r = runHint(doc.Install[0].Command)
+		Expect(r.code).To(Equal(1), "info shows the hook's first lines, not all of it: %s", r.err)
+		Expect(runHint(doc.Install[0].Command + " -n").code).To(Equal(0))
 		r = runHint(doc.Install[0].Command)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(proj, "hook-ran")).To(BeARegularFile())
@@ -262,6 +266,7 @@ var _ = Describe("lola info", func() {
 			Expect(r.code).To(Equal(0), r.err)
 			doc := readInfo(r.out)
 			after()
+			Expect(runHint(doc.Install[0].Command+" -n").code).To(Equal(0), "the dry run shows the hook in full")
 			r = runHint(doc.Install[0].Command)
 			Expect(r.code).To(Equal(0), r.err)
 			l, err := ledger.Load(filepath.Join(proj, ".lola", "lock.json"))
@@ -339,7 +344,7 @@ var _ = Describe("lola info", func() {
 		Expect(r.out).To(ContainSubstring("\nrefusal\tproject\trefusing to change anything: 1 conflict, which --force overrides; " +
 			"claude-code: .claude/commands/ship.md: exists and was not written by lola\n" +
 			"hint\tlola install kit --plain --root " + proj + " --target claude-code --trust=hooks,runtime-hooks --force\n"))
-		Expect(r.out).To(ContainSubstring("\nruntime-hook\tkit\tclaude-code\tStop\tcommand\tunknown\t\n"))
+		Expect(r.out).To(ContainSubstring("\nruntime-hook\tkit\tclaude-code\tStop\tcommand\tunknown\t-\tStop: command; runs: ${CLAUDE_PLUGIN_ROOT}/stop.sh\n"))
 		Expect(r.out).To(ContainSubstring("\nmcp\ttools\tclaude-code\ttools-mcp --stdio\t\n"))
 
 		dir := filepath.Join(tmp, "work", "x")

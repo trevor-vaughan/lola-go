@@ -121,9 +121,9 @@ type UpdateResult struct {
 }
 
 // Update re-fetches every ref that has a head, for the named modules or all of them.
-// Moving a head changes no installation: sync installs the version an entry pins, which a notice says when a head moved. display is the run's output flags, which
-// its hints keep.
-func (e *Engine) Update(ctx context.Context, names []string, display ...string) (_ *UpdateResult, err error) {
+// Moving a head changes no installation: sync installs the version an entry pins, which a notice says when a head moved. progress is told each
+// source it reads. display is the run's output flags, which its hints keep.
+func (e *Engine) Update(ctx context.Context, names []string, progress Progress, display ...string) (_ *UpdateResult, err error) {
 	swept := e.sweepRuns()
 	run, done, err := e.runDir()
 	if err != nil {
@@ -137,7 +137,7 @@ func (e *Engine) Update(ctx context.Context, names []string, display ...string) 
 		}
 	}
 	out := []HeadUpdate{}
-	for _, n := range names {
+	for i, n := range names {
 		o, found, err := e.Store.Origin(n)
 		if err != nil {
 			return nil, err
@@ -146,7 +146,9 @@ func (e *Engine) Update(ctx context.Context, names []string, display ...string) 
 			return nil, NotStored(n, display...)
 		}
 		for _, h := range o.Heads {
-			v, err := e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: h.Ref, Components: o.Components}, "", n, run)
+			spec := source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: h.Ref, Components: o.Components}
+			progress.fetching(spec, "%s (%d/%d) from %s", untrusted.Text(n, untrusted.MaxName), i+1, len(names), untrusted.Text(o.Source, untrusted.MaxName))
+			v, err := e.fetchAs(ctx, spec, "", n, run)
 			if err != nil {
 				return nil, fmt.Errorf("updating %s: %w", n, err)
 			}

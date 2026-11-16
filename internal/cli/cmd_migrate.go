@@ -68,7 +68,7 @@ func (a *app) migrateCmd() *cobra.Command {
 				return err
 			}
 			opts := migrate.Options{KeepPython: keep}
-			opts.Force, opts.DryRun, opts.ForceRun, opts.Display, opts.Trust = force, true, forceRun(cmd, nil), outputFlags(cmd), kinds
+			opts.Force, opts.DryRun, opts.ForceRun, opts.Display, opts.Trust, opts.Unseen = force, true, forceRun(cmd, nil), outputFlags(cmd), kinds, trust.unseen
 			if opts.Roots, err = migrate.ParseRootMaps(mapRoots); err != nil {
 				return err
 			}
@@ -83,7 +83,7 @@ func (a *app) migrateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			report, clearProgress := a.progress(cmd)
+			progress, clearProgress := a.progress(cmd)
 			defer clearProgress()
 			pr := a.prompter(cmd)
 			flags := opts // as the flags map, before any answer
@@ -98,7 +98,7 @@ func (a *app) migrateCmd() *cobra.Command {
 						return err
 					}
 				}
-				opts.Progress = report
+				opts.Progress = progress.Step
 				if p, err = migrate.NewPlan(cmd.Context(), eng, st, opts); err != nil {
 					return err
 				}
@@ -324,7 +324,7 @@ func leavesRecords(r *migrate.Result) bool {
 // Every string from the Python lola's state was made safe to print by migrate.
 func printMigration(w io.Writer, s style, r *migrate.Result) {
 	if s.plain {
-		printMigrationPlain(w, r)
+		printMigrationPlain(w, s, r)
 		return
 	}
 	switch {
@@ -353,6 +353,7 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 		for _, st := range d.Steps {
 			fmt.Fprintln(w, "    "+stepLine(s, st))
 		}
+		printMigrationRuns(w, s, d)
 		for _, m := range d.Replaced {
 			where := "the trash"
 			if m.Trash != "" {
@@ -557,7 +558,36 @@ func printHints(w io.Writer, indent string, hints []string, width int) {
 // (migrated, already, left and failed counts), marketplace (its status, Python name, lola name,
 // source, path and reason), then the home, the trash, the run that maps what this machine lacks
 // and, when there is nothing to do, "nothing".
-func printMigrationPlain(w io.Writer, r *migrate.Result) {
+// printMigrationRuns lists what a destination's install would run or ran: each module's runtime
+// hooks in full, then its install hooks and scripts, each body in full unless shown before
+// (printInstallHooks). What prints in full is what the shown record then holds, so the preview
+// before Migrate? is what --trust consents to.
+func printMigrationRuns(w io.Writer, s style, d *migrate.DestResult) {
+	run := d.Run()
+	for _, m := range run.Modules {
+		if s.plain {
+			printRuntimeHooks(w, s, m, true)
+			continue
+		}
+		for _, l := range runtimeHookBlock(s, m, func(engine.RuntimeHook) bool { return true }, nil) {
+			fmt.Fprintln(w, "  "+l)
+		}
+		for _, h := range m.RuntimeHooks {
+			s.saw(h.ShownKey(m.Name))
+		}
+	}
+	if s.plain {
+		bodies := map[string]bool{}
+		for _, m := range run.Modules {
+			printPlainHooks(w, s, bodies, m)
+		}
+		printScripts(w, s, run.Scripts)
+		return
+	}
+	printInstallHooks(w, s, run)
+}
+
+func printMigrationPlain(w io.Writer, s style, r *migrate.Result) {
 	row := func(cols ...string) { fmt.Fprintln(w, strings.Join(cols, "\t")) }
 	for _, d := range r.Destinations {
 		at := destColumn(d)
@@ -571,6 +601,7 @@ func printMigrationPlain(w io.Writer, r *migrate.Result) {
 		for _, st := range d.Steps {
 			row("step", at, stepLine(style{plain: true}, st))
 		}
+		printMigrationRuns(w, s, d)
 		for _, m := range d.Replaced {
 			row("replace", at, m.Path, m.Key, m.Trash)
 		}

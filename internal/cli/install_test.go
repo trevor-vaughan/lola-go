@@ -1,14 +1,17 @@
 package cli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -101,10 +104,10 @@ var _ = Describe("install scope", func() {
 	})
 
 	It("--scope both installs into the project and for the user in one run", func() {
-		r := lola("install", mod, "--scope", "both", "-C", proj, "-t", "claude-code")
+		r := lola("install", mod, "--scope", "both", "-C", proj, "-t", "claude-code", "-v")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("project (" + proj + "):\n  ✓ create claude-code .claude/commands/ship.md"))
-		Expect(r.out).To(ContainSubstring("user:\n  ✓ create claude-code .claude/commands/ship.md"))
+		Expect(r.out).To(ContainSubstring("project (" + proj + "):\nexample: 1 change (claude-code 1)\n    ✓ create claude-code .claude/commands/ship.md"))
+		Expect(r.out).To(ContainSubstring("user:\nexample: 1 change (claude-code 1)\n    ✓ create claude-code .claude/commands/ship.md"))
 		Expect(r.out).To(ContainSubstring("✓ installed example at project scope (claude-code)"))
 		Expect(r.out).To(ContainSubstring("✓ installed example at user scope (claude-code)"))
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
@@ -183,7 +186,7 @@ var _ = Describe("selection flags", func() {
 		Expect(*v.Modules[0].SavedTo).To(BeEmpty())
 		Expect(r.err).To(BeEmpty())
 
-		r = lola("install", "example", "-C", proj, "--unskip", "command/test")
+		r = lola("install", "example", "-C", proj, "--unskip", "command/test", "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("✓ create claude-code .claude/commands/test.md"))
 	})
@@ -231,5 +234,178 @@ var _ = Describe("selection flags", func() {
 		r := lola("install", mod, "-C", proj, "--skip", "command/test", "--strict")
 		Expect(r.code).To(Equal(1))
 		Expect(selections).NotTo(BeAnExistingFile())
+	})
+})
+
+var _ = Describe("an install's report", func() {
+	var tmp, proj, kit string
+	BeforeEach(func() {
+		var err error
+		tmp, err = filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj, kit = filepath.Join(tmp, "proj"), filepath.Join(tmp, "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\n",
+			"skills/lint/SKILL.md": "---\nname: lint\ndescription: Lints.\nallowed-tools: Bash\n---\nLint.\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
+		fakeAssistant(tmp, "claude", "2.1.287 (Claude Code)")
+	})
+
+	It("says pre-approved tools are new the first time, and folds them under Unchanged since last run when the module is unchanged", func() {
+		r := lola("install", kit, "-C", proj, "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("Warnings — new:\n⚠ kit: claude-code skill lint: pre-approves tools Claude Code then runs without asking: Bash\n"))
+		Expect(r.out).NotTo(ContainSubstring("Unchanged since last run:"))
+
+		r = lola("install", kit, "-C", proj, "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).NotTo(ContainSubstring("Warnings — new:"))
+		Expect(r.out).To(ContainSubstring("Unchanged since last run:\n▸ 1 warning seen before\n"))
+		Expect(r.out).NotTo(ContainSubstring("pre-approves tools"), "folded")
+		Expect(r.out).To(HaveSuffix("→ ▸ lines are folded; -v prints them in full\n"))
+
+		r = lola("install", kit, "-C", proj, "-t", "claude-code", "-v")
+		Expect(r.out).To(ContainSubstring("Unchanged since last run:\n1 warning seen before\n    kit: 1 warning — "))
+		Expect(r.out).To(ContainSubstring("pre-approves tools Claude Code then runs without asking: Bash"))
+		Expect(r.out).NotTo(ContainSubstring("lines are folded"))
+	})
+
+	It("prints only the outcome of a dry run that would change nothing, as the real run words it", func() {
+		inside := filepath.Join(proj, "mods", "kit") // a folder inside the project draws no warning
+		writeTree(inside, map[string]string{"lola.yml": "name: kit\n",
+			"skills/lint/SKILL.md": "---\nname: lint\ndescription: Lints.\nallowed-tools: Bash\n---\nLint.\n"})
+		Expect(lola("install", inside, "-C", proj, "-t", "claude-code").code).To(Equal(0))
+		r := lola("install", inside, "-C", proj, "-t", "claude-code")
+		Expect(r.out).To(ContainSubstring("✓ kit already up to date (claude-code)\n"))
+		r = lola("install", inside, "-C", proj, "-t", "claude-code", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("→ kit already up to date (claude-code)\n"))
+		r = lola("sync", "-C", proj, "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("→ already in sync\n"))
+
+		for _, run := range [][]string{{"install", inside, "-C", proj, "-t", "claude-code", "-n", "-v"}, {"sync", "-C", proj, "-n", "-v"}} {
+			r = lola(run...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("Unchanged since last run:\n1 warning seen before\n"), "-v prints what it would fold")
+			Expect(r.out).To(ContainSubstring("pre-approves tools Claude Code then runs without asking: Bash"))
+		}
+		plain := filepath.Join(proj, "mods", "plain")
+		writeTree(plain, map[string]string{"lola.yml": "name: plain\n", "commands/ship.md": "Ship.\n"})
+		Expect(lola("install", plain, "-C", proj, "-t", "claude-code").code).To(Equal(0))
+		r = lola("install", plain, "-C", proj, "-t", "claude-code", "-n", "-v")
+		Expect(r.out).To(Equal("→ plain already up to date (claude-code)\n"), "-v has nothing more to print")
+
+		writeTree(inside, map[string]string{"skills/lint/SKILL.md": "---\nname: lint\ndescription: Lints.\nallowed-tools: Bash\n---\nLint more.\n"})
+		r = lola("install", inside, "-C", proj, "-t", "claude-code", "-n")
+		Expect(r.out).To(HavePrefix("plan (dry run; nothing was written):\n"), "a changed module is something to do")
+	})
+
+	It("says a module --force would leave as it is is already up to date, unless its install hooks run again", func() {
+		inside := filepath.Join(proj, "mods", "kit")
+		writeTree(inside, map[string]string{"lola.yml": "name: kit\n", "commands/ship.md": "Ship.\n"})
+		Expect(lola("install", inside, "-C", proj, "-t", "claude-code").code).To(Equal(0))
+		r := lola("install", inside, "-C", proj, "-t", "claude-code", "--force", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("→ kit already up to date (claude-code)\n"))
+		r = lola("install", inside, "-C", proj, "-t", "claude-code", "--force")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("✓ kit already up to date (claude-code)\n"))
+		Expect(r.out).NotTo(ContainSubstring("✓ installed kit"))
+
+		hooked := filepath.Join(proj, "mods", "hooked")
+		writeTree(hooked, map[string]string{"lola.yml": "name: hooked\nhooks: {post-install: hooks/p.sh}\n", "hooks/p.sh": "#!/bin/sh\nexit 0\n",
+			"commands/land.md": "Land.\n"})
+		r = lola("install", hooked, "-C", proj, "-t", "claude-code", "--trust=hooks")
+		Expect(r.code).To(Equal(0), r.err)
+		r = lola("install", hooked, "-C", proj, "-t", "claude-code", "--trust=hooks", "--force", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(MatchRegexp(`post-install hook hooks/p\.sh \(sha256 [0-9a-f]{64}, claude-code\): would run`))
+		Expect(r.out).NotTo(ContainSubstring("already up to date"), "its hooks run again in a new copy")
+	})
+
+	It("keeps a dry run's warning notices, as the real run prints them", func() {
+		Expect(lola("install", kit, "-C", proj, "-t", "claude-code").code).To(Equal(0))
+		outside := "⚠ kit comes from " + kit + ", outside the project"
+		r := lola("install", kit, "-C", proj, "-t", "claude-code")
+		Expect(r.out).To(ContainSubstring(outside))
+		r = lola("install", kit, "-C", proj, "-t", "claude-code", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring(outside), "a warning is not something to hide")
+		real := lola("install", kit, "-C", proj, "-t", "claude-code").out
+		Expect(real).To(ContainSubstring("Unchanged since last run:\n▸ 1 warning seen before\n"))
+		Expect(r.out).To(Equal("plan (dry run; nothing was written):\n"+strings.Replace(real, "✓ kit already up to date", "→ kit already up to date", 1)),
+			"the dry run's report is the real run's: its seen findings folded and the module up to date")
+
+		writeTree(filepath.Join(proj, "mods", "other"), map[string]string{"lola.yml": "name: other\n", "commands/o.md": "O\n"})
+		manifest := filepath.Join(proj, ".lola", "project.yml")
+		b, err := os.ReadFile(manifest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(manifest, append(b, "  - name: other\n    source: mods/other\n"...), 0o644)).To(Succeed())
+		r = lola("sync", "kit", "-C", proj, "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("⚠ 1 other module is not in sync: other → lola sync -C " + proj + "\n"))
+		Expect(r.out).To(ContainSubstring("→ kit already in sync\n"))
+	})
+
+	It("shows a declined runtime hook in full once, with how to consent, then folds it as seen", func() {
+		plugin := filepath.Join(proj, "mods", "deploy")
+		writeTree(plugin, map[string]string{".claude-plugin/plugin.json": `{"name":"deploy"}`, "commands/ship.md": "Ship\n",
+			"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo hi"}]}]}}`})
+		r := lola("install", plugin, "-C", proj, "-t", "claude-code", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("Runtime hooks — new:\ndeploy: 1 runtime hook for claude-code in .claude/settings.local.json (declined)\n"))
+		Expect(r.out).To(ContainSubstring("; echo hi\n    hint: review the hooks listed above, then"))
+		Expect(r.out).NotTo(ContainSubstring("runtime hooks skipped"), "the hooks above are what was skipped")
+
+		r = lola("install", plugin, "-C", proj, "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("(declined)\n"))
+		r = lola("install", plugin, "-C", proj, "-t", "claude-code")
+		Expect(r.out).NotTo(ContainSubstring("Runtime hooks — new:"))
+		Expect(r.out).To(ContainSubstring("Unchanged since last run:\n▸ 1 runtime hook seen before\n"), "declined where nothing asked: a terminal run would ask")
+		r = lola("install", plugin, "-C", proj, "-t", "claude-code", "-n")
+		Expect(r.out).To(Equal("→ deploy already up to date (claude-code)\n"), "declined as before: nothing to do")
+		r = lola("sync", "-C", proj, "-n")
+		Expect(r.out).To(Equal("→ already in sync\n"))
+		r = lola("install", plugin, "-C", proj, "-t", "claude-code", "-n", "--plain")
+		Expect(r.out).To(MatchRegexp(`runtime-hook\tdeploy\tclaude-code\tStop\tcommand\tdeclined\t-\tseen\tStop: command; runs: .*; echo hi\n`))
+
+		writeTree(plugin, map[string]string{"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo bye"}]}]}}`})
+		r = lola("install", plugin, "-C", proj, "-t", "claude-code", "-n")
+		Expect(r.out).To(ContainSubstring("Runtime hooks — new:\n"), "a changed hook is new again")
+		Expect(lola("install", plugin, "-C", proj, "-t", "claude-code", "--trust=runtime-hooks").code).To(Equal(0))
+		r = lola("install", plugin, "-C", proj, "-t", "claude-code", "-n")
+		Expect(r.out).To(Equal("→ deploy already up to date (claude-code)\n"), "consented: nothing to do")
+	})
+
+	It("hands the pager its folds closed with the footer, and under -v every line", func() {
+		paged := filepath.Join(tmp, "paged")
+		Expect(os.WriteFile(filepath.Join(tmp, "bin", "fakepager"), []byte("#!/bin/sh\ncat > \"$PAGED\"\n"), 0o755)).To(Succeed())
+		GinkgoT().Setenv("PAGED", paged)
+		GinkgoT().Setenv("LOLA_PAGER", "fakepager")
+		GinkgoT().Setenv("LOLA_COLOR", "0")
+		onTerminal := func(args ...string) string {
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(&scripted{}), cli.WithTerminals(true, true))
+			Expect(err).NotTo(HaveOccurred())
+			var out, errb bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&errb)
+			root.SetIn(strings.NewReader(""))
+			root.SetArgs(args)
+			Expect(cli.Execute(root)).To(Equal(0), errb.String())
+			Expect(out.String()).To(BeEmpty(), "the report went to the pager")
+			b, err := os.ReadFile(paged)
+			Expect(err).NotTo(HaveOccurred())
+			return string(b)
+		}
+		got := onTerminal("install", kit, "-C", proj, "-t", "claude-code", "-y")
+		Expect(got).To(ContainSubstring("▸ kit: 1 change (claude-code 1)\n"))
+		Expect(got).NotTo(ContainSubstring(".claude/skills/lint/SKILL.md"))
+		Expect(got).To(HaveSuffix("→ ▸ lines are folded; -v prints them in full\n"))
+
+		Expect(lola("uninstall", "kit", "-C", proj, "-y").code).To(Equal(0))
+		got = onTerminal("install", kit, "-C", proj, "-t", "claude-code", "-y", "-v")
+		Expect(got).To(ContainSubstring("kit: 1 change (claude-code 1)\n    ✓ create claude-code .claude/skills/lint/SKILL.md\n"))
+		Expect(got).NotTo(ContainSubstring("▸"))
 	})
 })

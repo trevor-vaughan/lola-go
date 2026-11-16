@@ -453,9 +453,9 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(lola("profile", "user:go", "--switch", "-y").code).To(Equal(0))
 		goYml := filepath.Join(p.UserProfiles, "go.yml")
 
-		r := lola("profile", "go", "--edit", "kit", "--only", "skill/a", "--override", "-n")
+		r := lola("profile", "go", "--edit", "kit", "--only", "skill/a", "--override", "-n", "-v")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(And(ContainSubstring("✓ create opencode    .opencode/skills/a/SKILL.md\n"), ContainSubstring("user:\n  → delete claude-code .claude/skills/b/SKILL.md\n")),
+		Expect(r.out).To(And(ContainSubstring("✓ create opencode    .opencode/skills/a/SKILL.md\n"), ContainSubstring("user:\nkit: 2 changes (claude-code 2)\n    → delete claude-code .claude/skills/b/SKILL.md\n")),
 			"-n plans the other scope from the file as it would be written")
 		Expect(os.ReadFile(goYml)).To(Equal([]byte("version: 1\n")))
 
@@ -771,7 +771,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(sp.moduleSteps[0]).To(And(HaveField("Title", "profile go › modules"), HaveField("None", true), HaveField("Preselect", []string{"kit", "notes"})))
 			Expect(sp.moduleSteps[0].Options).To(ContainElement(cli.ModuleOption{Name: "notes", Label: "notes (in profile go; not in your cache)"}))
 			Expect(sp.calls).To(Equal([]string{"modules", "components:profile go › kit", "review"}), "the review lists the removal; its Apply asks it")
-			Expect(sp.reviewSteps[0].Summary).To(ContainSubstring("Remove notes from profile go"))
+			Expect(sp.reviewSteps[0].Summary.Folded()).To(ContainSubstring("Remove notes from profile go"))
 			b, err := os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(b)).To(And(ContainSubstring("name: lint"), Not(ContainSubstring("notes")), ContainSubstring("skip: [skill/b]")))
@@ -919,7 +919,7 @@ var _ = Describe("lola profile --edit", func() {
 			sp := review()
 			r := lolaP(sp, "profile", "go", "--edit")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(sp.reviewSteps[0].Summary).To(HavePrefix("Summary:\n  user (" + p.Home + "), no .lola/ project in " + bare + " or above it:\n"))
+			Expect(sp.reviewSteps[0].Summary.Folded()).To(HavePrefix("Summary:\n  user (" + p.Home + "), no .lola/ project in " + bare + " or above it:\n"))
 
 			proj := filepath.Join(tmp, "proj")
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
@@ -929,7 +929,7 @@ var _ = Describe("lola profile --edit", func() {
 			sp = review()
 			r = lolaP(sp, "profile", "go", "--edit")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(sp.reviewSteps[0].Summary).To(And(ContainSubstring("  project ("+proj+"), found .lola/ at "+proj+":\n"),
+			Expect(sp.reviewSteps[0].Summary.Folded()).To(And(ContainSubstring("  project ("+proj+"), found .lola/ at "+proj+":\n"),
 				ContainSubstring("  user ("+p.Home+"), where profile go is on too:\n")))
 		})
 
@@ -992,7 +992,7 @@ var _ = Describe("lola profile --edit", func() {
 				return cli.ModuleAnswer{Names: []string{"kit"}}, nil
 			}}, components: []func(cli.ComponentPage) ([]string, error){func(cli.ComponentPage) ([]string, error) { return []string{"skill/a", "skill/b"}, nil }},
 				confirm: []bool{true}}
-			r := lolaP(sp, "profile", "go", "--edit", "--user")
+			r := lolaP(sp, "profile", "go", "--edit", "--user", "-v")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.calls).To(ContainElement("confirm:Remove lint from profile go?"))
 			Expect(r.err).To(And(ContainSubstring("Remove lint from profile go, as you unticked at user scope:\n"), ContainSubstring("→ delete claude-code .claude/commands/lint.md")))
@@ -1006,11 +1006,14 @@ var _ = Describe("lola profile --edit", func() {
 			sp = &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) {
 				return cli.ModuleAnswer{Names: []string{"kit"}}, nil
 			}}, components: []func(cli.ComponentPage) ([]string, error){func(cli.ComponentPage) ([]string, error) { return []string{"skill/a"}, nil }}}
-			r = lolaP(sp, "profile", "go", "--edit", "--user", "-y")
+			r = lolaP(sp, "profile", "go", "--edit", "--user", "-y", "-v")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.calls).NotTo(ContainElement(HavePrefix("confirm:")))
 			Expect(r.err).To(MatchRegexp(`(?s)install.*Remove lint from profile go, as you unticked at user scope:\n.*→ delete claude-code \.claude/commands/lint\.md`),
 				"the review -y applies lists the removal")
+			Expect(r.err).NotTo(ContainSubstring("the question below applies it"), "-y asks no question")
+			Expect(r.err).NotTo(ContainSubstring("nothing was written"), "-y applies the removal")
+			Expect(r.err).To(ContainSubstring("plan (applied now, unasked):"), "the removal's plan says it is applied")
 			Expect(strings.Count(r.err, "Remove lint from profile go, as you unticked")).To(Equal(1), "shown once")
 			Expect(lintMd).NotTo(BeAnExistingFile())
 			Expect(os.ReadFile(goYml)).To(And(ContainSubstring("name: kit"), Not(ContainSubstring("lint"))))
@@ -1058,7 +1061,7 @@ var _ = Describe("lola profile --edit", func() {
 				r := lolaP(sp, "profile", "--edit", "kit", "--user")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:default (base) › kit", "review"}))
-				Expect(sp.reviewSteps[0].Summary).To(ContainSubstring("removals:\n  ✗ kit: claude-code (dropped by your pick change)\n      .claude/skills/b/SKILL.md\n"),
+				Expect(sp.reviewSteps[0].Summary.Folded()).To(ContainSubstring("To remove:\n  ✗ kit: claude-code (dropped by your pick change)\n      .claude/skills/b/SKILL.md\n"),
 					"the review lists the files Apply deletes, so its Apply is the confirmation")
 				Expect(os.ReadFile(defaultYml)).To(ContainSubstring("  - name: kit\n    source: " + kit + "\n    skip: [skill/b]\n"))
 				Expect(os.ReadFile(defaultYml)).NotTo(ContainSubstring("only:"))

@@ -301,9 +301,9 @@ var _ = Describe("Engine with git and archive sources", func() {
 		}
 		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: v1}},
 			engine.Options{Targets: claude.Targets, Display: []string{"--json"}, Rerun: rerun})
-		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(errs.Hints(err)).To(Equal([]string{"review it: lola info --project " + url + " --ref " + v1 + " --target claude-code --json",
-			"then consent to it: " + rerun(engine.TrustHooks)}))
+		Expect(err).To(MatchError(HavePrefix("kit has a pre-install hook, and lola runs hooks only with your consent: ")))
+		Expect(errs.Hints(err)).To(Equal(append([]string{"review it: lola info --project " + url + " --ref " + v1 + " --target claude-code --json"},
+			unshown("this hook", rerun(engine.TrustHooks))...)))
 
 		info, err := e.Info(ctx, engine.InfoRequest{Cwd: proj, Arg: url, Ref: v1, Scope: engine.ScopeRequest{Project: true, Cwd: proj}, Targets: claude.Targets,
 			Rerun: func(...string) string { return "" }, Install: func(string, string, string, engine.TrustKinds) string { return "" }})
@@ -344,7 +344,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 		DescribeTable("names exactly the version the refused run would install, which lola info shows from the cache",
 			func(run func() error, want func() (ref, digest string), tail string) {
 				err := run()
-				Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
+				Expect(err).To(MatchError(HavePrefix("kit has a pre-install hook, and lola runs hooks only with your consent: ")))
 				ref, digest := want()
 				Expect(errs.Hints(err)[0]).To(Equal("review it: lola info --project "+url+" --ref "+ref+tail), "an install's keeps its targets")
 				before := requests.Load()
@@ -361,7 +361,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			}, func() (string, string) { return v1, d1 }, ""),
 			Entry("sync replacing its copy", func() error {
 				writeTree(proj, map[string]string{".lola/project.yml": pinned()})
-				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks}})
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true}})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(os.Remove(e.Paths.Consent)).To(Succeed())
 				Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "kit"))).To(Succeed())
@@ -398,8 +398,8 @@ var _ = Describe("Engine with git and archive sources", func() {
 			opts := claude
 			opts.Rerun = func(k engine.TrustKinds) string { return "lola install fkit " + k.Arg() }
 			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "fkit", Version: &engine.VersionRef{Name: "fkit", ID: a.ID}}}, opts)
-			Expect(err).To(MatchError("fkit has a pre-install hook, and lola runs hooks only with your consent"))
-			Expect(errs.Hints(err)).To(Equal([]string{"then consent to it: lola install fkit --trust=hooks"}))
+			Expect(err).To(MatchError(HavePrefix("fkit has a pre-install hook, and lola runs hooks only with your consent: ")))
+			Expect(errs.Hints(err)).To(Equal(unshown("this hook", "lola install fkit --trust=hooks")))
 		})
 
 		It("without a run to repeat, a listed version no ref names gets no consent hint: installing the name again installs another", func() {
@@ -412,23 +412,24 @@ var _ = Describe("Engine with git and archive sources", func() {
 			_, err = e.Fetch(ctx, sourceSpec(folder))
 			Expect(err).NotTo(HaveOccurred())
 			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "fkit", Version: &engine.VersionRef{Name: "fkit", ID: a.ID}}}, claude)
-			Expect(err).To(MatchError("fkit has a pre-install hook, and lola runs hooks only with your consent"))
+			Expect(err).To(MatchError(HavePrefix("fkit has a pre-install hook, and lola runs hooks only with your consent: ")))
 			Expect(errs.Hints(err)).To(BeEmpty())
 		})
 
 		It("a refusal with no run to repeat still hints the run that consents", func() {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, claude)
 			Expect(err).To(HaveOccurred())
-			Expect(errs.Hints(err)).To(Equal([]string{"review it: lola info --project " + url + " --ref " + v1 + " --target claude-code",
-				"then consent to it: lola install --project " + url + " --ref v1 --target claude-code --trust=hooks"}))
+			Expect(errs.Hints(err)).To(Equal(append([]string{"review it: lola info --project " + url + " --ref " + v1 + " --target claude-code"},
+				unshown("this hook", "lola install --project "+url+" --ref v1 --target claude-code --trust=hooks")...)))
 
 			writeTree(proj, map[string]string{".lola/project.yml": pinned()})
-			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks}})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.Remove(e.Paths.Consent)).To(Succeed())
 			Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "kit"))).To(Succeed())
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
-			Expect(errs.Hints(err)).To(Equal([]string{"review it: lola info --project " + url + " --ref " + v1, "then consent to it: lola sync --project --trust=hooks"}))
+			Expect(errs.Hints(err)).To(Equal(append([]string{"review it: lola info --project " + url + " --ref " + v1}, unshown("this hook", "lola sync --project --trust=hooks")...)),
+				"the run with --unseen consented unseen; the hook is still not shown")
 		})
 	})
 
@@ -469,7 +470,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		body = tarGz("example", map[string]string{"commands/ship.md": "Ship faster\n"})
-		up, err := e.Update(ctx, []string{"example"})
+		up, err := e.Update(ctx, []string{"example"}, engine.Progress{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(hits.Load()).To(BeEquivalentTo(2))
 		Expect(up.Updates).To(ConsistOf(HaveField("Changed", true)))
@@ -627,7 +628,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).NotTo(HaveOccurred())
 			installed := lockFile().Modules["example"].Digest
 			push(map[string]string{"commands/ship.md": "Ship v2\n"})
-			up, err := e.Update(ctx, nil)
+			up, err := e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(up.Updates).To(ConsistOf(HaveField("Changed", true)))
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
@@ -640,12 +641,12 @@ var _ = Describe("Engine with git and archive sources", func() {
 			_, err := e.Install(ctx, user, tmp, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
 			push(map[string]string{"commands/ship.md": "Ship v2\n"})
-			_, err = e.Update(ctx, nil)
+			_, err = e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			v2, _, err := e.Store.Head("example", "main")
 			Expect(err).NotTo(HaveOccurred())
 			push(map[string]string{"commands/ship.md": "Ship v3\n"})
-			_, err = e.Update(ctx, nil)
+			_, err = e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			// The user pins v2 in default.yml by hand: lock.json has v1, the cache head v3.
 			m, err := e.Manifest(user)
@@ -671,7 +672,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).NotTo(HaveOccurred())
 			installed := lockFile().Modules["example"]
 			push(map[string]string{"commands/ship.md": "Ship v2\n"})
-			_, err = e.Update(ctx, nil)
+			_, err = e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			head, _, err := e.Store.Head("example", "main")
 			Expect(err).NotTo(HaveOccurred())
@@ -905,7 +906,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(oldFormat).NotTo(Equal(b))
 
 			for _, refetch := range []func() error{
-				func() error { _, err := e.Update(ctx, nil); return err },
+				func() error { _, err := e.Update(ctx, nil, engine.Progress{}); return err },
 				func() error {
 					_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
 					return err
@@ -1025,7 +1026,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 
 			gitIn(work, "tag", "-f", "v1", later)
 			gitIn(work, "push", "-q", "-f", "--tags", bare)
-			_, err = e.Update(ctx, []string{"example"})
+			_, err = e.Update(ctx, []string{"example"}, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "example"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
@@ -1038,7 +1039,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).NotTo(HaveOccurred())
 			pinned := *entry()
 			push(map[string]string{"commands/ship.md": "Ship v2\n"})
-			_, err = e.Update(ctx, nil)
+			_, err = e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "example", Targets: []string{"gemini-cli"}}}, engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
@@ -1128,7 +1129,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ok).To(BeTrue())
 			push(map[string]string{"commands/deploy.md": "Deploy\n"})
-			_, err = e.Update(ctx, nil)
+			_, err = e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			before, err := os.ReadFile(filepath.Join(proj, ".lola", "project.yml"))
 			Expect(err).NotTo(HaveOccurred())
@@ -1419,7 +1420,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			writeTree(work, map[string]string{"commands/ship.md": "Ship v2\n"})
 			gitIn(work, "commit", "-qam", "v2")
 			gitIn(work, "push", "-q", "--all", filepath.Join(tmp, "srv", "example.git"))
-			_, err = e.Update(ctx, nil)
+			_, err = e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(row()).To(And(HaveField("Status", "ok"), HaveField("UpdateAvailable", true)))
 			editPin("")
@@ -1503,7 +1504,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 				_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: filepath.Join(tmp, "nowhere")}}, claude)
 				return err
 			}),
-			Entry("cache update", func() error { _, err := e.Update(ctx, nil); return err }),
+			Entry("cache update", func() error { _, err := e.Update(ctx, nil, engine.Progress{}); return err }),
 			Entry("sync", func() error {
 				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
 				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
@@ -1549,7 +1550,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 				return noticeTexts(res.Notices), nil
 			}),
 			Entry("cache update", func() ([]string, error) {
-				res, err := e.Update(ctx, nil)
+				res, err := e.Update(ctx, nil, engine.Progress{})
 				if err != nil {
 					return nil, err
 				}

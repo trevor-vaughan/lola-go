@@ -24,6 +24,55 @@ would add. `--trust=entries,profiles` written out is those two kinds, so `profil
 it. Bare `--trust` is `entries,profiles`, the kinds that run no code; `all` is every kind the
 command takes.
 
+## What lola has shown you
+
+`scripts`, `hooks` and `runtime-hooks` are the consent kinds: they run code. `--trust` gives one
+of them only for content lola has shown you in full, every byte of it (control characters
+replaced), in any output it printed on this machine: a dry run (`-n`), a question, the install
+review or a run's report, in human output, `--plain` or `--json`. Each install hook and project
+script prints its body under its line (`    | …`; `hook-line` and `script-line` rows under
+`--plain`, `body` under `--json`) until it has been shown; after that the human output folds it
+(`▸ pre.sh: 12 lines`). A runtime hook prints every field, its prompt uncut. lola remembers what it
+showed by the sha256 of the content, not by module version or project, so the same hook shown for
+another version or in another project counts as shown.
+
+What does not count: a folded line (`▸`; `-v` prints it in full, which does), a path with its
+sha256, a refusal (it names what it refuses but does not show it) and `lola info`'s first lines
+of an install hook. An empty script is shown by its line. A script larger than 64 KiB, or not
+UTF-8 text, or holding a NUL byte, is never shown: its line says so and names the file to
+inspect, and only `--unseen` consents to it (`lola cannot show you this hook (too large);
+inspect …, then consent to it unseen: … --unseen`). Human and `--plain` output print a body's
+tabs as spaces to 8-column stops; `--json`'s `body` is the text as it is. `lola info` shows a runtime hook it renders in full, which counts; for install
+hooks and scripts its `install it:` line follows `see its hooks and scripts in full: … -n`.
+
+Content lola has not shown you is handled as if `--trust` did not cover it: on a terminal lola
+asks; off one it declines the runtime hooks or post-install hook, or refuses a pre-install hook
+or script, with the hints
+
+```
+hint: lola has not shown you this hook; see it with lola sync --trust=hooks -n, then run this again
+hint: or add --unseen to consent without seeing it: lola sync --trust=hooks --unseen
+```
+
+A dry run prints every hook and project script the same run would want consent for, a
+project's post-install script with nothing to install too, so its `trusted` list is what that
+run grants. A refusal without `--trust` of a hook or script lola has not shown you hints the same
+dry run first (`see it with … -n, then consent to it: …`). The report of a run lists the runtime hooks
+and post-install hooks it declined in full, so the same command works the next time. A hook
+changed since you saw it is new content, and is declined or refused again until it is shown.
+
+`--unseen` widens the consent kinds `--trust` names to content lola has not shown you: use it in
+CI and on a fresh machine, where no one reads the output first. Given without a consent kind in
+`--trust` it is refused (`lola sync --unseen --trust=entries`), hinting the run without it.
+`--force` never consents and never implies `--unseen`.
+
+The record is `$XDG_STATE_HOME/lola/shown.json`, your own state: no project or cache holds it.
+A dry run may add to it; it changes nothing in a project or the cache, and only remembers what it
+showed you. If it is damaged, lola refuses to read it and says so; deleting it is safe, and costs
+only showing each hook and script again before `--trust` consents to it.
+
+## Kinds a command takes
+
 A kind the command never asks is refused, naming the ones it takes: `install` and
 `migrate` take `scripts`, `hooks` and `runtime-hooks` (bare `--trust` is refused there, beside
 other kinds too), `profile --add` takes `profiles`, and `sync` and the other `profile` actions
@@ -42,7 +91,11 @@ Proceed? [y/N]
 
 On a terminal lola then asks once (`-y` answers; No installs and records nothing; `install` keeps
 what it fetched in the cache, while `sync` and `update` leave the cache as it was); what the kinds leave uncovered is asked item by item first, as it is when you pass no flag.
-`profile --add`, which takes no `-y`, asks it on a terminal too.
+`profile --add`, which takes no `-y`, asks it on a terminal too. After the install review (also
+`lola profile <name> --edit`'s), the Apply you answered is that confirmation for every item the
+review listed (its runtime hooks): the receipt neither prints nor asks again, unless `--trust`
+covers an item the review did not list, such as an install hook, when it asks as always.
+`--force`, which prints the summary in the review's place, answers no Apply, so the receipt asks.
 
 A command asks one receipt for
 everything it does: `sync --scope both` runs each scope up to its receipt, shows one, and applies
@@ -64,6 +117,11 @@ answers the kinds do not cover is refused off a terminal, and its hint is your r
 `--trust=` the kinds you gave and exactly the ones missing; a post-install hook or runtime hook
 without consent is declined with a warning that names the run with its kind. `-y` and `--force`
 never consent to any kind.
+
+Runtime hooks you answered No to at a question are not asked about again until they change: they
+stay declined, and the report folds them as `declined earlier` with the run that consents to them
+(`lola sync --trust=runtime-hooks`), which works since the question showed them. Hooks declined
+where nothing asked (off a terminal) are asked about on the next run on a terminal.
 
 A grant by `--trust` is recorded as a yes at the prompt is, once the receipt is answered: a later
 run on the same machine with the same digests asks nothing and needs no flag, and a changed

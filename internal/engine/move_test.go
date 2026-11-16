@@ -892,7 +892,7 @@ var _ = Describe("lola profile --move", func() {
 			writeTree(proj, map[string]string{"ci/check.sh": "#!/bin/sh\nexit 0\n"})
 			Expect(os.Chmod(filepath.Join(proj, "ci", "check.sh"), 0o755)).To(Succeed())
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\npre_install: ci/check.sh\nmodules:\n  - {name: notes, source: " + url + "}\n"})
-			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: trustAll, Options: engine.Options{Trust: engine.TrustScripts}})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: trustAll, Options: engine.Options{Trust: engine.TrustScripts, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.WriteFile(filepath.Join(proj, "ci", "check.sh"), []byte("#!/bin/sh\necho changed\n"), 0o755)).To(Succeed()) // its consent was for the old digest
 			_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Other: &sc, Modules: []string{"notes"}, To: "base", ConfirmRemovals: yes})
@@ -902,7 +902,7 @@ var _ = Describe("lola profile --move", func() {
 			Expect(installed(sc)).NotTo(BeNil())
 
 			_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Other: &sc, Modules: []string{"notes"}, To: "base", ConfirmRemovals: yes,
-				Options: engine.Options{Trust: engine.TrustScripts}}) // the hint's run
+				Options: engine.Options{Trust: engine.TrustScripts, Unseen: true}}) // the hint's run
 			Expect(err).NotTo(HaveOccurred())
 			Expect(installed(sc)).To(BeNil())
 			Expect(installed(user)).NotTo(BeNil())
@@ -950,7 +950,7 @@ var _ = Describe("lola profile --move", func() {
 			Expect(res.Syncs).To(HaveLen(2))
 			Expect(res.Syncs[1].Removals).To(HaveExactElements(HaveField("Module", "notes")))
 			Expect(res.Syncs[0].ToApply).To(Equal("lola profile --user --move notes --to base"))
-			Expect(res.Syncs[0].OffTerminal).To(BeEmpty(), "a dry run's hint carries no -y you did not give")
+			Expect(res.Syncs[0].OffTerminal).To(Equal("lola profile --user --move notes --to base -y"), "off a terminal the removals it lists need -y")
 			Expect(res.Syncs[1].ToApply).To(BeEmpty(), "one run applies both")
 			Expect(read(projectYML())).To(Equal(before))
 			Expect(filepath.Join(p.UserProfiles, "default.yml")).NotTo(BeAnExistingFile())

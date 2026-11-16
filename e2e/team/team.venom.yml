@@ -627,10 +627,11 @@ testcases:
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} python3 -c '
-          import json
+          import json, re
           doc = json.load(open("/tmp/t16.err"))
-          assert doc["error"] == "lola sync needs your trust for the pre-install script ci/check.sh of this project (new), and there is no terminal to ask on", doc["error"]
-          assert doc["hints"][1] == "then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
+          assert re.fullmatch(r"lola sync needs your trust for the pre-install script ci/check\.sh \(sha256 [0-9a-f]{64}\) of this project \(new\), and there is no terminal to ask on", doc["error"]), doc["error"]
+          assert doc["hints"][1] == "lola has not shown you this script; see it with lola sync -C /work/proj4 --trust=scripts --json -n, then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
+          assert doc["hints"][2] == "or add --unseen to consent without seeing it: lola sync -C /work/proj4 --trust=scripts --json --unseen", doc["hints"]
           print("ok")'
         assertions:
           - result.code ShouldEqual 0
@@ -644,8 +645,9 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual unchanged
+      # The hint's dry run shows the script in full, then the run it names consents to it.
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t16.err 1 > /tmp/t16-hint.json'"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj4 --trust=scripts --json -n > /dev/null && {{.lola}} sync -C /work/proj4 --trust=scripts --json > /tmp/t16-hint.json'"
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -674,10 +676,11 @@ testcases:
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} python3 -c '
-          import json
+          import json, re
           doc = json.load(open("/tmp/t16b.err"))
-          assert doc["error"] == "lola sync needs your trust for the pre-install script ci/check.sh of this project (changed), and there is no terminal to ask on", doc["error"]
-          assert doc["hints"][1] == "then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
+          assert re.fullmatch(r"lola sync needs your trust for the pre-install script ci/check\.sh \(sha256 [0-9a-f]{64}\) of this project \(changed\), and there is no terminal to ask on", doc["error"]), doc["error"]
+          assert doc["hints"][1] == "lola has not shown you this script; see it with lola sync -C /work/proj4 --trust=scripts --json -n, then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
+          assert doc["hints"][2] == "or add --unseen to consent without seeing it: lola sync -C /work/proj4 --trust=scripts --json --unseen", doc["hints"]
           print("ok")'
         assertions:
           - result.code ShouldEqual 0

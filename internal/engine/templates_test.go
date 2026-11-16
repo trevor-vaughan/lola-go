@@ -237,7 +237,7 @@ var _ = Describe("Templates", func() {
 	It("rendered frontmatter is parsed, checked and consented per target", func() {
 		writeTree(src, map[string]string{"agents/guard.md.liquid": "---\ndescription: {{ 'g' | json }}\n{% if target == 'claude-code' %}hooks:\n" +
 			"  Stop:\n    - hooks:\n        - type: command\n          command: echo hi\n{% endif %}\n---\nGuard.\n"})
-		res, err := install(engine.Options{Targets: []string{"claude-code", "opencode"}, Trust: engine.TrustRuntimeHooks}, "../src/kit")
+		res, err := install(engine.Options{Targets: []string{"claude-code", "opencode"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "../src/kit")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Modules).To(HaveLen(1))
 		Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(And(HaveField("Target", "claude-code"), HaveField("Component", "agent guard"),
@@ -510,7 +510,7 @@ var _ = Describe("Templates", func() {
 		Expect(res.Findings).To(ContainElement(And(HaveField("Code", "claude-code/runtime-hooks-declined"), HaveField("Artifact", "a"))),
 			"hooks a value names are asked about as any hooks")
 		Expect(exists(".claude/agents/a.md")).To(BeFalse())
-		_, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks}, "../src/kit")
+		_, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "../src/kit")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".claude/agents/a.md")).To(ContainSubstring("; echo stop\n"))
 
@@ -524,7 +524,7 @@ var _ = Describe("Templates", func() {
 				agent = "---\ndescription: a\n{{ vars.key }}\nmodel: x\n---\nA\n"
 			}
 			module(vars, agent)
-			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks}, "../src/kit")
+			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "../src/kit")
 			Expect(err).To(MatchError(HavePrefix(want)), vars)
 		}
 
@@ -765,7 +765,7 @@ var _ = Describe("Templates", func() {
 			}
 			writeTree(filepath.Join(proj, "mods", "hooky"), map[string]string{"agents/h.md.liquid": hooks("{{ profiles | join: '-' | prepend: 'echo ' | json }}") + "H\n"})
 			writeTree(filepath.Join(proj, "mods", "steady"), map[string]string{"agents/s.md.liquid": hooks("echo steady") + "S {{ profiles | join: ',' }}\n"})
-			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks}, "mods/hooky", "mods/steady")
+			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "mods/hooky", "mods/steady")
 			Expect(err).NotTo(HaveOccurred())
 			var asked []string
 			ask := engine.Options{AskRuntimeHooks: func(module string, _ []engine.RuntimeHook) (bool, error) {
@@ -1103,14 +1103,14 @@ var _ = Describe("Templates", func() {
 		writeTree(filepath.Join(proj, "mods", "hooky"), map[string]string{
 			"lola.yml":           "name: hooky\nvars:\n  cmd: echo one\n",
 			"agents/h.md.liquid": "---\ndescription: {{ 'h' | json }}\nhooks:\n  Stop:\n    - hooks:\n        - type: command\n          command: {{ vars.cmd | json }}\n---\nH\n"})
-		_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks}, "mods/hooky")
+		_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "mods/hooky")
 		Expect(err).NotTo(HaveOccurred())
 		raw := strings.Replace(read(".lola/lock.json"), `"vars": {}`, `"vars": {"nope": "x", "cmd": ["not", "a", "string"]}`, 1)
 		Expect(raw).NotTo(Equal(read(".lola/lock.json")))
 		Expect(os.WriteFile(filepath.Join(proj, ".lola", "lock.json"), []byte(raw), 0o644)).To(Succeed())
 		writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - name: hooky\n    source: mods/hooky\n    vars: {cmd: echo two}\n"})
 		var report engine.TrustReport
-		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustRuntimeHooks},
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustRuntimeHooks, Unseen: true},
 			ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil },
 			Trust: func(r engine.TrustReport) (engine.TrustAnswer, error) {
 				report = r
@@ -1135,7 +1135,7 @@ var _ = Describe("Templates", func() {
 			writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - name: hooky\n    source: mods/hooky\n    vars: " + vars + "\n"})
 		}
 		setVars("{cmd: echo two}")
-		_, err := sync(engine.Options{Trust: engine.TrustRuntimeHooks})
+		_, err := sync(engine.Options{Trust: engine.TrustRuntimeHooks, Unseen: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".claude/agents/h.md")).To(ContainSubstring("echo two"))
 
@@ -1150,7 +1150,7 @@ var _ = Describe("Templates", func() {
 
 		setVars("{cmd: echo two, note: b}")
 		var report engine.TrustReport
-		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustRuntimeHooks},
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustRuntimeHooks, Unseen: true},
 			ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil },
 			Trust: func(r engine.TrustReport) (engine.TrustAnswer, error) {
 				report = r
@@ -1171,7 +1171,7 @@ var _ = Describe("Templates", func() {
 		writeTree(filepath.Join(proj, "mods", "hooky"), map[string]string{
 			"lola.yml":           "name: hooky\nvars:\n  cmd: echo one\n  note: a\n",
 			"agents/h.md.liquid": "---\ndescription: {{ vars.note | json }}\nhooks:\n  Stop:\n    - hooks:\n        - type: command\n          command: {{ vars.cmd | json }}\n---\nH\n"})
-		_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks}, "mods/hooky")
+		_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "mods/hooky")
 		Expect(err).NotTo(HaveOccurred())
 		var asked []string
 		ask := engine.Options{AskRuntimeHooks: func(module string, _ []engine.RuntimeHook) (bool, error) {
@@ -1255,7 +1255,7 @@ var _ = Describe("Templates", func() {
 				"agents/guard.md":           "---\ndescription: Guard\n---\nGuard.\n",
 				"agents/guard.targets.yaml": "claude-code:\n  hooks:\n    Stop:\n      - hooks:\n          - type: command\n            command: echo hi\n",
 			})
-			res, err := install(engine.Options{Targets: []string{"claude-code", "opencode"}, Trust: engine.TrustRuntimeHooks}, "../src/kit")
+			res, err := install(engine.Options{Targets: []string{"claude-code", "opencode"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "../src/kit")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(And(HaveField("Target", "claude-code"), HaveField("Component", "agent guard"),
 				HaveField("Command", HaveSuffix("; echo hi")))))
@@ -1263,7 +1263,7 @@ var _ = Describe("Templates", func() {
 			Expect(read(".opencode/agents/guard.md")).NotTo(ContainSubstring("echo hi"))
 
 			writeTree(src, map[string]string{"agents/guard.targets.yaml": "opencode:\n  hooks: {Nope: []}\n"})
-			_, err = install(engine.Options{Targets: []string{"claude-code", "opencode"}, Trust: engine.TrustRuntimeHooks}, "../src/kit")
+			_, err = install(engine.Options{Targets: []string{"claude-code", "opencode"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "../src/kit")
 			te, ok := errors.AsType[*engine.TemplateError](err)
 			Expect(ok).To(BeTrue(), "%v", err)
 			Expect(te.Code).To(Equal("template-rendered-check"))
@@ -1290,13 +1290,13 @@ var _ = Describe("Templates", func() {
 				"agents/guard.md.liquid":    "---\ndescription: {{ 'Guard' | json }}\n---\nGuard.\n",
 				"agents/guard.targets.yaml": "claude-code:\n  hooks:\n    Stop:\n      - hooks:\n          - type: command\n            command: echo templated\n",
 			})
-			res, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks}, "../src/kit")
+			res, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "../src/kit")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(And(HaveField("Component", "agent guard"), HaveField("Command", HaveSuffix("; echo templated")))))
 			Expect(read(".claude/agents/guard.md")).To(ContainSubstring("; echo templated"))
 
 			writeTree(src, map[string]string{"agents/guard.targets.yaml": "claude-code:\n  hooks: {Nope: []}\n"})
-			_, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks}, "../src/kit")
+			_, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "../src/kit")
 			te, ok = errors.AsType[*engine.TemplateError](err)
 			Expect(ok).To(BeTrue(), "%v", err)
 			Expect(te.File).To(Equal("agents/guard.targets.yaml"), "the keys the file added refuse, not the template")
@@ -1304,7 +1304,7 @@ var _ = Describe("Templates", func() {
 
 			writeTree(src, map[string]string{"agents/guard.md.liquid": "---\ndescription: {{ 'Guard' | json }}\nhooks: {Nope: []}\n---\nGuard.\n",
 				"agents/guard.targets.yaml": "claude-code:\n  model: sonnet\n"})
-			_, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks}, "../src/kit")
+			_, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Unseen: true}, "../src/kit")
 			te, ok = errors.AsType[*engine.TemplateError](err)
 			Expect(ok).To(BeTrue(), "%v", err)
 			Expect(te.Error()).To(HavePrefix("kit: claude-code agent guard: agents/guard.md.liquid (rendered for claude-code): agent guard: frontmatter hooks: "),

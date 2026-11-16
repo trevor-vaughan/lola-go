@@ -508,3 +508,41 @@ var _ = Describe("the questions of lola init, lola market --add and hook and scr
 		Expect(name).To(Equal("acme-2"), "the pre-filled name answered after Esc")
 	})
 })
+
+var _ = Describe("a form's break", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("draws a blank line and a rule before every form run", func() {
+		h := onTerminal("\x01\r")
+		_, err := h.Assistants(AssistantStep{Options: []string{"a", "b"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ansiStrip(h.out.(*bytes.Buffer).String())).To(HavePrefix("\n" + strings.Repeat("━", 80) + "\n"))
+	})
+
+	It("draws one break before a run of forms, which leave nothing behind, and one again after a question", func() {
+		h := onInput(paced("\x01\r", "\x01\r"))
+		var asked int
+		h.ask = func(Question) (rune, error) { asked++; return 'y', nil }
+		_, err := h.Assistants(AssistantStep{Options: []string{"a", "b"}})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = h.Assistants(AssistantStep{Options: []string{"a", "b"}})
+		Expect(err).NotTo(HaveOccurred())
+		rule := "\n" + strings.Repeat("━", 80) + "\n"
+		Expect(strings.Count(ansiStrip(h.out.(*bytes.Buffer).String()), rule)).To(Equal(1), "the second form drew none")
+
+		_, err = h.Ask(Question{Prompt: "Go?", Answers: "yN"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(asked).To(Equal(1))
+		h.stdin = keys("\x01\r")
+		_, err = h.Assistants(AssistantStep{Options: []string{"a", "b"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.Count(ansiStrip(h.out.(*bytes.Buffer).String()), rule)).To(Equal(2), "a form after a question's prompt line draws its own")
+	})
+
+	It("draws --- before an accessible form", func() {
+		var out bytes.Buffer
+		_, err := accessible(&out, "1").Review(ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewQuit}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(HavePrefix("Summary:\n\n---\n"))
+	})
+})

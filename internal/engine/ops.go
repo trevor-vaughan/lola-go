@@ -666,9 +666,11 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	res.Trusted = []Consent{} // a command that takes --trust says what it covered, [] for nothing
 	res.Notices = append(res.Notices, swept...)
 	res.Notices = append(res.Notices, restored...)
+	defer func() { markEvents(res.Findings) }() // what no scope's plan compared is new
 	res.home = e.Paths.Home
 	out := &InstallResult{Result: res, Scopes: []ScopeResult{}, TargetVersions: []TargetVersion{}}
 	probes := e.newProbeRun(ctx)
+	probes.progress = opts.Progress
 	var fetched []string
 	// staged: the arguments (arg) whose modules (name) were fetched into a staged run, in the cache
 	// only once the apply commits them.
@@ -834,7 +836,10 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 					}
 				}
 			}
-			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, listed, run, spec.Options.Display)
+			fetching := func(from source.Spec) {
+				opts.Progress.fetching(from, "%s (%d/%d)", untrusted.Text(from.Location, untrusted.MaxName), i+1, len(spec.Modules))
+			}
+			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, listed, run, spec.Options.Display, fetching)
 			if err != nil {
 				return nil, e.withRetry(spec, err, fetched)
 			}
@@ -898,7 +903,8 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	}
 	for _, sp := range plans {
 		n, notes := len(res.Findings), len(res.Notices)
-		for _, rr := range sp.resolved {
+		for i, rr := range sp.resolved {
+			opts.Progress.working("rendering %s (%d/%d)", untrusted.Text(rr.ent.Name, untrusted.MaxName), i+1, len(sp.resolved))
 			if err := e.planInstallModule(ctx, sp, rr, sel, saves, opts, probes, res); err != nil {
 				return nil, e.withRetry(spec, err, fetched)
 			}
@@ -1073,7 +1079,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 				if err != nil {
 					return nil, e.withRetry(spec, err, fetched)
 				}
-				if planned.OffTerminal != "" { // the sync needs a trust the install cannot give: its run asks, or refuses with the diff
+				if planned.needsTrust { // the sync needs a trust the install cannot give: its run asks, or refuses with the diff
 					return nil, errs.WithHints(fmt.Errorf("rewriting %s for the version this install writes for needs your trust first; nothing was written",
 						andJoin(shownAll(names))), "see what for, and trust it: "+e.SyncCommand(sp.sc))
 				}
@@ -2286,9 +2292,9 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 		}
 	}
 	entry := &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest, Targets: mr.Targets,
-		Components: ent.Components.Clone(), RenderedWith: mr.renderedWith, Eras: mr.eras, From: from}
+		Components: ent.Components.Clone(), RenderedWith: mr.renderedWith, Eras: mr.eras, From: from, Safety: mr.safety}
 	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: planned, Intents: intents, Entry: entry})
-	res.Modules[len(res.Modules)-1].Kept = installed != nil && !opts.Force && !installed.HooksPending && !installed.ScriptsPending &&
+	res.Modules[len(res.Modules)-1].Kept = installed != nil && !installed.HooksPending && !installed.ScriptsPending &&
 		installed.From == entry.From && installed.Source == entry.Source && installed.Ref == entry.Ref && installed.Path == entry.Path &&
 		installed.Commit == entry.Commit && installed.Digest == entry.Digest && slices.Equal(installed.Targets, entry.Targets) &&
 		reflect.DeepEqual(installed.Components, entry.Components) && reflect.DeepEqual(installed.RenderedWith, entry.RenderedWith) &&
@@ -2662,6 +2668,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		return nil, err
 	}
 	res := newResult(opts.DryRun)
+	defer func() { markEvents(res.Findings) }() // what no scope's plan compared is new
 	res.PicksCleared = []PickCleared{}
 	// The files an uninstall removes are the ledger's, which is this checkout's own only while
 	// git does not track it.

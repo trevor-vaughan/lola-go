@@ -36,13 +36,13 @@ func (a *app) updateCmd() *cobra.Command {
 		RunE:              a.syncRun(&f, &trust, "update", "Update where?"),
 	}
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and the trust diff, ask nothing and write nothing")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removing the files a new version no longer ships (never trusts changes)")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker; confirm removing the files a new version no longer ships (never trusts changes)")
 	cmd.Flags().BoolVar(&f.refetch, "fetch", false, "fetch every ref now, however recently it was fetched")
 	cmd.Flags().StringArrayVar(&f.at, "at", nil, atUsage)
 	_ = cmd.RegisterFlagCompletionFunc("at", a.completeAt)
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
-	cmd.Flags().BoolP("verbose", "v", false, "print every notice, not a count per module of those that are not about safety")
+	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
 	addTrustFlag(cmd, &trust, "update", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles (recorded as a yes is; never bypasses a refusal)")
 	// dnf and zypper's --refresh; additive and stable, the published table is
 	// pinned in store_test.go.

@@ -17,7 +17,7 @@ per scope in `keep.yaml`, names what tidy stops offering ([Tidying](../guides/ti
 | `--include-tracked` | Also offer what git tracks. |
 | `--keep <selector>` | Add a `kind/name` selector to this scope's keep-list (repeatable). Alias: `--protect`. |
 | `--unkeep <selector>` | Remove a selector from this scope's keep-list, as written there (repeatable). Alias: `--unprotect`. |
-| `-y`, `--yes` | Do not ask for confirmation. |
+| `-y`, `--yes` | Do not ask for confirmation, and open no picker (not the scope picker either): the scope is the one found off a terminal, and a run without names or `--all` is refused as it is there. |
 | `--force` | Also move what git tracks, without asking; names or `--all` are still needed. |
 | `-n`, `--dry-run` | List what would move and what is locked, and change nothing. |
 

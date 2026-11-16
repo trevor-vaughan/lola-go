@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -137,7 +138,7 @@ var _ = Describe("install scripts", func() {
 	It("a project script given as an absolute path is refused naming the file, line and key, even inside the project", func() {
 		for _, abs := range []string{script(filepath.Join(proj, "ci", "check.sh"), "exit 0\n"), script(filepath.Join(tmp, "shared", "check.sh"), "exit 0\n")} {
 			projectYML("targets: [claude-code]\npre_install: " + abs + "\n")
-			_, err := install(engine.Options{Trust: engine.TrustScripts})
+			_, err := install(engine.Options{Trust: engine.TrustScripts, Unseen: true})
 			Expect(err).To(MatchError(filepath.Join(proj, ".lola", "project.yml") + ":3: pre_install: " + abs +
 				" is an absolute path; name the script by its path inside the project"))
 			Expect(errs.Hints(err)).To(BeEmpty())
@@ -149,7 +150,7 @@ var _ = Describe("install scripts", func() {
 		script(filepath.Join(proj, "tools", "ci", "check.sh"), "exit 0\n")
 		Expect(os.Symlink(filepath.Join("tools", "ci"), filepath.Join(proj, "ci"))).To(Succeed())
 		projectYML("targets: [claude-code]\npre_install: ci/check.sh\n")
-		res, err := install(engine.Options{Trust: engine.TrustScripts})
+		res, err := install(engine.Options{Trust: engine.TrustScripts, Unseen: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Scripts).To(ConsistOf(And(HaveField("Path", "tools/ci/check.sh"), HaveField("Status", engine.HookRan))))
 	})
@@ -168,7 +169,7 @@ var _ = Describe("install scripts", func() {
 		func(setup func() string) {
 			path := setup()
 			projectYML("targets: [claude-code]\npre_install: " + path + "\n")
-			_, err := install(engine.Options{Trust: engine.TrustScripts})
+			_, err := install(engine.Options{Trust: engine.TrustScripts, Unseen: true})
 			Expect(err).To(MatchError(filepath.Join(proj, ".lola", "project.yml") + ":3: pre_install: " + path +
 				" has a .. component; name the script by its path inside the project"))
 			Expect(errs.Hints(err)).To(BeEmpty())
@@ -194,7 +195,7 @@ var _ = Describe("install scripts", func() {
 		for _, name := range []string{"pre\x1b[31m.sh", "pre\nfake.sh"} {
 			script(filepath.Join(proj, "ci", name), "exit 0\n")
 			projectYML("targets: [claude-code]\npre_install: " + strconv.Quote("ci/"+name) + "\n")
-			_, err := install(engine.Options{Trust: engine.TrustScripts})
+			_, err := install(engine.Options{Trust: engine.TrustScripts, Unseen: true})
 			Expect(err).To(MatchError(MatchRegexp(`^` + regexp.QuoteMeta(filepath.Join(proj, ".lola", "project.yml")) +
 				`:3: pre_install: ci/pre.*\.sh holds a control character or a line break; lola runs only a script whose path is plain text$`)))
 			Expect(err.Error()).NotTo(ContainSubstring("\x1b"))
@@ -208,7 +209,7 @@ var _ = Describe("install scripts", func() {
 		sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		projectYML("targets: [claude-code]\npre_install: ci/missing.sh\n")
-		_, err := install(engine.Options{Trust: engine.TrustScripts})
+		_, err := install(engine.Options{Trust: engine.TrustScripts, Unseen: true})
 		Expect(err).To(MatchError(filepath.Join(tmp, "evil?[31m?proj", ".lola", "project.yml") + ":3: pre_install: ci/missing.sh does not exist"))
 		Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory(), "nothing was written")
 	})
@@ -276,7 +277,7 @@ var _ = Describe("install scripts", func() {
 			return engine.Options{
 				PreInstall:  engine.FlagScript{Given: "flag/pre.sh", Path: script(filepath.Join(tmp, "flag", "pre.sh"), logger("flag"))},
 				PostInstall: engine.FlagScript{Given: "flag/post.sh", Path: script(filepath.Join(tmp, "flag", "post.sh"), logger("flag"))},
-				Trust:       engine.TrustScripts | engine.TrustHooks,
+				Trust:       engine.TrustScripts | engine.TrustHooks, Unseen: true,
 			}
 		}
 		BeforeEach(func() {
@@ -293,10 +294,36 @@ var _ = Describe("install scripts", func() {
 				"hook - post-install", "flag flag post-install", "project project post-install", "user user post-install",
 			}))
 			Expect(res.Scripts).To(HaveLen(6))
+			pre, err := os.ReadFile(filepath.Join(tmp, "bin", "pre.sh"))
+			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Scripts[0]).To(Equal(engine.ScriptRun{Event: engine.PreInstall, Source: engine.ScriptUser, Path: filepath.Join(tmp, "bin", "pre.sh"),
-				Module: "example", Target: "claude-code", Status: engine.HookRan}))
+				SHA256: fmt.Sprintf("%x", sha256.Sum256(pre)), Module: "example", Target: "claude-code", Status: engine.HookRan, Trusted: true}))
 			Expect(res.Scripts[1]).To(HaveField("Path", "ci/check.sh"))
 			Expect(res.Scripts[2]).To(HaveField("Path", "flag/pre.sh"))
+		})
+
+		It("holds Progress for each script and hook it runs, in order, none of them kept", func() {
+			hooked()
+			opts := all()
+			var steps []string
+			opts.Progress.Step = func(s string) {
+				if strings.HasPrefix(s, "running ") {
+					steps = append(steps, "step "+s) // never: a script holds the terminal
+				}
+			}
+			opts.Progress.Hold = func(s string, keep bool) { steps = append(steps, fmt.Sprintf("%s %v", s, keep)) }
+			_, err := install(opts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(steps).To(Equal([]string{
+				"running pre-install script " + filepath.Join(tmp, "bin", "pre.sh") + " (user) for example on claude-code false",
+				"running pre-install script ci/check.sh (project) for example on claude-code false",
+				"running pre-install script flag/pre.sh (flag) for example on claude-code false",
+				"running pre-install hook hooks/pre.sh of example for claude-code false",
+				"running post-install hook hooks/post.sh of example for claude-code false",
+				"running post-install script flag/post.sh (flag) for example on claude-code false",
+				"running post-install script ci/after.sh (project) for example on claude-code false",
+				"running post-install script " + filepath.Join(tmp, "bin", "post.sh") + " (user) for example on claude-code false",
+			}))
 		})
 
 		It("each script runs once per module per target with the hook environment and LOLA_SCRIPT_SOURCE", func() {
@@ -323,7 +350,7 @@ var _ = Describe("install scripts", func() {
 			hooked()
 			e.Environ = func() []string { return append(os.Environ(), "SCRIPT_LOG="+log, "LOLA_SCRIPT_SOURCE=user") }
 			configure("pre_install: " + script(filepath.Join(tmp, "bin", "pre.sh"), logger("user")) + "\n")
-			_, err := install(engine.Options{Trust: engine.TrustHooks})
+			_, err := install(engine.Options{Trust: engine.TrustHooks, Unseen: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(who()).To(Equal([]string{"user user pre-install", "hook - pre-install", "hook - post-install"}))
 		})
@@ -337,7 +364,7 @@ var _ = Describe("install scripts", func() {
 			Expect(os.Chmod(filepath.Join(src, "ci/check.sh"), 0o755)).To(Succeed())
 			script(filepath.Join(proj, "ci", "check.sh"), logger("project"))
 			projectYML("targets: [claude-code]\npre_install: ci/check.sh\n")
-			_, err := install(engine.Options{Trust: engine.TrustScripts,
+			_, err := install(engine.Options{Trust: engine.TrustScripts, Unseen: true,
 				PreInstall: engine.FlagScript{Given: "flag/pre.sh", Path: script(filepath.Join(tmp, "flag", "pre.sh"), logger("flag"))}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(who()).To(Equal([]string{"project project pre-install", "flag flag pre-install"}))
@@ -348,7 +375,7 @@ var _ = Describe("install scripts", func() {
 			Expect(os.Remove(log)).To(Succeed())
 			Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules"))).To(Succeed())
 			GinkgoT().Chdir(tmp)
-			_, err = install(engine.Options{Trust: engine.TrustScripts, PreInstall: engine.FlagScript{Given: "flag/pre.sh", Path: "flag/pre.sh"}})
+			_, err = install(engine.Options{Trust: engine.TrustScripts, Unseen: true, PreInstall: engine.FlagScript{Given: "flag/pre.sh", Path: "flag/pre.sh"}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(who()).To(Equal([]string{"project project pre-install", "flag flag pre-install"}))
 			Expect(marker).NotTo(BeAnExistingFile())
@@ -377,7 +404,7 @@ var _ = Describe("install scripts", func() {
 					Scopes: []engine.ScopeInstall{
 						{ScopeChoice: engine.ScopeChoice{Scope: sc}, Targets: []string{"claude-code"}},
 						{ScopeChoice: engine.ScopeChoice{Scope: engine.Scope{Kind: target.User}}, Targets: []string{"claude-code"}},
-					}, Options: engine.Options{Trust: engine.TrustScripts}})
+					}, Options: engine.Options{Trust: engine.TrustScripts, Unseen: true}})
 				return err
 			}, []string{"user project", "project project", "user user"}),
 		)
@@ -390,11 +417,11 @@ var _ = Describe("install scripts", func() {
 				Expect(who()).To(HaveExactElements("user user pre-install", "hook - pre-install", "hook - post-install"))
 			},
 			Entry("install", func() error {
-				_, err := install(engine.Options{Trust: engine.TrustHooks})
+				_, err := install(engine.Options{Trust: engine.TrustHooks, Unseen: true})
 				return err
 			}),
 			Entry("sync replacing a copy", func() error {
-				if _, err := install(engine.Options{Trust: engine.TrustHooks}); err != nil {
+				if _, err := install(engine.Options{Trust: engine.TrustHooks, Unseen: true}); err != nil {
 					return err
 				}
 				Expect(os.Remove(log)).To(Succeed())
@@ -405,7 +432,7 @@ var _ = Describe("install scripts", func() {
 			Entry("sync", func() error {
 				Expect(os.CopyFS(filepath.Join(proj, "mods", "example"), os.DirFS(src))).To(Succeed())
 				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: ./mods/example}\n"})
-				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks}})
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true}})
 				return err
 			}),
 			Entry("profile --on", func() error {
@@ -413,13 +440,13 @@ var _ = Describe("install scripts", func() {
 				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n",
 					".lola/profiles/review.yml": "version: 1\nmodules:\n  - name: example\n    source: ../../mods/example\n"})
 				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "review"},
-					Options: engine.Options{Trust: engine.TrustEntries | engine.TrustProfiles | engine.TrustHooks}})
+					Options: engine.Options{Trust: engine.TrustEntries | engine.TrustProfiles | engine.TrustHooks, Unseen: true}})
 				return err
 			}),
 			Entry("migrate (InstallAll as lola migrate calls it: the module's own targets, BeforeWrite)", func() error {
 				_, err := e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Modules: []engine.InstallRequest{{Arg: src, Targets: []string{"claude-code"}}},
 					Scopes:      []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc}, Targets: []string{"claude-code"}}},
-					Options:     engine.Options{Trust: engine.TrustHooks},
+					Options:     engine.Options{Trust: engine.TrustHooks, Unseen: true},
 					BeforeWrite: func(*engine.InstallResult) error { return nil }})
 				return err
 			}),
@@ -443,7 +470,7 @@ var _ = Describe("install scripts", func() {
 		It("a failing pre script writes nothing and names script, source and exit status; a failing post script warns", func() {
 			projectYML("targets: [claude-code]\npre_install: ci/check.sh\n")
 			script(filepath.Join(proj, "ci", "check.sh"), "exit 3\n")
-			res, err := install(engine.Options{Trust: engine.TrustScripts})
+			res, err := install(engine.Options{Trust: engine.TrustScripts, Unseen: true})
 			Expect(err).To(MatchError(ContainSubstring("pre-install script ci/check.sh (project) failed for example on claude-code: exit status 3")))
 			Expect(res).To(BeNil())
 			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
@@ -481,9 +508,9 @@ var _ = Describe("install scripts", func() {
 			projectYML("targets: [claude-code]\npre_install: ci/check.sh\n")
 			opts := engine.Options{Display: []string{"--json"}, Run: "lola install", Rerun: func(k engine.TrustKinds) string { return "lola install " + src + " " + k.Arg() }}
 			_, err := install(opts)
-			Expect(err).To(MatchError("lola install needs your trust for the pre-install script ci/check.sh of this project (new), and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(HaveExactElements("review it: lola info --project "+src+" --target claude-code --json",
-				"then consent to it: lola install "+src+" --trust=scripts"))
+			Expect(err).To(MatchError(MatchRegexp(`^lola install needs your trust for the pre-install script ci/check.sh \(sha256 [0-9a-f]{64}\) of this project \(new\), and there is no terminal to ask on$`)))
+			Expect(errs.Hints(err)).To(Equal(append([]string{"review it: lola info --project " + src + " --target claude-code --json"},
+				unshown("this script", "lola install "+src+" --trust=scripts")...)))
 			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
 			Expect(lines()).To(BeNil())
 
@@ -513,6 +540,7 @@ var _ = Describe("install scripts", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(errs.Hints(err)).To(ContainElement(MatchRegexp(`^then accept them: lola sync --project --trust=entries,scripts --at example=sha256:[0-9a-f]{64} --json$`)))
 			req.Options.Trust = engine.TrustEntries | engine.TrustScripts
+			req.Options.Unseen = true
 			_, err = e.Sync(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(who()).To(Equal([]string{"project project pre-install"}))
@@ -526,15 +554,16 @@ var _ = Describe("install scripts", func() {
 				opts := engine.Options{DryRun: dry, Rerun: func(k engine.TrustKinds) string { return "lola install " + src + " " + k.Arg() }}
 				res, err := install(opts)
 				Expect(hint(res, err)).To(Equal("lola install " + src + " " + want.Arg()))
-				opts.DryRun, opts.Trust = false, want
+				// The kinds the hint names are complete; what lola has shown is pinned by its own specs.
+				opts.DryRun, opts.Trust, opts.Unseen = false, want, true
 				_, err = install(opts)
 				Expect(err).NotTo(HaveOccurred(), "the hinted run is refused for nothing")
 				Expect(who()).To(ContainElement("project project pre-install"))
 			},
 			Entry("a pre-install hook and the project's pre-install script: --trust=scripts,hooks", hooked, false,
 				func(_ *engine.Result, err error) string {
-					Expect(err).To(MatchError("example has a pre-install hook, and lola runs hooks only with your consent"))
-					return strings.TrimPrefix(errs.Hints(err)[len(errs.Hints(err))-1], "then consent to it: ")
+					Expect(err).To(MatchError(HavePrefix("example has a pre-install hook, and lola runs hooks only with your consent: ")))
+					return consentRun(err)
 				}, engine.TrustScripts|engine.TrustHooks),
 			Entry("runtime hooks and the project's pre-install script: --trust=scripts,runtime-hooks", func() {
 				writeTree(src, map[string]string{"lola.yml": "name: example\ncomponents:\n  runtime_hooks: [{path: hooks/hooks.json}]\n",
@@ -591,7 +620,7 @@ var _ = Describe("install scripts", func() {
 					Expect(pending()).To(BeFalse())
 				},
 				Entry("sync naming the module with --trust=scripts runs it alone in the existing copy", func() engine.SyncRequest {
-					return engine.SyncRequest{Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustScripts}}
+					return engine.SyncRequest{Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustScripts, Unseen: true}}
 				}, true),
 				Entry("sync naming it off a terminal without --trust=scripts keeps it pending with the notice", func() engine.SyncRequest {
 					return engine.SyncRequest{Modules: []string{"example"}}
@@ -623,7 +652,7 @@ var _ = Describe("install scripts", func() {
 
 			It("a pending script that runs alone and fails stays pending", func() {
 				script(after, "exit 1\n")
-				res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustScripts}})
+				res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustScripts, Unseen: true}})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(res.Scripts).To(ConsistOf(HaveField("Status", engine.HookFailed)))
 				Expect(pending()).To(BeTrue(), "the next sync naming it offers it again")
@@ -640,7 +669,8 @@ var _ = Describe("install scripts", func() {
 				// without the trust it needs, the run off a terminal keeps it pending, and says so
 				res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{DryRun: true}})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(res.Scripts).To(ConsistOf(And(HaveField("Status", engine.HookWouldRun), HaveField("NeedsTrust()", true))))
+				Expect(res.Scripts).To(ConsistOf(And(HaveField("Status", engine.HookWouldRun), HaveField("NeedsTrust()", true),
+					HaveField("Trusted", false), HaveField("TrustRun", "lola sync --project --trust=scripts"))))
 				Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
 					Text: "pending post-install script for example → lola sync --project example (off a terminal: lola sync --project example --trust=scripts)"}))
 				Expect(res.InSync).To(BeTrue())
@@ -651,7 +681,7 @@ var _ = Describe("install scripts", func() {
 
 			It("a pending script runs alone without reading your own scripts, which wrap nothing", func() {
 				configure("pre_install: " + filepath.Join(tmp, "bin", "gone.sh") + "\n")
-				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustScripts}})
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustScripts, Unseen: true}})
 				Expect(err).NotTo(HaveOccurred(), "no copy is written, so config.yaml's missing script wraps nothing")
 				Expect(who()).To(Equal([]string{"project project post-install"}))
 				Expect(pending()).To(BeFalse())
@@ -659,7 +689,7 @@ var _ = Describe("install scripts", func() {
 
 			It("a pending script whose key project.yml no longer has is pending no more", func() {
 				projectYML("targets: [claude-code]\nmodules:\n  - name: example\n    source: " + src + "\n")
-				res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustScripts}})
+				res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustScripts, Unseen: true}})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(res.Notices).NotTo(ContainElement(HaveField("Text", ContainSubstring("pending post-install script"))))
 				Expect(pending()).To(BeFalse(), "a sync clears the mark")
@@ -701,13 +731,14 @@ var _ = Describe("install scripts", func() {
 			projectYML("targets: [claude-code]\npre_install: ci/check.sh\nmodules:\n  - {name: example, source: ./mods/example}\n")
 			req := engine.SyncRequest{Scope: sc, Display: []string{"--json"}, Options: engine.Options{Run: "lola sync", Display: []string{"--json"}}}
 			_, err = e.Sync(ctx, req)
-			Expect(err).To(MatchError("lola sync needs your trust for the pre-install script ci/check.sh of this project (new), and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(HaveExactElements("review it: lola info --project example --json", "then consent to it: lola sync --project --trust=scripts --json"))
+			Expect(err).To(MatchError(MatchRegexp(`^lola sync needs your trust for the pre-install script ci/check.sh \(sha256 [0-9a-f]{64}\) of this project \(new\), and there is no terminal to ask on$`)))
+			Expect(errs.Hints(err)).To(Equal(append([]string{"review it: lola info --project example --json"}, unshown("this script", "lola sync --project --trust=scripts --json")...)))
 			dry, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dry.OffTerminal).To(Equal("lola sync --project --trust=scripts"))
 
 			req.Options.Trust = engine.TrustScripts
+			req.Options.Unseen = true
 			res, err := e.Sync(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.InSync).To(BeTrue())
@@ -735,7 +766,8 @@ var _ = Describe("install scripts", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(asked).To(HaveLen(1))
 			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
-				Text: "post-install script ci/after.sh (project) is not trusted on this machine; trust it: lola sync --project --trust=scripts"}))
+				Text: "post-install script ci/after.sh (project) is not trusted on this machine; lola has not shown it to you; " +
+					"see it with lola sync --project --trust=scripts -n, then trust it: lola sync --project --trust=scripts"}), "its hint shows it first")
 		})
 
 		It("a sync that writes no copy checks only its project's scripts, never your own", func() {
@@ -805,14 +837,14 @@ var _ = Describe("install scripts", func() {
 				check := script(filepath.Join(proj, "ci", "check.sh"), logger("project"))
 				configure("pre_install: " + script(filepath.Join(tmp, "bin", "pre.sh"), logger("user")+"echo 'echo pwned' >> "+check+"\n") + "\n")
 				projectYML("targets: [claude-code]\npre_install: ci/check.sh\n")
-				return engine.Options{Trust: engine.TrustScripts}
+				return engine.Options{Trust: engine.TrustScripts, Unseen: true}
 			}, "pre-install script ci/check.sh (project) changed after lola checked it; nothing was installed", ""),
 			Entry("a module post hook rewrites the flag post script", func() engine.Options {
 				flag := filepath.Join(tmp, "flag", "post.sh")
 				writeTree(src, map[string]string{"lola.yml": "name: example\nhooks: {post-install: hooks/post.sh}\n",
 					"hooks/post.sh": "#!/bin/sh\n" + logger("hook") + "echo 'echo pwned' >> " + flag + "\n"})
 				Expect(os.Chmod(filepath.Join(src, "hooks/post.sh"), 0o755)).To(Succeed())
-				return engine.Options{Trust: engine.TrustHooks, PostInstall: engine.FlagScript{Given: "flag/post.sh", Path: script(flag, logger("flag"))}}
+				return engine.Options{Trust: engine.TrustHooks, Unseen: true, PostInstall: engine.FlagScript{Given: "flag/post.sh", Path: script(flag, logger("flag"))}}
 			}, "", "post-install script flag/post.sh (flag) changed after lola checked it; the installation was kept"),
 		)
 
@@ -861,7 +893,7 @@ var _ = Describe("install scripts", func() {
 			Entry("project", "pre\x1b[31m.sh", func(name string) engine.Options {
 				projectYML("targets: [claude-code]\npre_install: " + strconv.Quote("ci/"+name) + "\n")
 				script(filepath.Join(proj, "ci", name), "exit 0\n")
-				return engine.Options{Trust: engine.TrustScripts}
+				return engine.Options{Trust: engine.TrustScripts, Unseen: true}
 			}, nil),
 			Entry("flag", "pre\x1b[31m.sh", func(name string) engine.Options {
 				return engine.Options{PreInstall: engine.FlagScript{Given: "flag/" + name, Path: script(filepath.Join(tmp, "flag", name), "exit 0\n")}}

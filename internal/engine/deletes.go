@@ -77,12 +77,35 @@ const (
 	whyTargets   = "target dropped by -t"
 	whyDropped   = "not in the version this run installs"
 	whyViaAgents = "delivered through .agents/skills"
+	whyDeclined  = "runtime hooks declined"
+	whyConsent   = "unless you consent to its runtime hooks" // a dry run's, which asks nothing
 )
 
-// deletedBy lists the files steps delete (not the emptied directories they leave), per module,
-// scope root and reason: those of a target in dropped as whyTargets, those under a copy in left as
-// whyViaAgents, the rest as other, or not at all when other is "". With removals at two scopes,
-// each names its own (Where; home is user scope's).
+// declinedDest is where an intent whose runtime hooks a run declined writes: its scope, module,
+// target, file and, for a JSON member, the member's pointer.
+type declinedDest struct{ scope, module, target, path, key string }
+
+// DeclinedRemovals is what res deletes because it declined runtime hooks lola installed under an
+// earlier consent: the settings hook groups and the components carrying hooks, per module and
+// scope root, each JSON member's key after its file; none when it declined none of them. These
+// are no removal a question confirms (declining is the answer); the report lists them so nothing
+// is removed unseen. A dry run, which asks nothing, gives them as removed unless you consent.
+func DeclinedRemovals(res *Result) []Removal {
+	steps := slices.DeleteFunc(slices.Clone(res.Steps), func(st plan.Step) bool {
+		return !slices.Contains(res.declined, declinedDest{st.Scope, st.Module, st.Target, st.Path, st.Key})
+	})
+	why := whyDeclined
+	if res.DryRun {
+		why = whyConsent
+	}
+	return deletedBy(steps, nil, nil, why, res.home)
+}
+
+// deletedBy lists the files steps delete (not the emptied directories they leave), a JSON
+// member's key after its file, per module, scope root and reason: those of a target in dropped
+// as whyTargets, those under a copy in left as whyViaAgents, the rest as other, or not at all
+// when other is "". With removals at two scopes, each names its own (Where; home is user
+// scope's).
 func deletedBy(steps []plan.Step, dropped []droppedTarget, left []leftCopy, other, home string) []Removal {
 	type group struct{ module, root, why string }
 	var out []Removal
@@ -113,7 +136,11 @@ func deletedBy(steps []plan.Step, dropped []droppedTarget, left []leftCopy, othe
 		if !slices.Contains(out[i].Targets, st.Target) {
 			out[i].Targets = append(out[i].Targets, st.Target)
 		}
-		out[i].Paths = append(out[i].Paths, RemovedPath{Target: st.Target, Path: shown(st.Path)})
+		p := shown(st.Path)
+		if st.Key != "" {
+			p += " " + shown(st.Key)
+		}
+		out[i].Paths = append(out[i].Paths, RemovedPath{Target: st.Target, Path: p})
 		if st.Scope == target.User.String() {
 			wheres[i] = "user scope (" + shown(home) + ")"
 		} else {

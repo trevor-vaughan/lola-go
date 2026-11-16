@@ -409,7 +409,10 @@ func (a *app) cacheUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			up, err := eng.Update(cmd.Context(), args, outputFlags(cmd)...)
+			progress, done := a.progress(cmd)
+			defer done()
+			up, err := eng.Update(cmd.Context(), args, progress, outputFlags(cmd)...)
+			done()
 			if err != nil {
 				return err
 			}
@@ -616,5 +619,5 @@ func coachSource(words []string, cmd *cobra.Command, args []string, err error) e
 	}
 	named := slices.Clone(args)
 	named[at] = to
-	return errs.WithHints(err, strings.TrimSpace(runAs(words, cmd, named, "ref", "path", "trust")+" "+errs.ShellJoin(flags)))
+	return errs.WithHints(err, strings.TrimSpace(runAs(words, cmd, named, "ref", "path", "trust", "unseen")+" "+errs.ShellJoin(flags)))
 }

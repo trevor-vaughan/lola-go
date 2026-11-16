@@ -295,7 +295,7 @@ var _ = Describe("hints keep the user's flags", func() {
 		Expect(r.out).To(ContainSubstring("→ off a terminal: lola sync --project --trust=entries -y\n"))
 	})
 
-	It("a dry run's apply hint and a move hint carry -y only when you gave it", func() {
+	It("a dry run's apply hint and a move hint carry -y only when you gave it, and off a terminal for the removals it lists", func() {
 		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n"})
 		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
 		r := lola("tidy", "-n", "skill/old", "--project", "-t", "claude-code")
@@ -305,14 +305,14 @@ var _ = Describe("hints keep the user's flags", func() {
 		r = lola("install", "./mods/kit", "--project", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ keep it to yourself: lola profile --project --move kit --to mine --switch\n"))
-		Expect(r.out).To(ContainSubstring("→ meant for every project? lola profile --user --move kit --to base\n"))
+		Expect(r.out).To(ContainSubstring("→ meant for every project? move it from this project into your user base: lola profile --user --move kit --to base\n"))
 		Expect(r.out + r.err).NotTo(ContainSubstring(" -y"))
 
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
 		r = lola("sync", "--project", "-n")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("→ to apply: lola sync --project\n"))
-		Expect(r.out+r.err).NotTo(ContainSubstring(" -y"), "the removal is asked, or refused off a terminal with its own hint")
+		Expect(r.out).To(ContainSubstring("→ to apply: lola sync --project\n"), "on a terminal the removal is asked")
+		Expect(r.out).To(ContainSubstring("→ off a terminal: lola sync --project --trust=entries -y\n"))
 	})
 
 	It("profile <ambiguous> --switch -y hints each profile with -y, which switches when run verbatim", func() {

@@ -177,7 +177,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			return err
 		}, "a git branch, tag or full commit SHA", "Ref (optional)", "1", "src", ""),
 		Entry("the review menu", func(h *huhForms) error {
-			_, err := h.Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}})
+			_, err := h.Review(ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewQuit}})
 			return err
 		}, "Ctrl+C cancels; nothing is written", "Apply these changes?", "1"),
 	)
@@ -267,7 +267,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		st := VersionStep{Target: "opencode", Options: []string{">=2.0", ">=1.0 <2.0"}, Preselect: 0, Again: true, Last: true}
 		_, err := accessible(&out, "").Version(st)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(out.String()).To(HavePrefix("Change versions — Write opencode files for which version?\n"))
+		Expect(out.String()).To(HavePrefix("\n---\nChange versions — Write opencode files for which version?\n"))
 	})
 
 	It("asks sync's trust question with Cancel under the cursor, and Choose… as numbered multi-selects with nothing preselected", func() {
@@ -485,7 +485,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("Step 3 of 5 — @acme — tools"))
 
 		out.Reset()
-		_, err = accessible(&out, "1").Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}, Step: Steps{At: 5, Of: 5}})
+		_, err = accessible(&out, "1").Review(ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewQuit}, Step: Steps{At: 5, Of: 5}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out.String()).To(HavePrefix("Step 5 of 5 — Review\nSummary:\n"))
 
@@ -682,7 +682,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 	})
 
 	It("prints the summary, then offers the review menu without a default, in accessible mode", func() {
-		got, err := accessible(&out, "1").Review(ReviewStep{Summary: "Summary:\n  user (/h), picked:\n", Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
+		got, err := accessible(&out, "1").Review(ReviewStep{Summary: textReport("Summary:\n  user (/h), picked:\n"), Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply))
 		Expect(out.String()).To(HavePrefix("Summary:\n  user (/h), picked:\n"))
@@ -712,7 +712,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 
 	It("asks the review with y, c and n and no default, c opening the steps to change", func() {
 		var asked []Question
-		all := ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewScope, ReviewComponents, ReviewQuit}}
+		all := ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewScope, ReviewComponents, ReviewQuit}}
 		got, err := reviewing(&asked, "\r", result{r: 'y'}).Review(all)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply))
@@ -734,7 +734,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).To(MatchError(ErrAborted), "Ctrl+C in the Change menu cancels")
 
 		asked = nil
-		got, err = reviewing(&asked, "", result{r: 'y'}).Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}})
+		got, err = reviewing(&asked, "", result{r: 'y'}).Review(ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewQuit}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply))
 		Expect(asked[0].Answers).To(Equal("yn"), "with no step to change, c is not offered")
@@ -742,7 +742,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 
 	It("goes back from the review on Esc, quits on q, and returns from the Change menu to the review on Esc", func() {
 		var asked []Question
-		all := ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewScope, ReviewQuit}, Nav: Nav{Back: true, Answered: 3}}
+		all := ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewScope, ReviewQuit}, Nav: Nav{Back: true, Answered: 3}}
 		_, err := reviewing(&asked, "", result{err: ErrBack}).Review(all)
 		Expect(err).To(MatchError(ErrBack))
 		Expect(asked[0].Nav).To(Equal(Nav{Back: true, Answered: 3}), "the question gets the review's place in the flow")
@@ -769,7 +769,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			cmd.SetErr(&stderr)
 			// c at the review, then the menu's first entry, Change components.
 			cmd.SetIn(paced("c\r", "\r"))
-			got, err := a.huhPrompter(cmd).Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
+			got, err := a.huhPrompter(cmd).Review(ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(ReviewComponents))
 			Expect(stderr.String()).To(HavePrefix("Summary:\n"), "printed above the question")
@@ -793,7 +793,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		cmd.SetOut(&bytes.Buffer{})
 		cmd.SetErr(&out)
 		cmd.SetIn(keys("y\r"))
-		got, err := a.huhPrompter(cmd).Review(ReviewStep{Summary: numbered(10), Options: []string{ReviewApply, ReviewQuit}})
+		got, err := a.huhPrompter(cmd).Review(ReviewStep{Summary: textReport(numbered(10)), Options: []string{ReviewApply, ReviewQuit}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply))
 		Expect(out.String()).To(ContainSubstring(altScreen))
@@ -1070,5 +1070,20 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Eventually(done, 5*time.Second).Should(Receive(&got), "the question must not hang at end of input")
 		Expect(got).To(MatchError(errInputEnded))
 		Expect(errs.Hints(got)).NotTo(BeEmpty(), "the error coaches")
+	})
+})
+
+var _ = Describe("the review's folds", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("show open, without the footer, in accessible mode, where nothing could open them, under the step's title", func() {
+		sum := textReport("Summary:\n")
+		sum.Fold("2 warnings seen before", []string{"kit: 2 warnings — lola info kit"})
+		sum.FoldFooter("→ " + foldFooter)
+		var out bytes.Buffer
+		_, err := accessible(&out, "1").Review(ReviewStep{Summary: sum, Options: []string{ReviewApply, ReviewQuit}, Step: Steps{At: 2, Of: 2}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(ContainSubstring("Summary:\n2 warnings seen before\n    kit: 2 warnings — lola info kit\n"))
+		Expect(out.String()).NotTo(ContainSubstring(foldFooter))
 	})
 })

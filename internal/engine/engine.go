@@ -70,6 +70,7 @@ type Engine struct {
 	Paths        paths.Paths
 	Store        *store.Store
 	Consent      *consent.Store
+	Shown        *consent.Shown // the consent items lola has shown the user, which --trust alone grants
 	Trust        *trust.Store
 	Targets      []target.Target
 	Registry     targets.Registry // the targets Targets began as; specs may replace Targets
@@ -112,7 +113,7 @@ type recovery struct {
 // New returns an Engine over the real store and every target of reg. The store dates last_used
 // by e.Now, read at each use, so a spec that replaces Now fakes the day.
 func New(p paths.Paths, reg targets.Registry) *Engine {
-	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: reg.All(), Registry: reg, Now: time.Now,
+	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Shown: consent.NewShown(p.Shown, p.ShownLock), Trust: trust.New(p), Targets: reg.All(), Registry: reg, Now: time.Now,
 		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second, TemplateLimits: templating.DefaultLimits(),
 		TemplateBudget: TemplateBudget{RunOutput: 32 << 20, RunTime: 20 * time.Second}}
 	e.Store = store.New(p, reg.IDs(), func() time.Time { return e.Now() })
@@ -178,6 +179,9 @@ type Options struct {
 	// may answer No (ErrDeclined); the grants are recorded only after it.
 	Trust   TrustKinds
 	Receipt func([]Consent) (bool, error)
+	// Unseen is --unseen: Trust's consent kinds grant content lola has not shown the user too
+	// (trustGrants); without it they grant only what the shown record holds.
+	Unseen bool
 	// Rerun is the user's run with the --trust argument for the kinds given (TrustKinds.Arg), which
 	// a refusal for want of trust hints; nil gives no such hint.
 	Rerun func(TrustKinds) string
@@ -242,6 +246,56 @@ type Options struct {
 	// ShowResolved, when set, is given install's resolved marketplace addresses, one line each
 	// ("@acme/formatter → <source> path <path> @ <ref>"), before any consent is asked.
 	ShowResolved func(lines []string)
+	// Progress is told each slow step the run starts, for a caller that shows it; it changes no
+	// result.
+	Progress Progress
+}
+
+// Progress is what a run tells a caller that shows its slow steps; author-chosen names reach it
+// only through untrusted.Text. Step is told an ordinary step: a fetch or folder read, a module's
+// render, an assistant run for its version. Hold is told a step that hands the terminal to
+// something else: a script or hook, which writes to it (HookOutput, as given), or ssh, which may
+// ask on it (a key's passphrase, a host key). The caller clears what it shows and draws nothing
+// until the next Step. keep says the step must stay on the terminal, a line of its own that is
+// never erased (ssh's prompt follows it); without keep it may be shown only where each step is a
+// line of its own. Either may be nil.
+type Progress struct {
+	Step func(step string)
+	Hold func(step string, keep bool)
+}
+
+// working tells p.Step, when there is one, the step the run starts.
+func (p Progress) working(format string, args ...any) {
+	if p.Step != nil {
+		p.Step(fmt.Sprintf(format, args...))
+	}
+}
+
+// holding tells p.Hold, when there is one, the step that hands the terminal on (Progress).
+func (p Progress) holding(keep bool, format string, args ...any) {
+	if p.Hold != nil {
+		p.Hold(fmt.Sprintf(format, args...), keep)
+	}
+}
+
+// fetching tells p the run fetches spec (reads it, for a folder), the step's text after the verb
+// given by format: a step that runs ssh is a held, kept one, since ssh may ask on the terminal.
+func (p Progress) fetching(spec source.Spec, format string, args ...any) {
+	verb := "fetching "
+	if spec.Kind == source.KindFolder {
+		verb = "reading "
+	}
+	p.reaching(spec, verb+format, args...)
+}
+
+// reaching tells p a step that contacts spec's source: held and kept when it runs ssh
+// (source.UsesSSH), an ordinary step otherwise.
+func (p Progress) reaching(spec source.Spec, format string, args ...any) {
+	if source.UsesSSH(spec) {
+		p.holding(true, format, args...)
+		return
+	}
+	p.working(format, args...)
 }
 
 // MCPRun says what an MCP server runs: the stdio command line or the remote URL.
@@ -275,16 +329,22 @@ type ModuleResult struct {
 	// Market is the marketplace an install through @<market>/<entry> records, through
 	// untrusted.Text; absent otherwise.
 	Market *manifest.MarketRef `json:"market,omitempty"`
-	// Kept says an install, not under --force, leaves the module's lock.json entry as it was: the
-	// same version, pin, targets, picks, render inputs and eras, and no hook or script pending.
-	// With no step of it, the module is already up to date.
+	// Kept says an install leaves the module's lock.json entry as it was: the same version, pin,
+	// targets, picks, render inputs and eras, and no hook or script pending. With no step of it and
+	// no install hook run again (as --force runs them), the module is already up to date.
 	Kept bool `json:"-"`
 	// Rewritten says an install did not install the module but rewrote it for the version it writes
 	// for (InstallResult.eraSynced): its rewrite notice reports it, and JSON marks it; absent otherwise.
 	Rewritten bool `json:"rewritten,omitempty"`
+	// Info is the lola info, at the module's scope with the run's output flags, that lists its
+	// runtime hooks and findings again: where a report points for what it shows as seen before.
+	Info string `json:"-"`
 
 	renderedWith *ledger.RenderedWith // what its templates rendered with, which lock.json records
 	eras         map[string]string    // by target, the since of the era its files are written for, which lock.json records
+	// safety is the keys of the state findings its plan made (safetyKeys), which the lock.json
+	// entry the run writes for it records.
+	safety []string
 	// hooksKept says an install without consent keeps the module's copy and runs none of its
 	// hooks: the copy holds the version already and no post-install hook is pending.
 	hooksKept bool
@@ -351,6 +411,21 @@ type Result struct {
 	// the kinds of trust the run met an item of that would be refused without it.
 	grants []grant
 	needs  TrustKinds
+	// said is the kinds of the consent items a yes granted in this run (a batch's, given in its
+	// collect pass, among them), and withheld the kinds of those that went without one: a no, or
+	// never asked (a batch's apply pass declines what its collect pass was told no). What a command
+	// that gives the same answers off a terminal repeats with --trust, or cannot, when a kind holds
+	// both (equivalent).
+	said, withheld TrustKinds
+	// noes is the answeredNoKey of each runtime hook answered No in this run, which a batch's
+	// collect pass hands its apply pass (TrustBatch.noes).
+	noes []string
+	// unseen is the consent kinds the run's --trust covers whose items it declined or refused for
+	// want of having shown them (trustGrants).
+	unseen TrustKinds
+	// declined is each destination whose runtime hooks the run declined (consentRuntimeHooks): a
+	// step deleting one removes what lola wrote under an earlier consent (DeclinedRemovals).
+	declined []declinedDest
 	// recorded is the items whose grants confirmTrusted wrote, which a later failure carries.
 	recorded []Consent
 	// dropped is each target an install's -t leaves out of a module installed on it, whose files
@@ -898,12 +973,12 @@ func canonicalRoot(dir string) string {
 // without --ref the name resolves to the cache head for it. A full-SHA ref, either one, is recorded
 // lower-cased. Fetches go into run (StagedRun.add): kept there for a staged install, cached at once
 // for a publishing run. display is the run's output flags, which the `lola cache list` hint of the
-// not-a-source refusal keeps.
+// not-a-source refusal keeps. fetching is told each source it fetches.
 func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef string, run *StagedRun,
-	display []string) (manifest.Entry, store.Version, bool, error) {
+	display []string, fetching func(source.Spec)) (manifest.Entry, store.Version, bool, error) {
 	r.Ref, entryRef = source.RecordedRef(r.Ref), source.RecordedRef(entryRef)
 	if r.market != nil {
-		return e.resolveEntry(ctx, sc, r, have, run)
+		return e.resolveEntry(ctx, sc, r, have, run, fetching)
 	}
 	if module.ValidateName("module", r.Arg) == nil {
 		if r.Ref == "" {
@@ -931,7 +1006,9 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 			}
 			fetched := false
 			if !ok {
-				v, err = e.stageSource(ctx, run, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: r.Ref, Components: o.Components}, "", r.Arg)
+				spec := source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: r.Ref, Components: o.Components}
+				fetching(spec)
+				v, err = e.stageSource(ctx, run, spec, "", r.Arg)
 				if err != nil {
 					return manifest.Entry{}, store.Version{}, false, err
 				}
@@ -975,6 +1052,7 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 		}
 	}
 	if v.Name == "" {
+		fetching(spec)
 		if v, err = e.stageSource(ctx, run, spec, "", ""); err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
 		}
@@ -1250,6 +1328,8 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 			}
 		}
 	}
+	mr.safety = safetyKeys(finds)
+	mr.Info = e.Command(sc, "info", append([]string{m.Name}, opts.Display...)...)
 	return intents, finds, notes, mr, nil
 }
 
@@ -1528,7 +1608,7 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 	if err != nil {
 		return nil, err
 	}
-	if err := e.consentRuntimeHooks(sc, changes, opts, unasked, res); err != nil {
+	if err := e.consentRuntimeHooks(sc, led, changes, opts, unasked, res); err != nil {
 		return nil, err
 	}
 	if opts.Strict {
@@ -1567,6 +1647,7 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		restore = e.SyncCommand(sc, append(append(mods, opts.Display...), "--force")...)
 	}
 	res.Findings = append(res.Findings, driftFindings(p.Steps, e.files(sc).modules, restore)...)
+	markNew(res.Findings, sc, led)
 	jobs, err := e.planHooks(sc, copies, opts, unasked, res)
 	if err != nil {
 		return nil, err
