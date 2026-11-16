@@ -482,3 +482,58 @@ var _ = Describe("ledger", func() {
 		Expect(err).To(MatchError(ContainSubstring("module kit: digest")))
 	})
 })
+
+var _ = Describe("an entry's safety record", func() {
+	var path string
+	key := strings.Repeat("ab", 32)
+	BeforeEach(func() { path = filepath.Join(testenv.Isolate(), "lock.json") })
+
+	write := func(safety string) {
+		GinkgoHelper()
+		doc := `{"version":1,"modules":{"kit":{"source":"s","digest":"sha256:` +
+			strings.Repeat("0", 64) + `","artifacts":[],"safety":` + safety + `}},"created":[]}`
+		Expect(os.WriteFile(path, []byte(doc), 0o600)).To(Succeed())
+	}
+
+	It("round-trips, and a clone holds its own copy", func() {
+		write(`["` + key + `"]`)
+		l, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(l.Modules["kit"].Safety).To(Equal([]string{key}))
+		c := l.Clone()
+		c.Modules["kit"].Safety[0] = strings.Repeat("cd", 32)
+		Expect(l.Modules["kit"].Safety).To(Equal([]string{key}))
+		Expect(l.Save(path)).To(Succeed())
+		b, err := os.ReadFile(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(ContainSubstring(`"safety": [`))
+	})
+
+	It("leaves the key out when nothing is recorded", func() {
+		write(`[]`)
+		l, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(l.Save(path)).To(Succeed())
+		Expect(os.ReadFile(path)).NotTo(ContainSubstring("safety"))
+	})
+
+	It("refuses a value lola never writes, with the restore hint", func() {
+		write(`["not-a-sha256"]`)
+		_, err := ledger.Load(path)
+		Expect(err).To(MatchError(ContainSubstring(`module kit: safety holds "not-a-sha256", which is not a sha256`)))
+		Expect(errs.Hints(err)).NotTo(BeEmpty())
+	})
+
+	DescribeTable("refuses a near miss",
+		func(v string) {
+			write(`["` + v + `"]`)
+			_, err := ledger.Load(path)
+			Expect(err).To(MatchError(ContainSubstring("which is not a sha256")))
+		},
+		Entry("upper-case hex", strings.Repeat("AB", 32)),
+		Entry("one character short", key[:63]),
+		Entry("one character long", key+"a"),
+		Entry("the empty string", ""),
+		Entry("non-hex of the right length", strings.Repeat("zz", 32)),
+	)
+})

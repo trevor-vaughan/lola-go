@@ -38,7 +38,7 @@ var _ = Describe("selections.yaml in list, check and sync", func() {
 		Expect(lola("ls", "-C", proj).out).NotTo(ContainSubstring("SKIPPED"))
 
 		skip("command/test")
-		r := lola("sync", "-C", proj)
+		r := lola("sync", "-C", proj, "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ delete claude-code .claude/commands/test.md"))
 		Expect(r.out).To(ContainSubstring("→ example: skipped in selections.yaml: command/test"))
@@ -198,7 +198,7 @@ var _ = Describe("a pick change that deletes files is confirmed as uninstall is"
 		r := lola("install", "example", "-C", proj, "--skip", "command/test")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\n"))
-		Expect(r.err).To(ContainSubstring("removals:\n"))
+		Expect(r.err).To(ContainSubstring("To remove:\n"))
 		Expect(r.err).To(ContainSubstring("(dropped by your pick change)"))
 		Expect(r.err).NotTo(ContainSubstring("no longer in its targets"))
 		Expect(r.err).To(ContainSubstring(".claude/commands/test.md"))
@@ -287,7 +287,7 @@ var _ = Describe("Target-narrowing: install -t of fewer assistants removes the d
 		Expect(err).NotTo(HaveOccurred())
 		r := lola("install", "m", "-C", proj, "-t", "claude-code")
 		Expect(r.code).To(Equal(1), r.out)
-		Expect(r.err).To(ContainSubstring("removals:\n  ✗ m: gemini-cli (target dropped by -t)\n      .gemini/commands/hi.toml\n"))
+		Expect(r.err).To(ContainSubstring("To remove:\n  ✗ m: gemini-cli (target dropped by -t)\n      .gemini/commands/hi.toml\n"))
 		Expect(r.err).To(ContainSubstring("error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\n"))
 		hints := hintLines(r.err)
 		Expect(hints).To(HaveLen(1))
@@ -308,7 +308,7 @@ var _ = Describe("Target-narrowing: install -t of fewer assistants removes the d
 	})
 
 	It("Target-narrowing: -n shows the removals and writes nothing; -y and --force remove them", func() {
-		r := lola("install", "m", "-C", proj, "-t", "claude-code", "-n")
+		r := lola("install", "m", "-C", proj, "-t", "claude-code", "-n", "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out + r.err).To(ContainSubstring("→ delete gemini-cli  .gemini/commands/hi.toml"))
 		Expect(geminiFile).To(BeAnExistingFile())
@@ -328,7 +328,7 @@ var _ = Describe("Target-narrowing: install -t of fewer assistants removes the d
 	It("Target-narrowing: on a terminal it lists the removals and asks; No writes nothing, yes removes them", func() {
 		sp := &scripted{confirm: []bool{false}}
 		r := lolaP(sp, "install", "m", "-C", proj, "-t", "claude-code")
-		Expect(r.err).To(ContainSubstring("removals:\n  ✗ m: gemini-cli (target dropped by -t)\n      .gemini/commands/hi.toml\n"))
+		Expect(r.err).To(ContainSubstring("To remove:\n  ✗ m: gemini-cli (target dropped by -t)\n      .gemini/commands/hi.toml\n"))
 		Expect(sp.calls).To(ContainElement(HavePrefix("confirm:Remove these and apply?")))
 		Expect(geminiFile).To(BeAnExistingFile())
 		Expect(os.ReadFile(projectYML)).NotTo(ContainSubstring("targets: [claude-code]\n"))
@@ -375,7 +375,7 @@ var _ = Describe("install -t adding agents to a module installed on gemini-cli",
 
 		r = lola("install", "m", "-C", proj, "-t", "gemini-cli,agents")
 		Expect(r.code).To(Equal(1), r.out)
-		Expect(r.err).To(ContainSubstring("removals:\n  ✗ m: gemini-cli (delivered through .agents/skills)\n      .gemini/skills/review/SKILL.md\n"))
+		Expect(r.err).To(ContainSubstring("To remove:\n  ✗ m: gemini-cli (delivered through .agents/skills)\n      .gemini/skills/review/SKILL.md\n"))
 		Expect(r.err).To(ContainSubstring("error: lola install needs your confirmation to remove files"))
 		hints := hintLines(r.err)
 		Expect(hints).To(HaveLen(1))

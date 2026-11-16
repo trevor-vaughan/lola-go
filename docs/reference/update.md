@@ -21,11 +21,12 @@ installed in the scope is refused. To render again at the installed versions, fe
 run `lola sync`.
 
 A new version may no longer ship a file lola wrote for the old one: a component it dropped or
-renamed. Those files are removals, listed before anything is written as `removals:` with
-`✗ <module>: <assistants> (not in the version this run installs)` and the paths, and in `--json`
-`removals` (each with `why`). On a terminal `update` asks; off one it is refused (`lola update
-needs your confirmation to remove the files <module>'s new version drops, and there is no
-terminal to ask on`), hinting the run with `-n` and with `-y`.
+renamed. Those files are removals, listed before anything is written under `To remove:`, as a dry
+run's report lists them (`Removed:` in a run's), with `✗ <module>: <assistants> (not in the version
+this run installs)` and the paths, and in `--json` `removals` (each with `why`). On a terminal
+`update` asks; off one it is refused (`lola update needs your confirmation to remove the files
+<module>'s new version drops, and there is no terminal to ask on`), hinting the run with `-n` and
+with `-y`.
 
 `-y` or `--force` confirms them; `-n` lists them and writes nothing.
 

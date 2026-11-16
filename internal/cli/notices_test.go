@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -40,17 +41,21 @@ var _ = Describe("a run's notices: safety ones in full, the rest one line per mo
 		summary = "→ m: 30 notices (claude-code 15, gemini-cli 15) — lola check -C " + proj + " m -t claude-code,gemini-cli\n"
 	})
 
-	// safety is what every human run prints in full: both runtime-hook findings.
+	// safety is what every human run prints in full, or -v in its fold once seen: the declined
+	// runtime hooks with how to consent, and the skip of gemini-cli's.
 	safety := func(out string) {
 		GinkgoHelper()
-		Expect(out).To(ContainSubstring("⚠ m: claude-code: runtime hooks skipped: they run inside claude-code with your permissions"))
+		Expect(out).To(ContainSubstring("m: 1 runtime hook for claude-code in .claude/settings.local.json (declined)\n"))
+		Expect(out).To(ContainSubstring("hint: review the hooks listed above, then"))
 		Expect(out).To(ContainSubstring("✗ skipped m: gemini-cli runtime-hook hooks/hooks.json: gemini-cli has no place for runtime-hooks"))
 	}
 	// detail is the capability findings as -v prints them: grouped, without the author's hints.
 	detail := func(out string) {
 		GinkgoHelper()
-		Expect(out).To(ContainSubstring("⚠ m: gemini-cli agent: foo dropped: gemini-cli does not support it (15 agents: a01, a02, a03, …; --json lists each)\n"))
-		Expect(out).To(ContainSubstring("⚠ m: claude-code mcp: claude-code has no working-directory setting; cwd \"/srv\" dropped (15 MCP servers: s01, s02, s03, …; --json lists each)\n"))
+		Expect(out).To(ContainSubstring("⚠ m: gemini-cli agent: foo dropped: gemini-cli does not support it (15 agents)\n"))
+		Expect(out).To(ContainSubstring("\n    a01\n"))
+		Expect(out).To(ContainSubstring("⚠ m: claude-code mcp: claude-code has no working-directory setting; cwd \"/srv\" dropped (15 MCP servers)\n"))
+		Expect(out).To(ContainSubstring("\n    s15\n"))
 		Expect(out).NotTo(ContainSubstring("targets.yaml"), "a hint for the module's author is lola check's")
 		Expect(out).NotTo(ContainSubstring("notices ("))
 	}
@@ -138,9 +143,14 @@ var _ = Describe("a run's notices: safety ones in full, the rest one line per mo
 		for _, run := range [][]string{{"sync", "-C", proj}, {"sync", "-C", proj, "-n"}, {"update", "-C", proj}} {
 			r := lola(run...)
 			Expect(r.code).To(Equal(0), r.err)
-			safety(r.out)
-			Expect(r.out).To(ContainSubstring(summary), strings.Join(run, " "))
-			Expect(r.out).NotTo(ContainSubstring("dropped"))
+			if slices.Contains(run, "-n") {
+				Expect(r.out).To(Equal("→ already in sync\n"), "nothing new and nothing to do")
+			} else {
+				Expect(r.out).NotTo(ContainSubstring("Runtime hooks — new:"))
+				Expect(r.out).To(ContainSubstring("▸ 1 skip, 1 runtime hook seen before"), "the skip and the declined hook the install said in full are folded")
+				Expect(r.out).To(ContainSubstring(summary), strings.Join(run, " "))
+				Expect(r.out).NotTo(ContainSubstring("dropped"))
+			}
 
 			r = lola(append(run, "-v")...)
 			Expect(r.code).To(Equal(0), r.err)
@@ -274,10 +284,11 @@ var _ = Describe("M-2: a safety finding with an author's fix points to the modul
 		r := lola("install", mod, "-C", proj, "-t", "gemini-cli")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(skipped + "    hint: the module's own fix: " + check + "; or render it anyway: lola install " + mod + " --root " + proj + " --target gemini-cli --force\n"))
-		for _, run := range [][]string{{"sync", "-C", proj}, {"update", "-C", proj}} {
+		for _, run := range [][]string{{"sync", "-C", proj, "-v"}, {"update", "-C", proj, "-v"}} {
 			r = lola(run...)
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).To(ContainSubstring(skipped+"    hint: the module's own fix: "+check), strings.Join(run, " "))
+			Expect(r.out).To(ContainSubstring(skipped), strings.Join(run, " "))
+			Expect(r.out).To(ContainSubstring("hint: the module's own fix: "+check+";"), strings.Join(run, " "))
 		}
 		c := runHint(check)
 		Expect(c.code).To(Equal(0), c.err)

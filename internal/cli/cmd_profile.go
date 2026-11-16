@@ -446,7 +446,7 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().StringVar(&add.path, "path", "", "with --add: the directory of the source that holds profiles/; with --edit: the module root inside the source")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals, and --remove (only those: it never trusts changes)")
-	cmd.Flags().BoolP("verbose", "v", false, "with an action that applies: print every notice, not a count per module of those that are not about safety")
+	cmd.Flags().BoolP("verbose", "v", false, "with an action that applies: print the report in full: every fold open and every notice")
 	for _, name := range []string{"skip", "only", "unskip"} {
 		_ = cmd.RegisterFlagCompletionFunc(name, a.completeComponents(1)) // lola profile <profile> --edit <module>...
 	}
@@ -634,7 +634,7 @@ func printProfileAction(w io.Writer, s style, name string, r *engine.SyncResult,
 		for _, c := range act.Changes {
 			fmt.Fprintf(w, "change\t%s\t%s\t%s\t%s\n", c.Action, c.Module, c.From, strings.Join(c.Over, ","))
 		}
-		printSync(w, s, name, r, nil, more)
+		printSync(w, s, name, r, nil, more, false)
 		return
 	}
 	if act.Turned {
@@ -655,20 +655,10 @@ func printProfileAction(w io.Writer, s style, name string, r *engine.SyncResult,
 	}
 	_ = tw.Flush()
 	if len(act.Changes) == 0 {
-		printNotices(w, s, r.Result)
-		if r.DryRun {
-			if r.ToApply != "" {
-				fmt.Fprintln(w, s.info("to apply: "+r.ToApply))
-			}
-			if r.OffTerminal != "" {
-				fmt.Fprintln(w, s.info("off a terminal: "+r.OffTerminal))
-			}
-			fmt.Fprintln(w, s.info("no files to change"))
-		} else {
-			fmt.Fprintln(w, s.ok("no files to change"))
-		}
+		printReport(w, s, report{Result: r.Result, Verb: "synced", Sync: true, InSync: "no files to change",
+			ToApply: r.ToApply, OffTerminal: r.OffTerminal})
 	} else {
-		printSync(w, s, name, r, nil, more)
+		printSync(w, s, name, r, nil, more, false)
 	}
 	if now != "" {
 		fmt.Fprintln(w, "now: "+now)

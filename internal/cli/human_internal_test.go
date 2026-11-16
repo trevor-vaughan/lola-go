@@ -17,11 +17,11 @@ import (
 var _ = Describe("an install's skip lines over two scopes", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
-	// printed is printInstall's human output of modules installed at a project and at user scope.
+	// printed is printReport's human output of modules installed at a project and at user scope.
 	printed := func(modules ...engine.ModuleResult) string {
 		var b bytes.Buffer
-		printInstall(&b, style{}, &engine.InstallResult{Result: &engine.Result{Modules: modules},
-			Scopes: []engine.ScopeResult{{Scope: "project", Root: "/p"}, {Scope: "user"}}})
+		printReport(&b, style{}, installReport(&engine.InstallResult{Result: &engine.Result{Modules: modules},
+			Scopes: []engine.ScopeResult{{Scope: "project", Root: "/p"}, {Scope: "user"}}}))
 		return b.String()
 	}
 	kit := func(scope, root, in string, skipped ...string) engine.ModuleResult {
@@ -45,18 +45,18 @@ var _ = Describe("an install's lines for components only: leaves out", func() {
 		var b bytes.Buffer
 		m := engine.ModuleResult{Name: "kit", Scope: "user", Skipped: []string{"skill/a", "skill/b", "skill/c"}, SkippedIn: "selections.yaml",
 			NotInOnly: []string{"skill/b", "skill/c"}, OnlyIn: "selections.yaml projects[/p]"}
-		printInstall(&b, style{}, &engine.InstallResult{Result: &engine.Result{Modules: []engine.ModuleResult{m}}, Scopes: []engine.ScopeResult{{Scope: "user"}}})
+		printReport(&b, style{}, installReport(&engine.InstallResult{Result: &engine.Result{Modules: []engine.ModuleResult{m}}, Scopes: []engine.ScopeResult{{Scope: "user"}}}))
 		Expect(b.String()).To(And(ContainSubstring("→ kit: skipped in selections.yaml: skill/a\n"),
 			ContainSubstring("→ kit: not in only: (selections.yaml projects[/p]): skill/b, skill/c\n")))
 
 		b.Reset()
 		m.Skipped, m.SkippedIn = m.NotInOnly, ""
-		printInstall(&b, style{}, &engine.InstallResult{Result: &engine.Result{Modules: []engine.ModuleResult{m}}, Scopes: []engine.ScopeResult{{Scope: "user"}}})
+		printReport(&b, style{}, installReport(&engine.InstallResult{Result: &engine.Result{Modules: []engine.ModuleResult{m}}, Scopes: []engine.ScopeResult{{Scope: "user"}}}))
 		Expect(b.String()).NotTo(ContainSubstring("skipped in"))
 		Expect(b.String()).To(ContainSubstring("→ kit: not in only: (selections.yaml projects[/p]): skill/b, skill/c\n"))
 
 		b.Reset()
-		printInstall(&b, style{}, &engine.InstallResult{Result: &engine.Result{Modules: []engine.ModuleResult{m}, DryRun: true}, Scopes: []engine.ScopeResult{{Scope: "user"}}})
+		printReport(&b, style{}, installReport(&engine.InstallResult{Result: &engine.Result{Modules: []engine.ModuleResult{m}, DryRun: true}, Scopes: []engine.ScopeResult{{Scope: "user"}}}))
 		Expect(b.String()).To(ContainSubstring("→ kit: would be not in only: (selections.yaml projects[/p]): skill/b, skill/c\n"), "a dry run saves nothing")
 	})
 })
@@ -78,28 +78,30 @@ var _ = Describe("printFindings grouping", func() {
 		return b.String()
 	}
 
-	It("prints three identical findings one by one", func() {
-		Expect(strings.Count(render(style{}, mk(3, "model dropped")), "⚠")).To(Equal(3))
+	It("prints one finding as its own line", func() {
+		Expect(render(style{}, mk(1, "model dropped"))).To(Equal("⚠ ecc: opencode agent agent-0: model dropped\n"))
 	})
-	It("merges four identical findings into one line with a count and a preview", func() {
+	It("merges two or more identical findings into a summary with a count and a line per artifact", func() {
 		out := render(style{}, mk(4, "model dropped"))
 		Expect(strings.Count(out, "⚠")).To(Equal(1), out)
-		Expect(out).To(ContainSubstring("ecc: opencode agent: model dropped (4 agents: "))
-		Expect(out).To(ContainSubstring("agent-0, agent-1, agent-2"))
-		Expect(out).NotTo(ContainSubstring("agent-3"))
-		Expect(out).To(ContainSubstring("--json"))
+		Expect(out).To(ContainSubstring("ecc: opencode agent: model dropped (4 agents)\n"))
+		Expect(out).To(ContainSubstring("\n    agent-0\n    agent-1\n    agent-2\n    agent-3\n"))
+		Expect(strings.Count(render(style{}, mk(2, "model dropped")), "⚠")).To(Equal(1))
 	})
 	It("keeps the kind in the location and pluralises it for another kind", func() {
 		f := mk(4, "model dropped")
 		for i := range f {
 			f[i].Kind = "skill"
 		}
-		Expect(render(style{}, f)).To(ContainSubstring("ecc: opencode skill: model dropped (4 skills: "))
+		Expect(render(style{}, f)).To(ContainSubstring("ecc: opencode skill: model dropped (4 skills)\n"))
 	})
 	It("does not merge findings whose text differs beyond the artifact", func() {
 		f := mk(4, "model dropped")
 		f[3].Text = "model dropped: opencode needs another string"
-		Expect(strings.Count(render(style{}, f), "⚠")).To(Equal(4))
+		out := render(style{}, f)
+		Expect(strings.Count(out, "⚠")).To(Equal(2), out)
+		Expect(out).To(ContainSubstring("(3 agents)"))
+		Expect(out).To(ContainSubstring("agent-3: model dropped: opencode needs another string"))
 	})
 	It("merges when the artifact name is inside the text", func() {
 		f := mk(4, "")
@@ -133,7 +135,9 @@ var _ = Describe("printFindings grouping", func() {
 			f[i].Hint = "in " + f[i].Artifact + ".targets.yaml"
 		}
 		f[3].Hint = "in " + f[3].Artifact + ".other.yaml"
-		Expect(strings.Count(render(style{}, f), "⚠")).To(Equal(4))
+		out := render(style{}, f)
+		Expect(strings.Count(out, "⚠")).To(Equal(2), out)
+		Expect(out).To(ContainSubstring("hint: in agent-3.other.yaml"))
 	})
 	It("merges findings whose hint does not name the artifact and prints it unchanged", func() {
 		f := mk(4, "model dropped")
@@ -162,7 +166,7 @@ var _ = Describe("printFindings grouping", func() {
 			for i := range f {
 				f[i].Kind = kind
 			}
-			Expect(render(style{}, f)).To(ContainSubstring("(4 " + plural + ": "))
+			Expect(render(style{}, f)).To(ContainSubstring("(4 " + plural + ")\n"))
 		},
 		Entry(nil, "skill", "skills"),
 		Entry(nil, "command", "commands"),
@@ -194,7 +198,8 @@ var _ = Describe("printFindings grouping", func() {
 		}
 		out := render(style{}, f)
 		Expect(strings.Count(out, "⚠")).To(Equal(1), out)
-		Expect(out).To(ContainSubstring("skills/…/SKILL.md.liquid: … lost its colour (4 agents: md, agent-1, agent-2, …"))
+		Expect(out).To(ContainSubstring("skills/…/SKILL.md.liquid: … lost its colour (4 agents)\n"))
+		Expect(out).To(ContainSubstring("\n    md\n    agent-1\n"))
 		Expect(out).To(ContainSubstring("hint: edit <artifact>.md, then lola sync\n"))
 	})
 	It("does not merge findings that repeat one artifact, where its name cannot be told from other words", func() {

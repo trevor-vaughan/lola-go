@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -173,7 +174,7 @@ var _ = Describe("runtime hooks", func() {
 					filepath.Join(proj, ".lola/plugin-data/deploy") + "'; " + filepath.Join(proj, ".lola/modules/deploy") + "/stop.sh")})))
 			Expect(hooksIn(settings)["Stop"]).To(HaveLen(1))
 			Expect(filepath.Join(proj, ".lola/plugin-data/deploy")).To(BeADirectory(), "every command hook exports CLAUDE_PLUGIN_DATA")
-			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(HaveField("Status", engine.RuntimeHooksConsented)))
+			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(HaveField("Status", engine.RuntimeHooksGranted)))
 			Expect(res.Findings).NotTo(ContainElement(HaveField("Code", "claude-code/runtime-hooks-declined")))
 			Expect(consentFile()).To(ContainSubstring(`"deploy/runtime-hooks/`))
 
@@ -213,6 +214,18 @@ var _ = Describe("runtime hooks", func() {
 			Expect(res.Findings).NotTo(ContainElement(HaveField("Code", "claude-code/runtime-hooks-declined")), "the recorded consent holds off a terminal")
 		})
 
+		It("says granted for a consent given in this run, consented once recorded, and a dry run records nothing", func() {
+			dry := engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, DryRun: true}
+			res, err := install(dry)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(And(HaveField("Status", engine.RuntimeHooksGranted),
+				HaveField("Settings", settings))))
+			res, err = install(opts(answer(false)))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(HaveLen(1), "the dry run recorded nothing, so a real run asks")
+			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(HaveField("Status", engine.RuntimeHooksDeclined)))
+		})
+
 		It("makes the real run's decision on --dry-run, listing the hooks, asking nothing and recording nothing", func() {
 			dry := engine.Options{Targets: []string{"claude-code"}, DryRun: true, AskRuntimeHooks: never}
 			res, err := install(dry)
@@ -224,7 +237,7 @@ var _ = Describe("runtime hooks", func() {
 			dry.Trust = engine.TrustRuntimeHooks
 			res, err = install(dry)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(HaveField("Status", engine.RuntimeHooksConsented)))
+			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(HaveField("Status", engine.RuntimeHooksGranted)))
 			Expect(res.Steps).To(ContainElement(MatchFields(IgnoreExtras, Fields{"Kind": Equal("runtime-hook"), "Action": Equal(plan.ActionCreate)})))
 			Expect(res.Findings).NotTo(ContainElement(HaveField("Code", "claude-code/runtime-hooks-declined")))
 			Expect(filepath.Join(proj, settings)).NotTo(BeAnExistingFile())
@@ -407,7 +420,7 @@ var _ = Describe("runtime hooks", func() {
 				res, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(filepath.Join(proj, agentFile)).To(BeARegularFile())
-				Expect(res.Modules[0].RuntimeHooks).To(ContainElement(server(Fields{"MCPServer": Equal("pw"), "Status": Equal(engine.RuntimeHooksConsented)})))
+				Expect(res.Modules[0].RuntimeHooks).To(ContainElement(server(Fields{"MCPServer": Equal("pw"), "Status": Equal(engine.RuntimeHooksGranted)})))
 				_, err = resync(sc, opts(never))
 				Expect(err).NotTo(HaveOccurred())
 			})
@@ -661,6 +674,54 @@ var _ = Describe("runtime hooks", func() {
 			res, err := install(claudeOnly)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).To(notIgnored("is not ignored by git"))
+		})
+
+		It("reports the hooks rendered anyway under --force as new once, then as seen", func() {
+			git("init", "-q")
+			forced := func() *bool {
+				res, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Force: true})
+				Expect(err).NotTo(HaveOccurred())
+				i := slices.IndexFunc(res.Findings, func(f target.Finding) bool { return f.Code == "claude-code/settings-local-not-ignored" })
+				Expect(i).To(BeNumerically(">=", 0))
+				Expect(res.Findings[i].Forced).To(BeTrue())
+				return res.Findings[i].New
+			}
+			Expect(forced()).To(HaveValue(BeTrue()))
+			Expect(forced()).To(HaveValue(BeFalse()), "the same forced render, recorded in lock.json")
+		})
+
+		It("never reports hooks it declined as rendered anyway under --force, nor records them so", func() {
+			git("init", "-q")
+			res, err := install(engine.Options{Targets: []string{"claude-code"}, Force: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Findings).To(ContainElement(HaveField("Code", "claude-code/runtime-hooks-declined")))
+			Expect(res.Findings).NotTo(ContainElement(HaveField("Code", "claude-code/settings-local-not-ignored")), "the declined hooks were not rendered")
+			Expect(filepath.Join(proj, settings)).NotTo(BeAnExistingFile())
+
+			res, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Force: true})
+			Expect(err).NotTo(HaveOccurred())
+			i := slices.IndexFunc(res.Findings, func(f target.Finding) bool { return f.Code == "claude-code/settings-local-not-ignored" })
+			Expect(i).To(BeNumerically(">=", 0))
+			Expect(res.Findings[i].New).To(HaveValue(BeTrue()), "rendered for the first time")
+		})
+
+		It("reports each change between skipped and rendered under --force as new once", func() {
+			git("init", "-q")
+			run := func(force bool) (bool, bool) {
+				res, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Force: force})
+				Expect(err).NotTo(HaveOccurred())
+				i := slices.IndexFunc(res.Findings, func(f target.Finding) bool { return f.Code == "claude-code/settings-local-not-ignored" })
+				Expect(i).To(BeNumerically(">=", 0))
+				Expect(res.Findings[i].New).NotTo(BeNil())
+				return res.Findings[i].Forced, *res.Findings[i].New
+			}
+			type seen struct{ forced, isNew bool }
+			var got []seen
+			for _, force := range []bool{false, false, true, true, false, false} {
+				f, n := run(force)
+				got = append(got, seen{f, n})
+			}
+			Expect(got).To(Equal([]seen{{false, true}, {false, false}, {true, true}, {true, false}, {false, true}, {false, false}}))
 		})
 	})
 

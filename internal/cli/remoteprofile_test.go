@@ -409,7 +409,7 @@ var _ = Describe("remote profiles", func() {
 			root.SetOut(&out)
 			root.SetErr(c.stderr)
 			root.SetIn(in)
-			root.SetArgs([]string{"profile", "go", "--update", "--user", "--trust=profiles,hooks"})
+			root.SetArgs([]string{"profile", "go", "--update", "--user", "--trust=profiles,hooks", "-v"})
 			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
 			Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
 			Expect(out.String()).To(ContainSubstring("create claude-code .claude/commands/m44.md"), "the viewer's text is uncapped")

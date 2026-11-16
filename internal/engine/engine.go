@@ -275,16 +275,22 @@ type ModuleResult struct {
 	// Market is the marketplace an install through @<market>/<entry> records, through
 	// untrusted.Text; absent otherwise.
 	Market *manifest.MarketRef `json:"market,omitempty"`
-	// Kept says an install, not under --force, leaves the module's lock.json entry as it was: the
-	// same version, pin, targets, picks, render inputs and eras, and no hook or script pending.
-	// With no step of it, the module is already up to date.
+	// Kept says an install leaves the module's lock.json entry as it was: the same version, pin,
+	// targets, picks, render inputs and eras, and no hook or script pending. With no step of it and
+	// no install hook run again (as --force runs them), the module is already up to date.
 	Kept bool `json:"-"`
 	// Rewritten says an install did not install the module but rewrote it for the version it writes
 	// for (InstallResult.eraSynced): its rewrite notice reports it, and JSON marks it; absent otherwise.
 	Rewritten bool `json:"rewritten,omitempty"`
+	// Info is the lola info, at the module's scope with the run's output flags, that lists its
+	// runtime hooks and findings again: where a report points for what it shows as seen before.
+	Info string `json:"-"`
 
 	renderedWith *ledger.RenderedWith // what its templates rendered with, which lock.json records
 	eras         map[string]string    // by target, the since of the era its files are written for, which lock.json records
+	// safety is the keys of the state findings its plan made (safetyKeys), which the lock.json
+	// entry the run writes for it records.
+	safety []string
 	// hooksKept says an install without consent keeps the module's copy and runs none of its
 	// hooks: the copy holds the version already and no post-install hook is pending.
 	hooksKept bool
@@ -1250,6 +1256,8 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 			}
 		}
 	}
+	mr.safety = safetyKeys(finds)
+	mr.Info = e.Command(sc, "info", append([]string{m.Name}, opts.Display...)...)
 	return intents, finds, notes, mr, nil
 }
 
@@ -1528,7 +1536,7 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 	if err != nil {
 		return nil, err
 	}
-	if err := e.consentRuntimeHooks(sc, changes, opts, unasked, res); err != nil {
+	if err := e.consentRuntimeHooks(sc, led, changes, opts, unasked, res); err != nil {
 		return nil, err
 	}
 	if opts.Strict {
@@ -1567,6 +1575,7 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		restore = e.SyncCommand(sc, append(append(mods, opts.Display...), "--force")...)
 	}
 	res.Findings = append(res.Findings, driftFindings(p.Steps, e.files(sc).modules, restore)...)
+	markNew(res.Findings, sc, led)
 	jobs, err := e.planHooks(sc, copies, opts, unasked, res)
 	if err != nil {
 		return nil, err

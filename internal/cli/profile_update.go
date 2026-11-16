@@ -56,7 +56,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 	p := a.prompter(cmd) // never asks under --json
 	req := engine.ProfileUpdateRequest{Scopes: given, Names: args, All: all, DryRun: f.dry, Flags: flags, Rerun: rerunFlags(cmd, f.trust), Trust: f.trust, Receipt: a.receipt(cmd, f.trust, f.yes),
 		CannotAsk: !p.Interactive()}
-	stderr := style{color: a.color(cmd.ErrOrStderr())}
+	stderr := style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}
 	// Unpaged, the content is capped, naming the command that lists all of a profile's; paged, it
 	// is not.
 	printer := func(rps []engine.RemoteProfile) func(io.Writer, style) {
@@ -179,7 +179,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 					if several > 1 && !s.plain {
 						fmt.Fprintln(w, destLabel(u.Of)+":")
 					}
-					printSync(w, s, manifestName(u.Of), synced, u.Apply, s.more(more))
+					printSync(w, s, manifestName(u.Of), synced, u.Apply, s.more(more), false)
 				}, nil); err != nil {
 					return err
 				}

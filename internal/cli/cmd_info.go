@@ -193,7 +193,7 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 		for _, sr := range info.Runs.Scripts {
 			fmt.Fprintf(w, "script\t%s\t%s\t%s\t%s\t%t\n", sr.Event, sr.Source, sr.Path, sr.SHA256, sr.NeedsTrust)
 		}
-		printRuntimeHooks(w, s, engine.ModuleResult{Name: info.Name, RuntimeHooks: info.Runs.RuntimeHooks})
+		printRuntimeHooks(w, s, engine.ModuleResult{Name: info.Name, RuntimeHooks: info.Runs.RuntimeHooks}, false)
 		for _, m := range info.Runs.MCPServers {
 			line := ""
 			if m.Command != "" {

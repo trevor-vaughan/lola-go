@@ -32,7 +32,7 @@ var _ = Describe("lola profile --move", func() {
 		Expect(lola("profile", "me", "--switch", "--user", "-y").code).To(Equal(0))
 		r := lola("profile", "--move", "notes", "--to", "me", "--user")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HavePrefix("✓ removed notes from default (base)  (" + filepath.Join(p.UserProfiles, "default.yml") + ")\n" +
+		Expect(r.out).To(HavePrefix("Files:\n✓ removed notes from default (base)  (" + filepath.Join(p.UserProfiles, "default.yml") + ")\n" +
 			"✓ added notes to profile me  (" + filepath.Join(p.UserProfiles, "me.yml") + ")\n"))
 		r = lola("profile", "--mv", "notes", "--to", "base", "--user", "--json")
 		Expect(r.code).To(Equal(0), r.err)
@@ -352,12 +352,12 @@ var _ = Describe("lola profile --move", func() {
 			r = run("lola profile --user --move notes --to base -C " + proj + " -n")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring("to apply: lola profile --user --move notes --to base -C " + proj + "\n"))
-			r = run("lola profile --user --move notes --to base -C " + proj + " -y")
+			r = run("lola profile --user --move notes --to base -C " + proj + " -y -v")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).To(HavePrefix("✓ removed notes from project.yml (base)\n" +
-				"✓ added notes to default (base)  (" + filepath.Join(p.UserProfiles, "default.yml") + ", new)\nuser scope:\n"))
-			Expect(r.out).To(MatchRegexp(`(?s)\nuser scope:\n.*create claude-code .claude/commands/notes.md.*\nproject `+regexp.QuoteMeta(proj)+
-				`:\n.*delete claude-code .claude/commands/notes.md.*✓ removed notes\n$`), "each scope's sync, named")
+			Expect(r.out).To(HavePrefix("user scope:\nFiles:\n"+
+				"✓ added notes to default (base)  ("+filepath.Join(p.UserProfiles, "default.yml")+", new)\n"), "each write under its scope's files")
+			Expect(r.out).To(MatchRegexp(`(?s)^user scope:\n.*create claude-code .claude/commands/notes.md.*\nproject `+regexp.QuoteMeta(proj)+
+				`:\nFiles:\n✓ removed notes from project.yml \(base\)\n.*delete claude-code .claude/commands/notes.md.*✓ removed notes\n$`), "each scope's sync, named")
 			Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("name: notes"))
 			Expect(read(filepath.Join(proj, ".lola", "project.yml"))).NotTo(ContainSubstring("notes"))
 			Expect(filepath.Join(p.Home, ".claude", "commands", "notes.md")).To(BeAnExistingFile())
@@ -381,7 +381,7 @@ var _ = Describe("lola profile --move", func() {
 			before := read(filepath.Join(p.UserProfiles, "default.yml"))
 			r := lola("profile", "--move", "notes", "--to", "me", "-C", proj)
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).To(HavePrefix("✓ removed notes from project.yml (base)\n" +
+			Expect(r.out).To(HavePrefix("Files:\n✓ removed notes from project.yml (base)\n" +
 				"✓ added notes to profile me  (" + filepath.Join(p.UserProfiles, "me.yml") + ")\n"))
 			Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(Equal(before))
 		})

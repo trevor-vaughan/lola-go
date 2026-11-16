@@ -1497,7 +1497,7 @@ else the receipt when `--trust` covers something, else the run's writes.
 | state | what the user sees | asked when |
 |---|---|---|
 | hooks | `<m> has install hooks. They run as you, unconfined:`, each `<event>: <script> (sha256 <digest>)`, then `Run <m>'s install hooks?` under it (default No) | a module the run installs has hooks without a consent recorded for their digest, on a terminal, without `--json`, `-n` or a `--trust` covering hooks |
-| runtime | `<m> has Claude Code hooks:` (`… and agent MCP servers:`), each with what it runs or where it connects, then `Install <m>'s Claude Code hooks?` (`… and agent MCP servers?`) (default No) | a module's Claude Code hooks without a consent recorded for their digest at that settings file, on the same terms |
+| runtime | `<m> has Claude Code hooks:` (`… and agent MCP servers:`), each with what it runs or where it connects, or, when the install review of the run listed every one, the one line `<m>'s Claude Code hooks are the hooks listed in the review above. …`; then `Install <m>'s Claude Code hooks?` (`… and agent MCP servers?`) (default No) | a module's Claude Code hooks without a consent recorded for their digest at that settings file, on the same terms |
 | script | `The project at <root> has a <event> script. It runs as you, unconfined, for every module lola installs there:`, `<path> (sha256 <digest>)`, then `Run this project's <event> script?` (default No) | the project's pre-install or post-install script without a consent recorded for its digest, when the run installs a copy for it to wrap, on the same terms |
 | later | the same listing, then `Trust this project's pre-install script for later runs?` (default No) | `lola sync` with nothing to install, the project's pre-install script without consent |
 | receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question)) | `--trust` covers something, on a terminal, without `-y` |
@@ -1622,12 +1622,15 @@ stateDiagram-v2
 
 Rules are tried in the order of the `start` rows below; the first that matches decides. The viewer
 reads its keys from stdin, or from the terminal when stdin is not one; the viewer draws on
-stdout, and prints its text whole there once it closes, so the text
+stdout, and prints its text there once it closes, with the folds the user opened, so the text
 stays in the terminal's scrollback. A plan that fits is printed on stderr before its question; one in
 the viewer goes to stdout, which is a terminal too whenever the viewer opens.
 
 The viewer's own inputs: *scroll* is `↑`/`↓` or `j`/`k` (a line), `PgUp`/`PgDn` or `b`/space (a
 page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal changing size.
+With a fold in the text, `tab`/`shift+tab` move a highlight between fold summaries and `space`
+opens or closes the highlighted one; `space` with none highlighted pages. The key line then adds
+`tab  next fold · space  open`.
 
 ### States
 
@@ -1635,7 +1638,7 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 |---|---|---|
 | printed | the text as it is, on stdout (a plan on stderr, before its question) | a `start` row says so |
 | pager | the user's `$LOLA_PAGER`, its stdin the text, uncapped; `LESS=FRX` unless `LESS` is set | `$LOLA_PAGER` is set and is not `cat` |
-| viewer | the text wrapped to the width on the alternate screen; under it a bold rule across the width, `━━ lines 41–80 of 312 · ↓ 232 more ━━` (`· end` once the last line shows), then the key line `q quit · ↑↓ space b  scroll · g G  top/end · /  search`, cut from the right on a narrow terminal (j/k, PgUp/PgDn and Home/End work too); before a picker, `q  continue to: <title>` in place of `q quit` | the text is taller than the terminal |
+| viewer | the text wrapped to the width on the alternate screen, a report's folds closed (`▸ summary`) until opened; under it a bold rule across the width, `━━ lines 41–80 of 312 · ↓ 232 more ━━` (`· end` once the last line shows), then the key line `q quit · ↑↓ space b  scroll · g G  top/end · /  search`, wrapped to two rows when one does not hold it, and the second cut from the right on a narrow terminal (j/k, PgUp/PgDn and Home/End work too); before a picker, `q  continue to: <title>` in place of `q quit` | the text is taller than the terminal |
 | search | the key line `/<term>█  enter search · esc cancel` while the term is typed; once searched, `/<term> 2 of 7` (or `no match`) and `n N  next/prev` before the keys, the current match in reverse video | `/` in the viewer or a review |
 | quit | the prompt line's note `Quit? your answers so far are dropped — nothing has been changed [y/N]` | `q` at a question with two or more answers held |
 | inline | the text printed on stderr, then the prompt line `Uninstall mymod? [y/N] █` under it (`[y/N]` bold, nothing in color); a hint or note after the field on the same line; `· esc back` at its end with a screen before | a question whose text and prompt line fit the terminal, or the viewer bypassed |
@@ -1665,7 +1668,10 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | viewer | / | | search | |
 | viewer | n or N | | viewer | the next or the previous match, wrapping at the ends; nothing without a search |
 | viewer | q | | done | the text printed; a question that follows is asked next |
-| viewer | esc | | done | as `q`; the key line names only `q` |
+| viewer | esc | no fold highlighted | done | as `q`; the key line names only `q` |
+| viewer | tab or shift+tab | | viewer | the next or previous fold's summary in reverse video, scrolled into view, wrapping at the ends; nothing without a fold |
+| viewer | space | a fold highlighted | viewer | the fold opens (`▾`, its detail under it) or closes (`▸`); the text wrapped again, the top line kept |
+| viewer | esc | a fold highlighted | viewer | the highlight cleared |
 | viewer | ctrl+c | nothing asked after | done | the text printed; exit 0 |
 | viewer | ctrl+c | a question follows | cancelled | the text printed; the question is not asked |
 | viewer | y, c or n | | viewer | nothing |
@@ -1698,7 +1704,9 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | prompt | q | two or more answers | quit | |
 | prompt | ctrl+c | | cancelled | the prompt line left with its field empty |
 | prompt | end of input | | refused | the text and the unanswered prompt line printed to stderr, then the error |
-| prompt | resize | | prompt | the text wrapped again; the prompt line wraps, the key line is cut from the right |
+| prompt | resize | | prompt | the text wrapped again; the prompt line wraps, the key line wraps to two rows, the second cut from the right |
+| prompt | tab or shift+tab | | prompt | as in the viewer |
+| prompt | space | a fold highlighted | prompt | as in the viewer |
 | quit | n, enter or esc | inline | inline | where it was |
 | quit | n, enter or esc | in the viewer | prompt | where it was |
 | quit | y | | cancelled | a quit |

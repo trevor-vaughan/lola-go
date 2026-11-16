@@ -188,7 +188,7 @@ func (a *app) receipt(cmd *cobra.Command, given engine.TrustKinds, yes bool) fun
 		p := a.prompter(cmd) // never asks under --json
 		if yes || !p.Interactive() {
 			w := cmd.ErrOrStderr()
-			show(w, style{color: a.color(w)})
+			show(w, style{color: a.color(w), bold: a.bold(w)})
 			return true, nil
 		}
 		ok, err := askYes(p, Question{Show: show, Prompt: "Proceed?"})

@@ -54,16 +54,17 @@ func (a *app) height(w any) int {
 	return 0
 }
 
-// style renders human output: glyphs always, ANSI color only when enabled, nothing fancy
-// under --plain. paged is set when the output goes to the viewer or a pager, which shows all of
-// it, so printers drop their caps (more). verbose is -v: a run's detail notices are printed, not
-// counted (printNotices); a command without -v prints them all, as it did before -v.
+// style renders human output: glyphs always, ANSI color only when enabled, bold only when bold is
+// set (app.bold), nothing fancy under --plain. paged is set when the output goes to the viewer or a
+// pager, which shows all of it, so printers drop their caps (more). verbose is -v: a run's detail
+// notices are printed, not counted (printNotices); a command without -v prints them all, as it did
+// before -v.
 // asking marks a plan shown just before the question that applies it, so it is no dry run.
 // width is the columns a hint wraps to (hintLine): the terminal's when stdout and stderr both are
 // one, else 0, so a pipe or a file gets each hint on one line.
 type style struct {
-	color, plain, paged, verbose, asking bool
-	width                                int
+	color, bold, plain, paged, verbose, asking, applied bool
+	width                                               int
 }
 
 // more is the command a capped listing names to list everything, or "" when the output is paged
@@ -79,7 +80,7 @@ func (a *app) style(cmd *cobra.Command) style {
 	if a.plain {
 		return style{plain: true}
 	}
-	s := style{color: a.color(cmd.OutOrStdout()), verbose: cmd.Flags().Lookup("verbose") == nil || given(cmd, "verbose")}
+	s := style{color: a.color(cmd.OutOrStdout()), bold: a.bold(cmd.OutOrStdout()), verbose: cmd.Flags().Lookup("verbose") == nil || given(cmd, "verbose")}
 	if (a.termOut || isTTY(cmd.OutOrStdout())) && (a.termErr || isTTY(cmd.ErrOrStderr())) {
 		s.width = a.width(cmd.OutOrStdout())
 	}
@@ -96,6 +97,18 @@ func (a *app) color(w any) bool {
 		return false
 	}
 	return a.getenv("NO_COLOR") == "" && isTTY(w)
+}
+
+// bold decides bold emphasis for output to w, which is not color: NO_COLOR and LOLA_COLOR=0 keep
+// it on a terminal. LOLA_COLOR=1 forces it; --plain, TERM=dumb and a w that is no terminal drop it.
+func (a *app) bold(w any) bool {
+	switch {
+	case a.plain:
+		return false
+	case a.getenv("LOLA_COLOR") == "1":
+		return true
+	}
+	return a.getenv("TERM") != "dumb" && isTTY(w)
 }
 
 // emit is the one output path: JSON under --json, the run's contexts first (withContext),

@@ -42,7 +42,7 @@ func (a *app) updateCmd() *cobra.Command {
 	_ = cmd.RegisterFlagCompletionFunc("at", a.completeAt)
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
-	cmd.Flags().BoolP("verbose", "v", false, "print every notice, not a count per module of those that are not about safety")
+	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
 	addTrustFlag(cmd, &trust, "update", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles (recorded as a yes is; never bypasses a refusal)")
 	// dnf and zypper's --refresh; additive and stable, the published table is
 	// pinned in store_test.go.

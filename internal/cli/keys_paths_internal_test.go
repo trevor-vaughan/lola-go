@@ -14,7 +14,7 @@ package cli
 // also pinned (viewer: viewer --scroll--> viewer): viewer_internal_test.go "scrolls by line, page and end, and its footer says where it is"
 // also pinned (viewer: viewer --/--> search; viewer: search --answer (a term)--> viewer): viewer_internal_test.go "jumps to the first match and says which it is, with the line in reverse video"
 // also pinned (viewer: viewer --n or N--> viewer): viewer_internal_test.go "steps through the matches with n and N, wrapping at the ends"
-// also pinned (viewer: viewer --q--> done; viewer: viewer --esc--> done; viewer: viewer --y, c or n--> viewer): viewer_internal_test.go "in read mode, q and Esc close it, Ctrl+C cancels, and y, c and n do nothing"
+// also pinned (viewer: viewer --q--> done; viewer: viewer --esc (no fold highlighted)--> done; viewer: viewer --y, c or n--> viewer): viewer_internal_test.go "in read mode, q and Esc close it, Ctrl+C cancels, and y, c and n do nothing"
 // also pinned (viewer: viewer --ctrl+c (a question follows)--> cancelled): pager_test.go "ends the sync on Ctrl+C in the trust diff's viewer, before the question"
 // also pinned (viewer: search --answer (an empty term)--> viewer): viewer_internal_test.go "clears the search for an empty term"
 // also pinned (viewer: search --esc--> viewer; viewer: search --q--> search): viewer_internal_test.go "takes q and the other keys as text while typing, and Esc drops the typing"
@@ -109,7 +109,7 @@ var _ = Describe("the viewer's and pager's transitions", func() {
 	})
 
 	It("viewer: viewer --resize--> viewer", func() {
-		m := search(newViewer(numbered(30), 40, 11), "line 1")
+		m := search(newReportViewer(textReport(numbered(30)), 60, 11), "line 1")
 		Expect(m.matches).To(Equal([]int{9, 10, 11, 12, 13, 14, 15, 16, 17, 18}))
 		Expect(m.matches[m.cur]).To(Equal(9), "line 10, the first match")
 		m = press(m, keyJ, keyJ, keyJ, keyJ, keyJ, keyJ)
@@ -120,7 +120,7 @@ var _ = Describe("the viewer's and pager's transitions", func() {
 	})
 
 	It("viewer: search --ctrl+c--> cancelled", func() {
-		m := newViewer(numbered(30), 40, 10)
+		m := newReportViewer(textReport(numbered(30)), 40, 10)
 		m.then = "Migrate?"
 		m, q := quits(press(m, keySlash), keyCtrlC)
 		Expect(q).To(BeTrue())
@@ -128,7 +128,7 @@ var _ = Describe("the viewer's and pager's transitions", func() {
 	})
 
 	It("viewer: quit --y--> cancelled", func() {
-		m := newPrompt(numbered(30), Question{Prompt: "Apply these changes?", Answers: "ycn", Nav: Nav{Back: true, Answered: 2}}, false, 200, 10)
+		m := newReportPrompt(textReport(numbered(30)), Question{Prompt: "Apply these changes?", Answers: "ycn", Nav: Nav{Back: true, Answered: 2}}, false, 200, 10)
 		m, q := quits(m, keyQ)
 		Expect(q).To(BeFalse(), "q asks first")
 		m, q = quits(m, keyY)
@@ -137,12 +137,39 @@ var _ = Describe("the viewer's and pager's transitions", func() {
 	})
 
 	It("viewer: quit --ctrl+c--> cancelled", func() {
-		m := newPrompt(numbered(30), Question{Prompt: "Apply these changes?", Answers: "ycn", Nav: Nav{Back: true, Answered: 2}}, false, 200, 10)
+		m := newReportPrompt(textReport(numbered(30)), Question{Prompt: "Apply these changes?", Answers: "ycn", Nav: Nav{Back: true, Answered: 2}}, false, 200, 10)
 		m, q := quits(m, keyQ)
 		Expect(q).To(BeFalse(), "q asks first")
 		m, q = quits(m, keyCtrlC)
 		Expect(q).To(BeTrue())
 		Expect(m.Answer()).To(Equal(viewCancel), "a cancel, not a quit")
+	})
+
+	It("viewer: viewer --tab or shift+tab--> viewer", func() {
+		m := press(newReportViewer(foldReport(), 80, 12), keyTab, keyTab)
+		Expect(m.hl).To(Equal(1))
+		Expect(press(m, keyTab).hl).To(Equal(0), "wrapping at the end")
+	})
+
+	It("viewer: viewer --space (a fold highlighted)--> viewer", func() {
+		m := press(newReportViewer(foldReport(), 80, 12), keyTab, keySpace)
+		Expect(m.open).To(Equal([]bool{true, false}))
+	})
+
+	It("viewer: viewer --esc (a fold highlighted)--> viewer", func() {
+		m, q := quits(press(newReportViewer(foldReport(), 80, 12), keyTab), keyEsc)
+		Expect(q).To(BeFalse())
+		Expect(m.hl).To(Equal(-1))
+	})
+
+	It("viewer: prompt --tab or shift+tab--> prompt", func() {
+		m := press(newReportPrompt(foldReport(), Question{Prompt: "Apply?", Answers: "yn"}, false, 80, 12), keyShTab)
+		Expect(m.hl).To(Equal(1), "shift+tab from no highlight takes the last fold")
+	})
+
+	It("viewer: prompt --space (a fold highlighted)--> prompt", func() {
+		m := press(newReportPrompt(foldReport(), Question{Prompt: "Apply?", Answers: "yn"}, false, 80, 12), keyTab, keySpace)
+		Expect(m.open[0]).To(BeTrue())
 	})
 })
 
@@ -225,7 +252,7 @@ var _ = Describe("accessible mode's transitions", func() {
 	})
 
 	two := AssistantStep{Options: []string{"a", "b"}}
-	review := ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewComponents, ReviewQuit}}
+	review := ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewComponents, ReviewQuit}}
 
 	It("accessible: pick --a blank line--> pick", func() {
 		got, err := accessible(&out, "", "1", "0").Assistants(two)
@@ -302,7 +329,7 @@ var _ = Describe("a question's transitions", func() {
 		if inline {
 			text = ""
 		}
-		return newPrompt(text, q, inline, 120, 10)
+		return newReportPrompt(textReport(text), q, inline, 120, 10)
 	}
 
 	// The frame bubbletea draws last is the one it erases below when the program ends, so the
@@ -324,7 +351,7 @@ var _ = Describe("a question's transitions", func() {
 
 	It("does not wrap the prompt line to a width it does not know", func() {
 		q := Question{Prompt: "Uninstall a module with a long enough name to wrap?", Answers: "yN"}
-		Expect(ansiStrip(newPrompt("", q, true, 0, 0).promptView())).To(Equal("Uninstall a module with a long enough name to wrap? [y/N] █"))
+		Expect(ansiStrip(newReportPrompt(&reportBuf{}, q, true, 0, 0).promptView())).To(Equal("Uninstall a module with a long enough name to wrap? [y/N] █"))
 		Expect(promptRows(q, 0)).To(Equal(1))
 	})
 
@@ -442,15 +469,16 @@ var _ = Describe("a question's transitions", func() {
 
 	It("viewer: prompt --resize--> prompt", func() {
 		q := Question{Prompt: "Remove these and sync? No applies nothing", Answers: "yN", Nav: Nav{Back: true}}
-		next, _ := newPrompt(numbered(30), q, false, 120, 10).Update(tea.WindowSizeMsg{Width: 30, Height: 10})
+		next, _ := newReportPrompt(textReport(numbered(30)), q, false, 120, 10).Update(tea.WindowSizeMsg{Width: 30, Height: 10})
 		m := next.(viewerModel)
-		rows := promptRows(q, 30)
+		rows, keys := promptRows(q, 30), m.keyRows()
 		Expect(rows).To(BeNumerically(">", 1), "at 30 columns the prompt line wraps")
+		Expect(keys).To(Equal(2), "and so does the key line")
 		lines := strings.Split(ansiStrip(m.View().Content), "\n")
 		Expect(lines).To(HaveLen(10), "the screen is the terminal's height")
-		Expect(lines[8-rows]).To(HavePrefix("━━ lines"))
-		Expect(lines[9]).To(HavePrefix("⏎ alone = no"), "the key line is the last row")
-		Expect(strings.Join(lines[9-rows:9], " ")).To(ContainSubstring("nothing"), "the prompt line wraps, never cut")
+		Expect(lines[9-keys-rows]).To(HavePrefix("━━ lines"))
+		Expect(lines[10-keys]).To(HavePrefix("⏎ alone = no"), "the key line is the last rows")
+		Expect(strings.Join(lines[10-keys-rows:10-keys], " ")).To(ContainSubstring("nothing"), "the prompt line wraps, never cut")
 	})
 })
 
@@ -476,10 +504,10 @@ var _ = Describe("a question on the terminal", func() {
 
 	It("viewer: start --ask (fits, or the viewer bypassed)--> inline", func() {
 		cmd.SetIn(keys("y\r"))
-		ans, err := a().ask(cmd, plan(7))
+		ans, err := a().ask(cmd, plan(5))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ans).To(Equal('y'))
-		Expect(errb.String()).To(HavePrefix(numbered(7)), "7 lines and the prompt fill 8 rows: printed, the prompt under them")
+		Expect(errb.String()).To(HavePrefix(numbered(5)), "5 lines, the break's 2 rows and the prompt fill 8 rows: printed, the prompt under them")
 		Expect(errb.String()).NotTo(ContainSubstring(altScreen))
 		Expect(ansi.Strip(errb.String())).To(ContainSubstring("Uninstall kit? [y/N]"))
 
@@ -491,6 +519,64 @@ var _ = Describe("a question on the terminal", func() {
 		Expect(ans).To(Equal('n'), "Enter alone answers the default")
 		Expect(errb.String()).To(HavePrefix(numbered(30)), "the viewer bypassed: printed, however tall")
 		Expect(errb.String()).NotTo(ContainSubstring(altScreen))
+	})
+
+	// folds is a question whose text is a fold of n lines, asked by a command that takes -v and
+	// was not given it.
+	folds := func(n int) Question {
+		cmd.Flags().BoolP("verbose", "v", false, "")
+		var detail []string
+		for i := range n {
+			detail = append(detail, fmt.Sprintf("remove claude-code %d", i))
+		}
+		return Question{Show: func(w io.Writer, s style) {
+			printFold(w, s, "kit: changes", detail)
+			printFoldFooter(w, s)
+		}, Prompt: "Uninstall kit?", Answers: "yN"}
+	}
+
+	It("prints a question's folds open inline, where nothing could open them, without the footer", func() {
+		cmd.SetIn(keys("y\r"))
+		_, err := a().ask(cmd, folds(2))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(errb.String()).To(HavePrefix("kit: changes\n    remove claude-code 0\n    remove claude-code 1\n"))
+		Expect(errb.String()).NotTo(ContainSubstring("▸"))
+		Expect(errb.String()).NotTo(ContainSubstring(foldFooter))
+		Expect(errb.String()).NotTo(ContainSubstring(altScreen))
+	})
+
+	It("measures a question's text open: folds too tall open go to the viewer, closed there", func() {
+		cmd.SetIn(keys("y\r"))
+		_, err := a().ask(cmd, folds(5))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(errb.String()).To(ContainSubstring(altScreen), "6 lines open, the break and the prompt do not fit 8 rows")
+		Expect(errb.String()).To(ContainSubstring("▸ kit: changes"), "the viewer keeps its folds to open")
+	})
+
+	It("hands $LOLA_PAGER a question's folds open", func() {
+		paged := filepath.Join(tmp, "paged")
+		Expect(os.WriteFile(filepath.Join(tmp, "bin", "fakepager"), []byte("#!/bin/sh\ncat > \"$PAGED\"\n"), 0o755)).To(Succeed())
+		GinkgoT().Setenv("PAGED", paged)
+		GinkgoT().Setenv("LOLA_PAGER", "fakepager")
+		cmd.SetIn(keys("y\r"))
+		_, err := a().ask(cmd, folds(2))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.ReadFile(paged)).To(Equal([]byte("kit: changes\n    remove claude-code 0\n    remove claude-code 1\n")))
+	})
+
+	It("sets the prompt line apart from its text: a blank line and a rule across the terminal", func() {
+		cmd.SetIn(keys("y\r"))
+		_, err := a().ask(cmd, plan(3))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ansiStrip(errb.String())).To(HavePrefix(numbered(3) + "\n" + strings.Repeat("━", 120) + "\n"))
+	})
+
+	It("counts the break's rows: 6 lines, the break and the prompt do not fit 8 rows", func() {
+		cmd.SetIn(keys("y\r"))
+		_, err := a().ask(cmd, plan(6))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(errb.String()).To(ContainSubstring(altScreen))
+		Expect(ansiStrip(errb.String())).NotTo(ContainSubstring("\n"+strings.Repeat("━", 120)+"\n"), "the viewer's rule is its break")
 	})
 
 	// The 8-row case of the spec: the text and the prompt together decide.
@@ -559,13 +645,13 @@ var _ = Describe("a question on the terminal", func() {
 			"the text and the unanswered prompt line stay in the scrollback")
 	})
 
-	It("asks a question with no text inline, without a blank line, however short the terminal", func() {
+	It("asks a question with no text inline, under just the break, however short the terminal", func() {
 		GinkgoT().Setenv("LINES", "1")
 		cmd.SetIn(keys("y\r"))
 		ans, err := a().ask(cmd, Question{Prompt: "Install kit with no components?", Answers: "yN"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ans).To(Equal('y'))
 		Expect(errb.String()).NotTo(ContainSubstring(altScreen))
-		Expect(ansi.Strip(errb.String())).NotTo(HavePrefix("\n"))
+		Expect(ansi.Strip(errb.String())).To(HavePrefix("\n"+strings.Repeat("━", 120)+"\n"), "the break is the only thing before the prompt")
 	})
 })

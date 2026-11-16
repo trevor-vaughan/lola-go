@@ -666,6 +666,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	res.Trusted = []Consent{} // a command that takes --trust says what it covered, [] for nothing
 	res.Notices = append(res.Notices, swept...)
 	res.Notices = append(res.Notices, restored...)
+	defer func() { markEvents(res.Findings) }() // what no scope's plan compared is new
 	res.home = e.Paths.Home
 	out := &InstallResult{Result: res, Scopes: []ScopeResult{}, TargetVersions: []TargetVersion{}}
 	probes := e.newProbeRun(ctx)
@@ -2286,9 +2287,9 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 		}
 	}
 	entry := &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest, Targets: mr.Targets,
-		Components: ent.Components.Clone(), RenderedWith: mr.renderedWith, Eras: mr.eras, From: from}
+		Components: ent.Components.Clone(), RenderedWith: mr.renderedWith, Eras: mr.eras, From: from, Safety: mr.safety}
 	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: planned, Intents: intents, Entry: entry})
-	res.Modules[len(res.Modules)-1].Kept = installed != nil && !opts.Force && !installed.HooksPending && !installed.ScriptsPending &&
+	res.Modules[len(res.Modules)-1].Kept = installed != nil && !installed.HooksPending && !installed.ScriptsPending &&
 		installed.From == entry.From && installed.Source == entry.Source && installed.Ref == entry.Ref && installed.Path == entry.Path &&
 		installed.Commit == entry.Commit && installed.Digest == entry.Digest && slices.Equal(installed.Targets, entry.Targets) &&
 		reflect.DeepEqual(installed.Components, entry.Components) && reflect.DeepEqual(installed.RenderedWith, entry.RenderedWith) &&
@@ -2662,6 +2663,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		return nil, err
 	}
 	res := newResult(opts.DryRun)
+	defer func() { markEvents(res.Findings) }() // what no scope's plan compared is new
 	res.PicksCleared = []PickCleared{}
 	// The files an uninstall removes are the ledger's, which is this checkout's own only while
 	// git does not track it.

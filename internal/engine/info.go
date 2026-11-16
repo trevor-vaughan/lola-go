@@ -234,7 +234,7 @@ func (s InfoScript) Root() string { return s.root }
 // hook two scopes write to two files is shown once.
 func (runs *InfoRuns) add(hooks []RuntimeHook, servers []InfoMCPServer) {
 	for _, h := range hooks {
-		h.settings = ""
+		h.Settings = ""
 		if !slices.ContainsFunc(runs.RuntimeHooks, func(x RuntimeHook) bool { return reflect.DeepEqual(x, h) }) {
 			runs.RuntimeHooks = append(runs.RuntimeHooks, h)
 		}
@@ -968,7 +968,11 @@ func (e *Engine) infoPlan(ctx context.Context, req InfoRequest, run *StagedRun, 
 	if err != nil {
 		return InfoInstall{}, err
 	}
-	in := InfoInstall{Scope: c.Scope.Kind.String(), Targets: append([]string{}, shownTargets...), Steps: res.Steps, Findings: res.Findings,
+	finds := slices.Clone(res.Findings)
+	for i := range finds {
+		finds[i].New = nil // lola info shows what an install would do, not what is new to you
+	}
+	in := InfoInstall{Scope: c.Scope.Kind.String(), Targets: append([]string{}, shownTargets...), Steps: res.Steps, Findings: finds,
 		Consent: []InfoConsent{}, Digest: v.Meta.Digest, Notices: res.Notices, root: root(c.Scope), Components: []InfoComponent{},
 		current: len(res.Steps) == 0 && len(res.Edits) == 0}
 	for _, m := range res.Modules {
@@ -1012,7 +1016,7 @@ func (e *Engine) infoPlan(ctx context.Context, req InfoRequest, run *StagedRun, 
 	}
 	for _, m := range res.Modules {
 		for _, h := range m.RuntimeHooks {
-			item := shown(m.Name) + " in " + shown(h.settings)
+			item := shown(m.Name) + " in " + shown(h.Settings)
 			recorded := RecordedNo
 			if h.Status == RuntimeHooksConsented {
 				recorded = RecordedYes

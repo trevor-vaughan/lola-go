@@ -46,7 +46,7 @@ func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Na
 	err := errs.WithHints(fmt.Errorf("%s needs confirmation, and there is no terminal to ask on", cmd.CommandPath()),
 		runWithout(cmd, args, "yes")+" -y")
 	if !a.json {
-		show(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), asking: true})
+		show(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr()), asking: true})
 		return err
 	}
 	fields, ferr := planFields(plan)
@@ -65,7 +65,7 @@ func (a *app) deletesRefusal(cmd *cobra.Command, err error) error {
 		return err
 	}
 	if !a.json {
-		printRemovals(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), plain: a.plain}, refused.Removals)
+		printRemovals(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr()), plain: a.plain}, refused.Removals)
 		return err
 	}
 	fields, ferr := planFields(refused.Plan)
@@ -142,21 +142,32 @@ func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options) {
 		return askYes(p, Question{Show: show, Prompt: "Run " + module + "'s install hooks?", Trust: engine.TrustHooks})
 	}
 	opts.AskRuntimeHooks = func(module string, hooks []engine.RuntimeHook) (bool, error) {
-		what := "Claude Code hooks"
-		if slices.ContainsFunc(hooks, func(h engine.RuntimeHook) bool { return h.MCPServer != "" }) {
-			what = "Claude Code hooks and agent MCP servers"
-		}
-		show := func(w io.Writer, _ style) {
-			fmt.Fprintf(w, "%s has %s:\n", module, what)
-			for _, h := range hooks {
-				for _, line := range runtimeHookLines(h) {
-					fmt.Fprintln(w, "    "+line)
-				}
-			}
-			fmt.Fprintln(w, "  These run inside Claude Code with your permissions.")
-		}
-		return askYes(p, Question{Show: show, Prompt: "Install " + module + "'s " + what + "?", Trust: engine.TrustRuntimeHooks})
+		return askRuntimeHooks(p, module, hooks, nil)
 	}
+}
+
+// askRuntimeHooks asks p whether to install module's runtime hooks, listing each, or, when the
+// install review of this run listed every one (shown, by hookKey), pointing there in one line.
+func askRuntimeHooks(p Prompter, module string, hooks []engine.RuntimeHook, shown map[string]bool) (bool, error) {
+	what := "Claude Code hooks"
+	if slices.ContainsFunc(hooks, func(h engine.RuntimeHook) bool { return h.MCPServer != "" }) {
+		what = "Claude Code hooks and agent MCP servers"
+	}
+	show := func(w io.Writer, _ style) {
+		fmt.Fprintf(w, "%s has %s:\n", module, what)
+		for _, h := range hooks {
+			for _, line := range runtimeHookLines(h) {
+				fmt.Fprintln(w, "    "+line)
+			}
+		}
+		fmt.Fprintln(w, "  These run inside Claude Code with your permissions.")
+	}
+	if !slices.ContainsFunc(hooks, func(h engine.RuntimeHook) bool { return !shown[hookKey(module, h)] }) {
+		show = func(w io.Writer, _ style) {
+			fmt.Fprintf(w, "%s's %s are the hooks listed in the review above. They run inside Claude Code with your permissions.\n", module, what)
+		}
+	}
+	return askYes(p, Question{Show: show, Prompt: "Install " + module + "'s " + what + "?", Trust: engine.TrustRuntimeHooks})
 }
 
 // runtimeHookLines describes one runtime hook for consent and the summary: its event, matcher

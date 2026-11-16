@@ -324,7 +324,8 @@ printed.
 `viewerModel` (`internal/cli/viewer.go`) is a bubbletea model over `bubbles/v2/viewport`:
 `ansi.Wrap` to the width, again on `tea.WindowSizeMsg`; `g`/`G`/`Home`/`End` added to the viewport's
 keys; under the text a bold rule (`rule`: `━━ lines 41–80 of 312 · ↓ 232 more`, `· end` at the last
-line), then the key line (`keyLine`, cut from the right to the width; `keyLineFor` builds it from
+line), then the key line (`keyLine`, wrapped between keys to two rows when one does not hold it and cut
+from the right of the second, its rows fixed while a search runs (`keyRows`); `keyLineFor` builds it from
 `viewerKeys`, each entry tagged with the modes it shows in). It has three modes. Read mode scrolls
 and searches; `q`, Esc close it and Ctrl+C cancels (`viewCancel`). Continue mode, when `then` names
 the question asked next, puts `q  continue to: <then>` first in the key line. Prompt mode (`prompt`

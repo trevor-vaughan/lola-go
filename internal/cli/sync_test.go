@@ -160,7 +160,7 @@ var _ = Describe("lola sync", func() {
 		pull("  - name: other\n    source: mods/other\n")
 		r := lola("sync", "kit", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(Equal("⚠ 1 other module is not in sync: other → lola sync --project\n✓ kit already in sync\n"))
+		Expect(r.out).To(Equal("Notices:\n⚠ 1 other module is not in sync: other → lola sync --project\n✓ kit already in sync\n"))
 		r = lola("sync", "kit", "-n", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HaveSuffix("→ kit already in sync\n"))
@@ -358,7 +358,7 @@ var _ = Describe("lola sync", func() {
 		turnOn("project:team")
 		r := lola("sync", "-C", proj, "--trust")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(MatchRegexp(`pins:\n  → arch \(project:team\) pinned sha256:[0-9a-f]{64}\n`))
+		Expect(r.out).To(MatchRegexp(`✓ synced arch \(project:team\) pinned sha256:[0-9a-f]{64} \(claude-code\)\n`))
 	})
 
 	It("names a module left as installed once in the answer's echo, though both files change it", func() {
@@ -425,7 +425,7 @@ var _ = Describe("lola sync", func() {
 
 		r = lola("sync", "--trust", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HaveSuffix("✓ synced srv (claude-code)\n✓ 1 unchanged\n"), "kit is unchanged")
+		Expect(r.out).To(ContainSubstring("✓ synced srv (claude-code)\n✓ 1 unchanged\n"), "kit is unchanged")
 		Expect(r.out).NotTo(ContainSubstring("srv MCP servers:"), "the diff on stderr showed them")
 	})
 
@@ -510,7 +510,7 @@ var _ = Describe("lola sync", func() {
 		writeTree(filepath.Join(proj, "mods", "big"), files)
 		pull("  - name: big\n    source: mods/big\n")
 
-		r := lola("sync", "big", "--force", "-n", "-C", proj)
+		r := lola("sync", "big", "--force", "-n", "-C", proj, "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		_, plan, _ := strings.Cut(r.out, "plan (dry run")
 		Expect(strings.Count(plan, ".claude/commands/c")).To(Equal(40))
@@ -537,21 +537,23 @@ var _ = Describe("lola sync", func() {
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: other\n    source: mods/other\n"), 0o644)).To(Succeed())
 		r = lola("sync", "-n", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HaveSuffix("→ to apply: lola sync -C "+proj+"\n→ off a terminal: lola sync -C "+proj+" --trust=entries\n"),
-			"removals add no -y you did not give; the scope is named from outside the project")
+		Expect(r.out).To(HaveSuffix("→ to apply: lola sync -C "+proj+"\n→ off a terminal: lola sync -C "+proj+" --trust=entries -y\n"),
+			"off a terminal its removals need -y; the scope is named from outside the project")
 
 		r = lola("sync", "-n", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var out map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &out)).To(Succeed())
-		Expect(out).To(HaveKeyWithValue("equivalent_commands", []any{"lola sync -C " + proj + " --trust=entries"}))
+		Expect(out).To(HaveKeyWithValue("equivalent_commands", []any{"lola sync -C " + proj + " --trust=entries -y"}))
+		off := lola(strings.Fields(strings.TrimPrefix(out["equivalent_commands"].([]any)[0].(string), "lola "))...)
+		Expect(off.code).To(Equal(0), off.err)
+		Expect(lola("sync", "-n", "-C", proj).out).To(Equal("→ already in sync\n"), "the command it printed applied it off a terminal")
 
-		r = lola("sync", "-C", proj, "--json", "--trust", "-y")
+		r = lola("sync", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		out = nil
 		Expect(json.Unmarshal([]byte(r.out), &out)).To(Succeed())
 		Expect(out).To(HaveKeyWithValue("equivalent_commands", []any{}), "only a dry run has one")
-		Expect(lola("sync", "-n", "-C", proj).out).To(Equal("→ already in sync\n"), "nothing to apply, no command")
 	})
 
 	It("starts every --plain row at column 1, in sync and install", func() {
@@ -755,7 +757,7 @@ var _ = Describe("lola sync", func() {
 		r := lolaAsking(c, "sync", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(Equal([]string{"trust", "Remove these and sync? No applies nothing"}))
-		Expect(strings.TrimPrefix(c.before[1], c.before[0])).To(HaveSuffix("removals:\n  ✗ kit: claude-code (whole module)\n      .claude/commands/kit.md\n"))
+		Expect(strings.TrimPrefix(c.before[1], c.before[0])).To(HaveSuffix("To remove:\n  ✗ kit: claude-code (whole module)\n      .claude/commands/kit.md\n"))
 		Expect(r.err).To(HaveSuffix("removals declined; the project was not changed. The changes you trusted are recorded; " +
 			"the next lola sync --project asks only about the removals.\n"))
 		Expect(filepath.Join(proj, ".claude", "commands", "kit.md")).To(BeARegularFile())
@@ -951,7 +953,7 @@ var _ = Describe("lola sync", func() {
 
 		r = lola("sync", "--update", "--trust", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(MatchRegexp(`pins:\n  → arch re-pinned sha256:[0-9a-f]{64} \(--update\)\n`), "each pin once, its new digest only")
+		Expect(r.out).To(MatchRegexp(`✓ synced arch re-pinned sha256:[0-9a-f]{64} \(claude-code\)\n`), "each pin once, its new digest only")
 		Expect(r.out).NotTo(ContainSubstring("changed since lola last wrote it"))
 	})
 
@@ -981,9 +983,16 @@ var _ = Describe("lola sync", func() {
 	It("prints the plan, pins, removals and findings before the synced and removed lines", func() {
 		writeTree(filepath.Join(proj, "mods", "arch"), map[string]string{"lola.yml": "name: arch\n", "commands/arch.md": "Arch\n"})
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: arch\n    source: mods/arch\n"), 0o644)).To(Succeed())
-		r := lola("sync", "-C", proj, "--trust", "-y")
+		r := lola("sync", "-C", proj, "--trust", "-y", "-v")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(MatchRegexp(`(?s)removals:\n.*✓ synced arch.*✓ removed kit\n$`))
+		Expect(r.out).To(MatchRegexp(`(?s)\nRemoved:\n  ✗ kit: claude-code \(whole module\)\n.*✓ synced arch.*✓ removed kit\n$`))
+		Expect(r.out).NotTo(ContainSubstring("To remove:"))
+
+		writeTree(filepath.Join(proj, "mods", "arch"), map[string]string{"lola.yml": "name: arch\n", "commands/arch.md": "Arch\n"})
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
+		r = lola("sync", "-C", proj, "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("\nTo remove:\n  ✗ arch: claude-code (whole module)\n"), "a dry run removes nothing yet")
 	})
 
 	It("off a terminal, --trust alone does not confirm removals: -y does", func() {
@@ -1000,7 +1009,7 @@ var _ = Describe("lola sync", func() {
 			"skills/broken/notes.md": "no SKILL.md here\n"})
 		r := lola("install", filepath.Join(proj, "mods", "warn"), "-C", proj, "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
-		r = lola("sync", "-C", proj)
+		r = lola("sync", "-C", proj, "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("skills/broken has no SKILL.md; skipped"))
 		Expect(r.out).To(HaveSuffix("✓ already in sync\n"))

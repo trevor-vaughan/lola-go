@@ -1051,7 +1051,7 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
 			Expect(probeFindings(res)).To(Equal([]target.Finding{{Severity: target.SeverityInfo, Target: "claude-code", Kind: "assistant",
-				Code: "probe/not-found", Text: "claude is not on PATH"}}))
+				Code: "probe/not-found", Text: "claude is not on PATH", New: new(true)}}))
 		})
 
 		It("reads the installed version once per binary build and caches it", func() {

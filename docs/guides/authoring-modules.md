@@ -503,7 +503,8 @@ flowchart TD
   class Drop,Declined sysF
 ```
 
-- On a terminal, lola lists each hook and each inline MCP server of an agent, and asks
+- On a terminal, lola lists each hook and each inline MCP server of an agent (or, when the
+  install review just listed them all, points there in one line), and asks
   "Install <module>'s Claude Code hooks?" ("…hooks and agent MCP servers?" when it lists a
   server), defaulting to No.
   - For a hook it shows its event, matcher and type, and `if`, `async` and `shell` when set.

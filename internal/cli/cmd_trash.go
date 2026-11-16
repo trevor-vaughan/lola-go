@@ -214,7 +214,7 @@ func (a *app) emptyTrash(cmd *cobra.Command, eng *engine.Engine, args []string, 
 // then its path relative to the run's project (whole when the run has none), so a cut to the
 // terminal's width takes the path's start last.
 func (a *app) pickTrash(cmd *cobra.Command, eng *engine.Engine, p Prompter, list *engine.TrashList) error {
-	w, s := cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}
+	w, s := cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}
 	for _, n := range list.Notices {
 		fmt.Fprintln(w, noticeLine(s, n))
 	}
@@ -339,7 +339,7 @@ func (a *app) restorePicked(cmd *cobra.Command, eng *engine.Engine, p Prompter, 
 	if restored == 0 {
 		title = "" // no question follows the plan
 	}
-	if err := a.pageThen(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}, title, show); err != nil {
+	if err := a.pageThen(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}, title, show); err != nil {
 		return "", err // Ctrl+C in the plan's viewer: the question is not asked
 	}
 	if restored == 0 {

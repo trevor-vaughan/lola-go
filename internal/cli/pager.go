@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -48,7 +47,7 @@ func (a *app) paging(cmd *cobra.Command) paging {
 	}
 	if err != nil {
 		w := cmd.ErrOrStderr()
-		fmt.Fprintln(w, style{color: a.color(w)}.warn(untrusted.CleanErr(err).Error()+"; printing without the viewer"))
+		fmt.Fprintln(w, style{color: a.color(w), bold: a.bold(w)}.warn(untrusted.CleanErr(err).Error()+"; printing without the viewer"))
 		for _, h := range errs.Hints(err) {
 			fmt.Fprintln(w, hintLine("  ", h, a.style(cmd).width))
 		}
@@ -73,7 +72,8 @@ func (a *app) paging(cmd *cobra.Command) paging {
 // or the viewer exits, so a question asked next is never inside it. A pager that cannot be found,
 // is found in the current directory (exec.ErrDot), cannot start or exits non-zero, and a viewer
 // that cannot start, is a warning, and the text is then printed capped: consent is never given
-// unseen.
+// unseen. Output is rendered through a reportBuf: its folds print closed (Folded) outside the
+// viewer.
 func (a *app) page(cmd *cobra.Command, w io.Writer, s style, print func(io.Writer, style)) {
 	_ = a.pageThen(cmd, w, s, "", print) // with no question to follow, Ctrl+C only closes the viewer: always nil
 }
@@ -83,30 +83,36 @@ func (a *app) page(cmd *cobra.Command, w io.Writer, s style, print func(io.Write
 // instead: pageThen returns ErrAborted, and the question is not asked.
 func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, print func(io.Writer, style)) error {
 	mode := a.paging(cmd)
+	printed := func() {
+		var buf reportBuf
+		print(&buf, s)
+		fmt.Fprint(w, buf.Folded())
+	}
 	if !mode.viewer && mode.argv == nil {
-		print(w, s)
+		printed()
 		return nil
 	}
 	out := cmd.OutOrStdout()
-	full := style{color: a.color(out), paged: true, verbose: s.verbose, asking: s.asking, width: s.width}
-	var buf bytes.Buffer
+	full := style{color: a.color(out), bold: a.bold(out), paged: true, verbose: s.verbose, asking: s.asking, width: s.width}
+	var buf reportBuf
 	print(&buf, full)
+	text := buf.Folded()
 	warn := func(problem string) {
-		fmt.Fprintln(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}.warn(problem+"; showing it here"))
-		print(w, s)
+		fmt.Fprintln(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}.warn(problem+"; showing it here"))
+		printed()
 	}
 	if mode.argv != nil {
-		if problem := a.runPager(cmd, mode, &buf); problem != "" {
+		if problem := a.runPager(cmd, mode, strings.NewReader(text)); problem != "" {
 			warn(problem)
 		}
 		return nil
 	}
 	width, height := a.width(out), a.height(out)
-	if width == 0 || height == 0 || fits(buf.String(), 1, width, height) {
-		fmt.Fprint(w, buf.String())
+	if width == 0 || height == 0 || fits(text, 1, width, height) {
+		fmt.Fprint(w, text)
 		return nil
 	}
-	ans, err := a.view(cmd, buf.String(), then)
+	ans, err := a.view(cmd, &buf, then)
 	switch {
 	case err != nil:
 		warn("the viewer failed: " + untrusted.CleanErr(err).Error())

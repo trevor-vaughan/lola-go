@@ -23,15 +23,14 @@ const (
 // pad is the trust diff's value column, under "  ~ <module>     ".
 const pad = "                  "
 
-// printSync renders a sync result: in a dry run the trust diff first; then the
-// plan as install shows it, with the MCP servers of the modules the diff did not show, the pins
-// (unless the diff on stdout showed them), the removals, findings and notices, and a line per
-// module the run changed, then how many it left unchanged. A run in sync prints its findings
-// and notices, then says so, naming the modules it was limited to (names), each once. more is the command
-// that lists every file and step of a module whose diff or dry-run plan is capped. lola update's
-// result (r.Installed) says so: its trust diff names lola update, its pins name each moved module
-// from → to, and its lines say updated and up to date.
-func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []string, more string) {
+// printSync renders a sync result: in a dry run the trust diff first, then the run's report
+// (printReport) with the pins unless the diff showed them, the MCP servers of the modules it did
+// not list, and, for a run in sync, the in-sync line naming the modules it was limited to (names),
+// each once. more is the command that lists every file and step of a module whose diff or dry-run
+// plan is capped. lola update's result (r.Installed) says so: its trust diff names lola update,
+// and its outcome says updated, with each pin move, and up to date. alone marks the sync as the
+// whole run (lola sync, lola update), not a part of one (report.Alone).
+func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []string, more string, alone bool) {
 	run, verb, inSync := "lola sync", "synced", "already in sync"
 	if r.Installed {
 		run, verb, inSync = "lola update", "updated", "already up to date"
@@ -50,68 +49,23 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 	if diffShown {
 		printTrustDiff(w, s, name, run, r.Trust, more)
 	}
-	if r.InSync && !diffShown && !s.plain && len(r.Failed) == 0 && len(r.Gone) == 0 { // a module not checked is not up to date
-		// A value another version keeps was said in full when the files were written: a run that
-		// writes none counts them per module, with the lola check that lists them.
-		res := *r.Result
-		var counts []string
-		if !s.verbose {
-			res.Findings, counts = foldDropped(res.Findings, func(string) bool { return true })
-		}
-		printNotices(w, s, &res)
-		for _, c := range counts {
-			fmt.Fprintln(w, s.info(c))
-		}
-		if r.DryRun {
-			fmt.Fprintln(w, s.info(inSync))
-		} else {
-			fmt.Fprintln(w, s.ok(inSync))
-		}
-		return
-	}
-	// The diff listed the MCP servers of the modules it showed: the footer names the others.
-	plan := *r.Result
-	plan.Modules = slices.Clone(r.Modules)
-	for i, m := range plan.Modules {
-		if asked && slices.ContainsFunc(r.Trust.Changes, func(c engine.TrustChange) bool { return c.Module == m.Name }) {
-			plan.Modules[i].MCPServers = nil
-		}
-	}
-	steps := ""
+	rep := report{Result: r.Result, Verb: verb, Sync: true, Update: r.Installed, Changed: r.Changed, Removals: r.Removals,
+		ToApply: r.ToApply, OffTerminal: r.OffTerminal, Alone: alone}
 	if r.DryRun {
-		steps = more
+		rep.More = more
 	}
-	printPlan(w, s, &plan, nil, steps)
-	if !diffShown || s.plain {
-		printPins(w, s, r.Pins, r.Installed)
+	if !diffShown || s.plain { // the diff on stdout showed them
+		rep.Pins = r.Pins
 	}
-	printRemovals(w, s, r.Removals)
-	printNotices(w, s, r.Result)
-	if r.DryRun && r.ToApply != "" && !s.plain {
-		fmt.Fprintln(w, s.info("to apply: "+r.ToApply))
-		if r.OffTerminal != "" {
-			fmt.Fprintln(w, s.info("off a terminal: "+r.OffTerminal))
+	if asked {
+		for _, c := range r.Trust.Changes {
+			rep.Listed = append(rep.Listed, c.Module)
 		}
 	}
-	if r.DryRun || s.plain {
-		return
+	if r.InSync && !diffShown && len(r.Failed) == 0 && len(r.Gone) == 0 { // a module not checked is not up to date
+		rep.InSync = inSync
 	}
-	unchanged := 0
-	for _, m := range r.Modules {
-		if slices.Contains(r.Changed, m.Name) {
-			fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s (%s)", verb, m.Name, strings.Join(m.Targets, ", "))))
-		} else {
-			unchanged++
-		}
-	}
-	for _, rm := range r.Removals {
-		if rm.WholeModule {
-			fmt.Fprintln(w, s.ok("removed "+rm.Module))
-		}
-	}
-	if unchanged > 0 {
-		fmt.Fprintln(w, s.ok(fmt.Sprintf("%d unchanged", unchanged)))
-	}
+	printReport(w, s, rep)
 }
 
 // printPins lists the pins a sync writes, each once with its new digest in full (the diff and
@@ -147,9 +101,10 @@ func printPins(w io.Writer, s style, pins []engine.Pin, installed bool) {
 	}
 }
 
-// printRemovals lists what a sync removes, per module and target, with each path lola wrote
-// there on a line of its own; --plain rows are remove, module, target, path, one per path (a
-// target lola wrote no path for has one row with none).
+// printRemovals lists what a run would remove, before it does, under the heading the report gives
+// them before a run applies (To remove), so one list has one name (printRemovalLines); --plain rows
+// are remove, module, target, path, one per path (a target lola wrote no path for has one row with
+// none).
 func printRemovals(w io.Writer, s style, rs []engine.Removal) {
 	if len(rs) == 0 {
 		return
@@ -172,7 +127,13 @@ func printRemovals(w io.Writer, s style, rs []engine.Removal) {
 		}
 		return
 	}
-	fmt.Fprintln(w, "removals:")
+	fmt.Fprintln(w, s.strong("To remove:"))
+	printRemovalLines(w, s, rs)
+}
+
+// printRemovalLines lists removals per module and target, with each path lola wrote there on a
+// line of its own.
+func printRemovalLines(w io.Writer, s style, rs []engine.Removal) {
 	for _, r := range rs {
 		why := "(no longer in its targets)"
 		if r.WholeModule {
@@ -225,7 +186,7 @@ func printSyncRefusal(w io.Writer, s style, name, run string, refusal *engine.Tr
 	for _, n := range refusal.Notices {
 		fmt.Fprintln(w, noticeLine(s, n))
 	}
-	printTrustDiff(w, style{color: s.color}, name, run, refusal.Report, more)
+	printTrustDiff(w, style{color: s.color, bold: s.bold}, name, run, refusal.Report, more)
 	printRemovals(w, s, refusal.Removals)
 }
 

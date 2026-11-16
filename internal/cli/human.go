@@ -25,10 +25,9 @@ func (s style) warn(t string) string { return s.paint("33", "⚠ "+t) }
 func (s style) bad(t string) string  { return s.paint("31", "✗ "+t) }
 func (s style) info(t string) string { return s.paint("36", "→ "+t) }
 
-// strong is bold, which is emphasis, not color: NO_COLOR and LOLA_COLOR=0 keep it, --plain does
-// not.
+// strong is bold when the style is (app.bold): on a terminal, as emphasis, not color.
 func (s style) strong(t string) string {
-	if s.plain {
+	if !s.bold {
 		return t
 	}
 	return "\x1b[1m" + t + "\x1b[22m"
@@ -108,7 +107,11 @@ func noticeLine(s style, n engine.Notice) string {
 // or in lola check.
 func findingLine(s style, f target.Finding) string {
 	if s.plain {
-		return strings.Join([]string{"finding", string(f.Severity), f.Module, f.Target, f.Kind, f.Artifact, f.Code, f.Text}, "\t")
+		row := []string{"finding", string(f.Severity), f.Module, f.Target, f.Kind, f.Artifact, f.Code, f.Text}
+		if f.New != nil { // a run's finding: lola check's and lola info's carry none
+			row = append(row, map[bool]string{true: "new", false: "seen"}[*f.New])
+		}
+		return strings.Join(row, "\t")
 	}
 	var line string
 	switch f.Severity {
@@ -170,52 +173,12 @@ func checkLine(s style, f target.Finding) string {
 	return findingLine(s, f)
 }
 
-// printInstall renders an install result; with more than one scope, steps are grouped and
-// modules named per scope. A module whose lock.json entry it kept (Kept), writing none of its files
-// and no entry for it, is already up to date: it says so, and counts the values its version drops,
-// as a sync with nothing to write does (foldDropped), unless --verbose.
-func printInstall(w io.Writer, s style, r *engine.InstallResult) {
-	upToDate := func(m engine.ModuleResult) bool {
-		return !r.DryRun && m.Kept && !slices.ContainsFunc(r.Steps, func(st plan.Step) bool { return st.Module == m.Name && st.Scope == m.Scope }) &&
-			!slices.ContainsFunc(r.Edits, func(ed engine.Edit) bool { return ed.Module == m.Name })
-	}
-	printScoped(w, s, "installed", r.Result, r.Scopes, upToDate)
-}
-
-// printResult renders an install or uninstall result: steps, MCP transparency, install
-// hooks, notices, and a summary line.
-func printResult(w io.Writer, s style, verb string, r *engine.Result) {
-	printScoped(w, s, verb, r, nil, nil)
-}
-
 // scopeLabel names a scope in human output.
 func scopeLabel(sc engine.ScopeResult) string {
 	if sc.Root != "" {
 		return sc.Scope + " (" + untrusted.Text(sc.Root, untrusted.MaxName) + ")"
 	}
 	return sc.Scope
-}
-
-// printScoped renders a run's edits, plan, notices and closing lines; upToDate, nil for none, says
-// which modules are already up to date (printInstall).
-func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult, upToDate func(engine.ModuleResult) bool) {
-	printEdits(w, s, r.Edits, r.DryRun)
-	printPlan(w, s, r, scopes, "")
-	res := *r
-	var counts []string
-	if upToDate != nil && !s.verbose && !s.plain {
-		res.Findings, counts = foldDropped(r.Findings, func(name string) bool {
-			return !slices.ContainsFunc(r.Modules, func(m engine.ModuleResult) bool { return m.Name == name && !upToDate(m) })
-		})
-	}
-	printNotices(w, s, &res)
-	for _, c := range counts {
-		fmt.Fprintln(w, s.info(c))
-	}
-	if r.DryRun || s.plain {
-		return
-	}
-	printDone(w, s, verb, r, scopes, upToDate)
 }
 
 // printEdits prints a run's write lines (editLine), or under --plain an edit row each: action,
@@ -271,106 +234,16 @@ func editLine(s style, ed engine.Edit, dry bool) string {
 	return s.ok(line)
 }
 
-// planHeader heads a plan that writes nothing: a dry run, or the plan the next question applies.
+// planHeader heads a plan that writes nothing yet: a dry run, the plan the next question applies, or
+// the plan -y or --force applies without a question.
 func planHeader(s style) string {
+	if s.applied {
+		return "plan (applied now, unasked):"
+	}
 	if s.asking {
 		return "plan (nothing written yet; the question below applies it):"
 	}
 	return "plan (dry run; nothing was written):"
-}
-
-// printPlan prints the steps and each module's details: what a run did, or in a dry run would do.
-// Given more, the command that lists every step, the human steps of one scope stop at stepsShown
-// per module, then say how many more.
-func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResult, more string) {
-	if r.DryRun && !s.plain {
-		fmt.Fprintln(w, planHeader(s))
-	}
-	if len(scopes) > 1 && !s.plain {
-		for _, sc := range scopes {
-			fmt.Fprintln(w, scopeLabel(sc)+":")
-			for _, st := range r.Steps {
-				if st.Scope == sc.Scope && st.Root == sc.Root {
-					fmt.Fprintln(w, "  "+stepLine(s, st))
-				}
-			}
-		}
-	} else {
-		indent := "  "
-		if s.plain { // rows start at column 1, so cut -f1 reads the action
-			indent = ""
-		}
-		capped := more != "" && !s.plain
-		seen := map[string]int{} // steps so far per module; steps of two modules may interleave
-		var over []string        // the modules past the cap, in the order they passed it
-		for _, st := range r.Steps {
-			seen[st.Module]++
-			if !capped || seen[st.Module] <= stepsShown {
-				fmt.Fprintln(w, indent+stepLine(s, st))
-			} else if seen[st.Module] == stepsShown+1 {
-				over = append(over, st.Module)
-			}
-		}
-		for _, m := range over {
-			fmt.Fprintf(w, "%s… and %d more for %s (%s lists them all)\n", indent, seen[m]-stepsShown, untrusted.Text(m, untrusted.MaxName), more)
-		}
-	}
-	// A line two scopes would print alike (a profile both apply) is said once; a module whose lines
-	// differ between scopes names the scope of each.
-	excluded, lines := map[string]bool{}, map[string]map[string]bool{}
-	skipLine := func(m engine.ModuleResult) string {
-		return m.SkippedIn + "\x00" + m.OnlyIn + "\x00" + strings.Join(m.NotInOnly, "\x00") + "\x00" + strings.Join(m.Skipped, "\x00")
-	}
-	for _, m := range r.Modules {
-		if len(m.Skipped) > 0 {
-			if lines[m.Name] == nil {
-				lines[m.Name] = map[string]bool{}
-			}
-			lines[m.Name][skipLine(m)] = true
-		}
-	}
-	for _, m := range r.Modules {
-		if key := m.Name + "\x00" + skipLine(m); !excluded[key] {
-			excluded[key] = true
-			label := m.Name
-			if len(lines[m.Name]) > 1 {
-				label += ", " + scopeLabel(engine.ScopeResult{Scope: m.Scope, Root: m.Root})
-			}
-			printExcluded(w, s, label, m.Skipped, m.SkippedIn, m.NotInOnly, m.OnlyIn, m.Summary, r.DryRun)
-		}
-		if len(m.MCPServers) > 0 && !s.plain {
-			fmt.Fprintf(w, "%s MCP servers:\n", m.Name)
-			for _, srv := range m.MCPServers {
-				verb := "runs"
-				if srv.Transport != "stdio" {
-					verb = "connects to"
-				}
-				fmt.Fprintf(w, "    %s (%s) %s: %s\n", srv.Name, srv.Transport, verb, srv.Runs)
-			}
-		}
-		printRuntimeHooks(w, s, m)
-		for _, h := range m.Hooks {
-			script := untrusted.Text(h.Script, len(h.Script))
-			if s.plain {
-				fmt.Fprintf(w, "hook\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Event, script, h.Target, h.Status)
-				continue
-			}
-			status := h.Status
-			if status == engine.HookWouldRun {
-				status = "would run" // JSON and --plain keep the would-run value
-			}
-			line := fmt.Sprintf("%s %s hook %s (%s): %s", m.Name, h.Event, script, h.Target, status)
-			switch h.Status {
-			case engine.HookRan:
-				fmt.Fprintln(w, s.ok(line))
-			case engine.HookWouldRun:
-				fmt.Fprintln(w, s.info(line))
-			default:
-				fmt.Fprintln(w, s.warn(line))
-			}
-		}
-	}
-	printScripts(w, s, r.Scripts)
 }
 
 // printScripts lists the install scripts of a run in run order: each with its module,
@@ -406,25 +279,6 @@ func printScripts(w io.Writer, s style, scripts []engine.ScriptRun) {
 	}
 }
 
-// printDone prints the closing "✓ <verb> <module>" line of each module a run wrote, and
-// "✓ <module> already up to date" for each upToDate reports (nil for none).
-func printDone(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult, upToDate func(engine.ModuleResult) bool) {
-	for _, m := range r.Modules {
-		if m.Rewritten { // its rewrite notice reports it
-			continue
-		}
-		where := ""
-		if len(scopes) > 1 {
-			where = " at " + m.Scope + " scope"
-		}
-		if upToDate != nil && upToDate(m) {
-			fmt.Fprintln(w, s.ok(fmt.Sprintf("%s already up to date%s (%s)", m.Name, where, strings.Join(m.Targets, ", "))))
-			continue
-		}
-		fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s%s (%s)", verb, m.Name, where, strings.Join(m.Targets, ", "))))
-	}
-}
-
 // worthShowing reports whether a run prints f (printFindings): a warn or skip finding, an info
 // finding with a hint, or one saying a target wrote no copy of a skill because the agents target
 // delivers it, without which the run would name a target that got no file and say nothing why.
@@ -433,7 +287,8 @@ func worthShowing(f target.Finding) bool {
 }
 
 // printFindings prints the findings worth showing (worthShowing). Under --plain every finding is
-// a row; otherwise groupMin or more findings that differ only in their artifact print as one line.
+// a row; otherwise findings group (groupFindings), a group of two or more as a summary with a line
+// per member.
 func printFindings(w io.Writer, s style, findings []target.Finding) {
 	var shown []target.Finding
 	for _, f := range findings {
@@ -451,12 +306,8 @@ func printFindings(w io.Writer, s style, findings []target.Finding) {
 		groups = groupFindings(shown)
 	}
 	for _, g := range groups {
-		if len(g.Findings) >= groupMin {
-			fmt.Fprintln(w, groupLine(s, g))
-			continue
-		}
-		for _, f := range g.Findings {
-			if line := findingLine(s, f); line != "" {
+		for _, line := range groupLines(s, g) {
+			if line != "" {
 				fmt.Fprintln(w, line)
 			}
 		}
@@ -549,15 +400,20 @@ func printNotices(w io.Writer, s style, r *engine.Result) {
 // printRuntimeHooks lists a module's runtime hooks per target with their consent status. A
 // --plain row is module, target, event, type, status and the component whose frontmatter has
 // the hook ("" for settings hooks); an agent's inline MCP server has "mcp_server:<name>" for
-// its event and its transport for its type.
-func printRuntimeHooks(w io.Writer, s style, m engine.ModuleResult) {
+// its event and its transport for its type. In a run's report (run) a --plain row ends with new
+// or seen (engine.RuntimeHook.New).
+func printRuntimeHooks(w io.Writer, s style, m engine.ModuleResult, run bool) {
 	if s.plain {
 		for _, h := range m.RuntimeHooks {
 			event := h.Event
 			if h.MCPServer != "" {
 				event = "mcp_server:" + h.MCPServer
 			}
-			fmt.Fprintf(w, "runtime-hook\t%s\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Target, event, h.Type, h.Status, h.Component)
+			row := fmt.Sprintf("runtime-hook\t%s\t%s\t%s\t%s\t%s\t%s", m.Name, h.Target, event, h.Type, h.Status, h.Component)
+			if run {
+				row += "\t" + map[bool]string{true: "new", false: "seen"}[hookIsNew(h)]
+			}
+			fmt.Fprintln(w, row)
 		}
 		return
 	}
@@ -570,6 +426,10 @@ func printRuntimeHooks(w io.Writer, s style, m engine.ModuleResult) {
 		}
 	}
 }
+
+// hookIsNew reports whether a runtime hook of a run's report is new to the user
+// (engine.RuntimeHook.New); one no run compared is.
+func hookIsNew(h engine.RuntimeHook) bool { return h.New == nil || *h.New }
 
 // picksText is a skip: list shown as the picks a non-exact --only keeps, then how many others are
 // skipped.

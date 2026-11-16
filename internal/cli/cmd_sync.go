@@ -264,7 +264,7 @@ func (a *app) syncCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.update, "update", false, "fetch the refs again and re-pin the modules of the run")
 	cmd.Flags().StringArrayVar(&f.at, "at", nil, atUsage)
 	_ = cmd.RegisterFlagCompletionFunc("at", a.completeAt)
-	cmd.Flags().BoolP("verbose", "v", false, "print every notice, not a count per module of those that are not about safety")
+	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
 	return cmd
 }
 
@@ -385,7 +385,7 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 				if len(scs) > 1 && !s.plain {
 					fmt.Fprintln(w, destLabel(c.Scope)+":")
 				}
-				printSync(w, s, name, res, args, more)
+				printSync(w, s, name, res, args, more, true)
 			}
 			out := func(w io.Writer, s style) { human(w, s, s.more(more)) }
 			// lola update applied what it could and left the modules whose fetch failed as
@@ -468,7 +468,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 	if f.installed {
 		run = "lola update"
 	}
-	stderr := style{color: a.color(cmd.ErrOrStderr())}
+	stderr := style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}
 	diff := func(rep engine.TrustReport) func(io.Writer, style) {
 		return func(w io.Writer, s style) { printTrustDiff(w, s, name, run, rep, s.more(more)) }
 	}
@@ -484,7 +484,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 		err = errs.WithHints(err, "run it again: "+f.pass.again)
 	}
 	if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !a.json {
-		printSyncRefusal(cmd.ErrOrStderr(), style{color: stderr.color, plain: a.plain}, name, run, refusal, more)
+		printSyncRefusal(cmd.ErrOrStderr(), style{color: stderr.color, bold: stderr.bold, plain: a.plain}, name, run, refusal, more)
 	}
 	if declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err); ok {
 		return nil, more, removalsDeclined(eng, sc, declined)
@@ -512,7 +512,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 // (the prompter never asks under --json); back is nil under -y too.
 func (a *app) syncQuestions(cmd *cobra.Command, f syncFlags, activation bool, question string, nav Nav, diff func(engine.TrustReport) func(io.Writer, style),
 	asked *bool) (show func(engine.TrustReport) error, trust func(engine.TrustReport) (engine.TrustAnswer, error), confirm, back func([]engine.Removal) (bool, error)) {
-	p, stderr := a.prompter(cmd), style{color: a.color(cmd.ErrOrStderr())}
+	p, stderr := a.prompter(cmd), style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}
 	show = func(rep engine.TrustReport) error {
 		if a.json {
 			return nil

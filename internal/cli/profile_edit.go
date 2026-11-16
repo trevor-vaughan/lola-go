@@ -430,6 +430,6 @@ func printBundleEdit(w io.Writer, s style, sc engine.Scope, r *engine.BundleEdit
 		if len(r.Also) > 0 && !s.plain {
 			fmt.Fprintln(w, destLabel(a.Scope)+":")
 		}
-		printSync(w, s, manifestName(a.Scope), a.SyncResult, nil, "")
+		printSync(w, s, manifestName(a.Scope), a.SyncResult, nil, "", false)
 	}
 }

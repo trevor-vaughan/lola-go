@@ -75,8 +75,7 @@ var _ = Describe("lola update", func() {
 		push(map[string]string{"commands/example.md": "example v2\n"})
 		r := lola("update", "--fetch", "--trust", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(MatchRegexp(`(?m)^  → example: sha256:[0-9a-f]{64} → sha256:[0-9a-f]{64}$`), "the module moved, from → to")
-		Expect(r.out).To(ContainSubstring("✓ updated example (claude-code)"))
+		Expect(r.out).To(MatchRegexp(`(?m)^✓ updated example sha256:[0-9a-f]{64} → sha256:[0-9a-f]{64} \(claude-code\)$`), "the module moved, from → to")
 		Expect(r.out).To(ContainSubstring("✓ 1 unchanged"))
 		Expect(r.out).NotTo(ContainSubstring("synced"))
 		Expect(r.out + r.err).NotTo(ContainSubstring("--update"))
@@ -90,7 +89,7 @@ var _ = Describe("lola update", func() {
 		gitIn(work, "push", "-q", "--force", filepath.Join(tmp, "srv", "example.git"), "main")
 		r := lola("update", "--fetch", "--trust", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("✓ updated example (claude-code)"))
+		Expect(r.out).To(MatchRegexp(`(?m)^✓ updated example sha256:[0-9a-f]{64} → sha256:[0-9a-f]{64} \(claude-code\)$`))
 		Expect(read(".claude/commands/example.md")).To(Equal("example rewritten\n"))
 	})
 
@@ -128,11 +127,11 @@ var _ = Describe("lola update", func() {
 		r := lola("update", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(".claude/commands/example.md")).To(Equal("example v1\n"), "the install just fetched main: its head is fresh")
-		Expect(r.out).To(Equal("→ 2 modules served from your cache (fetched within cache_fresh_for) → lola update -C " + proj + " --fetch\n" +
+		Expect(r.out).To(Equal("Notices:\n→ 2 modules served from your cache (fetched within cache_fresh_for) → lola update -C " + proj + " --fetch\n" +
 			"✓ already up to date\n"))
 		r = lola("update", "example", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(Equal("→ 1 module served from your cache (fetched within cache_fresh_for) → lola update -C " + proj + " example --fetch\n" +
+		Expect(r.out).To(Equal("Notices:\n→ 1 module served from your cache (fetched within cache_fresh_for) → lola update -C " + proj + " example --fetch\n" +
 			"✓ example already up to date\n"))
 		r = lola("update", "--json", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
@@ -218,11 +217,11 @@ var _ = Describe("lola update", func() {
 		gitIn(work, "mv", "commands/example.md", "commands/renamed.md")
 		gitIn(work, "commit", "-q", "-m", "rename")
 		gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "example.git"), "main")
-		gone := "removals:\n  ✗ example: claude-code (not in the version this run installs)\n      .claude/commands/example.md\n"
+		gone := "To remove:\n  ✗ example: claude-code (not in the version this run installs)\n      .claude/commands/example.md\n"
 
 		r := lola("update", "--fetch", "--trust", "-C", proj, "-n")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out + r.err).To(ContainSubstring(gone))
+		Expect(r.out).To(ContainSubstring(gone), "the dry run's report heads them as the question does")
 
 		r = lola("update", "--fetch", "--trust", "-C", proj)
 		Expect(r.code).To(Equal(1), r.out)
@@ -567,7 +566,7 @@ var _ = Describe("lola update", func() {
 		r := lola("update", "--fetch", "--trust", "-C", proj)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("could not fetch other; left as installed"))
-		Expect(r.out).To(ContainSubstring("✓ updated example (claude-code)"), "the result of what was applied is printed")
+		Expect(r.out).To(MatchRegexp(`(?m)^✓ updated example sha256:[0-9a-f]{64} → sha256:[0-9a-f]{64} \(claude-code\)$`), "the result of what was applied is printed")
 		Expect(r.out).To(ContainSubstring("other: could not fetch it"))
 		Expect(read(".claude/commands/example.md")).To(Equal("example v2\n"))
 		Expect(read(".claude/commands/other.md")).To(Equal("other v1\n"))
@@ -614,7 +613,7 @@ var _ = Describe("lola update", func() {
 		Expect(os.RemoveAll(otherBare)).To(Succeed())
 		r := lola("update", "--scope", "both", "--fetch", "--trust", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.out).To(ContainSubstring("✓ updated example (claude-code)"))
+		Expect(r.out).To(MatchRegexp(`(?m)^✓ updated example sha256:[0-9a-f]{64} → sha256:[0-9a-f]{64} \(claude-code\)$`))
 		Expect(r.err).To(ContainSubstring("could not fetch other; left as installed; user scope was not updated"))
 		Expect(read(".claude/commands/example.md")).To(Equal("example v2\n"))
 
@@ -647,11 +646,11 @@ var _ = Describe("Update-removals: lola sync of a folder that dropped a componen
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 		Expect(lola("install", mod, "-C", proj, "-t", "claude-code").code).To(Equal(0))
 		Expect(os.Remove(filepath.Join(mod, "commands", "b.md"))).To(Succeed())
-		gone := "removals:\n  ✗ m: claude-code (not in the version this run installs)\n      .claude/commands/b.md\n"
+		gone := "To remove:\n  ✗ m: claude-code (not in the version this run installs)\n      .claude/commands/b.md\n"
 
 		r := lola("sync", "-C", proj, "--trust", "-n")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out + r.err).To(ContainSubstring(gone))
+		Expect(r.out).To(ContainSubstring(gone), "the dry run's report heads them as the question does")
 
 		r = lola("sync", "-C", proj, "--trust")
 		Expect(r.code).To(Equal(1), r.out)
@@ -662,7 +661,7 @@ var _ = Describe("Update-removals: lola sync of a folder that dropped a componen
 		r = lola("sync", "-C", proj, "--trust", "--plain")
 		Expect(r.code).To(Equal(1), r.out)
 		Expect(r.err).To(ContainSubstring("remove\tm\tclaude-code\t.claude/commands/b.md\tproject\n"), "--plain: rows with the scope, as install's refusal")
-		Expect(r.err).NotTo(ContainSubstring("removals:"))
+		Expect(r.err).NotTo(ContainSubstring("To remove:"))
 
 		r = lola("sync", "-C", proj, "--trust", "-y")
 		Expect(r.code).To(Equal(0), r.err)

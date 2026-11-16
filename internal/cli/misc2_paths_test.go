@@ -810,7 +810,7 @@ var _ = Describe("consent paths", func() {
 		r := install(p, rt, "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"consent:Install rt's Claude Code hooks?"}))
-		Expect(r.out).To(ContainSubstring("runtime hooks for claude-code (consented)"))
+		Expect(r.out).To(ContainSubstring("rt: 1 runtime hook for claude-code in .claude/settings.local.json (granted)"))
 		Expect(consentJSON).To(BeARegularFile())
 		p = &scripted{}
 		Expect(lolaP(p, "sync", "-C", proj, "-y").code).To(Equal(0))

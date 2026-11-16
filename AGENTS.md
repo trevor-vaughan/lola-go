@@ -89,10 +89,13 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   viewer with the question in it when that does not fit (`━━ lines` above the prompt); a viewer before a
   picker (`q  continue to:`). `uninstall`, `cache rm`, `info`, `cache add` and
   `market --add` with no args never go interactive; they error with hints.
+  A prompt line or form sits under a blank line and a `━` rule (`---` accessible).
 - **Keys.** Pickers: `x` toggle, `ctrl+a` all/none, `/` filter, `Enter`, `esc` back, `q` quit.
   Questions: type `y`, `n` (`c` at the review), then `Enter`; `Enter` alone takes the capital letter's
-  answer, and the review has none. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`, `q`. `ctrl+c` exits 0 with
-  `nothing changed`. After `q` the viewer reprints its content to scrollback.
+  answer, and the review has none. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`,
+  `tab`/`shift+tab` (fold highlight), `space` (open/close it; pages with none), `esc` (clears the
+  highlight, else closes; back in a question), `q`. `ctrl+c` exits 0 with `nothing changed`. After
+  `q` the viewer reprints its content to scrollback.
 
 ```bash
 sudo dnf install -y tmux; task build
@@ -104,7 +107,7 @@ tmux capture-pane -t v -p | grep -v '^$' | tail -6
 tmux kill-session -t v; tmux kill-session -t holder
 ```
 
-- **Gotchas.** Use `-x 120` or wider (at 80 the viewer footer cuts `/ search` and the paging keys). Pass the isolated
+- **Gotchas.** Use `-x 80` or wider (narrower, the viewer's two key rows cut the last keys). Pass the isolated
   `HOME`/`XDG_*` inside the pane's `bash -c`; a running tmux server does not inherit your env.
   Kill by session name, never `pkill -f` (it matches your own shell). `lola trash --plain` rows start
   with a literal `run` column. `bin/lola` can be stale; `task build` refreshes it.

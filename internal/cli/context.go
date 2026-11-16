@@ -35,7 +35,7 @@ func (a *app) addContext(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope
 	case a.plain:
 		fmt.Fprintln(cmd.ErrOrStderr(), contextRow(c))
 	default:
-		s := style{color: a.color(cmd.ErrOrStderr())}
+		s := style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}
 		fmt.Fprintln(cmd.ErrOrStderr(), s.paint("36", contextLine(c)))
 	}
 }

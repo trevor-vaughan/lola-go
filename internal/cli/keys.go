@@ -195,8 +195,8 @@ var viewerKeys = []struct {
 
 // keyLineFor is the key line for mode: in a pager with question q, first what Enter alone answers
 // ("⏎ alone = no"; nothing when q has no default); before a picker, "q  continue to: <then>"; then
-// the keys viewerKeys lists for mode.
-func keyLineFor(mode keyMode, q *Question, then string) string {
+// the keys viewerKeys lists for mode, the fold keys after the first when the text has a fold.
+func keyLineFor(mode keyMode, q *Question, then string, folds bool) string {
 	var parts []string
 	switch mode {
 	case keysPrompt:
@@ -206,9 +206,12 @@ func keyLineFor(mode keyMode, q *Question, then string) string {
 	case keysContinue:
 		parts = append(parts, "q  continue to: "+then)
 	}
-	for _, k := range viewerKeys {
+	for i, k := range viewerKeys {
 		if k.modes&mode != 0 {
 			parts = append(parts, k.text)
+		}
+		if i == 0 && folds {
+			parts = append(parts, "tab  next fold · space  open")
 		}
 	}
 	return strings.Join(parts, " · ")

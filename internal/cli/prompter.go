@@ -421,10 +421,10 @@ const (
 )
 
 // ReviewStep is the install's last step: Summary, what the run will do, already made
-// safe to print, and Options, the answers it offers, in order: Apply, a Change entry for each step
+// safe to print, with its folds (reportBuf), and Options, the answers it offers, in order: Apply, a Change entry for each step
 // the flags left open, and Quit.
 type ReviewStep struct {
-	Summary string
+	Summary *reportBuf
 	Options []string
 	Step    Steps
 	Nav     Nav

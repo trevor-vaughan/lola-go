@@ -183,7 +183,7 @@ func (a *app) darkBackground(cmd *cobra.Command) (bool, error) {
 	where := untrusted.Text(eng.Paths.Config, untrusted.MaxName)
 	if err := config.SaveTheme(eng.Paths.Config, eng.Paths.Home, theme); err != nil {
 		// The answer still draws this run's pickers; the warning says how to keep it.
-		fmt.Fprintln(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}.warn(
+		fmt.Fprintln(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}.warn(
 			"could not save theme: "+untrusted.CleanErr(err).Error()+"; set theme: "+theme+" in "+where))
 		return dark, nil
 	}

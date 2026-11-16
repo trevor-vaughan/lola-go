@@ -64,6 +64,30 @@ How selections work and how the install flow runs. It has its own page: [Selecti
 
 Each interactive surface as a state machine: its screens, transitions and exits. It has its own page: [TUI flows](architecture/tui-flows.md).
 
+## Run reports
+
+- `printReport` (`internal/cli/report.go`) is the one renderer of a run's human report. Callers
+  build a `report`: `installReport`, `printSync`'s adapter, uninstall's, and the install review's
+  `NoticesOnly` block. Under `--plain` it prints rows (`printPlainReport`) instead.
+- `reportBuf` (`internal/cli/reportbuf.go`) holds a report's text and folds. `printFold` and
+  `printFoldFooter` hand them to a `folder` (a `reportBuf`) or print them; `Folded()` renders every
+  fold closed, `Opened()` every fold open without the footer (a question's text printed inline or
+  paged, where nothing can open a fold, and what `fits` measures), and the viewer opens them
+  (`renderLines`). Under `-v` or `--plain` `printFold` prints the detail.
+- `promptBreak` (`internal/cli/promptbreak.go`) draws the blank line and rule before a prompt. It is
+  called only where a prompt line or form is drawn: `app.ask`, `huhForms.Ask`'s accessible branch
+  and `huhForms.runIn`, which on a full terminal draws it once per run of forms (`huhForms.ruled`,
+  cleared by a question).
+- State versus event: `isState` (`internal/engine/seen.go`) is the allowlist of findings that say
+  what a module is; `safetyKey` keys an artifact `--force` rendered (`Finding.Forced`) apart from
+  the same artifact skipped. `markNew` runs in `prepare` against `lock.json` as the run read it, and
+  `markEvents` at the end of `InstallAll`, `Sync` and `Uninstall` marks the rest new. The entries a
+  run builds carry `Safety`, which `plan.Apply` writes, so a run that changes nothing records too
+  and the record does not depend on the output mode. Declined runtime hooks are a state fact too:
+  `consentRuntimeHooks` adds their `declinedKey` (module, target, settings file, consent digest,
+  `declined`) to the entry, sets `RuntimeHook.New` and the `runtime-hooks-declined` findings' `New`
+  from it, and drops what `--force` rendered of the declined intents, since nothing was rendered.
+
 ## Plans and the ledger
 
 Maintainer notes on Plans and the ledger. It has its own page: [Plans and the ledger](architecture/plans-and-the-ledger.md).
@@ -355,7 +379,8 @@ names have no `/`, and gives each project and scope its own consent. A recorded 
 `--trust=runtime-hooks` or a yes from the CLI's prompt (each recorded after the run's receipt is
 answered yes, before the first write) keeps the intents; a dry run makes the same decision without
 asking or recording; otherwise the intents are dropped with `<target>/runtime-hooks-declined`, per
-settings hooks and per component.
+settings hooks and per component. A run's report shows a target's declined settings hooks in their
+block, ending with that warning's hint, in place of the warning.
 
 Dropping them is what makes consent fail closed: the planner sees the module's installed groups and
 components as orphans and removes them. The consent view (`engine.RuntimeHook`) reads handler fields

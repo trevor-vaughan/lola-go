@@ -48,7 +48,7 @@ Refusals:
     your cache, so the refusal shows its new version's files; an `--update` that finds nothing new
     needs no trust and is not refused.
   - The files a version read this way no longer ships, as your picks and settings would install
-    it, are listed under `removals:`, and the message adds `and your confirmation to remove the
+    it, are listed under `To remove:`, and the message adds `and your confirmation to remove the
     files <module>'s new version drops`.
   - The accept hint carries `-y` only when every removal it would confirm is listed; that is the
     guarantee.

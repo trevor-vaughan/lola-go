@@ -339,6 +339,9 @@ var _ = Describe("lola info", func() {
 		Expect(info.Install[0].Scope).To(Equal("project"))
 		Expect(info.Install[0].Targets).To(Equal([]string{"claude-code"}))
 		Expect(info.Install[0].Steps).To(Equal(dry.Steps))
+		for i := range dry.Findings {
+			dry.Findings[i].New = nil // info leaves out what is new to you
+		}
 		Expect(info.Install[0].Findings).To(Equal(dry.Findings))
 		Expect(info.Install[0].Digest).To(Equal(info.Digest))
 	})

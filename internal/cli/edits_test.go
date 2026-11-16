@@ -29,7 +29,7 @@ var _ = Describe("write lines", func() {
 		def := filepath.Join(p.UserProfiles, "default.yml")
 		r := lola("install", kit, "--user", "-t", "claude-code", "--only", "skill/a", "--exact")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HavePrefix("✓ added kit to default (base)  (" + def + ", new)  only: 1 skill\n"))
+		Expect(r.out).To(HavePrefix("Files:\n✓ added kit to default (base)  (" + def + ", new)  only: 1 skill\n"))
 		Expect(r.err).NotTo(ContainSubstring("saved to"), "the write line names the file; no second line says it")
 
 		r = lola("install", "kit", "--user", "--only", "skill/b", "--exact", "--json", "-n")
@@ -100,12 +100,12 @@ var _ = Describe("write lines", func() {
 		gitIn(proj, "commit", "-q", "-m", "lola")
 		r := lola("install", kit, "-C", proj, "-t", "claude-code", "-y")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HavePrefix("✓ added kit to project.yml (base, shared: git tracks it)\n"))
+		Expect(r.out).To(ContainSubstring("Files:\n✓ added kit to project.yml (base, shared: git tracks it)\n"))
 
 		r = lola("profile", "team", "--switch", "-C", proj, "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		r = lola("install", other, "-C", proj, "-t", "claude-code", "-y")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HavePrefix("✓ added other to profile team (shared: git tracks it)\n"))
+		Expect(r.out).To(ContainSubstring("Files:\n✓ added other to profile team (shared: git tracks it)\n"))
 	})
 })

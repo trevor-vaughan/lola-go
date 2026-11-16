@@ -99,6 +99,11 @@ type Entry struct {
 	// Eras is, by target id, the since of the era of its assistant the module's files were
 	// written for; a target it does not name was written for its newest era.
 	Eras map[string]string `json:"eras,omitempty"`
+	// Safety is the record of what lola has shown the user about the module: the sha256, in hex, of
+	// each state finding's module, target, kind, artifact, code and text, and of each set of runtime
+	// hooks it declined, sorted, each once. A run reports a state finding, or declined hooks, whose
+	// key is here as seen before; nil when nothing is recorded.
+	Safety []string `json:"safety,omitempty"`
 }
 
 // RenderedWith records the inputs of a module's templates that are not its source: Profiles, the scope's profiles a template sees (default at user scope when its file
@@ -471,6 +476,11 @@ func (l *Ledger) validate() error {
 					untrusted.Text(e.Eras[t], untrusted.MaxName)), restoreHint)
 			}
 		}
+		for _, k := range e.Safety {
+			if len(k) != 64 || strings.Trim(k, "0123456789abcdef") != "" {
+				return errs.WithHints(fmt.Errorf("module %s: safety holds %q, which is not a sha256", name, untrusted.Text(k, untrusted.MaxName)), restoreHint)
+			}
+		}
 		for i, a := range e.Artifacts {
 			if a.Target == "" {
 				return fmt.Errorf("module %q has an artifact (%s) with no target", name, a.Path)
@@ -570,7 +580,7 @@ func (l *Ledger) Clone() *Ledger {
 	}
 	for k, e := range l.Modules {
 		ec := *e
-		ec.Artifacts, ec.Targets, ec.Eras = slices.Clone(e.Artifacts), slices.Clone(e.Targets), maps.Clone(e.Eras)
+		ec.Artifacts, ec.Targets, ec.Eras, ec.Safety = slices.Clone(e.Artifacts), slices.Clone(e.Targets), maps.Clone(e.Eras), slices.Clone(e.Safety)
 		c.Modules[k] = &ec
 	}
 	c.normalize()

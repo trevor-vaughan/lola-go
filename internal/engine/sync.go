@@ -532,6 +532,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}, Replacements: []Replacement{}}, EquivalentCommands: []string{},
 		Failed: []string{}}
 	res.Trusted = []Consent{}
+	defer func() { markEvents(res.Findings) }() // what no scope's plan compared is new
 	res.Notices = append(res.Notices, restored...)
 	// A committed lock.json is refused before the profiles it names are read.
 	if err := e.refuseTrackedLedger(ctx, sc, res.Result); err != nil {
@@ -1335,10 +1336,10 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			return nil, err
 		}
 		// A dry run ends with the command that applies it: the user's own run without -n, and the
-		// flags that answer its consent questions off a terminal: --trust for the kinds given and
-		// the kinds the run would be refused without. -y only as given: off a terminal a run with
-		// removals refuses, and its hint adds -y. A sync in sync applies a trust it needs too: its
-		// project's scripts'.
+		// flags that answer its questions off a terminal: --trust for the kinds given and the kinds
+		// the run would be refused without, and -y for the removals it lists, when it lists them all
+		// (unreadEntries), as the refusal's hint would. A sync in sync applies a trust it needs too:
+		// its project's scripts'.
 		needTrust := res.Trust.Status != trust.StatusTrusted && res.Trust.Status != TrustStatusNotApplicable
 		if !res.InSync || needTrust || res.needs&^opts.Trust != 0 {
 			res.ToApply = e.commandOf(req)
@@ -1348,8 +1349,12 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 			missing &^= opts.Trust
 			res.EquivalentCommands = []string{res.ToApply}
-			if missing != 0 {
-				res.OffTerminal = e.commandOf(req.trusting(opts.Trust | missing))
+			var yes []string
+			if len(res.Removals) > 0 && !req.Yes && !opts.Force && len(unreadEntries(entries)) == 0 {
+				yes = []string{"-y"}
+			}
+			if missing != 0 || len(yes) > 0 {
+				res.OffTerminal = e.commandOf(req.trusting(opts.Trust|missing), yes...)
 				res.EquivalentCommands = []string{res.OffTerminal}
 			}
 		}
@@ -1700,7 +1705,7 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, layers []Layer, on boo
 		}
 		sp.changes = append(sp.changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
 			Entry: &ledger.Entry{From: se.from, Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Components: ent.Components.Clone(), Commit: se.v.Commit, Digest: se.v.Meta.Digest,
-				Targets: mr.Targets, RenderedWith: mr.renderedWith, Eras: mr.eras}})
+				Targets: mr.Targets, RenderedWith: mr.renderedWith, Eras: mr.eras, Safety: mr.safety}})
 		replace, err := needsCopy(e.files(sc).modules, name, installed, se.v.Meta.Digest)
 		if err != nil {
 			return syncPlan{}, err
@@ -2142,15 +2147,8 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 		answers = append(answers, "your confirmation to remove the files "+andJoin(drops)+" new version drops")
 	}
 	// The hint carries -y only when every removal it would confirm is listed here, the user's own
-	// -y included: while an installed entry's new version is unread (a pulled change is never
-	// fetched before trust, and a source may fail to serve one), the run it hints may remove other
-	// files, so it carries no -y and that run lists them all and asks.
-	var unread []string
-	for _, se := range entries {
-		if se.installed != "" && se.v.ContentDir == "" && (needsPin(se) || se.ent.Digest != se.installed) {
-			unread = append(unread, shown(se.ent.Name))
-		}
-	}
+	// -y included (unreadEntries).
+	unread := unreadEntries(entries)
 	yes := len(unread) == 0 && (yesGiven || len(removals) > 0)
 	// Each hint repeats the run in its output format, with --trust as given; the one that accepts
 	// the changes adds exactly the kinds missing.
@@ -2195,6 +2193,19 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 		msg += "; until it reads " + andJoin(unread) + ", it cannot list what it removes, so -y waits until the next run lists it"
 	}
 	return errs.WithHints(&TrustRefusalError{Report: rep, Removals: removals, msg: msg}, hints...)
+}
+
+// unreadEntries is the names of the installed entries whose new version the run has not read: a
+// pulled change is never fetched before trust, and a source may fail to serve one. The run a hint
+// names may then remove files no list showed, so it carries no -y, and lists them all and asks.
+func unreadEntries(entries []*syncEntry) []string {
+	var unread []string
+	for _, se := range entries {
+		if se.installed != "" && se.v.ContentDir == "" && (needsPin(se) || se.ent.Digest != se.installed) {
+			unread = append(unread, shown(se.ent.Name))
+		}
+	}
+	return unread
 }
 
 // andJoin joins phrases as prose: "a", "a and b", "a, b and c".

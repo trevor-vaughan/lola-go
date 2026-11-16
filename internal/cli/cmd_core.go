@@ -254,7 +254,7 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "apply after the pickers without the review menu")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be, applying without the review menu (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module, or an installed assistant is of another era than the version declared (a version you choose that differs from the installed one is warned of, not refused)")
-	cmd.Flags().BoolP("verbose", "v", false, "print every notice, not a count per module of those that are not about safety")
+	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
 	cmd.Flags().BoolVar(&f.noRules, "no-rules", false, "do not install the modules' always-on rules (remembered in the manifest)")
 	cmd.Flags().BoolVar(&f.rules, "rules", false, "install the modules' rules again after --no-rules")
 	cmd.MarkFlagsMutuallyExclusive("rules", "no-rules")
@@ -331,7 +331,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 				}
 				// A plan that removes no files (it only edits a profile) has nothing to confirm.
 				if len(preview.Modules) > 0 {
-					show := func(w io.Writer, s style) { printResult(w, s, "", preview) }
+					show := func(w io.Writer, s style) { printReport(w, s, report{Result: preview}) }
 					if err := a.confirm(cmd, args, "Uninstall "+strings.Join(args, ", ")+"?", Nav{}, preview, show); err != nil {
 						return err
 					}
@@ -342,13 +342,14 @@ func (a *app) uninstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return a.emit(cmd, func(w io.Writer, s style) { printResult(w, s, "uninstalled", res) }, res)
+			return a.emit(cmd, func(w io.Writer, s style) { printReport(w, s, report{Result: res, Verb: "uninstalled"}) }, res)
 		},
 	}
 	a.addTargetFlag(cmd, &targets, "only uninstall from these assistants")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	cmd.Flags().BoolVar(&force, "force", false, "also delete files edited since lola wrote them, without asking (never answers a consent question)")
+	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
 	cmd.Flags().StringVar(&profileName, "profile", "", "remove the entry from this profile (base: the scope's base) instead of the layer the module comes from")
 	_ = cmd.RegisterFlagCompletionFunc("profile", a.completeProfiles(true))
 	return cmd

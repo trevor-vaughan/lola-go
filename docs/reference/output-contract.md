@@ -7,10 +7,43 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   `cut -f1` reads it.
 - Human output merges four or more warnings that differ only in the artifact (same module,
   target, kind, code, text and hint) into one line, `⚠ ecc: opencode agent: model dropped:
-  opencode needs a string matching ^[^/]+/.+$ (71 agents: a11y-architect, agent-evaluator,
-  architect, …; --json lists each)`, with the artifact's name shown as `…` in the text and
-  `<artifact>` in the hint. Run with `--json` to see every warning; `--plain`, `--json` and
-  `--strict` are unchanged.
+  opencode needs a string matching ^[^/]+/.+$ (71 agents)`, with the artifact's name shown as `…`
+  in the text and `<artifact>` in the hint, then one indented line per artifact (`a11y-architect`,
+  `agent-evaluator`, …). In a run's report those lines are the group's detail: shown in full under
+  a section of new findings, folded under "Unchanged since last run" until you open the fold or
+  pass `-v`. `--plain`, `--json` and `--strict` are unchanged, and `--json` lists every finding.
+- A run's report (`install`, `uninstall`, `sync`, `update` and the `lola profile` actions that
+  apply) has these sections, each under a `Title:` line (bold on a terminal) and omitted when
+  empty: `Runtime hooks — new`, `Warnings — new`, `Skipped — new`, `Hooks and scripts`, `MCP
+  servers`, `Notices`, `Unchanged since last run`, `Files`, `Removed` (`To remove` in a plan),
+  then the outcome. A dry run of `install`, `sync` or `update` that would change nothing (no
+  step, edit, pin or removal, no runtime hook granted or declined unlike before, no warning or
+  skip new to the user, no warning among its notices, and under `-v` no finding, notice or
+  runtime hook for it to print) prints only its outcome (`already in sync`, or an install's
+  `<module> already up to date (<targets>)`), without the plan header. Any other install dry run
+  ends, as the real run does, with `→ <module> already up to date (<targets>)` for each module it
+  would leave as it is, under `--force` too unless its install hooks would run again.
+  - A safety finding or runtime hook is new when lola has not shown it for that module before. In
+    `lock.json` a module's entry records `safety`, the keys of its state findings (pre-approved
+    tools, permission modes, load warnings, native executables, skipped artifacts and those
+    `--force` rendered anyway, a fact apart from the skip, and runtime hooks you declined), on
+    every run that is not a dry run, whatever the output mode; a changed tool list, or a changed
+    declined hook, is new again. Every other finding is new on every run. A runtime hook
+    consented to in an earlier run is seen, and one granted in this run new.
+  - A target's declined settings hooks print in their block under `Runtime hooks — new` (or in the
+    fold once seen), ending with the hint that consents to them, in place of their
+    `runtime-hooks-declined` warning; `--plain` and `--json` keep that finding.
+  - What is seen is one fold, `▸ N warnings, M skips, K runtime hooks seen before`, with each
+    module's count and the `lola check` or `lola info` that lists them.
+  - After the install review's Apply (or its summary printed under `-y` or `--force`), the new
+    warnings, skips and runtime hooks the review showed, the same text and hint, are one fold
+    first, with no header: `▸ N warnings, M skips, K runtime hooks shown in the review above`.
+  - The files are a fold per module (`▸ kit: 12 changes (claude-code 6, opencode 6)`).
+  - A closed fold prints its summary, marked `▸`; printed output, and a pipe, keeps every fold
+    closed and ends with `→ ▸ lines are folded; -v prints them in full`. `-v` prints each fold's
+    detail, and `--plain` and `--json` are always complete. The text of a question printed above
+    its prompt, or handed to `$LOLA_PAGER`, has every fold open and no footer, since nothing
+    there can open one; the viewer keeps them closed for you to open.
 - `install`, `sync`, `update` and the `lola profile` actions that apply print safety findings
   and notices in full ([Findings](#findings)) and the detail ones as one line per module:
   `→ ecc: 61 notices (claude-code 20, gemini-cli 21, opencode 20) — lola check --project ecc
@@ -25,6 +58,11 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - Under `--scope both` each scope has its own line and check.
   - `-v`/`--verbose` prints them all, grouped as above, without the author's hints, in the review
     before Apply too; `--plain` prints a row each and `--json` lists each with its `class`.
+- In a run, a finding in `--json` carries `new` (`true` or `false`) when it is a safety finding;
+  `lola check` and `lola info` findings do not carry it. A runtime hook's `status` is `granted`,
+  `consented` or `declined`, and in a run it carries `new` too. In `--plain`, a run's `finding` row
+  for a safety finding ends with `new` or `seen`, and its `runtime-hook` row ends with `new` or
+  `seen`; `lola check` and `lola info` rows are unchanged.
 - A notice in JSON is `level`, `text` and `class`, and `hints` when it has commands that act on it
   (a list, absent otherwise, such as the one for an assistant with versions that is not installed);
   human output prints each hint under it as a `hint:` line. When stdout and stderr are both a
@@ -103,6 +141,9 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - A second Ctrl+C ends it at once.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
+- Bold (section headers, rules): on a terminal, where `NO_COLOR` and `LOLA_COLOR=0` keep it, as
+  emphasis rather than color; never into a pipe or a file, under `TERM=dumb` or under `--plain`;
+  `LOLA_COLOR=1` forces it.
 - Picker colors are chosen to read at a contrast of at least 4.5:1 on your terminal's
   background, which lola takes from the first of:
   - `theme: dark` or `theme: light` in `config.yaml`;
@@ -130,7 +171,19 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
       viewer, where `n` is an answer, they are Ctrl+N and Ctrl+P.
     - Esc stops typing, and Enter on an empty term clears the search.
     - A term split across a wrapped line is not found.
-  - On quit the full text is printed, so it stays in your scrollback.
+    - A closed fold's lines are not searched; when only they hold the term, the key line says so:
+      `/curl no match (2 in closed folds — tab, space to open)`.
+  - A report with folds shows `tab  next fold · space  open` in the key line. `tab`/`shift+tab`
+    move a highlight between the folds' summaries and `space` opens or closes the highlighted one
+    (with none, `space` pages), scrolling a fold it opens into view: as much of its detail as
+    fits, its summary at the top when it does not all fit. Esc clears a highlight before it
+    quits; in a question that has a step before it, Esc goes back.
+  - On quit the full text is printed, with the folds you opened open, so it stays in your
+    scrollback.
+  - Before a question, a picker or a form, lola draws a blank line and a bold rule of `━` across
+    the terminal (`---` in accessible mode), so the eye finds where to answer. A run of pickers
+    and forms, such as `lola install`'s steps, which leave nothing behind, shares one rule; each
+    question gets its own.
   - A yes/no question (`uninstall`, `cache rm`, `cache clean`, `migrate`, a bare `init`, the
     removals `sync` asks about, the profiles `profile --add` and `--update` ask about, hook consent,
     `Proceed?`) and the install review sit under the text they ask about: printed, the prompt
@@ -186,9 +239,9 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - Top level: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, `rewrites`
     (`[]` when none: one `{module, target, from, to}` per module whose files the sync rewrites for
     another era of a target, `from` and `to` the eras' `since`), `equivalent_commands` (in a dry run that is not in sync, the command that applies the plan,
-    with the `--trust=` kinds it needs off a terminal; when the plan removes files, off a terminal
-    that command is refused until you add `-y`, which it carries only when you gave it; otherwise
-    `[]`), and the plan's `modules`, `steps`,
+    with the `--trust=` kinds it needs off a terminal, and `-y` when the plan removes files it lists
+    in full (not while a module's new version is unread, whose removals the run lists and asks
+    about); otherwise `[]`), and the plan's `modules`, `steps`,
     `findings` and `notices`.
   - `trust` has `status` (`trusted`, `new`, `changed`, or `not_applicable` at user scope),
     `recorded` (this run wrote the trust record), `targets` (the top-level targets' `field`,
