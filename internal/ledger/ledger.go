@@ -220,7 +220,7 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 	dec.DisallowUnknownFields()
 	dec.UseNumber() // rendered_with's vars: an int64 stays exact (module.DecodedVars)
 	if err := dec.Decode(l); err != nil {
-		return nil, decodeError(path, err)
+		return nil, decodeError(path, b, err)
 	}
 	if l.Version > Version {
 		return nil, fmt.Errorf("%s was written by a newer lola (ledger version %d); upgrade lola", path, l.Version)
@@ -240,10 +240,10 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 	return l, nil
 }
 
-// decodeError is err, what decoding the lock.json at path failed with, said in the terms of the
+// decodeError is err, what decoding b, the lock.json at path, failed with, said in the terms of the
 // file: the field and what it holds against what it should, or what is wrong with the JSON, with
 // restoreHint.
-func decodeError(path string, err error) error {
+func decodeError(path string, b []byte, err error) error {
 	var typ *json.UnmarshalTypeError
 	var syntax *json.SyntaxError
 	var msg string
@@ -251,11 +251,14 @@ func decodeError(path string, err error) error {
 	switch field, unknown := strings.CutPrefix(err.Error(), "json: unknown field "); {
 	case errors.As(err, &typ):
 		hint = "restore lock.json from a backup, or fix the field the error names"
-		field := cmp.Or(untrusted.Text(typ.Field, untrusted.MaxName), "the file")
+		path, found := valuePath(b, typ.Offset)
+		if !found {
+			path = strings.Split(typ.Field, ".")
+		}
+		field := cmp.Or(untrusted.Text(strings.Join(path, "."), untrusted.MaxName), "the file")
 		msg = fmt.Sprintf("%s should be %s, but holds %s", field, jsonType(typ.Type), jsonValue(typ.Value))
-		if name, ok := strings.CutPrefix(typ.Field, "modules."); ok {
-			name, _, _ = strings.Cut(name, ".")
-			name = untrusted.Text(name, untrusted.MaxName)
+		if len(path) > 1 && path[0] == "modules" {
+			name := untrusted.Text(path[1], untrusted.MaxName)
 			hint = "restore lock.json from a backup, or remove the entry for " + name + " (modules." + name + ") from it and reinstall " + name
 		}
 	case errors.As(err, &syntax):
@@ -271,6 +274,45 @@ func decodeError(path string, err error) error {
 		msg = "cannot be read: " + err.Error()
 	}
 	return errs.WithHints(fmt.Errorf("%s: %s", path, msg), hint)
+}
+
+// valuePath is the keys and list indexes from the root of the JSON in b to the value that
+// json.UnmarshalTypeError reports at byte end: where a string, number or boolean ends, or just
+// inside an object or list. It is empty for the whole document. It
+// stands in for UnmarshalTypeError.Field, which names a module or a list element only from Go 1.27
+// on. found is false when no value ends there.
+func valuePath(b []byte, end int64) (path []string, found bool) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	var walk func(at []string) ([]string, bool)
+	walk = func(at []string) ([]string, bool) {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, false
+		}
+		if delim, ok := tok.(json.Delim); ok {
+			if dec.InputOffset() == end { // json reports a misplaced object or list just inside its opener
+				return at, true
+			}
+			for i := 0; dec.More(); i++ {
+				key := strconv.Itoa(i)
+				if delim == '{' {
+					k, err := dec.Token()
+					if err != nil {
+						return nil, false
+					}
+					key, _ = k.(string)
+				}
+				if p, ok := walk(append(at, key)); ok {
+					return p, true
+				}
+			}
+			if _, err := dec.Token(); err != nil { // the closing delimiter
+				return nil, false
+			}
+		}
+		return at, dec.InputOffset() == end
+	}
+	return walk(nil)
 }
 
 // jsonType is what a JSON value must be to decode into t, in the terms of the file.

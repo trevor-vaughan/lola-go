@@ -204,6 +204,7 @@ var _ = Describe("ledger", func() {
 			`{"version":1,"modules":{},"created":{"a":1}}`:        "created should be a list, but holds an object",
 			`{"version":1,"modules":{"rich":{"targets":[1]}}}`:    "modules.rich.targets.0 should be a string, but holds a number",
 			`{"version":1,"modules":{"rich":{"source":true}}}`:    "modules.rich.source should be a string, but holds true or false",
+			"{\n  \"version\": 1,\n  \"modules\": {\n    \"a\": {\"source\": \"s\"},\n    \"b\": {\"targets\": [\"x\", 1]}\n  }\n}\n": "modules.b.targets.1 should be a string, but holds a number",
 		} {
 			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
 			_, err := ledger.Load(path)
