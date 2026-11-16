@@ -1,0 +1,149 @@
+docs/architecture/lola-tidy.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_13af308275442d 4
+docs/architecture/templates.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_f9585d477bf951 4
+docs/architecture/packages.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_55ad2574ffaccf 4
+docs/architecture/install-hooks.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_cddbc0ac1d6902 4
+docs/architecture/layers.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_aaf06360a82ecd 4
+docs/architecture/security-model.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_e3494afa0ed03e 4
+docs/architecture/trust-kinds.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_fc2d09eb5ada9e 4
+docs/architecture/cache.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_1b05e235a95ac1 4
+docs/architecture/install-flow.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_1510ba1ee4b7c0 4
+docs/architecture/tui-flows.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_c793cee4bdc31b 4
+docs/architecture/marketplaces.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_654bee41453313 4
+docs/architecture/trust-record.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_d069d428e2b343 4
+docs/architecture/plans-and-the-ledger.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_e3b756406eb00a 4
+docs/testing.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_41383073296158 4
+docs/architecture/sync.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_2255f7104542f3 4
+docs/architecture/fetching-sources.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_6b6d0488e70013 4
+docs/architecture.md
+  s_08e83211bea0fc::t_456cadc0f37c2c 3-4
+docs/decisions.md
+  s_08e83211bea0fc::t_f2751e3d012214 3-4
+docs/guides/authoring-modules.md
+  s_08e83211bea0fc::t_c24f10101be947 3-4
+docs/guides/bundles.md
+  s_08e83211bea0fc::t_bdfaa1468544da 3-4
+docs/guides/choosing-what-to-install.md
+  s_08e83211bea0fc::t_01924c8e667769 3-4
+docs/guides/config-and-selections.md
+  s_08e83211bea0fc::t_da9736fef6fd27 3-4
+docs/guides/install-scripts.md
+  s_08e83211bea0fc::t_46674be9c08879 3-4
+docs/guides/install-trust-kinds.md
+  s_08e83211bea0fc::t_72bf97252e55ae 3-4
+docs/guides/marketplaces.md
+  s_08e83211bea0fc::t_8f5b10a360f602 3-4
+docs/guides/migrating.md
+  s_08e83211bea0fc::t_75d1594ee57b84 3-4
+docs/guides/profile-walkthroughs.md
+  s_08e83211bea0fc::t_c3a145e5d68608 3-4
+docs/guides/profiles.md
+  s_08e83211bea0fc::t_63bcc5546c3c5e 3-4
+docs/guides/remote-profiles.md
+  s_08e83211bea0fc::t_04806c96246501 3-4
+docs/guides/sources-and-the-cache.md
+  s_08e83211bea0fc::t_17be3c3447013c 3-4
+docs/guides/sync-and-trust.md
+  s_08e83211bea0fc::t_452e41192d03d1 3-4
+docs/guides/syncing-lola-between-machines.md
+  s_08e83211bea0fc::t_ca18b57605493f 3-4
+docs/guides/target-specs.md
+  s_08e83211bea0fc::t_89272c15e51dd6 3-4
+docs/guides/templating.md
+  s_08e83211bea0fc::t_bd556f7ed12e97 3-4
+docs/guides/tidying.md
+  s_08e83211bea0fc::t_07b9b69d80fb0b 3-4
+docs/reference/cache.md
+  s_08e83211bea0fc::t_5ce5ff911d166d 3-4
+docs/reference/check.md
+  s_08e83211bea0fc::t_646784620528b3 3-4
+docs/reference/completion.md
+  s_08e83211bea0fc::t_f66461a64db9a5 3-4
+docs/reference/help.md
+  s_08e83211bea0fc::t_47c4c72dac577e 3-4
+docs/reference/info.md
+  s_08e83211bea0fc::t_35e511847e5972 3-4
+docs/reference/init.md
+  s_08e83211bea0fc::t_2c6ed755995ce2 3-4
+docs/reference/install.md
+  s_08e83211bea0fc::t_baf51154d581f3 3-4
+docs/reference/list.md
+  s_08e83211bea0fc::t_7816ed64926d26 3-4
+docs/reference/market.md
+  s_08e83211bea0fc::t_49e88a73935a60 3-4
+docs/reference/migrate.md
+  s_08e83211bea0fc::t_f4efeb8c440635 3-4
+docs/reference/output-contract.md
+  s_08e83211bea0fc::t_2524e586fb290e 3-4
+docs/reference/profile.md
+  s_08e83211bea0fc::t_bdca1aaccfd204 3-4
+docs/reference/repair.md
+  s_08e83211bea0fc::t_b5eba8f74c45a6 3-4
+docs/reference/search.md
+  s_08e83211bea0fc::t_069b96dea6525d 3-4
+docs/reference/sync.md
+  s_08e83211bea0fc::t_f3d3661e492a01 3-4
+docs/reference/tidy.md
+  s_08e83211bea0fc::t_07ac71a3706752 3-4
+docs/reference/trash.md
+  s_08e83211bea0fc::t_020d6073529f2b 3-4
+docs/reference/uninstall.md
+  s_08e83211bea0fc::t_f7d030273b4f82 3-4
+docs/reference/update.md
+  s_08e83211bea0fc::t_f281107d464707 3-4
+docs/reference/version.md
+  s_08e83211bea0fc::t_c7d973c8d12b5f 3-4
+docs/release.md
+  s_08e83211bea0fc::t_f13a23a22737e8 3-4
+docs/template_engine_analysis.md
+  s_08e83211bea0fc::t_17626e3b423fc3 3-4
+docs/usage.md
+  s_08e83211bea0fc::t_df1fa39d2fcc14 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "76c8642057814959f61022704dcf041b1d72c1aa",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
