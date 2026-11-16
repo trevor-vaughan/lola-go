@@ -423,6 +423,7 @@ type syncEntry struct {
 	installed     string      // the digest lock.json records for the module, "" when none is installed
 	targetsIn     targetsIn   // the file whose targets: the entry installs to
 	notices       []Notice    // what resolving the entry has to say (a gone folder rendered from the cache)
+	nth           string      // " (3/12)": the entry's place among the run's, which its progress steps carry; "" outside a sync
 }
 
 // own reports whether the entry is from a profile of the user's own, trusted as all of theirs is; a
@@ -481,6 +482,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, req.Display) }()
 	newProbes := func() *probeRun {
 		probes := e.newProbeRun(ctx)
+		probes.progress = opts.Progress
 		if req.versions != nil {
 			probes.chosen[sc.Key()] = req.versions
 		}
@@ -750,6 +752,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
+	for i, se := range entries {
+		se.nth = fmt.Sprintf(" (%d/%d)", i+1, len(entries))
+	}
 	for _, name := range slices.Sorted(maps.Keys(req.At)) {
 		k := slices.IndexFunc(entries, func(se *syncEntry) bool { return se.ent.Name == name })
 		switch {
@@ -821,7 +826,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			if !se.covered || se.spec.Kind != source.KindFolder || se.own() {
 				continue
 			}
-			if err := e.resolveSync(ctx, sc, se, run, req.Display); err != nil {
+			if err := e.resolveSync(ctx, sc, se, run, req.Display, opts.Progress); err != nil {
 				return nil, err
 			}
 			installed := led.Modules[se.ent.Name]
@@ -860,7 +865,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	// has. A failure of lola's own state (the cache, the staging) stops the run here.
 	var unreadNotes []Notice
 	readEarly := func(se *syncEntry) error {
-		err := e.resolveSync(ctx, sc, se, run, req.Display)
+		err := e.resolveSync(ctx, sc, se, run, req.Display, opts.Progress)
 		if err == nil || ctx.Err() != nil || !sourceFailure(err) {
 			return err
 		}
@@ -917,7 +922,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		// rest, a refusal for removals alone included (CR10).
 		for _, se := range entries {
 			if se.spec.Kind == source.KindFolder && se.v.ContentDir == "" {
-				if err := e.resolveSync(ctx, sc, se, run, req.Display); err != nil {
+				if err := e.resolveSync(ctx, sc, se, run, req.Display, opts.Progress); err != nil {
 					return nil, err
 				}
 			}
@@ -1030,7 +1035,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		if se.v.ContentDir == "" { // a covered folder at project scope was read above
 			// lola update leaves a module whose source it cannot fetch as installed and goes on; a
 			// folder, and any failure of lola's own state, stops the run.
-			err := e.resolveSync(ctx, sc, se, run, req.Display)
+			err := e.resolveSync(ctx, sc, se, run, req.Display, opts.Progress)
 			if ff, ok := errors.AsType[*fetchFailedError](err); ok && req.Installed && se.spec.Kind != source.KindFolder {
 				name := untrusted.Text(se.ent.Name, untrusted.MaxName)
 				res.Failed = append(res.Failed, name)
@@ -1675,6 +1680,7 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, layers []Layer, on boo
 			sp.notices = append(sp.notices, *ignored)
 		}
 		opts.entryFrom, opts.checkArg = se.from, e.syncCheckArg(sc, se, &ent, opts.DryRun)
+		opts.Progress.working("rendering %s%s", untrusted.Text(name, untrusted.MaxName), se.nth)
 		intents, finds, notes, mr, err := e.planModule(sc, se.v, se.targets, &ent, x, opts, probes, templates)
 		if err != nil {
 			return syncPlan{}, err
@@ -2956,8 +2962,8 @@ func describeSource(location, path string, comps *source.Components) string {
 // cache head for its ref, or fetches the ref when there is none (or the head predates commits in
 // heads); a pinned entry takes the cached version, or fetches its commit. A new pin is recorded in
 // se.pin. display is the run's output flags, which the hints keep.
-func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run string, display []string) error {
-	err := e.resolveVersion(ctx, sc, se, run, display)
+func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run string, display []string, progress Progress) error {
+	err := e.resolveVersion(ctx, sc, se, run, display, progress)
 	if err != nil && se.at != "" && sourceFailure(err) {
 		// A version --at names that the source does not serve is that version's refusal, never a
 		// failed fetch that lola update leaves as installed.
@@ -3000,9 +3006,13 @@ func atHolds(name, got, want, fresh string) error {
 }
 
 // resolveVersion is resolveSync's work, before the --at check.
-func (e *Engine) resolveVersion(ctx context.Context, sc Scope, se *syncEntry, run string, display []string) error {
+func (e *Engine) resolveVersion(ctx context.Context, sc Scope, se *syncEntry, run string, display []string, progress Progress) error {
 	name, ent := se.ent.Name, se.ent
+	fetching := func() {
+		progress.fetching(se.spec, "%s%s from %s", untrusted.Text(name, untrusted.MaxName), se.nth, untrusted.Text(se.spec.Location, untrusted.MaxName))
+	}
 	stage := func() error {
+		fetching()
 		st, err := e.prepareFetch(ctx, name, se.spec, run)
 		if err != nil {
 			return err
@@ -3039,7 +3049,7 @@ func (e *Engine) resolveVersion(ctx context.Context, sc Scope, se *syncEntry, ru
 		}
 		get := stage
 		if se.follow != nil {
-			get = func() error { return e.followPin(ctx, se, run) } // the catalog's checks, and its commit pin, not the ref's head
+			get = func() error { fetching(); return e.followPin(ctx, se, run) } // the catalog's checks, and its commit pin, not the ref's head
 		}
 		if err := get(); err != nil {
 			return err
@@ -3082,6 +3092,8 @@ func (e *Engine) resolveVersion(ctx context.Context, sc Scope, se *syncEntry, ru
 		// entry the user has not trusted must name a commit on its ref. So must a profile's pin
 		// read from a project's lock.json, which a file planted in the checkout could name.
 		if (!se.covered || se.ledgerPin && sc.Kind == target.Project) && se.spec.Kind == source.KindGit {
+			progress.reaching(se.spec, "checking the pinned commit of %s%s at %s", untrusted.Text(name, untrusted.MaxName), se.nth,
+				untrusted.Text(se.spec.Location, untrusted.MaxName))
 			if err := source.CheckReachable(ctx, se.spec, ent.Commit, run); err != nil {
 				base, repin := e.pinnedIn(sc, se)
 				return syncPinError(name, base, ent, fmt.Errorf("%s: %w", name, err), repin)
@@ -3091,6 +3103,7 @@ func (e *Engine) resolveVersion(ctx context.Context, sc Scope, se *syncEntry, ru
 		se.v = v
 		return nil
 	}
+	fetching()
 	st, err := e.fetchPin(ctx, name, se.spec, ent.Commit, ent.Digest, run)
 	if err != nil {
 		base, repin := e.pinnedIn(sc, se)

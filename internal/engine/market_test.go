@@ -610,7 +610,7 @@ var _ = Describe("marketplaces", func() {
 		Expect(changed[0].Changes).To(ConsistOf(And(HaveField("Module", "sel"), HaveField("FolderContent", true), HaveField("InstallOwn", ""))),
 			"no install by source, which would take the whole folder")
 
-		_, err = e.Update(ctx, []string{"sel"})
+		_, err = e.Update(ctx, []string{"sel"}, engine.Progress{})
 		Expect(err).NotTo(HaveOccurred())
 		v, _, err := e.Current("sel")
 		Expect(err).NotTo(HaveOccurred())

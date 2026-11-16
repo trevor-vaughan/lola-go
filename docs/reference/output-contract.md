@@ -128,6 +128,12 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     (remote:x not on this machine yet → lola sync --user) over default`.
   - While a file or link is in its place, `error` names it instead
     (`<path> is in the way of it; move it aside`).
+- Progress: on a terminal, `lola update`, `lola sync` (and the `lola profile` changes that sync),
+  `lola install` and `lola cache update` show what a long run is doing (`… fetching kit (3/12)
+  from <source>`) on one line of stderr that they redraw and clear before anything else prints;
+  in accessible mode each step is a line of its own. A fetch over ssh prints its step as a line
+  that stays, since ssh may ask on the terminal, and nothing is drawn while ssh, a script or a
+  hook runs. Scripts, `--json` and `--plain` get none.
 - Errors: `error: <message>` on stderr with indented `hint:` lines; under `--json`, one line
   `{"error": "...", "hints": [...]}`, which some refusals extend:
   - A sync refused for want of an answer adds `trust` (its `status`, and `changes: []` when only

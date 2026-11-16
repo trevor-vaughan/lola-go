@@ -1,15 +1,19 @@
 package cli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/cli"
+	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -634,6 +638,152 @@ var _ = Describe("lola update", func() {
 
 	It("no longer knows lola render", func() {
 		Expect(lola("render").err).To(ContainSubstring(`unknown command "render"`))
+	})
+
+	Describe("progress", func() {
+		const clearLine = "\r\x1b[2K"
+		// onTerminal runs lola with stderr a terminal, as it is when a person waits, drawing every
+		// step at once (no delay, no throttle).
+		onTerminal := func(p cli.Prompter, args ...string) result {
+			GinkgoHelper()
+			opts := []cli.Option{cli.WithTerminals(false, true), cli.WithProgressPace(0, 0)}
+			if p != nil {
+				opts = append(opts, cli.WithPrompter(p))
+			}
+			root, err := cli.NewRootCmd(os.Getenv, opts...)
+			Expect(err).NotTo(HaveOccurred())
+			var out, errb bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&errb)
+			root.SetIn(strings.NewReader(""))
+			root.SetArgs(args)
+			code := cli.Execute(root)
+			return result{out: out.String(), err: errb.String(), code: code}
+		}
+		// cleared says nothing reaches stderr while a step is on the line: each draw is followed
+		// by the clear that ends it, and the run ends with none on the line.
+		cleared := func(stderr string) {
+			GinkgoHelper()
+			parts := strings.Split(stderr, clearLine)
+			for i, part := range parts[1:] {
+				if strings.HasPrefix(part, "… ") {
+					Expect(part).NotTo(ContainSubstring("\n"), "output written over the progress line")
+					Expect(i+1).To(BeNumerically("<", len(parts)-1), "a step left on the line")
+				}
+			}
+		}
+		fetching := func() string { return "fetching example (1/2) from " + served + "/example.git" }
+
+		It("redraws one line on a terminal and clears it before the report", func() {
+			push(map[string]string{"commands/example.md": "example v2\n"})
+			r := onTerminal(nil, "update", "--fetch", "--trust", "-C", proj)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(ContainSubstring(clearLine + "… " + fetching() + clearLine))
+			Expect(r.err).To(ContainSubstring(clearLine + "… rendering other (2/2)" + clearLine))
+			cleared(r.err)
+			Expect(r.out).To(ContainSubstring("✓ updated example"))
+			Expect(r.out).NotTo(ContainSubstring("…"), "the report is untouched")
+		})
+
+		It("clears the line before a question's text", func() {
+			push(map[string]string{"commands/example.md": "example v2\n"})
+			p := &scripted{trust: []func(cli.TrustStep) (engine.TrustAnswer, error){
+				func(cli.TrustStep) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }}}
+			r := onTerminal(p, "update", "--fetch", "-C", proj)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.calls).To(ContainElement("trust"))
+			cleared(r.err)
+			asked := strings.Index(r.err, "lola update")
+			Expect(asked).To(BeNumerically(">", 0), r.err)
+			before := r.err[:asked]
+			Expect(before[strings.LastIndex(before, clearLine)+len(clearLine):]).NotTo(HavePrefix("…"), "the line was cleared before the question's text")
+			Expect(r.err[:asked]).To(ContainSubstring("… "+fetching()), "a step was drawn before the question")
+		})
+
+		It("hands a script the run's own stderr and draws nothing while it runs", func() {
+			yml := filepath.Join(proj, ".lola", "project.yml")
+			b, err := os.ReadFile(yml)
+			Expect(err).NotTo(HaveOccurred())
+			// The script says whether its stderr is lola's file or a pipe lola copies from, and
+			// outlives the progress line's next draw (every second, after the first at once).
+			writeTree(proj, map[string]string{".lola/project.yml": string(b) + "pre_install: ci/hello.sh\n",
+				"ci/hello.sh": "#!/bin/sh\nif [ -p /dev/stderr ]; then echo START pipe >&2; else echo START direct >&2; fi\nsleep 1.5\necho EXIT >&2\n"})
+			Expect(os.Chmod(filepath.Join(proj, "ci", "hello.sh"), 0o755)).To(Succeed())
+			push(map[string]string{"commands/example.md": "example v2\n"})
+			errf, err := os.Create(filepath.Join(tmp, "stderr"))
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { Expect(errf.Close()).To(Succeed()) }()
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true), cli.WithProgressPace(0, time.Second))
+			Expect(err).NotTo(HaveOccurred())
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(errf)
+			root.SetIn(strings.NewReader(""))
+			root.SetArgs([]string{"update", "--fetch", "--trust=all", "--unseen", "-C", proj})
+			Expect(cli.Execute(root)).To(Equal(0))
+			eb, err := os.ReadFile(errf.Name())
+			Expect(err).NotTo(HaveOccurred())
+			stderr := string(eb)
+			Expect(stderr).To(ContainSubstring(clearLine+"… fetching"), "progress was shown")
+			Expect(stderr).To(ContainSubstring("START direct\n"), "the script writes to lola's stderr itself")
+			during := stderr[strings.Index(stderr, "START"):strings.Index(stderr, "EXIT")]
+			Expect(during).NotTo(ContainSubstring("\x1b"), "nothing was drawn while the script ran")
+			before := stderr[:strings.Index(stderr, "START")]
+			Expect(before[strings.LastIndex(before, clearLine)+len(clearLine):]).NotTo(HavePrefix("…"), "the line was cleared before it ran")
+			cleared(stderr)
+		})
+
+		It("clears the line before the receipt of what --trust covers, under -y", func() {
+			yml := filepath.Join(proj, ".lola", "project.yml")
+			b, err := os.ReadFile(yml)
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(proj, map[string]string{".lola/project.yml": string(b) + "pre_install: ci/hello.sh\n", "ci/hello.sh": "#!/bin/sh\n"})
+			Expect(os.Chmod(filepath.Join(proj, "ci", "hello.sh"), 0o755)).To(Succeed())
+			fresh := filepath.Join(tmp, "fresh")
+			writeTree(fresh, map[string]string{"lola.yml": "name: fresh\n", "commands/fresh.md": "fresh\n"})
+			r := onTerminal(nil, "install", fresh, "-t", "claude-code", "--trust=scripts", "--unseen", "-y", "-C", proj)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(ContainSubstring("trusting, as --trust=scripts allows:"))
+			Expect(r.err).To(ContainSubstring("… rendering fresh (1/1)"))
+			cleared(r.err)
+		})
+
+		It("is a line per step where the terminal cannot redraw", func() {
+			GinkgoT().Setenv("LOLA_ACCESSIBLE", "1")
+			r := onTerminal(nil, "update", "--fetch", "--trust", "-C", proj)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(ContainSubstring("… " + fetching() + "\n"))
+			Expect(r.err).To(ContainSubstring("… rendering other (2/2)\n"))
+			Expect(r.err).NotTo(ContainSubstring("\x1b"))
+		})
+
+		DescribeTable("shows nothing to a script, even on a terminal",
+			func(flag string) {
+				r := onTerminal(nil, "update", "--fetch", "--trust", flag, "-C", proj)
+				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.out + r.err).NotTo(ContainSubstring("…"))
+				Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+			},
+			Entry("--json", "--json"),
+			Entry("--plain", "--plain"),
+		)
+
+		It("shows nothing when stderr is not a terminal", func() {
+			r := lola("update", "--fetch", "--trust", "-C", proj)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out + r.err).NotTo(ContainSubstring("…"))
+		})
+
+		It("shows what lola sync and lola install work on", func() {
+			r := onTerminal(nil, "sync", "-C", proj)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(ContainSubstring(clearLine + "… rendering example (1/2)"))
+			cleared(r.err)
+			r = onTerminal(nil, "install", served+"/other.git", "--ref", "main", "-t", "claude-code", "-y", "-C", proj)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(ContainSubstring(clearLine + "… rendering other (1/1)"))
+			cleared(r.err)
+		})
 	})
 })
 

@@ -835,7 +835,11 @@ func (fl *installFlow) run() error {
 				return `choose "Change versions"`
 			}
 		}
+		var done func()
+		dry.Options.Progress, done = fl.a.progress(fl.cmd)
+		defer done()
 		planned, err := fl.eng.InstallAll(fl.cmd.Context(), dry)
+		done()
 		if err != nil {
 			return err
 		}
@@ -887,12 +891,17 @@ func (fl *installFlow) run() error {
 	if !fl.a.json && !fl.reviews() {
 		s := fl.a.style(fl.cmd)
 		spec.Options.ShowResolved = func(lines []string) {
+			defer fl.a.holdProgress()()
 			for _, l := range lines {
 				fmt.Fprintln(fl.cmd.ErrOrStderr(), s.info(l))
 			}
 		}
 	}
+	var done func()
+	spec.Options.Progress, done = fl.a.progress(fl.cmd)
+	defer done()
 	res, err := fl.eng.InstallAll(fl.cmd.Context(), spec)
+	done()
 	fl.applied = err == nil
 	if err != nil {
 		err = fl.a.deletesRefusal(fl.cmd, err)
@@ -1105,8 +1114,13 @@ func (fl *installFlow) removeDropped(res *engine.InstallResult, gone []string) e
 					return confirm(rs)
 				}
 			}
-			r, err := fl.eng.Sync(fl.cmd.Context(), engine.SyncRequest{Scope: c.Scope, ConfirmRemovals: ask, Display: outputFlags(fl.cmd),
-				Options: engine.Options{Force: fl.f.force, ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Trust: fl.f.trust, Unseen: fl.f.unseen, Display: outputFlags(fl.cmd)}})
+			req := engine.SyncRequest{Scope: c.Scope, ConfirmRemovals: ask, Display: outputFlags(fl.cmd),
+				Options: engine.Options{Force: fl.f.force, ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Trust: fl.f.trust, Unseen: fl.f.unseen, Display: outputFlags(fl.cmd)}}
+			var done func()
+			req.Options.Progress, done = fl.a.progress(fl.cmd)
+			defer done()
+			r, err := fl.eng.Sync(fl.cmd.Context(), req)
+			done()
 			if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !fl.a.json {
 				printSyncRefusal(fl.cmd.ErrOrStderr(), style{color: fl.a.color(fl.cmd.ErrOrStderr()), bold: fl.a.bold(fl.cmd.ErrOrStderr()), plain: fl.a.plain}, manifestName(c.Scope), "lola sync", refusal, "")
 			}
@@ -1717,7 +1731,11 @@ func (fl *installFlow) ensureChoices() error {
 	if fl.f.edit != nil { // lola profile --edit asks which file it writes before any page
 		req.AskWhere = fl.where
 	}
+	var done func()
+	req.Progress, done = fl.a.progress(fl.cmd)
+	defer done()
 	ch, err := fl.eng.InstallChoices(fl.cmd.Context(), req)
+	done()
 	fl.choices = ch
 	if err != nil {
 		return err

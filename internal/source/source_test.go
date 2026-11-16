@@ -33,6 +33,16 @@ var _ = Describe("Parse", func() {
 		Expect(s.Location).To(Equal(filepath.Join(cwd, "mods/x")))
 	})
 
+	It("says which sources git reaches through ssh: ssh:// URLs and scp form", func() {
+		for arg, ssh := range map[string]bool{"git@github.com:acme/kit.git": true, "ssh://git@github.com/acme/kit.git": true,
+			"SSH://git@github.com/acme/kit.git": true, "https://github.com/acme/kit.git": false, "mods/x": false} {
+			s, ok, err := source.Parse(arg, cwd)
+			Expect(err).NotTo(HaveOccurred(), arg)
+			Expect(ok).To(BeTrue(), arg)
+			Expect(source.UsesSSH(s)).To(Equal(ssh), arg)
+		}
+	})
+
 	It("accepts file:// URLs to directories", func() {
 		s, ok, err := source.Parse("file://"+filepath.Join(cwd, "mods/x"), "/")
 		Expect(err).NotTo(HaveOccurred())

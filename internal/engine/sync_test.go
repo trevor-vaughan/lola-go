@@ -215,7 +215,7 @@ var _ = Describe("Sync", func() {
 		push(map[string]string{"commands/ship.md": "Ship v2\n"})
 		gitIn(work, "tag", "v1")
 		gitIn(work, "push", "-q", "-f", "--tags", bare)
-		_, err := e.Update(ctx, nil)
+		_, err := e.Update(ctx, nil, engine.Progress{})
 		Expect(err).NotTo(HaveOccurred())
 		head, _, err := e.Store.Head("example", "v1")
 		Expect(err).NotTo(HaveOccurred())
@@ -326,7 +326,7 @@ var _ = Describe("Sync", func() {
 		names, err := e.Store.Names()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(names).To(Equal([]string{"tools"}))
-		_, err = e.Update(ctx, []string{"tools"})
+		_, err = e.Update(ctx, []string{"tools"}, engine.Progress{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(e.Store.Remove("tools")).To(BeTrue())
 		_, err = sync(engine.SyncRequest{Scope: user})
@@ -2027,7 +2027,7 @@ var _ = Describe("Sync", func() {
 			// --update of an entry whose ref serves its pin again, while the cache's head for the
 			// ref is another version: the dry run leaves the head where it is.
 			pinnedCommit := lockFile().Modules["example"].Commit
-			_, err = e.Update(ctx, nil)
+			_, err = e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			head, _, err := e.Store.Head("example", "main")
 			Expect(err).NotTo(HaveOccurred())

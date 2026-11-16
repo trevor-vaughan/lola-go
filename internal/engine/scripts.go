@@ -644,6 +644,7 @@ func (e *Engine) runScripts(ctx context.Context, sc Scope, j *hookJob, scripts [
 			}
 			err := s.unchanged()
 			if err == nil {
+				opts.Progress.holding(false, "running %s script %s (%s) for %s on %s", event, s.shown, s.source, untrusted.Text(j.name, untrusted.MaxName), id)
 				err = e.runHook(ctx, sc, j, s.path, event, id, opts.HookOutput, "LOLA_SCRIPT_SOURCE="+s.source)
 				if err != nil {
 					err = fmt.Errorf("%s script %s (%s) failed for %s on %s: %w", event, s.shown, s.source, j.name, id, err)

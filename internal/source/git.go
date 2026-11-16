@@ -326,7 +326,7 @@ func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fe
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			hint := "the server did not answer in time: check your network and the URL, then try again"
-			if strings.HasPrefix(strings.ToLower(spec.Location), "ssh://") || !strings.Contains(spec.Location, "://") { // ssh:// or scp form
+			if UsesSSH(spec) {
 				hint = "ssh may be waiting for a passphrase or a host key: load your key into ssh-agent and add the host to known_hosts"
 			}
 			err = errs.WithHints(err, hint)

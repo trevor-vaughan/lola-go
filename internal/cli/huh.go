@@ -145,6 +145,7 @@ type huhForms struct {
 	dark   func() (bool, error)
 	isDark *bool
 	ask    func(Question) (rune, error) // a question on the full terminal (app.ask), on stderr
+	hold   func() func()                // holds the progress line over a form (app.holdProgress); nil for none
 	// cancelRun stops the full-terminal form running; stdinEnded says stdin's end of input did.
 	// Both are set from the form's input goroutine and read after the form returns.
 	cancelRun  context.CancelFunc
@@ -166,7 +167,7 @@ func (a *app) huhPrompter(cmd *cobra.Command) Prompter {
 	h := &huhForms{stdin: cmd.InOrStdin(), in: &eofReader{r: cmd.InOrStdin()}, out: cmd.ErrOrStderr(), tty: interactive(cmd),
 		accessible: a.accessible(), color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr()), verbose: a.style(cmd).verbose,
 		dark: func() (bool, error) { return a.darkBackground(cmd) },
-		ask:  func(q Question) (rune, error) { return a.ask(cmd, q) }}
+		ask:  func(q Question) (rune, error) { return a.ask(cmd, q) }, hold: a.holdProgress}
 	if p, err := paths.Resolve(a.getenv); err == nil {
 		h.home = p.Home
 	}
@@ -216,6 +217,9 @@ func (h *huhForms) theme() (huh.Theme, error) {
 // any other panic is not ours to hide. A run of forms is drawn under one break (promptBreak, see
 // ruled); in accessible mode, whose prompts stay on the terminal, every form is.
 func (h *huhForms) runIn(t huh.Theme, nav Nav, fields ...huh.Field) (err error) {
+	if h.hold != nil {
+		defer h.hold()()
+	}
 	if !h.ruled {
 		promptBreak(h.out, style{color: h.color, bold: h.bold}, h.width, h.accessible)
 		h.ruled = !h.accessible

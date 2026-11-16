@@ -65,6 +65,7 @@ func answerHint(answers string) string {
 // a quit for q; ErrAborted for Ctrl+C; errStdinEnded when stdin ends. Inline, a break (promptBreak)
 // stands between the text and the prompt line; the viewer's rule is its own.
 func (a *app) ask(cmd *cobra.Command, q Question) (rune, error) {
+	defer a.holdProgress()()
 	w := cmd.ErrOrStderr()
 	s := style{color: a.color(w), bold: a.bold(w), asking: true, verbose: a.style(cmd).verbose}
 	show := q.Show

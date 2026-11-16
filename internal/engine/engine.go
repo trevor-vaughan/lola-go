@@ -246,6 +246,56 @@ type Options struct {
 	// ShowResolved, when set, is given install's resolved marketplace addresses, one line each
 	// ("@acme/formatter → <source> path <path> @ <ref>"), before any consent is asked.
 	ShowResolved func(lines []string)
+	// Progress is told each slow step the run starts, for a caller that shows it; it changes no
+	// result.
+	Progress Progress
+}
+
+// Progress is what a run tells a caller that shows its slow steps; author-chosen names reach it
+// only through untrusted.Text. Step is told an ordinary step: a fetch or folder read, a module's
+// render, an assistant run for its version. Hold is told a step that hands the terminal to
+// something else: a script or hook, which writes to it (HookOutput, as given), or ssh, which may
+// ask on it (a key's passphrase, a host key). The caller clears what it shows and draws nothing
+// until the next Step. keep says the step must stay on the terminal, a line of its own that is
+// never erased (ssh's prompt follows it); without keep it may be shown only where each step is a
+// line of its own. Either may be nil.
+type Progress struct {
+	Step func(step string)
+	Hold func(step string, keep bool)
+}
+
+// working tells p.Step, when there is one, the step the run starts.
+func (p Progress) working(format string, args ...any) {
+	if p.Step != nil {
+		p.Step(fmt.Sprintf(format, args...))
+	}
+}
+
+// holding tells p.Hold, when there is one, the step that hands the terminal on (Progress).
+func (p Progress) holding(keep bool, format string, args ...any) {
+	if p.Hold != nil {
+		p.Hold(fmt.Sprintf(format, args...), keep)
+	}
+}
+
+// fetching tells p the run fetches spec (reads it, for a folder), the step's text after the verb
+// given by format: a step that runs ssh is a held, kept one, since ssh may ask on the terminal.
+func (p Progress) fetching(spec source.Spec, format string, args ...any) {
+	verb := "fetching "
+	if spec.Kind == source.KindFolder {
+		verb = "reading "
+	}
+	p.reaching(spec, verb+format, args...)
+}
+
+// reaching tells p a step that contacts spec's source: held and kept when it runs ssh
+// (source.UsesSSH), an ordinary step otherwise.
+func (p Progress) reaching(spec source.Spec, format string, args ...any) {
+	if source.UsesSSH(spec) {
+		p.holding(true, format, args...)
+		return
+	}
+	p.working(format, args...)
 }
 
 // MCPRun says what an MCP server runs: the stdio command line or the remote URL.
@@ -923,12 +973,12 @@ func canonicalRoot(dir string) string {
 // without --ref the name resolves to the cache head for it. A full-SHA ref, either one, is recorded
 // lower-cased. Fetches go into run (StagedRun.add): kept there for a staged install, cached at once
 // for a publishing run. display is the run's output flags, which the `lola cache list` hint of the
-// not-a-source refusal keeps.
+// not-a-source refusal keeps. fetching is told each source it fetches.
 func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef string, run *StagedRun,
-	display []string) (manifest.Entry, store.Version, bool, error) {
+	display []string, fetching func(source.Spec)) (manifest.Entry, store.Version, bool, error) {
 	r.Ref, entryRef = source.RecordedRef(r.Ref), source.RecordedRef(entryRef)
 	if r.market != nil {
-		return e.resolveEntry(ctx, sc, r, have, run)
+		return e.resolveEntry(ctx, sc, r, have, run, fetching)
 	}
 	if module.ValidateName("module", r.Arg) == nil {
 		if r.Ref == "" {
@@ -956,7 +1006,9 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 			}
 			fetched := false
 			if !ok {
-				v, err = e.stageSource(ctx, run, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: r.Ref, Components: o.Components}, "", r.Arg)
+				spec := source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: r.Ref, Components: o.Components}
+				fetching(spec)
+				v, err = e.stageSource(ctx, run, spec, "", r.Arg)
 				if err != nil {
 					return manifest.Entry{}, store.Version{}, false, err
 				}
@@ -1000,6 +1052,7 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 		}
 	}
 	if v.Name == "" {
+		fetching(spec)
 		if v, err = e.stageSource(ctx, run, spec, "", ""); err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
 		}

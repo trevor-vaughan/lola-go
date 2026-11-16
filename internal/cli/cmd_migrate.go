@@ -83,7 +83,7 @@ func (a *app) migrateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			report, clearProgress := a.progress(cmd)
+			progress, clearProgress := a.progress(cmd)
 			defer clearProgress()
 			pr := a.prompter(cmd)
 			flags := opts // as the flags map, before any answer
@@ -98,7 +98,7 @@ func (a *app) migrateCmd() *cobra.Command {
 						return err
 					}
 				}
-				opts.Progress = report
+				opts.Progress = progress.Step
 				if p, err = migrate.NewPlan(cmd.Context(), eng, st, opts); err != nil {
 					return err
 				}

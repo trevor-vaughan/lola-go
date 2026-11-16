@@ -242,6 +242,7 @@ func (a *app) receipt(cmd *cobra.Command, given engine.TrustKinds, yes bool) fun
 		show := func(w io.Writer, s style) { printReceipt(w, s, given, items) }
 		p := a.prompter(cmd) // never asks under --json
 		if yes || !p.Interactive() {
+			defer a.holdProgress()()
 			w := cmd.ErrOrStderr()
 			show(w, style{color: a.color(w), bold: a.bold(w)})
 			return true, nil

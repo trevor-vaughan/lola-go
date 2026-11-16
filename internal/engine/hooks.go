@@ -20,6 +20,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Install hook events, in the order they run.
@@ -506,6 +507,7 @@ func (e *Engine) runHooks(ctx context.Context, sc Scope, jobs []*hookJob, script
 				continue
 			}
 			for _, id := range j.targets {
+				opts.Progress.holding(false, "running %s hook %s of %s for %s", event, untrusted.Text(s.Script, untrusted.MaxName), untrusted.Text(j.name, untrusted.MaxName), id)
 				err := e.runHook(ctx, sc, j, filepath.Join(j.dir, s.path), event, id, opts.HookOutput)
 				if err == nil {
 					j.record(s, id, HookRan)

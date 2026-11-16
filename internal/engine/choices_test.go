@@ -62,6 +62,14 @@ var _ = Describe("InstallChoices", func() {
 			{Scope: engine.Scope{Kind: target.User}, Source: engine.SourcePicked}}
 	})
 
+	It("tells Progress each source it reads, each counted", func() {
+		var steps []string
+		_, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: scopes, Modules: []engine.InstallRequest{{Arg: src}, {Arg: other}},
+			Progress: engine.Progress{Step: func(s string) { steps = append(steps, s) }}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(steps).To(Equal([]string{"reading " + src + " (1/2)", "reading " + other + " (2/2)"}))
+	})
+
 	It("labels a template component (template), since its frontmatter exists only once rendered", func() {
 		writeTree(other, map[string]string{"agents/t.md.liquid": "---\ndescription: {{ target | json }}\n---\nT\n"})
 		m := choices(other).Module("zeta")

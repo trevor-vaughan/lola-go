@@ -38,9 +38,10 @@ var _ = Describe("lola migrate", func() {
 	trash := func() string { return filepath.Join(tmp, "state", "lola", "trash") }
 
 	Describe("progress", func() {
-		// onTerminal runs lola migrate -n with stderr a terminal, as it is when a person waits.
+		// onTerminal runs lola migrate -n with stderr a terminal, as it is when a person waits,
+		// drawing every step at once.
 		onTerminal := func() result {
-			root, err := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true))
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true), cli.WithProgressPace(0, 0))
 			Expect(err).NotTo(HaveOccurred())
 			var out, errb bytes.Buffer
 			root.SetOut(&out)

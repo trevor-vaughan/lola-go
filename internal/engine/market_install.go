@@ -215,7 +215,7 @@ func (e *Engine) prepareEntry(ctx context.Context, p *marketPick, spec source.Sp
 // version is have (the version this request already resolved to) or the entry fetched into run
 // under its name (StagedRun.add). A version the pickers listed carries the commit it was fetched
 // at, which must be the catalog's pin.
-func (e *Engine) resolveEntry(ctx context.Context, sc Scope, r InstallRequest, have store.Version, run *StagedRun) (manifest.Entry, store.Version, bool, error) {
+func (e *Engine) resolveEntry(ctx context.Context, sc Scope, r InstallRequest, have store.Version, run *StagedRun, fetching func(source.Spec)) (manifest.Entry, store.Version, bool, error) {
 	p := r.market
 	spec, commit := p.spec(r.Ref)
 	if err := e.recordable(sc, r.Arg, source.Recorded{Source: spec.Location, Ref: spec.Ref, Path: spec.Path}, false); err != nil {
@@ -245,6 +245,7 @@ func (e *Engine) resolveEntry(ctx context.Context, sc Scope, r InstallRequest, h
 		}
 		return ent, have, false, nil
 	}
+	fetching(spec)
 	st, err := e.prepareEntry(ctx, p, spec, commit, run.dir)
 	var v store.Version
 	if err == nil {

@@ -226,7 +226,7 @@ func (e *Engine) remoteEntry(ctx context.Context, sc Scope, q string, ent manife
 		return nil, err
 	}
 	se := &syncEntry{ent: ent, spec: spec, targets: ent.Targets}
-	return se, e.resolveSync(ctx, sc, se, run, nil) // display: only a folder's hint takes it, and a remote entry is never one
+	return se, e.resolveSync(ctx, sc, se, run, nil, Progress{}) // display: only a folder's hint takes it, and a remote entry is never one
 }
 
 // readProfiles takes the profiles lock shared, for a run that reads the remote profiles (sync,

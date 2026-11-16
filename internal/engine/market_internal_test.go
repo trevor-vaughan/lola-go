@@ -57,7 +57,7 @@ var _ = Describe("fetchEntry", func() {
 
 		// sync --update following the catalog fetches through the same checks.
 		se := &syncEntry{ent: manifest.Entry{Name: "bundle", Source: spec.Location}, spec: spec, update: true, follow: pick}
-		err = e.resolveSync(context.Background(), Scope{Kind: target.User}, se, run, nil)
+		err = e.resolveSync(context.Background(), Scope{Kind: target.User}, se, run, nil, Progress{})
 		Expect(err).To(MatchError(ContainSubstring("marketplace acme lists bundle with sha256 " + strings.ToLower(listed) + "; the download is ")))
 		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --update --json"}))
 

@@ -409,7 +409,10 @@ func (a *app) cacheUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			up, err := eng.Update(cmd.Context(), args, outputFlags(cmd)...)
+			progress, done := a.progress(cmd)
+			defer done()
+			up, err := eng.Update(cmd.Context(), args, progress, outputFlags(cmd)...)
+			done()
 			if err != nil {
 				return err
 			}

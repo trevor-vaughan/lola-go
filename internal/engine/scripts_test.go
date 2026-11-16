@@ -302,6 +302,30 @@ var _ = Describe("install scripts", func() {
 			Expect(res.Scripts[2]).To(HaveField("Path", "flag/pre.sh"))
 		})
 
+		It("holds Progress for each script and hook it runs, in order, none of them kept", func() {
+			hooked()
+			opts := all()
+			var steps []string
+			opts.Progress.Step = func(s string) {
+				if strings.HasPrefix(s, "running ") {
+					steps = append(steps, "step "+s) // never: a script holds the terminal
+				}
+			}
+			opts.Progress.Hold = func(s string, keep bool) { steps = append(steps, fmt.Sprintf("%s %v", s, keep)) }
+			_, err := install(opts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(steps).To(Equal([]string{
+				"running pre-install script " + filepath.Join(tmp, "bin", "pre.sh") + " (user) for example on claude-code false",
+				"running pre-install script ci/check.sh (project) for example on claude-code false",
+				"running pre-install script flag/pre.sh (flag) for example on claude-code false",
+				"running pre-install hook hooks/pre.sh of example for claude-code false",
+				"running post-install hook hooks/post.sh of example for claude-code false",
+				"running post-install script flag/post.sh (flag) for example on claude-code false",
+				"running post-install script ci/after.sh (project) for example on claude-code false",
+				"running post-install script " + filepath.Join(tmp, "bin", "post.sh") + " (user) for example on claude-code false",
+			}))
+		})
+
 		It("each script runs once per module per target with the hook environment and LOLA_SCRIPT_SOURCE", func() {
 			configure("pre_install: " + script(filepath.Join(tmp, "bin", "pre.sh"), logger("user")) + "\npost_install: " +
 				script(filepath.Join(tmp, "bin", "post.sh"), logger("user")) + "\n")

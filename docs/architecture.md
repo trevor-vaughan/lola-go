@@ -78,6 +78,29 @@ Each interactive surface as a state machine: its screens, transitions and exits.
   called only where a prompt line or form is drawn: `app.ask`, `huhForms.Ask`'s accessible branch
   and `huhForms.runIn`, which on a full terminal draws it once per run of forms (`huhForms.ruled`,
   cleared by a question).
+- Progress: `engine.Options.Progress` (an `engine.Progress`; also `ChoicesRequest.Progress` and
+  `Engine.Update`'s argument) is told each slow step a run starts. `Step` takes the ordinary ones:
+  a source fetched or read (`resolveVersion` in a sync, `resolve` in an install, `lola cache
+  update`), counted `(3/12)` among the run's modules, a module rendered, an assistant run for its
+  version on a probe-cache miss. These are where measured runs spend their time; the fetch
+  dominates. `Hold` takes a step that hands the terminal on: a script or hook (not kept), which
+  gets `HookOutput`, the real stderr, untouched; a fetch or reachability check through ssh
+  (`source.UsesSSH`, kept), since ssh may ask for a passphrase or a host key on the terminal.
+  The CLI's `app.progress` (`internal/cli/progress.go`) shows them on stderr: under `--json` or
+  `--plain`, or off a terminal, nothing; in accessible mode a line per step, held ones too;
+  otherwise one line it redraws, nothing for 300ms after the run (or the last output) began, then
+  at most every 100ms (`WithProgressPace` in specs), cut to the terminal's width at each draw (80
+  when unknown). A held step clears the line and cancels any pending draw; a kept one is then
+  printed as a line that stays; nothing draws until the next `Step`. Nothing else is written over
+  the line: `app.holdProgress` clears it, and restarts the delay when the output is done, at the
+  start of every form and question (`huhForms.runIn`, `app.ask`), every printed or paged report
+  (`app.pageThen`, which `app.emit` and the trust diff print through) and the engine callbacks
+  that print without asking (`app.receipt` under `-y` or off a terminal, `ShowResolved`). Every
+  other callback a progress-wired run makes (`Ask`, `AskScript`, `AskRuntimeHooks`, `AskWhere`,
+  `Trust`, `ConfirmRemovals`, `ConfirmBack`, `ConfirmThen`, `Show`) asks or pages first, and its
+  echo lines print after that. Each caller defers `done` over the engine call and also runs it as
+  the call returns, before an error or a refusal prints. Streams are never wrapped: terminal
+  checks, the forms, the pager and the hooks need the `*os.File`.
 - State versus event: `isState` (`internal/engine/seen.go`) is the allowlist of findings that say
   what a module is; `safetyKey` keys an artifact `--force` rendered (`Finding.Forced`) apart from
   the same artifact skipped. `markNew` runs in `prepare` against `lock.json` as the run read it, and

@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -82,6 +83,8 @@ type app struct {
 	// queryBackground asks the terminal for its background color; nil is terminalBackground.
 	// Specs fake the terminal's answer with it.
 	queryBackground func(*cobra.Command) (color.Color, error)
+	pace            pace          // how the progress line draws (WithProgressPace)
+	line            *progressLine // the progress line app.progress shows, nil when none
 }
 
 // Option configures the command tree.
@@ -97,6 +100,12 @@ func WithPrompter(p Prompter) Option {
 // decides paging; specs page through a fake pager, or the viewer, with it.
 func WithTerminals(out, errw bool) Option {
 	return func(a *app) { a.termOut, a.termErr = out, errw }
+}
+
+// WithProgressPace makes the progress line wait delay before its first draw and every between
+// draws, in place of 300ms and 100ms; specs draw every step at once with zeros.
+func WithProgressPace(delay, every time.Duration) Option {
+	return func(a *app) { a.pace = pace{delay: delay, every: every} }
 }
 
 var cobraOnce sync.Once
@@ -125,7 +134,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) (*cobra.Command, err
 	if err != nil {
 		return nil, err
 	}
-	a := &app{getenv: getenv, reg: reg}
+	a := &app{getenv: getenv, reg: reg, pace: pace{delay: 300 * time.Millisecond, every: 100 * time.Millisecond}}
 	for _, o := range opts {
 		o(a)
 	}

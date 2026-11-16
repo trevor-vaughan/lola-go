@@ -23,7 +23,7 @@ On a terminal, without `-y`, it asks for each missing root and each missing assi
 plans. While it plans and previews, a terminal's last line says what it is
 working on (`… fetching https://github.com/acme/kit`, `… planning project /home/me/proj (3 of 41)`),
 and is cleared before the plan prints; with `LOLA_ACCESSIBLE=1` each step is a line of its own, and
-off a terminal nothing is printed. The run ends with `next steps:`, everything you can act on, each once: the consent it skipped,
+off a terminal, or under `--json` or `--plain`, nothing is printed. The run ends with `next steps:`, everything you can act on, each once: the consent it skipped,
 the command that maps what it left (`→ map what this machine lacks:
 lola migrate --map-root /Users/alice=/home/alice --map-target claude-code=opencode`).
 

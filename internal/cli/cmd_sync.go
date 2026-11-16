@@ -481,7 +481,11 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 	if pp := f.pass; pp != nil {
 		replay(pp, &req, &asked)
 	}
+	var done func()
+	req.Options.Progress, done = a.progress(cmd)
+	defer done()
 	res, err = eng.Sync(cmd.Context(), req)
+	done()
 	if f.pass != nil && errors.Is(err, engine.ErrTrustChanged) {
 		err = errs.WithHints(err, "run it again: "+f.pass.again)
 	}

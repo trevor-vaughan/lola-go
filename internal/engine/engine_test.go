@@ -1068,6 +1068,21 @@ var _ = Describe("Engine", func() {
 			Expect(string(b)).To(ContainSubstring(`"version": "2.1.287"`))
 		})
 
+		It("tells Progress each assistant it runs for its version, and none it reads from the cache", func() {
+			bin := assistant("claude", "echo '2.1.287 (Claude Code)'\n")
+			for _, want := range [][]string{{"asking claude-code for its version: " + bin + " --version"}, nil} {
+				var probes []string
+				opts := engine.Options{Targets: claude.Targets, DryRun: true, Progress: engine.Progress{Step: func(s string) {
+					if strings.HasPrefix(s, "asking ") {
+						probes = append(probes, s)
+					}
+				}}}
+				_, err := install(opts, src)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(probes).To(Equal(want))
+			}
+		})
+
 		It("keeps control characters out of the version it reads", func() {
 			assistant("claude", "printf '2.1.287\\033[31m (Claude Code)\\n'\n")
 			_, err := install(engine.Options{Targets: claude.Targets, DryRun: true}, src)

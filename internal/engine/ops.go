@@ -670,6 +670,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	res.home = e.Paths.Home
 	out := &InstallResult{Result: res, Scopes: []ScopeResult{}, TargetVersions: []TargetVersion{}}
 	probes := e.newProbeRun(ctx)
+	probes.progress = opts.Progress
 	var fetched []string
 	// staged: the arguments (arg) whose modules (name) were fetched into a staged run, in the cache
 	// only once the apply commits them.
@@ -835,7 +836,10 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 					}
 				}
 			}
-			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, listed, run, spec.Options.Display)
+			fetching := func(from source.Spec) {
+				opts.Progress.fetching(from, "%s (%d/%d)", untrusted.Text(from.Location, untrusted.MaxName), i+1, len(spec.Modules))
+			}
+			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, listed, run, spec.Options.Display, fetching)
 			if err != nil {
 				return nil, e.withRetry(spec, err, fetched)
 			}
@@ -899,7 +903,8 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	}
 	for _, sp := range plans {
 		n, notes := len(res.Findings), len(res.Notices)
-		for _, rr := range sp.resolved {
+		for i, rr := range sp.resolved {
+			opts.Progress.working("rendering %s (%d/%d)", untrusted.Text(rr.ent.Name, untrusted.MaxName), i+1, len(sp.resolved))
 			if err := e.planInstallModule(ctx, sp, rr, sel, saves, opts, probes, res); err != nil {
 				return nil, e.withRetry(spec, err, fetched)
 			}

@@ -659,6 +659,8 @@ binary. Each step below was run against a throwaway `HOME`.
 ## Output contract
 
 The output formats lola's commands share. It has its own page: [Output contract](reference/output-contract.md).
+On a terminal, a long `update`, `sync`, `install` or `cache update` shows what it is doing on one line it redraws;
+scripts, `--json` and `--plain` get nothing of it.
 `install --json` lists the versions it records in `target_versions` (`{scope, target, version,
 previous, source, file, era}`, `source` `installed`, `chosen` or `flag`); `sync --json` lists the
 modules it rewrites for another era in `rewrites` (`{module, target, from, to}`).

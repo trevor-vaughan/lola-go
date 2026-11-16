@@ -210,7 +210,7 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(filepath.Join(teammate, ".claude", "skills", "sec", "SKILL.md")).To(BeARegularFile())
 		Expect(cached()).To(ConsistOf("secdevai", "formatter"))
-		up, err := e.Update(ctx, []string{"secdevai"})
+		up, err := e.Update(ctx, []string{"secdevai"}, engine.Progress{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(up.Updates).To(HaveLen(1), "cache update fetches it under its name again")
 	})

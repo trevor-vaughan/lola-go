@@ -82,6 +82,7 @@ func (a *app) page(cmd *cobra.Command, w io.Writer, s style, print func(io.Write
 // viewer's footer says q continues to it rather than quits. Ctrl+C in the viewer ends the command
 // instead: pageThen returns ErrAborted, and the question is not asked.
 func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, print func(io.Writer, style)) error {
+	defer a.holdProgress()()
 	mode := a.paging(cmd)
 	printed := func() {
 		var buf reportBuf
