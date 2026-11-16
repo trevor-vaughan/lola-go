@@ -1,0 +1,26 @@
+internal/ledger/ledger.go
+  s_d38c6230a76b92::t_9532d35c6503e0 282-292,296-317
+  s_d38c6230a76b92::t_755d49547925c7 293-295
+  s_d38c6230a76b92::t_e83632775dc0d1 223
+  s_d38c6230a76b92::t_a12621a3801c3f 243,246
+  s_d38c6230a76b92::t_3f272b86137f78 279-281
+  s_d38c6230a76b92::t_166f6a9611eb02 254-258,260-261
+internal/ledger/ledger_test.go
+  s_d38c6230a76b92::t_e0aef30a45a425 207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "fcbb6aa81cb9f193f1bf8c09f4deee997a589489",
+  "prompts": {},
+  "sessions": {
+    "s_d38c6230a76b92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4086f3-5079-4d2f-a640-64ac79fc1339",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
