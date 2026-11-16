@@ -98,21 +98,11 @@ func allowedTools(id, kind, name string, doc module.Doc) []target.Finding {
 		}
 		var tools []string
 		seen := map[string]bool{}
-		add := func(t any) {
-			s := fmt.Sprint(t)
-			if s = untrusted.Text(s, len(s)); !seen[s] {
-				seen[s] = true
-				tools = append(tools, s)
+		for _, t := range module.Tools(doc.Frontmatter[k]) {
+			if t = untrusted.Text(t, len(t)); !seen[t] {
+				seen[t] = true
+				tools = append(tools, t)
 			}
-		}
-		switch v := doc.Frontmatter[k].(type) {
-		case []any:
-			for _, t := range v {
-				add(t)
-			}
-		case nil:
-		default:
-			add(v)
 		}
 		if len(tools) == 0 {
 			continue

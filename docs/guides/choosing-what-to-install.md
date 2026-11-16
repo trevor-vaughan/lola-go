@@ -107,7 +107,9 @@ A step with no real choice is not shown: a scope, module, assistant or component
 it, as does a single installed assistant or a module with one component. The review is shown
 whenever lola chose something you did not type: an answer at a picker, or the only assistant
 installed, which the summary names (`→ for opencode (the only assistant found)`). A run the
-flags specify fully asks nothing; `-y` and `--force` print the summary and apply without asking.
+flags specify fully asks nothing; `--force` prints the summary and applies without asking, and `-y` asks
+nothing at all: it takes the choices a run off a terminal would and refuses as that run does, with the
+same hints (no module given, for one), then applies without a summary.
 
 The install uses exactly the versions
 the pickers listed, for source arguments and for modules picked from the cache, and keeps

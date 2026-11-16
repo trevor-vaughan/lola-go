@@ -48,7 +48,9 @@ Guidance for coding agents working on lola (Go).
   `lola tidy`'s JSON `path` and `trash`, which carry paths lola wrote, moved or found in its
   destinations, `lola cache clean`'s JSON `path`, which carries a path in its cache as it is on disk
   unless it holds control or format characters, which are replaced, and `lola init`'s JSON `path`,
-  the directory lola writes to, raw but for JSON's escaping of control characters.
+  the directory lola writes to, raw but for JSON's escaping of control characters, and JSON `body`
+  of an install hook or project script, its text raw (valid UTF-8 with no NUL, at most 64 KiB, else
+  withheld; JSON escapes control characters), so its sha256 can be checked against the bytes run.
 - **Vocabulary.** User-facing text (messages, hints, help, docs) says "cache", never "store" or
   "origin" (ADR #245). Internal identifiers (package `store`, `store.Origin`) keep their names.
 - **Aliases** are additive and stable: never repurpose one, never collide with a sibling, use the

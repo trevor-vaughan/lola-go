@@ -305,7 +305,7 @@ var _ = Describe("hints keep the user's flags", func() {
 		r = lola("install", "./mods/kit", "--project", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ keep it to yourself: lola profile --project --move kit --to mine --switch\n"))
-		Expect(r.out).To(ContainSubstring("→ meant for every project? lola profile --user --move kit --to base\n"))
+		Expect(r.out).To(ContainSubstring("→ meant for every project? move it from this project into your user base: lola profile --user --move kit --to base\n"))
 		Expect(r.out + r.err).NotTo(ContainSubstring(" -y"))
 
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})

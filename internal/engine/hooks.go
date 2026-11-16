@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/module"
@@ -32,6 +34,9 @@ const (
 	HookRan      = "ran"
 	HookFailed   = "failed"
 	HookDeclined = "declined" // no consent; only post-install hooks can be declined without aborting
+	// HookLater is a project's script a dry run with nothing to install checks: the run
+	// trusts it, with consent, for later runs, and runs nothing.
+	HookLater = "later"
 )
 
 // HookScript is one install hook with the sha256 of its script, as consent shows it. Script is
@@ -41,7 +46,39 @@ type HookScript struct {
 	Event  string `json:"event"`
 	Script string `json:"script"`
 	SHA256 string `json:"sha256"`
-	path   string
+	// Body is the script as it was hashed, raw (readBody): what output prints in full so that the
+	// hook counts as shown. Withheld says why it is not (BodyTooLarge, BodyNotText): such a hook can
+	// never be shown, and only --unseen consents to it.
+	Body     string `json:"body"`
+	Withheld string `json:"withheld,omitempty"`
+	// New says, in a run, whether the shown record lacks the hook (ShownKey), so output prints its
+	// body in full rather than folded; nil outside a run.
+	New  *bool `json:"new,omitempty"`
+	path string
+	file string // the script's absolute path, which a withheld body names to inspect
+}
+
+// Inspect is the file a withheld body names: the script as lola read it.
+func (s HookScript) Inspect() string { return s.file }
+
+// ShownKey is s's key in the shown record, which only output that prints s's body in full adds to
+// it (its path and sha256 alone never do): the sha256, in hex, of its event, path and script's
+// sha256, whatever module declares it.
+func (s HookScript) ShownKey() string { return contentKey("hook", s.Event, s.path, s.SHA256) }
+
+// contentKey is the sha256, in hex, of parts joined by NUL: a shown record key.
+func contentKey(parts ...string) string {
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+// shownKeys is the shown keys of scripts.
+func shownKeys(scripts []HookScript) []string {
+	keys := make([]string, len(scripts))
+	for i, s := range scripts {
+		keys[i] = s.ShownKey()
+	}
+	return keys
 }
 
 // HookRun is one hook for one target in an operation's result.
@@ -64,8 +101,8 @@ func (j *hookJob) record(s HookScript, targetID, status string) {
 	j.result.Hooks = append(j.result.Hooks, HookRun{HookScript: s, Target: targetID, Status: status})
 }
 
-// hookScripts hashes each hook's script under dir, pre-install first, and returns the digest
-// consent is keyed by: it changes whenever an event, a script path or a script changes.
+// hookScripts hashes and reads each hook's script under dir, pre-install first, and returns the
+// digest consent is keyed by: it changes whenever an event, a script path or a script changes.
 func hookScripts(dir string, hooks []module.Hook) ([]HookScript, string, error) {
 	var out []HookScript
 	all := sha256.New()
@@ -74,16 +111,66 @@ func hookScripts(dir string, hooks []module.Hook) ([]HookScript, string, error) 
 			if h.Event != event {
 				continue
 			}
-			sum, err := fileSHA256(filepath.Join(dir, h.Script))
+			file := filepath.Join(dir, h.Script)
+			sum, body, withheld, err := readBody(file)
 			if err != nil {
 				return nil, "", err
 			}
-			s := HookScript{Event: h.Event, Script: shown(h.Script), SHA256: sum, path: h.Script}
+			s := HookScript{Event: h.Event, Script: shown(h.Script), SHA256: sum, Body: body, Withheld: withheld, path: h.Script, file: file}
 			fmt.Fprintf(all, "%s\x00%s\x00%s\n", s.Event, s.path, s.SHA256)
 			out = append(out, s)
 		}
 	}
 	return out, "sha256:" + hex.EncodeToString(all.Sum(nil)), nil
+}
+
+// Why a script's body is withheld from output (HookScript.Withheld, ScriptRun.Withheld).
+const (
+	BodyTooLarge = "too_large" // more than MaxBody bytes
+	BodyNotText  = "not_text"  // not valid UTF-8, or it holds a NUL
+)
+
+// MaxBody is the most bytes of a script output prints in full.
+const MaxBody = 64 << 10
+
+// readBody is the hex sha256 of the file at path, hashed as a stream, and its text, raw, read in
+// the same pass: "" with why it is withheld when the file is larger than MaxBody (of which at most
+// MaxBody+1 bytes are kept) or is not text (BodyTooLarge, BodyNotText).
+func readBody(path string) (sum, body, withheld string, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", "", "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	var kept bytes.Buffer
+	if _, err := io.Copy(io.MultiWriter(h, &capped{buf: &kept, left: MaxBody + 1}), f); err != nil {
+		return "", "", "", err
+	}
+	sum = hex.EncodeToString(h.Sum(nil))
+	switch b := kept.Bytes(); {
+	case len(b) > MaxBody:
+		return sum, "", BodyTooLarge, nil
+	case !utf8.Valid(b) || bytes.IndexByte(b, 0) >= 0:
+		return sum, "", BodyNotText, nil
+	default:
+		return sum, string(b), "", nil
+	}
+}
+
+// capped is a writer that keeps at most left more bytes in buf and drops the rest, never failing.
+type capped struct {
+	buf  *bytes.Buffer
+	left int
+}
+
+func (c *capped) Write(p []byte) (int, error) {
+	if c.left > 0 {
+		n := min(len(p), c.left)
+		c.buf.Write(p[:n])
+		c.left -= n
+	}
+	return len(p), nil
 }
 
 // fileSHA256 is the hex sha256 of the file at path, read as a stream.
@@ -101,14 +188,18 @@ func fileSHA256(path string) (string, error) {
 }
 
 // allowed decides whether a module's hooks without a recorded consent for their digest may run:
-// a --trust covering hooks grants it; so does, in a batch's apply pass (opts.Expect), the grant
-// for name and digest the batch holds, a terminal yes of its collect pass; otherwise opts.Ask may
-// ask the user. Each grant is recorded only once the run's receipt is answered yes, before the
+// a --trust covering hooks grants it; so
+// does, in a batch's apply pass (opts.Expect), the grant for name and digest the batch holds, a
+// terminal yes of its collect pass; otherwise opts.Ask may ask the user. Each grant is recorded only once the run's receipt is answered yes, before the
 // first write. A dry run
 // decides the same way but asks nothing and records nothing. A grant by --trust is added to res.Trusted, once per event the
 // module hooks.
 func (e *Engine) allowed(name string, scripts []HookScript, digest string, opts Options, res *Result) (bool, error) {
-	if opts.Trust.Covers(TrustHooks) {
+	trusted, err := e.trustGrants(opts, TrustHooks, shownKeys(scripts), !slices.ContainsFunc(scripts, func(s HookScript) bool { return s.Withheld != "" }), res)
+	if err != nil {
+		return false, err
+	}
+	if trusted {
 		change, err := e.consentChange(name)
 		if err != nil {
 			return false, err
@@ -130,13 +221,24 @@ func (e *Engine) allowed(name string, scripts []HookScript, digest string, opts 
 	}
 	if g := (grant{key: name, digest: digest}); opts.Expect != nil && slices.Contains(opts.Expect.grants, g) {
 		res.grants = append(res.grants, g)
+		res.answer(TrustHooks, true)
 		return true, nil
 	}
 	if opts.DryRun || opts.Ask == nil {
+		res.answer(TrustHooks, false)
 		return false, nil
 	}
-	if ok, err := opts.Ask(name, scripts); err != nil || !ok {
+	ok, err := opts.Ask(name, scripts)
+	if err != nil {
 		return false, err
+	}
+	shownNow := slices.DeleteFunc(slices.Clone(scripts), func(s HookScript) bool { return s.Withheld != "" })
+	if err := e.Shown.Add(shownKeys(shownNow)...); err != nil { // the question showed them, but a withheld body
+		return false, err
+	}
+	res.answer(TrustHooks, ok)
+	if !ok {
+		return false, nil
 	}
 	res.grants = append(res.grants, grant{key: name, digest: digest})
 	return true, nil
@@ -174,6 +276,9 @@ func (e *Engine) reviewOf(run *StagedRun, v store.Version) ([]string, error) {
 	return nil, nil
 }
 
+// consentHintPrefix begins the hint of a refusal for want of consent that names the run that consents.
+const consentHintPrefix = "then consent to it: "
+
 // consentHints are the hints of a refusal of c's pre-install hook or script for want of kinds:
 // lola info of exactly the version c installs (moduleCopy.review, or reviewOf its version, read
 // now, when the run has put it in the cache), when one shows it, and the run that consents:
@@ -208,10 +313,10 @@ func (e *Engine) consentHints(sc Scope, c moduleCopy, opts Options, kinds TrustK
 		if pin != nil {
 			run += " " + errs.ShellJoin(pin)
 		}
-		return append(hints, "then consent to it: "+run), nil
+		return append(hints, consentHintPrefix+run), nil
 	}
 	if len(c.again) > 0 {
-		hints = append(hints, "then consent to it: "+e.Command(sc, c.again[0], slices.Concat(c.again[1:], opts.Display, []string{k.Arg()}, pin)...))
+		hints = append(hints, consentHintPrefix+e.Command(sc, c.again[0], slices.Concat(c.again[1:], opts.Display, []string{k.Arg()}, pin)...))
 	}
 	return hints, nil
 }
@@ -231,10 +336,10 @@ func (e *Engine) unaskedKinds(copies []moduleCopy, scripts []installScript, opts
 		return e.Consent.Granted(key, digest)
 	}
 	for _, c := range copies {
-		if opts.Ask != nil || opts.Trust.Covers(TrustHooks) || k.Covers(TrustHooks) {
+		if opts.Ask != nil || k.Covers(TrustHooks) {
 			break
 		}
-		if !c.runHooks || c.forced && !c.pending || !slices.ContainsFunc(c.hooks, func(h module.Hook) bool { return h.Event == PreInstall }) {
+		if opts.Trust.Covers(TrustHooks) || !c.runHooks || c.forced && !c.pending || !slices.ContainsFunc(c.hooks, func(h module.Hook) bool { return h.Event == PreInstall }) {
 			continue
 		}
 		_, digest, err := hookScripts(c.src, c.hooks)
@@ -267,11 +372,24 @@ func (e *Engine) unaskedKinds(copies []moduleCopy, scripts []installScript, opts
 }
 
 // hookConsentError refuses a pre-install hook without consent. Its hints review the version and
-// consent to it; a retry without consent would refuse again, so withRetry adds none.
-type hookConsentError struct{ module string }
+// consent to it; a retry without consent would refuse again, so withRetry adds none. The message
+// names the module's hooks, each script and its sha256; unseen says the run's --trust covered
+// them, but lola had not shown them.
+type hookConsentError struct {
+	module  string
+	scripts []HookScript
+	unseen  bool
+}
 
 func (e *hookConsentError) Error() string {
-	return e.module + " has a pre-install hook, and lola runs hooks only with your consent"
+	var shown []string
+	for _, s := range e.scripts {
+		shown = append(shown, s.Event+": "+s.Script+" (sha256 "+s.SHA256+")")
+	}
+	if e.unseen {
+		return e.module + " has a pre-install hook lola had not shown you: " + strings.Join(shown, ", ")
+	}
+	return e.module + " has a pre-install hook, and lola runs hooks only with your consent: " + strings.Join(shown, ", ")
 }
 
 // planHooks prepares the hooks of every copy that runs them, before anything is written, and
@@ -298,6 +416,13 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, unasked 
 		scripts, digest, err := hookScripts(c.src, c.hooks)
 		if err != nil {
 			return nil, err
+		}
+		for k := range scripts {
+			held, err := e.Shown.Holds(scripts[k].ShownKey())
+			if err != nil {
+				return nil, err
+			}
+			scripts[k].New = new(!held)
 		}
 		res.Modules[i].hooksKept = c.forced && !c.pending
 		pre := slices.ContainsFunc(scripts, func(s HookScript) bool { return s.Event == PreInstall })
@@ -328,7 +453,20 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, unasked 
 				if err != nil {
 					return nil, err
 				}
-				return nil, errs.WithHints(&hookConsentError{module: c.name}, hints...)
+				held, err := e.Shown.Holds(shownKeys(scripts)...)
+				if err != nil {
+					return nil, err
+				}
+				// The refusal names the hooks but does not show them, so it records nothing. Ones lola
+				// has not shown are hinted the dry run that shows them first, since --trust alone
+				// would be refused for them; unseen is --trust covering them all the same.
+				refusal := &hookConsentError{module: c.name, scripts: scripts, unseen: opts.Trust.Covers(TrustHooks) && !held}
+				if k := slices.IndexFunc(scripts, func(s HookScript) bool { return s.Withheld != "" }); k >= 0 {
+					hints = withheldInstead(hints, "this hook", scripts[k].Withheld, scripts[k].file)
+				} else if !held {
+					hints = unseenInstead(hints, "this hook", "it", refusal.unseen)
+				}
+				return nil, errs.WithHints(refusal, hints...)
 			}
 			// The hook stays pending in lock.json: sync replaces the copy from the hashed version
 			// and asks again.

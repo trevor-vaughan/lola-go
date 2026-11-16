@@ -94,7 +94,7 @@ var _ = Describe("typed --trust", func() {
 			}
 			r := lola(args...)
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(ContainSubstring("error: " + msg + "\n"))
+			Expect(r.err).To(ContainSubstring("error: " + msg))
 			for _, h := range hints { // a folder's --at pin is its content digest, written here as DIGEST
 				Expect(regexp.MustCompile(`=sha256:[0-9a-f]{64}`).ReplaceAllString(r.err, "=sha256:DIGEST")).To(ContainSubstring("  hint: " + fill(h) + "\n"))
 			}
@@ -102,8 +102,8 @@ var _ = Describe("typed --trust", func() {
 			Expect(consent()).To(BeEmpty())
 		},
 		Entry("sync: entries covered, the hook refused", []string{"sync", "-C", "PROJ", "--trust"},
-			"kit has a pre-install hook, and lola runs hooks only with your consent",
-			[]string{"then consent to it: lola sync -C PROJ --trust=entries,profiles,hooks --at kit=sha256:DIGEST"}),
+			"kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: hooks/pre.sh (sha256 ",
+			[]string{"lola has not shown you this hook; see it with lola sync -C PROJ --trust=entries,profiles,hooks --at kit=sha256:DIGEST -n, then consent to it: lola sync -C PROJ --trust=entries,profiles,hooks --at kit=sha256:DIGEST"}),
 		Entry("install: bare --trust grants none of its kinds", []string{"install", "KIT", "-C", "PROJ", "--trust"},
 			"lola install never asks for entries or profiles trust; it takes --trust=scripts,hooks,runtime-hooks",
 			[]string{"lola install KIT --root PROJ"}),
@@ -214,7 +214,7 @@ var _ = Describe("typed --trust", func() {
 	It("a failure after the grants were written carries trusted in its --json error", func() {
 		writeTree(kit, map[string]string{"hooks/pre.sh": "#!/bin/sh\nexit 3\n"})
 		pull("kit")
-		r := lola("sync", "-C", proj, "--trust=entries,hooks", "--json")
+		r := lola("sync", "-C", proj, "--trust=entries,hooks", "--unseen", "--json")
 		Expect(r.code).To(Equal(1))
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
@@ -227,7 +227,7 @@ var _ = Describe("typed --trust", func() {
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " +
 			kit + "}\n"})
 		c := &confirming{scripted: scripted{}, answers: []bool{false}}
-		r := lolaAsking(c, "sync", "-C", proj, "--scope", "both", "--trust=entries,hooks")
+		r := lolaAsking(c, "sync", "-C", proj, "--scope", "both", "--trust=entries,hooks", "--unseen")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(Equal([]string{"Proceed?"}))
 		Expect(r.err).To(ContainSubstring("trusting, as --trust=entries,hooks allows:\n  → entries: targets (new), plain (new)\n  → hooks: kit pre-install (new)\n"))
@@ -237,7 +237,7 @@ var _ = Describe("typed --trust", func() {
 		Expect(consent()).To(BeEmpty())
 
 		c = &confirming{scripted: scripted{}, answers: []bool{true}}
-		r = lolaAsking(c, "sync", "-C", proj, "--scope", "both", "--trust=entries,hooks")
+		r = lolaAsking(c, "sync", "-C", proj, "--scope", "both", "--trust=entries,hooks", "--unseen")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(Equal([]string{"Proceed?"}))
 		Expect(written()).To(BeTrue())
@@ -261,7 +261,7 @@ var _ = Describe("typed --trust", func() {
 	It("covered items print one receipt grouped by kind, then one question; -y answers it; No writes nothing", func() {
 		pull("kit", "plain")
 		c := &confirming{scripted: scripted{}, answers: []bool{false}}
-		r := lolaAsking(c, "sync", "-C", proj, "--trust=entries,hooks")
+		r := lolaAsking(c, "sync", "-C", proj, "--trust=entries,hooks", "--unseen")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(Equal([]string{"Proceed?"}))
 		Expect(r.err).To(ContainSubstring("trusting, as --trust=entries,hooks allows:\n" +
@@ -272,7 +272,7 @@ var _ = Describe("typed --trust", func() {
 		Expect(consent()).To(BeEmpty())
 
 		c = &confirming{scripted: scripted{}}
-		r = lolaAsking(c, "sync", "-C", proj, "--trust=entries,hooks", "-y")
+		r = lolaAsking(c, "sync", "-C", proj, "--trust=entries,hooks", "--unseen", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(BeEmpty(), "-y answers the receipt")
 		Expect(r.err).To(ContainSubstring("  → hooks: kit pre-install (new)\n"))
@@ -281,7 +281,7 @@ var _ = Describe("typed --trust", func() {
 
 		writeTree(kit, map[string]string{"hooks/pre.sh": "#!/bin/sh\ntouch '" + mark + "2'\n"})
 		c = &confirming{scripted: scripted{}, answers: []bool{false}}
-		r = lolaAsking(c, "install", kit, "-C", proj, "--trust=hooks")
+		r = lolaAsking(c, "install", kit, "-C", proj, "--trust=hooks", "--unseen")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"), "No at install's receipt is an abort, not an error")
 		Expect(mark + "2").NotTo(BeAnExistingFile())
@@ -290,7 +290,7 @@ var _ = Describe("typed --trust", func() {
 	It("uncovered items are asked one by one before the receipt", func() {
 		pull("kit")
 		c := &confirming{scripted: scripted{}, trusts: []engine.TrustAnswer{{All: true}}, answers: []bool{true}}
-		r := lolaAsking(c, "sync", "-C", proj, "--trust=hooks")
+		r := lolaAsking(c, "sync", "-C", proj, "--trust=hooks", "--unseen")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(Equal([]string{"trust", "Proceed?"}))
 		Expect(c.before[1]).To(ContainSubstring("trusting, as --trust=hooks allows:\n  → hooks: kit pre-install (new)\n"))
@@ -300,13 +300,13 @@ var _ = Describe("typed --trust", func() {
 
 	It("off a terminal a covered run proceeds, the receipt on stderr, trusted in the JSON", func() {
 		pull("kit")
-		r := lola("sync", "-C", proj, "--trust=entries,hooks")
+		r := lola("sync", "-C", proj, "--trust=entries,hooks", "--unseen")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(ContainSubstring("trusting, as --trust=entries,hooks allows:\n  → entries: targets (new), kit (new)\n  → hooks: kit pre-install (new)\n"))
 		Expect(mark).To(BeAnExistingFile())
 
 		writeTree(kit, map[string]string{"hooks/pre.sh": "#!/bin/sh\ntouch '" + mark + "2'\n"})
-		r = lola("install", kit, "-C", proj, "--trust=hooks", "--json")
+		r = lola("install", kit, "-C", proj, "--trust=hooks", "--unseen", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
@@ -316,7 +316,7 @@ var _ = Describe("typed --trust", func() {
 	It("on a terminal under --json a covered run asks nothing and prints no receipt: trusted carries it", func() {
 		pull("kit")
 		c := &confirming{scripted: scripted{}}
-		r := lolaAsking(c, "sync", "-C", proj, "--trust=entries,hooks", "--json")
+		r := lolaAsking(c, "sync", "-C", proj, "--trust=entries,hooks", "--unseen", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(BeEmpty())
 		Expect(r.err).NotTo(ContainSubstring("trusting, as"), "stderr under --json holds only an error's JSON line")
@@ -356,7 +356,7 @@ var _ = Describe("typed --trust", func() {
 			return []string{"profile", "go", "--on", "-C", proj, "--no-pager"}
 		}, "then accept them: lola profile -C PROJ project:go --on --trust=profiles --no-pager"),
 		Entry("hooks", func() []string { pull("kit"); return []string{"sync", "-C", proj, "--trust=entries"} },
-			"then consent to it: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
+			"lola has not shown you this hook; see it with lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST -n, then consent to it: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
 		Entry("entries+hooks", func() []string { pull("kit"); return []string{"sync", "-C", proj} },
 			"then accept them: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
 		Entry("remote --add", func() []string {
@@ -446,7 +446,7 @@ var _ = Describe("typed --trust", func() {
 		Expect(r.err).To(ContainSubstring("; -y confirms removals only; accept them with --trust=entries,hooks\n"))
 		r = lola("install", kit, "--user", "-t", "claude-code", "-y", "--force")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent\n"))
+		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: hooks/pre.sh (sha256 "))
 		Expect(mark).NotTo(BeAnExistingFile())
 		Expect(consent()).To(BeEmpty())
 	})
@@ -467,9 +467,9 @@ var _ = Describe("typed --trust", func() {
 			Expect(written()).To(BeFalse())
 			Expect(mark).NotTo(BeAnExistingFile())
 		},
-		Entry("No", func() cli.Prompter { return &scripted{confirm: []bool{false}} }, []string{"--trust=entries,hooks"}),
+		Entry("No", func() cli.Prompter { return &scripted{confirm: []bool{false}} }, []string{"--trust=entries,hooks", "--unseen"}),
 		Entry("a refusal for another kind", func() cli.Prompter { return nil }, []string{"--trust=hooks"}),
-		Entry("Ctrl+C", func() cli.Prompter { return &aborting{&scripted{}} }, []string{"--trust=entries,hooks"}),
+		Entry("Ctrl+C", func() cli.Prompter { return &aborting{&scripted{}} }, []string{"--trust=entries,hooks", "--unseen"}),
 	)
 
 	It("profile --update without a scope flag applies profiles trust only", func() {
@@ -497,11 +497,11 @@ var _ = Describe("typed --trust", func() {
 			dir := filepath.Join(tmp, "src", "ukit")
 			userKit(dir, "true # v0")
 			userList("  - {name: ukit, source: " + dir + "}\n")
-			Expect(lola("sync", "--user", "--trust=hooks").code).To(Equal(0))
+			Expect(lola("sync", "--user", "--trust=hooks", "--unseen").code).To(Equal(0))
 			userKit(dir, "true # v1, what the receipt shows as changed")
 			pull("plain")
 			pr := &changing{scripted: &scripted{}, change: func() { userKit(dir, "true # v2, never shown") }}
-			r := lolaP(pr, "sync", "-C", proj, "--scope", "both", "--trust=entries,hooks")
+			r := lolaP(pr, "sync", "-C", proj, "--scope", "both", "--trust=entries,hooks", "--unseen")
 			Expect(r.code).To(Equal(1), r.err)
 			Expect(r.err).To(ContainSubstring("error: what --trust covers changed after you answered its receipt; nothing more was written"))
 			Expect(consent()).To(ContainSubstring(`"ukit"`))
@@ -523,7 +523,7 @@ var _ = Describe("typed --trust", func() {
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit-work, source: " + url + ", ref: v1}\n"})
 			userList("  - {name: kit-work, source: " + url + ", ref: v2}\n")
 			c := &confirming{scripted: scripted{}, answers: []bool{true}}
-			r := lolaAsking(c, "sync", "-C", proj, "--scope", "both", "--trust=entries,hooks")
+			r := lolaAsking(c, "sync", "-C", proj, "--scope", "both", "--trust=entries,hooks", "--unseen")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(c.questions).To(Equal([]string{"Proceed?"}))
 			Expect(filepath.Join(proj, ".claude", "commands", "kit-work.md")).To(BeAnExistingFile())
@@ -535,7 +535,7 @@ var _ = Describe("typed --trust", func() {
 			bad := filepath.Join(tmp, "src", "bad")
 			userKit(bad, "exit 3")
 			userList("  - {name: bad, source: " + bad + "}\n")
-			r := lola("sync", "-C", proj, "--scope", "both", "--trust=entries,hooks", "--json")
+			r := lola("sync", "-C", proj, "--scope", "both", "--trust=entries,hooks", "--unseen", "--json")
 			Expect(r.code).To(Equal(1))
 			var doc map[string]any
 			Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)

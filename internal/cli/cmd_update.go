@@ -36,7 +36,7 @@ func (a *app) updateCmd() *cobra.Command {
 		RunE:              a.syncRun(&f, &trust, "update", "Update where?"),
 	}
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and the trust diff, ask nothing and write nothing")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removing the files a new version no longer ships (never trusts changes)")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker; confirm removing the files a new version no longer ships (never trusts changes)")
 	cmd.Flags().BoolVar(&f.refetch, "fetch", false, "fetch every ref now, however recently it was fetched")
 	cmd.Flags().StringArrayVar(&f.at, "at", nil, atUsage)
 	_ = cmd.RegisterFlagCompletionFunc("at", a.completeAt)

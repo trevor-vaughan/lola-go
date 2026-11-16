@@ -45,7 +45,7 @@ var _ = Describe("a run's notices: safety ones in full, the rest one line per mo
 	// runtime hooks with how to consent, and the skip of gemini-cli's.
 	safety := func(out string) {
 		GinkgoHelper()
-		Expect(out).To(ContainSubstring("m: 1 runtime hook for claude-code in .claude/settings.local.json (declined)\n"))
+		Expect(out).To(MatchRegexp(`m: 1 runtime hook for claude-code in \.claude/settings\.local\.json \(declined( earlier)?\)\n`))
 		Expect(out).To(ContainSubstring("hint: review the hooks listed above, then"))
 		Expect(out).To(ContainSubstring("✗ skipped m: gemini-cli runtime-hook hooks/hooks.json: gemini-cli has no place for runtime-hooks"))
 	}

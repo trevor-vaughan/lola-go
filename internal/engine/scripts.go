@@ -39,6 +39,10 @@ type installScript struct {
 	shown, path   string
 	where         string
 	sha256        string // hex, taken when the run planned it
+	// body is a project's script as hashed, raw (readBody), withheld why output cannot show it,
+	// and unshown says the shown record lacks it. All are a project script's alone.
+	body, withheld string
+	unshown        bool
 	// declined says the run had no trust for it: it is listed where it would run, and not run.
 	declined bool
 	// root is the canonical project root a project's script is consented under and shown beside,
@@ -51,6 +55,8 @@ type installScript struct {
 // copy for it to wrap: a yes trusts it for later runs, and nothing runs now.
 type ScriptQuestion struct {
 	Event, Path, Root, SHA256 string
+	Body, Withheld            string // the script in full, raw, which the question shows, or why it cannot (readBody)
+	Inspect                   string // the script's absolute path, which a withheld body names
 	Later                     bool
 }
 
@@ -60,18 +66,38 @@ type ScriptRun struct {
 	Event  string `json:"event"`
 	Source string `json:"source"`
 	Path   string `json:"path"`
-	Module string `json:"module"`
-	Target string `json:"target"`
-	Status string `json:"status"`
-	// untrusted says a dry run lists a project's script the run has no trust for: run without -n,
-	// it would ask, or need --trust=scripts off a terminal. root is a project script's canonical
-	// project root, which human output shows beside its path.
-	untrusted bool
-	root      string
+	SHA256 string `json:"sha256"` // the script's, hex, when the run planned it
+	// Body is a project's script in full, raw, as hashed (readBody), Withheld why it is not printed,
+	// and New whether the shown record lacks it; "", "" and nil for another source's, which needs
+	// no consent.
+	Body     string `json:"body,omitempty"`
+	Withheld string `json:"withheld,omitempty"`
+	New      *bool  `json:"new,omitempty"`
+	Module   string `json:"module"`
+	Target   string `json:"target"`
+	Status   string `json:"status"`
+	// Trusted is false for a project's script a dry run lists without the trust the run has for it:
+	// run without -n, it would ask, or need --trust=scripts off a terminal. TrustRun is, for a
+	// script that is not Trusted (would-run or later), the command that trusts it
+	// (scriptTrustRun); "" for any other.
+	Trusted  bool   `json:"trusted"`
+	TrustRun string `json:"trust_run"`
+	// root is a project script's canonical project root, which human output shows beside its path.
+	root  string
+	file  string // the script's absolute path, which a withheld body names to inspect
+	shown string // the script's key in the shown record, for a project's script; "" for another's
 }
 
+// ShownKey is s's key in the shown record, which only output that prints s's body in full adds to
+// it (its path and sha256 alone never do); "" for a script of another source than the project,
+// which needs no consent.
+func (s ScriptRun) ShownKey() string { return s.shown }
+
 // NeedsTrust reports whether a dry run lists s without the trust the run would need for it.
-func (s ScriptRun) NeedsTrust() bool { return s.untrusted }
+func (s ScriptRun) NeedsTrust() bool { return !s.Trusted }
+
+// Inspect is the file a withheld body names: the script as lola read it.
+func (s ScriptRun) Inspect() string { return s.file }
 
 // Root is the canonical root of the project whose script s is, "" for another source's.
 func (s ScriptRun) Root() string { return s.root }
@@ -131,7 +157,12 @@ func runOrder(scripts []installScript) ([]installScript, error) {
 	var pre, post []installScript
 	for _, s := range scripts {
 		var err error
-		if s.sha256, err = fileSHA256(s.path); err != nil {
+		if s.source == ScriptProject {
+			s.sha256, s.body, s.withheld, err = readBody(s.path)
+		} else {
+			s.sha256, err = fileSHA256(s.path)
+		}
+		if err != nil {
 			return nil, fmt.Errorf("%s%s: %w", s.where, s.shown, untrusted.CleanErr(err))
 		}
 		if s.event == PreInstall {
@@ -275,6 +306,16 @@ type scriptPlan struct {
 // nothing, and lists them all as would-run, marking those it has no trust for.
 func (e *Engine) planScripts(sc Scope, scripts []installScript, jobs []*hookJob, copies []moduleCopy, opts Options, res *Result) (scriptPlan, error) {
 	var sp scriptPlan
+	for i := range scripts {
+		if scripts[i].source != ScriptProject {
+			continue
+		}
+		held, err := e.Shown.Holds(scripts[i].shownKey())
+		if err != nil {
+			return scriptPlan{}, err
+		}
+		scripts[i].unshown = !held
+	}
 	var alone []*hookJob
 	for _, c := range copies {
 		if c.pendingScript && !slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == c.name }) {
@@ -316,6 +357,16 @@ func (e *Engine) planScripts(sc Scope, scripts []installScript, jobs []*hookJob,
 		if len(jobs) == 0 {
 			// Nothing for it to wrap: a sync refuses an untrusted pre-install script all the same, so
 			// the project's next install does not, and warns of a post-install one.
+			// A dry run lists each project script it checks (later: nothing to wrap now), so that it
+			// shows the script the run would refuse or decline, and grants only what it shows.
+			if opts.DryRun && !offered && s.source == ScriptProject {
+				r := s.run("", "", HookLater)
+				r.Trusted = ok
+				if !ok {
+					r.TrustRun = e.scriptTrustRun(sc, s, opts)
+				}
+				res.Scripts = append(res.Scripts, r)
+			}
 			switch {
 			case ok || opts.DryRun || offered:
 			case s.event == PreInstall:
@@ -323,8 +374,18 @@ func (e *Engine) planScripts(sc Scope, scripts []installScript, jobs []*hookJob,
 			case slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.scriptNotice }):
 				// pending on a copy, whose notice already says how to trust and run it
 			default:
-				res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: "post-install script " + s.shown +
-					" (project) is not trusted on this machine; trust it: " + e.SyncCommand(sc, TrustScripts.Arg())})
+				run := e.SyncCommand(sc, TrustScripts.Arg())
+				text := "post-install script " + s.shown + " (project) is not trusted on this machine; "
+				switch {
+				case s.withheld != "":
+					text += "lola cannot show it to you (" + strings.ReplaceAll(s.withheld, "_", " ") + "); inspect " + shown(s.path) +
+						", then trust it unseen: " + run + " --unseen"
+				case s.unshown:
+					text += "lola has not shown it to you; see it with " + e.SyncCommand(sc, TrustScripts.Arg(), "-n") + ", then trust it: " + run
+				default:
+					text += "trust it: " + run
+				}
+				res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: text})
 			}
 			continue
 		}
@@ -358,8 +419,12 @@ func (e *Engine) planScripts(sc Scope, scripts []installScript, jobs []*hookJob,
 					continue
 				}
 				for _, id := range j.targets {
-					res.Scripts = append(res.Scripts, ScriptRun{Event: s.event, Source: s.source, Path: s.shown, Module: j.name, Target: id, Status: listed[i],
-						untrusted: lacksTrust[i], root: oneLine(s.root)})
+					r := s.run(j.name, id, listed[i])
+					r.Trusted = !lacksTrust[i]
+					if lacksTrust[i] {
+						r.TrustRun = e.scriptTrustRun(sc, s, opts)
+					}
+					res.Scripts = append(res.Scripts, r)
 				}
 			}
 		}
@@ -368,12 +433,27 @@ func (e *Engine) planScripts(sc Scope, scripts []installScript, jobs []*hookJob,
 		post := scripts[slices.IndexFunc(scripts, func(s installScript) bool { return s.source == ScriptProject && s.event == PostInstall })]
 		for _, j := range alone {
 			for _, id := range j.targets {
-				res.Scripts = append(res.Scripts, ScriptRun{Event: PostInstall, Source: ScriptProject, Path: post.shown, Module: j.name, Target: id, Status: HookWouldRun,
-					untrusted: aloneLacksTrust, root: oneLine(post.root)})
+				r := post.run(j.name, id, HookWouldRun)
+				r.Trusted = !aloneLacksTrust
+				if aloneLacksTrust {
+					r.TrustRun = e.scriptTrustRun(sc, post, opts)
+				}
+				res.Scripts = append(res.Scripts, r)
 			}
 		}
 	}
 	return sp, nil
+}
+
+// scriptTrustRun is the command that trusts s, a project's script a dry run lists without the
+// trust the run needs for it: lola sync at sc with --trust=scripts, --unseen for one lola cannot
+// show (only --unseen consents to it), and the run's output flags.
+func (e *Engine) scriptTrustRun(sc Scope, s installScript, opts Options) string {
+	args := []string{TrustScripts.Arg()}
+	if s.withheld != "" {
+		args = append(args, "--unseen")
+	}
+	return e.SyncCommand(sc, append(args, opts.Display...)...)
 }
 
 // pendingScriptNotice says the project's post-install script is pending on name's copy, and the
@@ -387,7 +467,8 @@ func (e *Engine) pendingScriptNotice(sc Scope, name string, opts Options) Notice
 }
 
 // trustScript decides whether s, a project's install script without a recorded consent for its
-// project, event and digest, may run: a --trust covering scripts grants it, shown on the receipt;
+// project, event and digest, may run: a --trust covering scripts grants it, once lola has shown it
+// (trustGrants), shown on the receipt;
 // so does, in a batch's apply pass (opts.Expect), the grant the batch holds; otherwise, when ask,
 // opts.AskScript may ask, for later runs when later. Each grant is recorded only once the run's receipt is answered yes; a
 // dry run asks nothing and records nothing. A pre-install script the run lacks consent for is a kind of trust the run needs.
@@ -399,7 +480,11 @@ func (e *Engine) trustScript(s installScript, opts Options, res *Result, ask, la
 	if s.event == PreInstall {
 		res.needs |= TrustScripts
 	}
-	if opts.Trust.Covers(TrustScripts) {
+	trusted, err := e.trustGrants(opts, TrustScripts, []string{s.shownKey()}, s.withheld == "", res)
+	if err != nil {
+		return false, err
+	}
+	if trusted {
 		change, err := e.consentChange(g.key)
 		if err != nil {
 			return false, err
@@ -409,13 +494,25 @@ func (e *Engine) trustScript(s installScript, opts Options, res *Result, ask, la
 	}
 	if opts.Expect != nil && slices.Contains(opts.Expect.grants, g) {
 		res.grants = append(res.grants, g)
+		res.answer(TrustScripts, true)
 		return true, nil
 	}
 	if opts.DryRun || opts.AskScript == nil || !ask {
+		res.answer(TrustScripts, false)
 		return false, nil
 	}
-	if ok, err := opts.AskScript(ScriptQuestion{Event: s.event, Path: s.shown, Root: oneLine(s.root), SHA256: s.sha256, Later: later}); err != nil || !ok {
+	ok, err := opts.AskScript(ScriptQuestion{Event: s.event, Path: s.shown, Root: oneLine(s.root), SHA256: s.sha256, Body: s.body, Withheld: s.withheld, Inspect: s.path, Later: later})
+	if err != nil {
 		return false, err
+	}
+	if s.withheld == "" { // the question showed it in full
+		if err := e.Shown.Add(s.shownKey()); err != nil {
+			return false, err
+		}
+	}
+	res.answer(TrustScripts, ok)
+	if !ok {
+		return false, nil
 	}
 	res.grants = append(res.grants, g)
 	return true, nil
@@ -446,6 +543,26 @@ func (e *Engine) scriptNeeds(sc Scope) (TrustKinds, error) {
 	return 0, nil
 }
 
+// shownKey is s's key in the shown record, for a project's script: the sha256, in hex, of its
+// event, its path as configured and its sha256, so the same script shown in another project
+// counts as shown; "" for another source's, which needs no consent.
+func (s installScript) shownKey() string {
+	if s.source != ScriptProject {
+		return ""
+	}
+	return contentKey("script", s.event, s.shown, s.sha256)
+}
+
+// run is s listed for module and target with status.
+func (s installScript) run(module, targetID, status string) ScriptRun {
+	r := ScriptRun{Event: s.event, Source: s.source, Path: s.shown, SHA256: s.sha256, Body: s.body, Withheld: s.withheld, Module: module, Target: targetID,
+		Status: status, Trusted: true, root: oneLine(s.root), shown: s.shownKey()}
+	if s.source == ScriptProject {
+		r.New, r.file = new(s.unshown), s.path
+	}
+	return r
+}
+
 // grant is the consent of s, a project's install script: keyed by its canonical project root
 // and event, for its digest.
 func (s installScript) grant() grant {
@@ -461,7 +578,7 @@ func (e *scriptConsentError) Error() string { return e.msg }
 
 // refuseScript is the refusal of s, a project's pre-install script the run has no trust for: its
 // hints are those of a refusal of the first job's copy (consentHints), lola info of whose version
-// lists the script.
+// lists the script. It names the script and its sha256.
 func (e *Engine) refuseScript(sc Scope, s installScript, jobs []*hookJob, copies []moduleCopy, opts Options) error {
 	change, err := e.consentChange(s.grant().key)
 	if err != nil {
@@ -471,10 +588,20 @@ func (e *Engine) refuseScript(sc Scope, s installScript, jobs []*hookJob, copies
 	if run == "" {
 		run = "lola"
 	}
-	msg := fmt.Sprintf("%s needs your trust for the %s script %s of this project (%s), ", run, s.event, s.shown, change)
-	if opts.AskScript == nil {
+	held, err := e.Shown.Holds(s.shownKey())
+	if err != nil {
+		return err
+	}
+	// Refused though --trust covers it: lola had not shown it, which the hints say; the refusal
+	// names it but does not show it, so it records nothing.
+	unseen := opts.Trust.Covers(TrustScripts) && !held
+	msg := fmt.Sprintf("%s needs your trust for the %s script %s (sha256 %s) of this project (%s), ", run, s.event, s.shown, s.sha256, change)
+	switch {
+	case unseen:
+		msg += "and lola had not shown it to you"
+	case opts.AskScript == nil:
 		msg += "and there is no terminal to ask on"
-	} else {
+	default:
 		msg += "and you declined it"
 	}
 	// lola info of any module the run installs lists the script: the first it wraps, else the first
@@ -491,7 +618,13 @@ func (e *Engine) refuseScript(sc Scope, s installScript, jobs []*hookJob, copies
 			return err
 		}
 	} else if opts.Rerun != nil {
-		hints = []string{"then consent to it: " + opts.Rerun(opts.Trust|TrustScripts)}
+		hints = []string{consentHintPrefix + opts.Rerun(opts.Trust|TrustScripts)}
+	}
+	switch {
+	case s.withheld != "":
+		hints = withheldInstead(hints, "this script", s.withheld, s.path)
+	case !held:
+		hints = unseenInstead(hints, "this script", "it", unseen)
 	}
 	return errs.WithHints(&scriptConsentError{msg: msg}, hints...)
 }
@@ -506,7 +639,7 @@ func (e *Engine) runScripts(ctx context.Context, sc Scope, j *hookJob, scripts [
 		}
 		for _, id := range j.targets {
 			if s.declined {
-				res.Scripts = append(res.Scripts, ScriptRun{Event: event, Source: s.source, Path: s.shown, Module: j.name, Target: id, Status: HookDeclined, root: oneLine(s.root)})
+				res.Scripts = append(res.Scripts, s.run(j.name, id, HookDeclined))
 				continue
 			}
 			err := s.unchanged()
@@ -520,7 +653,7 @@ func (e *Engine) runScripts(ctx context.Context, sc Scope, j *hookJob, scripts [
 			if err != nil {
 				status = HookFailed
 			}
-			res.Scripts = append(res.Scripts, ScriptRun{Event: event, Source: s.source, Path: s.shown, Module: j.name, Target: id, Status: status, root: oneLine(s.root)})
+			res.Scripts = append(res.Scripts, s.run(j.name, id, status))
 			switch {
 			case err == nil:
 			case event == PreInstall && errors.Is(err, errScriptChanged):

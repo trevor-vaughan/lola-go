@@ -93,7 +93,7 @@ func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, pr
 		return nil
 	}
 	out := cmd.OutOrStdout()
-	full := style{color: a.color(out), bold: a.bold(out), paged: true, verbose: s.verbose, asking: s.asking, width: s.width}
+	full := style{color: a.color(out), bold: a.bold(out), paged: true, verbose: s.verbose, asking: s.asking, width: s.width, shown: s.shown}
 	var buf reportBuf
 	print(&buf, full)
 	text := buf.Folded()

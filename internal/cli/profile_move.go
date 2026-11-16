@@ -47,7 +47,7 @@ func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules 
 				return runWithout(cmd, args, slices.Concat(scopeFlags, consentFlags)...) + " --user"
 			},
 		}}
-	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
+	opts.Trust, opts.Unseen, opts.Receipt = f.trust, f.unseen, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
 	req := engine.MoveRequest{Scope: sc, Other: other, Across: a.namesBothScopes(), Modules: modules, To: to, Switch: switchTo, KeepOff: keepOff, Yes: f.yes, Options: opts}
 	req.Source = func(o engine.Scope) { a.addContext(cmd, eng, o, nil) } // the source's file is the move's to name

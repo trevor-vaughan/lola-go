@@ -108,6 +108,7 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 	update := func(req engine.SyncRequest) (*engine.SyncResult, error) {
 		req.Installed, req.Update = true, true
 		req.Options.Trust = engine.TrustAll // trust is covered by its own spec below
+		req.Options.Unseen = true
 		return sync(req)
 	}
 	read := func(rel string) string {
@@ -185,7 +186,7 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		_, err = update(engine.SyncRequest{})
 		Expect(err).To(MatchError("lola update needs your confirmation to remove the files example's new version drops, and there is no terminal to ask on"))
 		Expect(state()).To(Equal(before), "a refusal leaves the cache (index.yml, versions) and the project as they were")
-		Expect(errs.Hints(err)).To(ContainElement("then confirm them: lola update --project --trust=entries,profiles,scripts,hooks,runtime-hooks --at example=" +
+		Expect(errs.Hints(err)).To(ContainElement("then confirm them: lola update --project --trust=entries,profiles,scripts,hooks,runtime-hooks --unseen --at example=" +
 			gitIn(work, "rev-parse", "HEAD") + " -y"))
 		Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"), "nothing was written")
 
@@ -514,7 +515,7 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		res, err := update(engine.SyncRequest{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(ContainElement(HaveField("Text",
-			"1 module served from your cache (fetched within cache_fresh_for) → lola update --project --fetch --trust=entries,profiles,scripts,hooks,runtime-hooks")))
+			"1 module served from your cache (fetched within cache_fresh_for) → lola update --project --fetch --trust=entries,profiles,scripts,hooks,runtime-hooks --unseen")))
 	})
 
 	It("notes no cache-served module under Refetch, or when every head was fetched", func() {

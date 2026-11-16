@@ -211,6 +211,18 @@ type InfoRuns struct {
 	RuntimeHooks []RuntimeHook   `json:"runtime_hooks"`
 	MCPServers   []InfoMCPServer `json:"mcp_servers"`
 	Scripts      []InfoScript    `json:"scripts"`
+	// shown is the shown record keys of the runtime hooks a scope's plan rendered (InfoInstall),
+	// which RuntimeHooks lists without the settings file their keys hold.
+	shown []string
+}
+
+// ShownKeys is the shown record key of each consent item r lists in full, which output that prints
+// r adds to the record: the runtime hooks a plan rendered, not those listed as declared. Install
+// hooks and scripts info shows by their first lines or path, never in full, so they are not shown.
+func (r InfoRuns) ShownKeys() []string {
+	keys := slices.DeleteFunc(slices.Clone(r.shown), func(k string) bool { return k == "" })
+	slices.Sort(keys)
+	return slices.Compact(keys)
 }
 
 // InfoScript is an install script that would wrap the module's install, in run
@@ -305,9 +317,10 @@ type InfoInstall struct {
 	// changes nothing.
 	current bool
 	// runtimeHooks and mcpServers are the plan's, as consent shows them and as each assistant
-	// would run them, which Runs gathers.
+	// would run them, which Runs gathers; shown is the runtime hooks' shown record keys.
 	runtimeHooks []RuntimeHook
 	mcpServers   []InfoMCPServer
+	shown        []string
 }
 
 // Root is the project the element installs into, "" at user scope or with no scope.
@@ -475,6 +488,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	refused := false
 	for _, in := range info.Install {
 		info.Runs.add(in.runtimeHooks, in.mcpServers)
+		info.Runs.shown = append(info.Runs.shown, in.shown...)
 		if in.Refusal != nil {
 			refused, refusedIDs = true, append(refusedIDs, in.Targets...)
 		}
@@ -1024,7 +1038,7 @@ func (e *Engine) infoPlan(ctx context.Context, req InfoRequest, run *StagedRun, 
 			if !slices.ContainsFunc(in.Consent, func(c InfoConsent) bool { return c.Kind == TrustRuntimeHooks.String() && c.Item == item }) {
 				in.Consent = append(in.Consent, InfoConsent{Kind: TrustRuntimeHooks.String(), Item: item, Recorded: recorded})
 			}
-			in.runtimeHooks = append(in.runtimeHooks, h)
+			in.runtimeHooks, in.shown = append(in.runtimeHooks, h), append(in.shown, h.ShownKey(m.Name))
 		}
 	}
 	in.TrustNeeded = kindNames(trustNeeded(in.Consent))

@@ -194,6 +194,7 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 			fmt.Fprintf(w, "script\t%s\t%s\t%s\t%s\t%t\n", sr.Event, sr.Source, sr.Path, sr.SHA256, sr.NeedsTrust)
 		}
 		printRuntimeHooks(w, s, engine.ModuleResult{Name: info.Name, RuntimeHooks: info.Runs.RuntimeHooks}, false)
+		s.saw(info.Runs.ShownKeys()...)
 		for _, m := range info.Runs.MCPServers {
 			line := ""
 			if m.Command != "" {
@@ -243,6 +244,7 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 	}
 	planned := info.NoAssistant == "" && slices.ContainsFunc(info.Install, func(in engine.InfoInstall) bool { return in.Scope != "" && in.Refusal == nil })
 	printRuns(w, info.Runs, planned)
+	s.saw(info.Runs.ShownKeys()...)
 	printNative(w, info.NativeExecutables)
 	for _, in := range info.Install {
 		where := "without a scope"
@@ -290,6 +292,13 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 	case info.NoAssistant != "":
 		fmt.Fprintln(w, info.NoAssistant)
 	case len(info.Install) > 0 && info.Install[0].Command != "":
+		// info lists install hooks and scripts by their first lines, which --trust consents to only
+		// once a run has shown them in full: the dry run of the install does.
+		if slices.ContainsFunc(info.Install[0].TrustNeeded, func(k string) bool {
+			return k == engine.TrustHooks.String() || k == engine.TrustScripts.String()
+		}) {
+			fmt.Fprintln(w, s.info("see its hooks and scripts in full: "+info.Install[0].Command+" -n"))
+		}
 		fmt.Fprintln(w, s.info("install it: "+info.Install[0].Command))
 	}
 	for _, h := range info.Hints {

@@ -442,7 +442,11 @@ report. Its sections come in this order, each under a header and left out when e
    lists them.
 4. **Unchanged since last run**: what you were shown before, in one fold.
 5. **Files**: what the run writes, a fold per module.
-6. **Removed** (**To remove** in a dry run or before a question): the files the run deletes.
+6. **Removed** (**To remove** in a dry run or before a question): the files the run deletes,
+   among them the hooks and components lola installed under a consent the run declined
+   (`✗ kit: claude-code (runtime hooks declined)`): a module's new version needs your consent
+   again, and without it lola removes what it installed. A dry run asks nothing, so it lists
+   them as `(unless you consent to its runtime hooks)`: the real run on a terminal asks first.
 7. The outcome (`✓ installed kit`, `✓ already in sync`).
 
 A dry run of `lola install`, `lola sync` or `lola update` that would change nothing prints only
@@ -455,9 +459,12 @@ runtime hook, which `-v` prints in full.
 **New** means lola has not shown it for that module before. lola remembers in `lock.json` what a
 module is rather than what a run did: a component's pre-approved tools and permission mode, a load
 warning, a native executable, a skipped artifact or one `--force` rendered anyway, runtime hooks
-you declined. The next run counts those, and the runtime hooks you consented to earlier, under
-"Unchanged since last run", with the `lola check` or `lola info` that lists them. Change a module's
-tool list, or a hook you declined, and it is new again. Everything else is new every run. The record is written on every
+you declined or installed. The next run counts those, and the runtime hooks you consented to
+earlier, under "Unchanged since last run", with the `lola check` or `lola info` that lists them.
+Change a module's tool list, or a hook, and it is new again; a hook you declined or granted stays
+seen when only the rest of its module changes, though lola asks for your consent again. Every
+other warning or skip is new every run; an info finding (such as `probe/unknown-version`) is
+neither new nor seen. The record is written on every
 run that is not a dry run, whatever its output mode.
 
 Lines marked `▸` are folded. In the viewer, `tab` and `shift+tab` move a highlight between them

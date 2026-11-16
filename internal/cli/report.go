@@ -55,7 +55,8 @@ type report struct {
 // dry run that writes: the runtime hooks, warnings and skips new to the user, in full, a target's
 // declined settings hooks ending with their warning's hint in its place (declinedGroup); install
 // hooks and scripts; MCP servers the trust diff did not list; notices; one fold of everything seen
-// before; the files, a fold per module; the removals, Removed (To remove in a plan); the outcome;
+// before; the files, a fold per module; the removals, and what declined runtime hooks remove
+// (engine.DeclinedRemovals), Removed (To remove in a plan); the outcome;
 // the fold footer while a fold is closed; and a dry run's to apply: lines. A run that changes nothing (InSync) and the review's
 // block (NoticesOnly) leave out what a run writes, and a dry run that would change nothing
 // (nothingToDo), with no warning or skip new to the user and no warning among its notices
@@ -69,8 +70,12 @@ func printReport(w io.Writer, s style, rep report) {
 	findings, counts := reportFindings(s, rep)
 	hints := map[string]string{}
 	findings = slices.DeleteFunc(findings, func(f target.Finding) bool {
-		if !declinedGroup(f) {
-			return false
+		if !declinedGroup(f) || !slices.ContainsFunc(r.Modules, func(m engine.ModuleResult) bool {
+			return m.Name == f.Module && (f.Scope == "" || f.Scope == m.Scope) && slices.ContainsFunc(m.RuntimeHooks, func(h engine.RuntimeHook) bool {
+				return h.Target == f.Target && h.Status == engine.RuntimeHooksDeclined
+			})
+		}) {
+			return false // no hook block of the run prints its hint: the warning stays
 		}
 		hints[f.Scope+"\x00"+f.Module+"\x00"+f.Target] = f.Hint
 		return true
@@ -90,7 +95,7 @@ func printReport(w io.Writer, s style, rep report) {
 			rest = append(rest, f)
 		case f.New != nil && !*f.New:
 			seen = append(seen, f)
-		case reviewedFinds[findingKey(f)]:
+		case reviewedFinds[findingKey(f)] && (f.Severity == target.SeverityWarn || f.Severity == target.SeveritySkip):
 			reviewed = append(reviewed, f)
 		case f.Severity == target.SeverityWarn:
 			newWarn = append(newWarn, f)
@@ -110,6 +115,15 @@ func printReport(w io.Writer, s style, rep report) {
 			fmt.Fprintln(w, s.info(upToDateLine(rep, m)))
 		}
 		return
+	}
+	// New runtime hooks print in full, under their own header or in the review above it (the
+	// review's own summary, NoticesOnly, prints that header too); under -v the seen ones too.
+	for _, m := range r.Modules {
+		for _, h := range m.RuntimeHooks {
+			if hookIsNew(h) || s.verbose {
+				s.saw(h.ShownKey(m.Name))
+			}
+		}
 	}
 	writes := !rep.NoticesOnly && rep.InSync == ""
 	if r.DryRun && writes {
@@ -142,8 +156,10 @@ func printReport(w io.Writer, s style, rep report) {
 	})
 	section("Warnings — new", func(b io.Writer) { printFindings(b, s, newWarn) })
 	section("Skipped — new", func(b io.Writer) { printFindings(b, s, newSkip) })
-	if writes {
+	if !rep.NoticesOnly { // a sync in sync lists the project scripts it checks, which it shows
 		section("Hooks and scripts", func(b io.Writer) { printInstallHooks(b, s, r) })
+	}
+	if writes {
 		section("MCP servers", func(b io.Writer) { printMCPServers(b, r.Modules, rep.Listed) })
 	}
 	section("Notices", func(b io.Writer) {
@@ -159,7 +175,9 @@ func printReport(w io.Writer, s style, rep report) {
 		if r.DryRun || s.asking {
 			removed = "To remove"
 		}
-		section(removed, func(b io.Writer) { printRemovalLines(b, s, rep.Removals) })
+		section(removed, func(b io.Writer) {
+			printRemovalLines(b, s, append(slices.Clone(rep.Removals), engine.DeclinedRemovals(r)...))
+		})
 	}
 	if !rep.NoticesOnly {
 		printOutcome(w, s, rep)
@@ -177,7 +195,8 @@ func printReport(w io.Writer, s style, rep report) {
 
 // nothingToDo reports whether rep is a whole run's (Alone) dry run that would change nothing: no command to apply it,
 // no step, edit, pin or removal, the sync in sync (InSync) or every module of the install up to date, and no runtime hook
-// new to the user: granted, which the run would record, or declined and not seen so before.
+// new to the user: granted, which the run would record, or declined and not seen so before, and
+// no install hook or project script lola has not shown.
 func nothingToDo(rep report) bool {
 	r := rep.Result
 	if !r.DryRun || !rep.Alone || rep.ToApply != "" || len(r.Steps)+len(r.Edits)+len(rep.Pins)+len(rep.Removals) > 0 ||
@@ -185,13 +204,17 @@ func nothingToDo(rep report) bool {
 		return false
 	}
 	for _, m := range r.Modules {
-		if slices.ContainsFunc(m.RuntimeHooks, hookIsNew) ||
+		if slices.ContainsFunc(m.RuntimeHooks, hookIsNew) || slices.ContainsFunc(m.Hooks, func(h engine.HookRun) bool { return unshown(h.New) }) ||
 			rep.InSync == "" && !rep.UpToDate(m) {
 			return false
 		}
 	}
-	return true
+	return !slices.ContainsFunc(r.Scripts, func(sr engine.ScriptRun) bool { return unshown(sr.New) })
 }
+
+// unshown reports whether a hook or script of a run is one lola has not shown (New true), which a
+// dry run prints in full however little else it has to say.
+func unshown(fresh *bool) bool { return fresh != nil && *fresh }
 
 // warnsInNotices reports whether the Notices section would print a ⚠ or ✗ line: a warning or skip
 // among findings, or a warning among notices, that it prints rather than counts per module
@@ -238,8 +261,8 @@ func reportFindings(s style, rep report) ([]target.Finding, []string) {
 }
 
 // declinedGroup reports whether f is the warning that a target's settings hooks were declined
-// (engine's runtime-hooks-declined with no component): a report shows those hooks in their
-// block, which ends with the warning's hint, in its place.
+// (engine's runtime-hooks-declined with no component): a report whose run lists those hooks shows
+// them in their block, which ends with the warning's hint, in its place.
 func declinedGroup(f target.Finding) bool {
 	return strings.HasSuffix(f.Code, "/runtime-hooks-declined") && f.Artifact == ""
 }
@@ -253,11 +276,16 @@ func runtimeHookBlock(s style, m engine.ModuleResult, keep func(engine.RuntimeHo
 	var out []string
 	for i := 0; i < len(hooks); {
 		j := i
-		for j < len(hooks) && hooks[j].Target == hooks[i].Target && hooks[j].Settings == hooks[i].Settings && hooks[j].Status == hooks[i].Status {
+		for j < len(hooks) && hooks[j].Target == hooks[i].Target && hooks[j].Settings == hooks[i].Settings && hooks[j].Status == hooks[i].Status &&
+			hooks[j].DeclinedEarlier == hooks[i].DeclinedEarlier {
 			j++
 		}
+		status := hooks[i].Status
+		if hooks[i].DeclinedEarlier {
+			status = "declined earlier"
+		}
 		out = append(out, fmt.Sprintf("%s: %s for %s in %s (%s)", untrusted.Text(m.Name, untrusted.MaxName), counted(j-i, "runtime hook"),
-			hooks[i].Target, untrusted.Text(hooks[i].Settings, untrusted.MaxName), hooks[i].Status))
+			hooks[i].Target, untrusted.Text(hooks[i].Settings, untrusted.MaxName), status))
 		for _, h := range hooks[i:j] {
 			for _, l := range runtimeHookLines(h) {
 				out = append(out, foldDetail+l)
@@ -281,16 +309,17 @@ func counted(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
-// printInstallHooks lists each module's install hooks with what became of them, then the install
-// scripts (printScripts).
+// printInstallHooks lists each module's install hooks, each script with its sha256, with what
+// became of them, then the install scripts (printScripts).
 func printInstallHooks(w io.Writer, s style, r *engine.Result) {
+	bodies := map[string]bool{}
 	for _, m := range r.Modules {
 		for _, h := range m.Hooks {
 			status := h.Status
 			if status == engine.HookWouldRun {
 				status = "would run" // JSON and --plain keep the would-run value
 			}
-			line := fmt.Sprintf("%s %s hook %s (%s): %s", m.Name, h.Event, untrusted.Text(h.Script, len(h.Script)), h.Target, status)
+			line := fmt.Sprintf("%s %s hook %s (sha256 %s, %s): %s", m.Name, h.Event, untrusted.Text(h.Script, len(h.Script)), h.SHA256, h.Target, status)
 			switch h.Status {
 			case engine.HookRan:
 				fmt.Fprintln(w, s.ok(line))
@@ -299,6 +328,7 @@ func printInstallHooks(w io.Writer, s style, r *engine.Result) {
 			default:
 				fmt.Fprintln(w, s.warn(line))
 			}
+			printBody(w, s, bodies, untrusted.Text(h.Script, len(h.Script)), hookBody(h.HookScript))
 		}
 	}
 	printScripts(w, s, r.Scripts)
@@ -335,10 +365,11 @@ func printReviewed(w io.Writer, s style, mods []engine.ModuleResult, finds []tar
 	}
 	warn, skip := 0, 0
 	for _, f := range finds {
-		if f.Severity == target.SeveritySkip {
-			skip++
-		} else {
+		switch f.Severity {
+		case target.SeverityWarn:
 			warn++
+		case target.SeveritySkip:
+			skip++
 		}
 	}
 	if warn+skip+nhook == 0 {
@@ -398,15 +429,16 @@ func findingKey(f target.Finding) string {
 
 // printSeen is one fold of what the run shows that lola recorded for its module before: seen
 // findings (target.Finding.New false) and runtime hooks (hookIsNew), those declined with the hints
-// runtimeHookBlock takes. Its summary counts them; its detail, per module, counts that module's and
+// runtimeHookBlock takes. Its summary counts them, the runtime hooks declined earlier, which no
+// question asked about again, apart (seenTally); its detail, per module, counts that module's and
 // says where to read them again — lola info when it has seen runtime hooks or its findings name no
 // lola check, else that check — then each in full.
 func printSeen(w io.Writer, s style, mods []engine.ModuleResult, seen []target.Finding, hints map[string]string) {
 	type group struct {
-		name, check, info string
-		finds             []target.Finding
-		hooks             []string
-		warn, skip, nhook int
+		name, check, info         string
+		finds                     []target.Finding
+		hooks                     []string
+		warn, skip, nhook, nearly int // nearly: runtime hooks declined earlier, not asked again
 	}
 	var groups []*group
 	find := func(name string) *group {
@@ -437,19 +469,27 @@ func printSeen(w io.Writer, s style, mods []engine.ModuleResult, seen []target.F
 		if lines := runtimeHookBlock(s, m, old, hints); len(lines) > 0 {
 			g := find(m.Name)
 			g.hooks = append(g.hooks, lines...)
-			g.nhook += len(slices.DeleteFunc(slices.Clone(m.RuntimeHooks), func(h engine.RuntimeHook) bool { return !old(h) }))
+			for _, h := range m.RuntimeHooks {
+				switch {
+				case !old(h):
+				case h.DeclinedEarlier:
+					g.nearly++
+				default:
+					g.nhook++
+				}
+			}
 		}
 	}
 	if len(groups) == 0 {
 		return
 	}
-	var warn, skip, nhook int
+	var warn, skip, nhook, nearly int
 	var detail []string
 	for _, g := range groups {
-		warn, skip, nhook = warn+g.warn, skip+g.skip, nhook+g.nhook
-		line := untrusted.Text(g.name, untrusted.MaxName) + ": " + tally(g.warn, g.skip, g.nhook)
+		warn, skip, nhook, nearly = warn+g.warn, skip+g.skip, nhook+g.nhook, nearly+g.nearly
+		line := untrusted.Text(g.name, untrusted.MaxName) + ": " + seenTally(g.warn, g.skip, g.nhook, g.nearly, "")
 		pointer := g.check
-		if g.nhook > 0 || pointer == "" {
+		if g.nhook+g.nearly > 0 || pointer == "" {
 			pointer = g.info
 		}
 		if pointer != "" {
@@ -465,7 +505,21 @@ func printSeen(w io.Writer, s style, mods []engine.ModuleResult, seen []target.F
 			detail = append(detail, "  "+l)
 		}
 	}
-	printFold(w, s, tally(warn, skip, nhook)+" seen before", detail)
+	printFold(w, s, seenTally(warn, skip, nhook, nearly, " seen before"), detail)
+}
+
+// seenTally is printSeen's count: "2 warnings, 1 runtime hook" and seen after it ("seen before"
+// in the summary), then the runtime hooks declined earlier, which no question asked about again:
+// "; 1 runtime hook declined earlier".
+func seenTally(warn, skip, nhook, nearly int, seen string) string {
+	var parts []string
+	if t := tally(warn, skip, nhook); t != "" {
+		parts = append(parts, t+seen)
+	}
+	if nearly > 0 {
+		parts = append(parts, counted(nearly, "runtime hook")+" declined earlier")
+	}
+	return strings.Join(parts, "; ")
 }
 
 // printFileFolds lists what the run writes: its edits (printEdits) in full; then per module a fold
@@ -647,7 +701,7 @@ func pinText(p engine.Pin, update bool) string {
 
 // printPlainReport is a report's --plain rows, every one, in this order: edit, step, per module its
 // skipped components, runtime hooks (each ending new or seen) and install hooks, then script, pin,
-// remove, finding (a run's ending new or seen) and notice rows. The review's block prints its
+// remove (what declined runtime hooks remove too), finding (a run's ending new or seen) and notice rows. The review's block prints its
 // finding and notice rows alone.
 func printPlainReport(w io.Writer, s style, rep report) {
 	r := rep.Result
@@ -659,20 +713,28 @@ func printPlainReport(w io.Writer, s style, rep report) {
 	for _, st := range r.Steps {
 		fmt.Fprintln(w, stepLine(s, st))
 	}
-	once := excludedOnce(r)
+	once, bodies := excludedOnce(r), map[string]bool{}
 	for _, m := range r.Modules {
 		if label, ok := once(m); ok {
 			printExcluded(w, s, label, m.Skipped, m.SkippedIn, m.NotInOnly, m.OnlyIn, m.Summary, r.DryRun)
 		}
 		printRuntimeHooks(w, s, m, true)
-		for _, h := range m.Hooks {
-			fmt.Fprintf(w, "hook\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Event, untrusted.Text(h.Script, len(h.Script)), h.Target, h.Status)
-		}
+		printPlainHooks(w, s, bodies, m)
 	}
 	printScripts(w, s, r.Scripts)
 	printPins(w, s, rep.Pins, rep.Update)
-	printRemovals(w, s, rep.Removals)
+	printRemovals(w, s, append(slices.Clone(rep.Removals), engine.DeclinedRemovals(r)...))
 	printNotices(w, s, r)
+}
+
+// printPlainHooks is m's install hook --plain rows (module, event, script, assistant, status,
+// sha256), each followed by its body's rows (printBody), once per script across bodies.
+func printPlainHooks(w io.Writer, s style, bodies map[string]bool, m engine.ModuleResult) {
+	for _, h := range m.Hooks {
+		script := untrusted.Text(h.Script, len(h.Script))
+		fmt.Fprintf(w, "hook\t%s\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Event, script, h.Target, h.Status, h.SHA256)
+		printBody(w, s, bodies, "hook-line\t"+m.Name+"\t"+h.Event+"\t"+script, hookBody(h.HookScript))
+	}
 }
 
 // installReport is an install's report. A module whose lock.json entry it kept (Kept), writing

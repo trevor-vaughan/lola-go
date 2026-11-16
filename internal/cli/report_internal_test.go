@@ -134,10 +134,39 @@ var _ = Describe("printReport", func() {
 		Expect(out).To(HaveSuffix("✓ uninstalled kit (claude-code)\n→ "+foldFooter+"\n"), "after the last outcome")
 	})
 
+	It("prints a declined-hooks warning in place only under the declined hooks it is about, else in full", func() {
+		r := run(0)
+		r.Findings = append(r.Findings, target.Finding{Severity: target.SeverityWarn, Module: "kit", Target: "claude-code", Kind: "runtime-hook",
+			Code: "claude-code/runtime-hooks-declined", Text: "runtime hooks skipped: they need your consent", Hint: "consent: lola install kit --trust=runtime-hooks", New: new(true)})
+		out := rendered(style{}, report{Result: r, Verb: "installed"})
+		Expect(out).To(ContainSubstring("⚠ kit: claude-code: runtime hooks skipped: they need your consent\n    hint: consent: lola install kit --trust=runtime-hooks\n"),
+			"kit's run lists no declined hook to carry the hint")
+
+		r.Modules[1].RuntimeHooks = []engine.RuntimeHook{{Target: "claude-code", Event: "Stop", Type: "command", Command: "./x.sh", Status: engine.RuntimeHooksDeclined,
+			Settings: ".claude/settings.local.json", New: new(true)}}
+		out = rendered(style{}, report{Result: r, Verb: "installed"})
+		Expect(out).NotTo(ContainSubstring("runtime hooks skipped"))
+		Expect(out).To(ContainSubstring("runs: ./x.sh\n    hint: consent: lola install kit --trust=runtime-hooks\n"))
+	})
+
+	It("folds only what the review showed, the same text and hint, printing anything else new in full", func() {
+		shown := run(0)
+		shown.Findings = shown.Findings[:1] // the review showed lint's tool list and caveman's granted hook
+		r := run(0)
+		r.Findings[1].Hint = "a hint the review did not show"
+		out := rendered(style{}, report{Result: r, Verb: "installed", Reviewed: shown})
+		Expect(out).To(HavePrefix("▸ 1 warning, 1 runtime hook shown in the review above\n"))
+		Expect(out).To(ContainSubstring("Warnings — new:\n"))
+		Expect(out).To(ContainSubstring("skill fmt: pre-approves tools Claude Code then runs without asking: Read, Write\n    hint: a hint the review did not show\n"), "the review did not show its hint")
+		Expect(out).To(ContainSubstring("AGENTS.md in a module is not installed (2 modules)"))
+		Expect(out).NotTo(ContainSubstring("Runtime hooks — new:"))
+		Expect(out).NotTo(ContainSubstring("lint: Bash"), "folded")
+	})
+
 	It("keeps --plain's rows complete and in order, a run's ending with new or seen", func() {
 		var b bytes.Buffer
 		printReport(&b, style{plain: true}, report{Result: run(1), Verb: "installed"})
-		Expect(b.String()).To(ContainSubstring("runtime-hook\tcaveman\tclaude-code\tStop\tcommand\tconsented\t\tseen\n"))
+		Expect(b.String()).To(ContainSubstring("runtime-hook\tcaveman\tclaude-code\tStop\tcommand\tconsented\t-\tseen\tStop: command; runs: ./old.sh\n"))
 		Expect(b.String()).To(ContainSubstring("\tclaude-code/permission-mode\tsets the permission mode it runs in: plan\tseen\n"))
 		Expect(b.String()).NotTo(ContainSubstring("▸"))
 	})

@@ -51,7 +51,7 @@ func (a *app) tidyCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&f.all, "all", false, "move every item that is not locked")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "do not ask for confirmation")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker and do not ask for confirmation")
 	cmd.Flags().BoolVar(&f.force, "force", false, "also move what git tracks, without asking; names or --all are still needed (never answers a consent question)")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "list what would move and what is locked, and change nothing")
 	cmd.Flags().BoolVar(&f.withTracked, "include-tracked", false, "also offer what git tracks")
@@ -113,7 +113,7 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 	a.printContext(cmd, eng, []engine.Scope{req.Scope}, nil)
 	stderr := a.style(cmd)
 	p := a.prompter(cmd)
-	req.Interactive = p.Interactive()
+	req.Interactive = p.Interactive() && !f.yes // -y asks no question: no picker
 	picked := false
 	answered := 0 // the picker steps answered, which q at the question asks before dropping
 	var ans tidyAnswers

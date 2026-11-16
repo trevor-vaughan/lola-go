@@ -207,7 +207,12 @@ the scope lock (none in a dry run):
       - the user's run with `--trust=` the kinds given and the report's for Trust all;
       - for a partial answer, `lola sync <names> --trust=…` naming every accepted entry (a
         field-only change renders nothing but changes the record) and every changed module;
-      - `-y` when removals were confirmed.
+      - `-y` when removals were confirmed;
+      - a consent question answered yes adds its kind, only when every item of the kind had a
+        yes, else there is none (`""`). It pins no version for the consent: a consent kind grants
+        only what lola has shown you, as every item a yes answered was. A hint (`opts.Rerun`) pins
+        the versions the run showed (`shownVersions`), and a dry run's hints add the kinds of the
+        changes it showed.
     - The CLI prints it after the removals are answered, when it asked the question.
 
 **Activation** (`internal/engine/activate.go`). `lola profile --on`, `--off` and `--switch` are

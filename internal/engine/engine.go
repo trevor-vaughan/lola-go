@@ -70,6 +70,7 @@ type Engine struct {
 	Paths        paths.Paths
 	Store        *store.Store
 	Consent      *consent.Store
+	Shown        *consent.Shown // the consent items lola has shown the user, which --trust alone grants
 	Trust        *trust.Store
 	Targets      []target.Target
 	Registry     targets.Registry // the targets Targets began as; specs may replace Targets
@@ -112,7 +113,7 @@ type recovery struct {
 // New returns an Engine over the real store and every target of reg. The store dates last_used
 // by e.Now, read at each use, so a spec that replaces Now fakes the day.
 func New(p paths.Paths, reg targets.Registry) *Engine {
-	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: reg.All(), Registry: reg, Now: time.Now,
+	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Shown: consent.NewShown(p.Shown, p.ShownLock), Trust: trust.New(p), Targets: reg.All(), Registry: reg, Now: time.Now,
 		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second, TemplateLimits: templating.DefaultLimits(),
 		TemplateBudget: TemplateBudget{RunOutput: 32 << 20, RunTime: 20 * time.Second}}
 	e.Store = store.New(p, reg.IDs(), func() time.Time { return e.Now() })
@@ -178,6 +179,9 @@ type Options struct {
 	// may answer No (ErrDeclined); the grants are recorded only after it.
 	Trust   TrustKinds
 	Receipt func([]Consent) (bool, error)
+	// Unseen is --unseen: Trust's consent kinds grant content lola has not shown the user too
+	// (trustGrants); without it they grant only what the shown record holds.
+	Unseen bool
 	// Rerun is the user's run with the --trust argument for the kinds given (TrustKinds.Arg), which
 	// a refusal for want of trust hints; nil gives no such hint.
 	Rerun func(TrustKinds) string
@@ -357,6 +361,21 @@ type Result struct {
 	// the kinds of trust the run met an item of that would be refused without it.
 	grants []grant
 	needs  TrustKinds
+	// said is the kinds of the consent items a yes granted in this run (a batch's, given in its
+	// collect pass, among them), and withheld the kinds of those that went without one: a no, or
+	// never asked (a batch's apply pass declines what its collect pass was told no). What a command
+	// that gives the same answers off a terminal repeats with --trust, or cannot, when a kind holds
+	// both (equivalent).
+	said, withheld TrustKinds
+	// noes is the answeredNoKey of each runtime hook answered No in this run, which a batch's
+	// collect pass hands its apply pass (TrustBatch.noes).
+	noes []string
+	// unseen is the consent kinds the run's --trust covers whose items it declined or refused for
+	// want of having shown them (trustGrants).
+	unseen TrustKinds
+	// declined is each destination whose runtime hooks the run declined (consentRuntimeHooks): a
+	// step deleting one removes what lola wrote under an earlier consent (DeclinedRemovals).
+	declined []declinedDest
 	// recorded is the items whose grants confirmTrusted wrote, which a later failure carries.
 	recorded []Consent
 	// dropped is each target an install's -t leaves out of a module installed on it, whose files

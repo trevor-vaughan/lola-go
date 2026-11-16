@@ -248,9 +248,9 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(os.Chmod(filepath.Join(work, "setup.sh"), 0o755)).To(Succeed())
 		commit := bare(filepath.Join(tmp, "mods"), "kit", nil)
 		_, err := install(engine.Options{Display: []string{"--json"}}, engine.InstallRequest{Arg: "@acme/kit"})
-		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(errs.Hints(err)).To(HaveExactElements("review it: lola info --project "+mods+"/kit.git --ref "+commit+" --target claude-code --json",
-			"then consent to it: lola install --project @acme/kit --target claude-code --json --trust=hooks"))
+		Expect(err).To(MatchError(HavePrefix("kit has a pre-install hook, and lola runs hooks only with your consent: ")))
+		Expect(errs.Hints(err)).To(Equal(append([]string{"review it: lola info --project " + mods + "/kit.git --ref " + commit + " --target claude-code --json"},
+			unshown("this hook", "lola install --project @acme/kit --target claude-code --json --trust=hooks")...)))
 
 		requests.Store(0)
 		catalogFetches.Store(0)
@@ -296,9 +296,9 @@ var _ = Describe("installing from a marketplace", func() {
 		_, err = e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Staged: run, Options: engine.Options{Targets: claude.Targets, Display: []string{"--json"}},
 			Scopes:  []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc, Source: engine.SourceFlag}, Targets: claude.Targets}},
 			Modules: []engine.InstallRequest{{Arg: "@acme/kit"}}})
-		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(errs.Hints(err)).To(HaveExactElements("review it: lola info --project "+mods+"/kit.git --ref "+commit+" --target claude-code --json",
-			"then consent to it: lola install --project @acme/kit --target claude-code --json --trust=hooks"))
+		Expect(err).To(MatchError(HavePrefix("kit has a pre-install hook, and lola runs hooks only with your consent: ")))
+		Expect(errs.Hints(err)).To(Equal(append([]string{"review it: lola info --project " + mods + "/kit.git --ref " + commit + " --target claude-code --json"},
+			unshown("this hook", "lola install --project @acme/kit --target claude-code --json --trust=hooks")...)))
 		Expect(cached()).To(BeEmpty())
 	})
 

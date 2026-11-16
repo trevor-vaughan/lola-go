@@ -23,6 +23,7 @@ package cli_test
 // also pinned (consent: later --ctrl+c--> cancelled): misc2_paths_test.go "consent: start --run (lola sync, nothing to install)--> later"
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -531,6 +532,7 @@ var _ = Describe("migrate paths", func() {
 		p := &scripted{confirm: []bool{true, false}}
 		r := lolaP(p, "migrate", "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out+r.err).To(ContainSubstring("    | exit 0\n"), "the preview shows the hook in full, so --trust consents to it")
 		Expect(p.calls).To(Equal([]string{"confirm:Migrate?", "confirm:Proceed?"}))
 		Expect(r.err).To(ContainSubstring("trusting, as --trust=hooks allows:\n"))
 		untouched()
@@ -664,8 +666,10 @@ var _ = Describe("consent paths", func() {
 		r := install(p, kit, "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"consent:Run kit's install hooks?"}))
-		Expect(r.err).To(MatchRegexp(`kit has install hooks\. They run as you, unconfined:\n    pre-install: pre\.sh \(sha256 [0-9a-f]{64}\)\n` +
-			`    post-install: post\.sh \(sha256 [0-9a-f]{64}\)\n  Consent covers only the scripts listed, not other files they run; review those too\.\n`))
+		Expect(r.err).To(MatchRegexp(`kit has install hooks\. They run as you, unconfined:\n    pre-install: pre\.sh \(sha256 [0-9a-f]{64}\)\n`+
+			`    \| #!/bin/sh\n    \| touch '[^']*/pre-ran'\n`+
+			`    post-install: post\.sh \(sha256 [0-9a-f]{64}\)\n    \| #!/bin/sh\n    \| touch '[^']*/post-ran'\n`+
+			`  Consent covers only the scripts listed, not other files they run; review those too\.\n`), "each hook in full")
 		untouched()
 	})
 
@@ -685,15 +689,14 @@ var _ = Describe("consent paths", func() {
 		r := install(p, plain, "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"consent:Run this project's pre-install script?"}))
-		Expect(r.err).To(MatchRegexp(`The project at ` + regexp.QuoteMeta(proj) + ` has a pre-install script\. It runs as you, unconfined, for every module lola installs there:\n` +
-			`    ci/check\.sh \(sha256 [0-9a-f]{64}\)\n`))
-		Expect(r.err).NotTo(ContainSubstring("check-ran"), "the path and digest, not the body")
+		Expect(r.err).To(MatchRegexp(`The project at `+regexp.QuoteMeta(proj)+` has a pre-install script\. It runs as you, unconfined, for every module lola installs there:\n`+
+			`    ci/check\.sh \(sha256 [0-9a-f]{64}\)\n    \| #!/bin/sh\n    \| touch '[^']*/check-ran'\n`), "the script in full")
 		untouched()
 	})
 
 	It("consent: start --run (lola sync, nothing to install)--> later", func() {
 		scripts()
-		Expect(lola("install", plain, "-C", proj, "-t", "claude-code", "-y", "--trust=scripts").code).To(Equal(0))
+		Expect(lola("install", plain, "-C", proj, "-t", "claude-code", "-y", "--trust=scripts", "--unseen").code).To(Equal(0))
 		Expect(os.Remove(filepath.Join(tmp, "check-ran"))).To(Succeed())
 		writeTree(proj, map[string]string{"ci/check.sh": "#!/bin/sh\ntouch '" + filepath.Join(tmp, "check-ran") + "'\nexit 0\n"})
 		before := read(consentJSON)
@@ -727,7 +730,7 @@ var _ = Describe("consent paths", func() {
 
 	It("consent: start --run (--trust)--> receipt", func() {
 		p := &scripted{confirm: []bool{true}}
-		r := install(p, kit, "--trust=hooks")
+		r := install(p, kit, "--trust=hooks", "--unseen")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Proceed?"}), "the kind --trust covers is not asked")
 		Expect(r.err).To(ContainSubstring("trusting, as --trust=hooks allows:\n  → hooks: kit pre-install (new), kit post-install (new)\n"))
@@ -778,7 +781,7 @@ var _ = Describe("consent paths", func() {
 		p := &scripted{consent: []bool{false}}
 		r := install(p, kit, "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent\n"))
+		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: pre.sh (sha256 "))
 		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola install " + kit))
 		untouched()
 	})
@@ -824,9 +827,11 @@ var _ = Describe("consent paths", func() {
 		Expect(filepath.Join(proj, ".claude", "skills", "tidy", "SKILL.md")).To(BeARegularFile(), "the rest is installed")
 		Expect(r.out).NotTo(ContainSubstring("(consented)"))
 		Expect(consentJSON).NotTo(BeAnExistingFile())
-		p = &scripted{consentCancels: 1}
-		Expect(lolaP(p, "sync", "-C", proj, "-y").code).To(Equal(0))
-		Expect(p.calls).To(Equal([]string{"consent:Install rt's Claude Code hooks?"}), "the next sync asks again")
+		p = &scripted{}
+		r = lolaP(p, "sync", "-C", proj, "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(BeEmpty(), "declined earlier: the next sync does not ask again")
+		Expect(r.out).To(ContainSubstring("▸ 1 runtime hook declined earlier"))
 	})
 
 	It("consent: runtime --ctrl+c--> cancelled", func() {
@@ -878,7 +883,7 @@ var _ = Describe("consent paths", func() {
 
 	It("consent: later --yes--> done", func() {
 		scripts()
-		Expect(lola("install", plain, "-C", proj, "-t", "claude-code", "-y", "--trust=scripts").code).To(Equal(0))
+		Expect(lola("install", plain, "-C", proj, "-t", "claude-code", "-y", "--trust=scripts", "--unseen").code).To(Equal(0))
 		Expect(os.Remove(filepath.Join(tmp, "check-ran"))).To(Succeed())
 		writeTree(proj, map[string]string{"ci/check.sh": "#!/bin/sh\ntouch '" + filepath.Join(tmp, "check-ran") + "'\nexit 0\n"})
 		before := read(consentJSON)
@@ -891,7 +896,7 @@ var _ = Describe("consent paths", func() {
 
 	It("consent: later --no--> refused", func() {
 		scripts()
-		Expect(lola("install", plain, "-C", proj, "-t", "claude-code", "-y", "--trust=scripts").code).To(Equal(0))
+		Expect(lola("install", plain, "-C", proj, "-t", "claude-code", "-y", "--trust=scripts", "--unseen").code).To(Equal(0))
 		writeTree(proj, map[string]string{"ci/check.sh": "#!/bin/sh\nexit 0\n"})
 		before := read(consentJSON)
 		p := &scripted{consent: []bool{false}}
@@ -899,6 +904,33 @@ var _ = Describe("consent paths", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("pre-install script ci/check.sh"))
 		Expect(read(consentJSON)).To(Equal(before))
+	})
+
+	It("consent: a dry run of a sync with nothing to install says the script is not trusted yet, and the command that trusts it works", func() {
+		scripts()
+		Expect(lola("install", plain, "-C", proj, "-t", "claude-code", "-y", "--trust=scripts", "--unseen").code).To(Equal(0))
+		writeTree(proj, map[string]string{"ci/check.sh": "#!/bin/sh\nexit 0\n"})
+		r := lola("sync", "-n", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		trust := "lola sync -C " + proj + " --trust=scripts"
+		Expect(r.out).To(ContainSubstring("not trusted yet; to trust it: " + trust + "\n"))
+		Expect(r.out).To(MatchRegexp(`post-install script ci/after.sh \(project at [^)]*\): trusted; nothing to wrap now\n`))
+		Expect(r.out).NotTo(ContainSubstring("trusted for later"))
+		plainRows := lola("sync", "-n", "-C", proj, "--plain").out
+		Expect(plainRows).To(MatchRegexp(`(?m)^script\t\tpre-install\tproject\tci/check.sh\t\tlater\t[0-9a-f]{64}\tfalse\t` + regexp.QuoteMeta(trust+" --plain") + `$`))
+		Expect(plainRows).To(MatchRegexp(`(?m)^script\t\tpost-install\tproject\tci/after.sh\t\tlater\t[0-9a-f]{64}\ttrue\t-$`))
+		var doc struct {
+			Scripts []map[string]any `json:"scripts"`
+		}
+		Expect(json.Unmarshal([]byte(lola("sync", "-n", "-C", proj, "--json").out), &doc)).To(Succeed())
+		Expect(doc.Scripts).To(ConsistOf(
+			And(HaveKeyWithValue("path", "ci/check.sh"), HaveKeyWithValue("status", "later"), HaveKeyWithValue("trusted", false), HaveKeyWithValue("trust_run", trust+" --json")),
+			And(HaveKeyWithValue("path", "ci/after.sh"), HaveKeyWithValue("status", "later"), HaveKeyWithValue("trusted", true), HaveKeyWithValue("trust_run", ""))))
+		before := read(consentJSON)
+		Expect(runHint(trust).code).To(Equal(0))
+		Expect(read(consentJSON)).NotTo(Equal(before), "the printed command trusts it")
+		r = lola("sync", "-n", "-C", proj)
+		Expect(r.out).NotTo(ContainSubstring("not trusted yet"), "trusted now, so it is not listed")
 	})
 })
 

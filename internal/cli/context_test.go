@@ -285,6 +285,20 @@ var _ = Describe("the context line", func() {
 		Expect(r.err).To(HavePrefix("project " + proj + ": project.yml (profile unknown)\n"))
 	})
 
+	It("emits no null in --json's context when lola cannot read the scope's state: empty means unknown", func() {
+		writeTree(proj, map[string]string{".lola/lock.json": "{not json"})
+		r := lola("list", "-C", proj, "--json")
+		Expect(r.code).NotTo(Equal(0))
+		var doc struct {
+			Context []map[string]any `json:"context"`
+		}
+		Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
+		Expect(doc.Context).To(HaveLen(1))
+		Expect(doc.Context[0]["profile"]).To(Equal(map[string]any{"name": "", "kind": "", "path": "", "bundle": false, "members": []any{}}))
+		Expect(doc.Context[0]["writes_to"]).To(Equal(map[string]any{"name": "", "kind": "", "path": ""}))
+		Expect(doc.Context[0]["error"]).NotTo(BeEmpty())
+	})
+
 	It("names each row's layer in lola list's FROM as the context line does; --plain and --json keep lock.json's from", func() {
 		notes := filepath.Join(tmp, "notes")
 		writeTree(notes, map[string]string{"lola.yml": "name: notes\n", "commands/notes.md": "N\n"})

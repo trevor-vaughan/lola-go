@@ -46,6 +46,7 @@ var _ = Describe("what a run has shown before", func() {
 		GinkgoHelper()
 		res, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: mod}}, opts)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(e.Shown.Add(res.ShownKeys()...)).To(Succeed(), "its report shows them, as the CLI prints it")
 		return res
 	}
 	code := func(res *engine.Result, c string) target.Finding {
@@ -164,6 +165,7 @@ var _ = Describe("what a run has shown before", func() {
 		}
 		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: claude})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(e.Shown.Add(res.ShownKeys()...)).To(Succeed())
 		hook, warning = declined(res.Result)
 		Expect([]bool{hook, warning}).To(Equal([]bool{false, false}))
 		Expect(recorded()).To(HaveLen(2))
@@ -174,12 +176,62 @@ var _ = Describe("what a run has shown before", func() {
 
 		granted := claude
 		granted.Trust = engine.TrustRuntimeHooks
+		granted.Unseen = true
 		r := install(granted)
 		Expect(r.Modules[0].RuntimeHooks[0].New).To(HaveValue(BeTrue()))
-		Expect(recorded()).To(HaveLen(1), "a granted hook is consent's record, not lock.json's")
+		Expect(recorded()).To(HaveLen(2), "the tools and the granted hook, apart from the declined one")
 		r = install(claude)
 		Expect(r.Modules[0].RuntimeHooks[0].Status).To(Equal(engine.RuntimeHooksConsented))
 		Expect(r.Modules[0].RuntimeHooks[0].New).To(HaveValue(BeFalse()))
+
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.Remove(p.Consent)).To(Succeed()) // the consent is gone: declined again
+		hook, warning = declined(install(claude))
+		Expect([]bool{hook, warning}).To(Equal([]bool{true, true}), "granted, then declined again: new")
+	})
+
+	It("keeps an unchanged hook seen across a module change, declined or granted again, and a changed one new", func() {
+		hookNew := func(res *engine.Result, status string) bool {
+			GinkgoHelper()
+			Expect(res.Modules[0].RuntimeHooks).To(HaveLen(1))
+			h := res.Modules[0].RuntimeHooks[0]
+			Expect(h.Status).To(Equal(status))
+			return *h.New
+		}
+		Expect(hookNew(install(claude), engine.RuntimeHooksDeclined)).To(BeTrue())
+		writeTree(mod, map[string]string{"skills/lint/SKILL.md": skill("Bash") + "More.\n"})
+		res := install(claude)
+		Expect(hookNew(res, engine.RuntimeHooksDeclined)).To(BeFalse(), "the module changed, its declined hook did not")
+		Expect(*code(res, "claude-code/runtime-hooks-declined").New).To(BeFalse())
+
+		granted := claude
+		granted.Trust = engine.TrustRuntimeHooks
+		granted.Unseen = true
+		Expect(hookNew(install(granted), engine.RuntimeHooksGranted)).To(BeTrue(), "granted where it was declined: new")
+		writeTree(mod, map[string]string{"skills/lint/SKILL.md": skill("Bash") + "Again.\n"})
+		Expect(hookNew(install(granted), engine.RuntimeHooksGranted)).To(BeFalse(), "granted again for a new version, shown before as it is")
+
+		writeTree(mod, map[string]string{"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"${CLAUDE_PLUGIN_ROOT}/other.sh"}]}]}}`})
+		Expect(hookNew(install(granted), engine.RuntimeHooksGranted)).To(BeTrue(), "a changed hook is new")
+
+		writeTree(mod, map[string]string{"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"${CLAUDE_PLUGIN_ROOT}/other.sh"}]}],` +
+			`"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"${CLAUDE_PLUGIN_ROOT}/guard.sh"}]}]}}`})
+		news := map[string]bool{}
+		for _, h := range install(granted).Modules[0].RuntimeHooks {
+			news[h.Event] = *h.New
+		}
+		Expect(news).To(Equal(map[string]bool{"Stop": false, "PreToolUse": true}), "a hook added beside it leaves the unchanged one seen")
+	})
+
+	It("gives an info safety finding no new: only warnings and skips are new or seen", func() {
+		tmp := filepath.Dir(proj)
+		Expect(os.WriteFile(filepath.Join(tmp, "bin", "claude"), []byte("#!/bin/sh\nexit 1\n"), 0o755)).To(Succeed())
+		for range 2 {
+			res := install(claude)
+			Expect(code(res, "probe/unknown-version").New).To(BeNil())
+			Expect(code(res, "claude-code/allowed-tools").New).NotTo(BeNil())
+		}
 	})
 
 	It("compares each scope's findings with that scope's lock.json", func() {

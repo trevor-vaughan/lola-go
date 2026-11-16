@@ -509,7 +509,7 @@ flowchart TD
   server), defaulting to No.
   - For a hook it shows its event, matcher and type, and `if`, `async` and `shell` when set.
   - Then the command line it runs, the URL an `http` hook sends data to with its headers and the
-    environment it sends, the MCP tool it calls, or the prompt, cut at 200 characters.
+    environment it sends, the MCP tool it calls, or the prompt, in full.
   - Then any other field of the handler or of its matcher group, as JSON.
   - A yes is recorded in `$XDG_STATE_HOME/lola/consent.json`.
 - The terminal view shows each value on one line.

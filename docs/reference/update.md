@@ -75,8 +75,9 @@ run confirms that run's removals, listed or not. In CI, pass `--trust` with the 
 |---|---|
 | `--fetch` (alias `--refresh`) | Fetch every ref now, however recently it was fetched. |
 | `--at <module>=<version>` | Install the module only at this version: a git module's commit (any case), or a folder's or archive's `sha256:<digest>` (the digest the diff prints). Repeatable; given twice alike it counts once. A run given it applies only the versions it names: one its source no longer serves, and any other module whose version would change, are refused, writing nothing. A refusal's hint adds one for each new version it showed. |
-| `-y`, `--yes` | Confirm removing the files a new version no longer ships; it never trusts a change. |
+| `-y`, `--yes` | Open no scope picker (the scope is the one found off a terminal, or the run is refused as it is there), and confirm removing the files a new version no longer ships; it never trusts a change. |
 | `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask, as `lola sync --trust` does (bare: `entries,profiles`); it never bypasses a refusal ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
+| `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines. Refused without one of those kinds in `--trust`; `--force` never implies it. |
 | `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be; never answers a consent question. |
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
 | `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |

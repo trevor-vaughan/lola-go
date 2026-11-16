@@ -251,7 +251,7 @@ func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, a
 	case all && len(args) > 0:
 		// A hint for more profiles than were named answers no question for them.
 		return errs.WithHints(errors.New("--all updates every remote profile you have, and takes no names"),
-			"update every one: "+runWithout(cmd, nil, "trust", "yes"),
+			"update every one: "+runWithout(cmd, nil, "trust", "yes", "unseen"),
 			"or only those named: "+runWithout(cmd, args, "all"))
 	case len(args) == 0 && !all:
 		names, err := eng.RemoteProfileNames()
@@ -260,7 +260,7 @@ func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, a
 		}
 		if len(names) == 0 {
 			return errs.WithHints(errors.New("you have no remote profiles to update"),
-				"see the profiles you have: "+runWithout(cmd, nil, "update", "yes", "trust", "dry-run"))
+				"see the profiles you have: "+runWithout(cmd, nil, "update", "yes", "trust", "dry-run", "unseen"))
 		}
 		var qs []string
 		for _, n := range names {
@@ -271,8 +271,8 @@ func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, a
 			listed[i] = untrusted.Text(q, untrusted.MaxName)
 		}
 		return errs.WithHints(fmt.Errorf("--update needs the remote profiles to update, or --all; you have %s", strings.Join(listed, ", ")),
-			"name them: "+runWithout(cmd, qs, "trust", "yes"),
-			"or every one: "+runWithout(cmd, nil, "trust", "yes")+" --all")
+			"name them: "+runWithout(cmd, qs, "trust", "yes", "unseen"),
+			"or every one: "+runWithout(cmd, nil, "trust", "yes", "unseen")+" --all")
 	}
 	var once, seen []string
 	twice := ""

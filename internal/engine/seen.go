@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"slices"
 	"strings"
 
@@ -41,13 +42,35 @@ func safetyKey(f target.Finding) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// declinedKey is what lock.json records of module's runtime hooks for targetID in the settings
-// file at settings, declined: the sha256, in hex, of those and the consent digest of the hooks as
-// rendered (describeRuntimeHooks), so a changed hook or another module version is new again, and
-// of the declined status, so a hook granted later and declined again is new again too.
-func declinedKey(module, targetID, settings, digest string) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{module, targetID, settings, digest, RuntimeHooksDeclined}, "\x00")))
-	return hex.EncodeToString(sum[:])
+// runtimeHookKey is what lock.json records of module's runtime hook h, as consent shows it, in
+// the settings file h.Settings: the sha256, in hex, of those and of whether h is declined or
+// installed (granted and consented alike), so a changed hook is new again but an unchanged one of
+// another module version is not, and a hook granted where it was declined, or declined where it
+// was granted, is new again. Its granted form is the hook's key in the shown record: the content,
+// with no version, so the same hook shown for another version or project counts as shown.
+func runtimeHookKey(module string, h RuntimeHook) (string, error) {
+	h.New, h.DeclinedEarlier = nil, false
+	if h.Status != RuntimeHooksDeclined {
+		h.Status = RuntimeHooksGranted
+	}
+	view, err := json.Marshal(h)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(strings.Join([]string{module, h.Settings, string(view)}, "\x00")))
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// answeredNoKey is what lock.json records of module's runtime hook h when a question about it, as it
+// is, was answered No: runtimeHookKey of h declined, marked as answered, so a decline where nothing
+// asked (off a terminal) is not one, and a later terminal run asks.
+func answeredNoKey(module string, h RuntimeHook) (string, error) {
+	h.Status = RuntimeHooksDeclined
+	k, err := runtimeHookKey(module, h)
+	if err != nil {
+		return "", err
+	}
+	return contentKey("answered-no", k), nil
 }
 
 // safetyKeys is the keys of the state findings among finds, sorted, each once; [] for none.
@@ -62,13 +85,15 @@ func safetyKeys(finds []target.Finding) []string {
 	return slices.Compact(keys)
 }
 
-// markNew sets New on each safety finding of fs for scope sc that has none yet: false for a state
-// finding whose key its module's entry in led, lock.json as the run read it, records; true
-// otherwise. A finding another scope of the run is for (Finding.Scope) waits for that scope's.
+// markNew sets New on each safety warning or skip of fs for scope sc that has none yet: false for
+// a state finding whose key its module's entry in led, lock.json as the run read it, records;
+// true otherwise. An info finding is never new or seen: New stays nil. A finding another scope of
+// the run is for (Finding.Scope) waits for that scope's.
 func markNew(fs []target.Finding, sc Scope, led *ledger.Ledger) {
 	for i := range fs {
 		f := &fs[i]
-		if f.New != nil || cmp.Or(f.Class, target.ClassSafety) != target.ClassSafety || f.Scope != "" && f.Scope != sc.Kind.String() {
+		if f.New != nil || cmp.Or(f.Class, target.ClassSafety) != target.ClassSafety || f.Severity == target.SeverityInfo ||
+			f.Scope != "" && f.Scope != sc.Kind.String() {
 			continue
 		}
 		seen := false
@@ -79,11 +104,12 @@ func markNew(fs []target.Finding, sc Scope, led *ledger.Ledger) {
 	}
 }
 
-// markEvents sets New to true on each safety finding of fs no lock.json was compared with: one
-// about no module, or made after the plan, such as an era's choice or a probe's mismatch.
+// markEvents sets New to true on each safety warning or skip of fs no lock.json was compared
+// with: one about no module, or made after the plan, such as an era's choice or a probe's
+// mismatch.
 func markEvents(fs []target.Finding) {
 	for i := range fs {
-		if fs[i].New == nil && cmp.Or(fs[i].Class, target.ClassSafety) == target.ClassSafety {
+		if fs[i].New == nil && cmp.Or(fs[i].Class, target.ClassSafety) == target.ClassSafety && fs[i].Severity != target.SeverityInfo {
 			fs[i].New = new(true)
 		}
 	}

@@ -377,7 +377,7 @@ var changeGlyphs = map[string]string{trust.ChangeAdded: "+", trust.ChangeChanged
 
 // printTrustChange is one module of the trust diff: its fields under the value column, a commit
 // or digest from→to on two lines so no hash line runs long; its files, one per line, changed and
-// removed before added, at most filesShown; each MCP server and hook with its change mark, a
+// removed before added, at most filesShown; each MCP server and hook with its change mark, each component's newly pre-approved tools, a
 // changed server's previous form on was: lines; and, for a folder whose content changed, how to
 // review the edits and how to record them as the user's own.
 func printTrustChange(w io.Writer, c engine.TrustChange, more string) {
@@ -450,14 +450,21 @@ func printTrustChange(w io.Writer, c engine.TrustChange, more string) {
 	for _, m := range c.MCPServers {
 		printServer(w, m)
 	}
+	for _, t := range c.PreApproved {
+		fmt.Fprintf(w, "      pre-approves in %s %s: %s\n", t.Kind, t.Name, strings.Join(t.Tools, ", "))
+	}
 	for _, h := range c.Hooks {
+		change := h.Change
+		if h.ConsentAgain {
+			change += " (consent needed again: the module changed)"
+		}
 		switch h.Kind {
 		case engine.HookKindInstall:
-			fmt.Fprintf(w, "      install hook %s, %s: %s\n", h.Event, h.Change, h.Detail)
+			fmt.Fprintf(w, "      install hook %s, %s: %s\n", h.Event, change, h.Detail)
 		case engine.HookKindMCPServer:
-			fmt.Fprintf(w, "      agent MCP server for %s, %s: %s\n", h.Target, h.Change, h.Detail)
+			fmt.Fprintf(w, "      agent MCP server for %s, %s: %s\n", h.Target, change, h.Detail)
 		default:
-			fmt.Fprintf(w, "      runtime hook for %s on %s, %s: %s\n", h.Target, h.Event, h.Change, h.Detail)
+			fmt.Fprintf(w, "      runtime hook for %s on %s, %s: %s\n", h.Target, h.Event, change, h.Detail)
 		}
 	}
 	for _, l := range []string{c.ReviewEdits, c.InstallOwn} {

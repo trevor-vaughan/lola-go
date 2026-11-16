@@ -39,7 +39,7 @@ func (a *app) scopes(cmd *cobra.Command, eng *engine.Engine, args []string, ques
 		return nil, err
 	}
 	p := a.prompter(cmd)
-	req, err := a.scopeRequest(cwd, p.Interactive())
+	req, err := a.scopeRequest(cwd, p.Interactive() && !given(cmd, "yes")) // -y asks no question: no picker
 	if err != nil {
 		return nil, err
 	}

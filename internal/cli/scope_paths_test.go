@@ -244,8 +244,8 @@ var _ = Describe("scope picker paths", func() {
 		}
 	})
 
-	It("scope picker: start --run (-n, -y or --force)--> scope", func() {
-		for _, flag := range []string{"-n", "-y", "--force"} {
+	It("scope picker: start --run (-n or --force)--> scope", func() {
+		for _, flag := range []string{"-n", "--force"} {
 			sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){aborted[cli.ScopeStep, []string]}}
 			r := lolaP(sp, "sync", flag)
 			Expect(r.code).To(Equal(0), r.err)
@@ -306,7 +306,7 @@ var _ = Describe("scope picker paths", func() {
 
 	It("scope picker: scope --answer (Project is the home directory, accepted)--> next step", func() {
 		GinkgoT().Chdir(home)
-		for _, args := range [][]string{{"tidy", "-y"}, {"repair"}, {"uninstall", "kit"}} {
+		for _, args := range [][]string{{"tidy"}, {"repair"}, {"uninstall", "kit"}} {
 			sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}}
 			r := lolaP(sp, args...)
 			Expect(sp.calls).To(Equal([]string{"scope"}), "%v", args)

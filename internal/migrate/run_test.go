@@ -776,19 +776,19 @@ var _ = Describe("Migrate", func() {
 		receipt := func(answer bool) func([]engine.Consent) (bool, error) {
 			return func(cs []engine.Consent) (bool, error) { asked = append(asked, cs); return answer, nil }
 		}
-		preview, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, DryRun: true}})
+		preview, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Unseen: true, DryRun: true}})
 		Expect(err).NotTo(HaveOccurred())
 		want := []engine.Consent{{Kind: "hooks", Item: "hooked pre-install", Change: engine.ConsentNew}}
 		Expect(preview.Trusted).To(Equal(want), "a dry run lists what --trust would cover, once")
 
-		_, err = run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Receipt: receipt(false)}})
+		_, err = run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Unseen: true, Receipt: receipt(false)}})
 		Expect(err).To(MatchError(engine.ErrDeclined))
 		Expect(asked).To(Equal([][]engine.Consent{want}), "one receipt for both destinations")
 		Expect(e.Paths.Consent).NotTo(BeAnExistingFile())
 		Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
 
 		asked = nil
-		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Receipt: receipt(true)}})
+		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Unseen: true, Receipt: receipt(true)}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(asked).To(HaveLen(1))
 		Expect(res.Trusted).To(Equal(want))
@@ -838,7 +838,7 @@ var _ = Describe("Migrate", func() {
 			Expect(os.WriteFile(scripts[0], []byte("#!/bin/sh\nexit 0\ntrue\n"), 0o755)).To(Succeed())
 			return true, nil
 		}
-		res, err := migrate.Migrate(ctx, e, p, migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Receipt: changed}})
+		res, err := migrate.Migrate(ctx, e, p, migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Unseen: true, Receipt: changed}})
 		Expect(err).To(HaveOccurred())
 		Expect(res.Destinations[0].Status).To(Equal(migrate.StatusFailed))
 		Expect(res.Destinations[0].Error).To(ContainSubstring("what --trust covers changed after you answered its receipt; nothing more was written"))
@@ -852,7 +852,7 @@ var _ = Describe("Migrate", func() {
 		h.source("hooked", map[string]string{"source": hooked, "type": "folder"})
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		h.install(rec{"module": "hooked", "assistant": "claude-code", "project_path": proj})
-		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks}})
+		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Unseen: true}})
 		Expect(err).To(HaveOccurred())
 		te, ok := errors.AsType[*engine.TrustedError](err)
 		Expect(ok).To(BeTrue(), "%v", err)
@@ -871,7 +871,7 @@ var _ = Describe("Migrate", func() {
 		python(proj)
 		writeTree(other, map[string]string{".claude/commands/h.md": "python h\n"})
 		h.install(record(proj), rec{"module": "hooked", "assistant": "claude-code", "project_path": other, "commands": []string{"h"}})
-		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks}})
+		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Unseen: true}})
 		Expect(err).To(MatchError(ContainSubstring("lola migrate did not finish: project " + other + " failed")))
 		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("rerun lola migrate")))
 		Expect(res.Destinations[0].Root).To(Equal(other))
@@ -906,7 +906,7 @@ var _ = Describe("Migrate", func() {
 		writeFile(filepath.Join(h.dir, "notes.txt"), "keeps the home in place")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		h.install(rec{"module": "hooked", "assistant": "claude-code", "project_path": proj})
-		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks}})
+		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Unseen: true}})
 		Expect(err).To(MatchError(HavePrefix("lola migrate did not finish: closing the trash failed: ")))
 		Expect(res).NotTo(BeNil())
 		Expect(res.Destinations[0].Status).To(Equal(migrate.StatusMigrated))

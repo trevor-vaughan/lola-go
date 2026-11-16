@@ -83,10 +83,14 @@ Each interactive surface as a state machine: its screens, transitions and exits.
   the same artifact skipped. `markNew` runs in `prepare` against `lock.json` as the run read it, and
   `markEvents` at the end of `InstallAll`, `Sync` and `Uninstall` marks the rest new. The entries a
   run builds carry `Safety`, which `plan.Apply` writes, so a run that changes nothing records too
-  and the record does not depend on the output mode. Declined runtime hooks are a state fact too:
-  `consentRuntimeHooks` adds their `declinedKey` (module, target, settings file, consent digest,
-  `declined`) to the entry, sets `RuntimeHook.New` and the `runtime-hooks-declined` findings' `New`
-  from it, and drops what `--force` rendered of the declined intents, since nothing was rendered.
+  and the record does not depend on the output mode. Runtime hooks are a state fact too:
+  `consentRuntimeHooks` adds each hook's `runtimeHookKey` (module, settings file, the hook as
+  consent shows it, and `declined`, or `granted` for granted and consented alike) to the entry,
+  sets `RuntimeHook.New` from it (a hook consented in an earlier run is never new) and the
+  `runtime-hooks-declined` findings' `New` from their destination's hooks, and drops what
+  `--force` rendered of the declined intents, since nothing was rendered. The consent digest
+  keeps the module version, so a new version asks again; the key leaves it out, so an unchanged
+  hook asked about again stays seen.
 
 ## Plans and the ledger
 

@@ -187,11 +187,14 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 	case cur == nil || replaces(cur, i):
 		return &ledger.Active{Name: q, By: ledger.ByOn}, q, shown(i.Path), nil, nil
 	}
-	// The --switch hint keeps the run's --trust, never its --force or -y: --switch removes files
-	// --on would not, so nothing may answer their removal unasked.
+	// The --switch hint keeps the run's --trust and --unseen, never its --force or -y: --switch
+	// removes files --on would not, so nothing may answer their removal unasked.
 	sw := []string{q, "--switch"}
 	if k := slices.IndexFunc(flags, trustArg); k >= 0 {
 		sw = append(sw, flags[k])
+	}
+	if slices.Contains(flags, "--unseen") {
+		sw = append(sw, "--unseen")
 	}
 	// The bundle of both, which the terminal's question offers too.
 	members := []string{i.Name}

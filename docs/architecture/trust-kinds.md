@@ -24,6 +24,64 @@ item, `new` or `changed`) and, for consent.json, a pending `grant`; an uncovered
 without the flag, its yes a pending `grant` too, or refused or declined (`Result.needs` keeps
 the kinds that would refuse, for a dry run's command).
 
+## The shown record
+
+The consent kinds (`TrustConsent`: scripts, hooks, runtime hooks) grant, unasked, only content the
+user has seen: all of it, through `untrusted.Text`, never a path and sha256, a cut or the first
+lines. `$XDG_STATE_HOME/lola/shown.json` (`consent.Shown`, `paths.Shown`, `Engine.Shown`)
+holds the sha256 of each consent item lola printed in full; `trustGrants` gives a covered item only
+when the record holds every key of it, or `Options.Unseen` (`--unseen`) is set. A dry run counts
+its items as shown, since its report prints them. A covered item the record lacks is handled as an
+uncovered one (asked on a terminal, else declined or refused) and its hints (`unseenHints`,
+`unseenInstead`) are the run as a dry run, then the run, or the run with `--unseen`.
+
+Keys are content, never version or project, so one review covers the same hook anywhere: a runtime
+hook's is the sha256 of its module, settings file and raw rendering (`RuntimeHook.ShownKey`,
+`RuntimeHook.Content`, `rawHook`), never the `untrusted.Text` view, which can display two hooks
+alike (lock.json's seen fold keeps `runtimeHookKey` over that view, since it is about what was
+displayed), an install
+hook's the sha256 of its event, path and script sha256 (`HookScript.ShownKey`), a project
+script's of its event, path as configured and sha256 (`installScript.shownKey`). The script's
+body (`HookScript.Body`, `ScriptRun.Body`) is read raw by `readBody` in the pass that hashes the
+stream, keeping at most `MaxBody`+1 bytes: one larger, not valid UTF-8 or holding a NUL is
+`Withheld` (`BodyTooLarge`, `BodyNotText`), never printed, never recorded, so `trustGrants`
+(given `showable` false) consents to it under `--unseen` alone and a refusal hints that
+(`withheldInstead`). The CLI prints a body with tabs expanded, each line through
+`untrusted.Text` (`bodyLines`); `--json` keeps it raw so its sha256 can be checked. An empty body
+is shown by its line. `New` says whether the record lacks it.
+
+Who adds to it is whoever printed the item, since only output shows it:
+
+- The engine, for a question (after `Ask`, `AskRuntimeHooks` or `AskScript` returns, whose
+  contract is to show the items in full, bodies too). A refusal (`hookConsentError`,
+  `refuseScript`) names the scripts and their sha256 but records nothing; for an item lola has not
+  shown, its hints are the dry run that shows it first (`unseenInstead`).
+- A dry run lists every hook and project script its run would want consent for, a project
+  script with nothing to wrap as `HookLater`, and the human report is never quiet while one is
+  unshown (`nothingToDo`), so its `trusted` equals what the same run grants.
+- The CLI, for what it printed (`emit`, and the plan before a question in `confirm`, or in the
+  refusal off a terminal that stands for it, human or `--json`, whose plan holds the bodies): the human
+  renderers note each item they print in full through `style.saw` (`printReport` the new runtime
+  hooks, or all under `-v`; `printBody` a body printed open, never a fold; `--plain` rows;
+  `printInfo` the runtime hooks it rendered; `printMigrationRuns` the migrate preview), and
+  `--json` adds every `ShownKeys` in the document (`shownIn`, `Result.ShownKeys`,
+  `DestResult.ShownKeys`, `InfoRuns.ShownKeys`). `RuntimeHook.New` is true for a hook the record
+  lacks, so it is never folded. A failure to write the record warns and fails nothing.
+
+It lives in user state, never a project or the cache, because a shared file would let one checkout
+vouch for what another user saw. It is written atomically, 0600, under `paths.ShownLock`, only when
+it grows, and validated on load (one JSON object, version 1 or later, keys lowercase hex sha256,
+each once); a corrupt file is an error whose hint says deleting it is safe, at the cost of
+showing items again.
+
+A runtime hook answered No at a question, as it is, is recorded in lock.json's `Safety`
+(`answeredNoKey`) and not asked about again (`runtimeHookConsent`'s `earlier`);
+`RuntimeHook.DeclinedEarlier` lets the report fold it as `declined earlier`. A No in a batch's
+collect pass reaches its apply pass in `TrustBatch.noes`, which records it the same way. One declined where
+nothing asked is asked on a later terminal run.
+
+## The receipt
+
 `confirmTrusted` runs once per engine run before the first write (`InstallAll` before `BeforeWrite`,
 `execute`, `Sync` before the apply): it shows the items to `Options.Receipt` (No is `ErrDeclined`)
 and only then writes the grants, the flag's and the terminal's alike; entries and profiles
@@ -31,7 +89,9 @@ are recorded in trust.json with the apply, as before.
 
 A later failure of the run is a `TrustedError`, whose JSON carries the grants
 written. The CLI's receipt prints them grouped by kind on stderr and asks `Proceed?` on a
-terminal unless `-y`; under `--json` it prints nothing, as `trusted` carries them. `Options.Rerun`
+terminal unless `-y`; in the install flow, an Apply answered at the review (`reviewApplied`)
+confirms every item the review listed in full (`reviewedConsents`), so `appliedReceipt` passes a
+receipt of those alone without printing or asking, and hands any other to the receipt; under `--json` it prints nothing, as `trusted` carries them. `Options.Rerun`
 is the user's run for a given set of kinds: sync builds it (`commandOf`), the CLI passes `trustRun`
 (`runWithout` the `--trust` given, through `fixedRun`) for install and migrate, and a refusal for
 want of trust hints it with the kinds given plus the missing one.

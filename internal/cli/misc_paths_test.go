@@ -8,7 +8,7 @@ package cli_test
 // also pinned (tidy: start --run--> scope): scope_paths_test.go "scope picker: start --run (lola tidy)--> scope"
 // also pinned (tidy: start --run (--json or no terminal)--> refused): tidy_test.go "--json on a terminal never opens the picker: it refuses as off one, its hint keeping --json"
 // also pinned (tidy: start --names--> confirm): tidy_test.go "asks the review on a terminal when names are given, and declining moves nothing"
-// also pinned (tidy: start --run (--force, no names)--> refused; tidy: keep --answer (-y)--> done): tidy_test.go "-y on a terminal without names still runs the picker"
+// also pinned (tidy: start --run (--force, no names)--> refused; tidy: start --run (-y, no names)--> refused): tidy_test.go "-y on a terminal without names opens no picker and refuses as off a terminal"
 // also pinned (tidy: start --run (--scope both)--> refused): tidy_test.go "--scope both is refused with the run at each scope"
 // also pinned (tidy: keep --empty submit (nothing moves)--> keep): huh_internal_test.go "a picker that needs a pick refuses none, naming the keys, and still cancels at end of input" Entry("tidy's keep-list when nothing moves")
 // also pinned (tidy: keep --esc--> move): tidy_test.go "goes back from the keep picker to the move picker on Esc, its answer preselected"
@@ -179,15 +179,6 @@ var _ = Describe("tidy paths", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "confirm:Move 2 items to the trash?"}), "no keep picker")
 		untouched()
-	})
-
-	It("tidy: move --answer (-y, every name ticked)--> done", func() {
-		p := &scripted{tidyPick: tidyPicks("claude-code")}
-		r := lolaP(p, "tidy", "-y", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"tidy-pick"}), "the move follows the pick")
-		Expect(old).NotTo(BeAnExistingFile())
-		Expect(tmpMd).NotTo(BeAnExistingFile())
 	})
 
 	It("tidy: move --empty submit--> keep", func() {

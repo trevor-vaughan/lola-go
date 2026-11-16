@@ -69,7 +69,7 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 			return askYes(p, Question{Show: printer(rps), Prompt: question})
 		}
 	}
-	if p.Interactive() {
+	if p.Interactive() && !f.yes { // -y asks no question: no picker
 		req.Pick = func(names []string, invalid int) ([]string, error) {
 			return p.Profiles(ProfileStep{Source: rf.source, Names: names, Invalid: invalid})
 		}

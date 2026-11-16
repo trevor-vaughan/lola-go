@@ -1074,7 +1074,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 				if err != nil {
 					return nil, e.withRetry(spec, err, fetched)
 				}
-				if planned.OffTerminal != "" { // the sync needs a trust the install cannot give: its run asks, or refuses with the diff
+				if planned.needsTrust { // the sync needs a trust the install cannot give: its run asks, or refuses with the diff
 					return nil, errs.WithHints(fmt.Errorf("rewriting %s for the version this install writes for needs your trust first; nothing was written",
 						andJoin(shownAll(names))), "see what for, and trust it: "+e.SyncCommand(sp.sc))
 				}

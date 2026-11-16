@@ -28,7 +28,7 @@ func (a *app) profileSplit(cmd *cobra.Command, eng *engine.Engine, args []string
 	a.printContext(cmd, eng, []engine.Scope{sc}, nil)
 	p := a.prompter(cmd)
 	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd), ForceRun: forceRun(cmd, args), RenderRun: renderRun(cmd, args)}
-	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
+	opts.Trust, opts.Unseen, opts.Receipt = f.trust, f.unseen, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
 	req := engine.SplitRequest{Scope: sc, Name: args[0], To: to, Yes: f.yes, Options: opts}
 	if !a.json && p.Interactive() {

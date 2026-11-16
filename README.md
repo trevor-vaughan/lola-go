@@ -166,7 +166,7 @@ Run these in the `lola-go` checkout after `task build`. They make `my-project` a
      ✓ create claude-code .claude/skills/hello/SKILL.md
    ⚠ my-module comes from ../my-module, outside the project: a teammate's sync will refuse it; share a module through a git repository or an https:// archive
    → keep it to yourself: lola profile --project --move my-module --to mine --switch
-   → meant for every project? lola profile --user --move my-module --to base
+   → meant for every project? move it from this project into your user base: lola profile --user --move my-module --to base
    ✓ installed my-module (claude-code)
 
    project /tmp/tmp.7PXo8mZbW4/my-project: project.yml

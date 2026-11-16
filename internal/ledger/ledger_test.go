@@ -192,6 +192,63 @@ var _ = Describe("ledger", func() {
 		Expect(err).To(MatchError(ContainSubstring("extra")))
 	})
 
+	It("names the file and the field of a wrong JSON type in user terms, with the hint to recover", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		for body, want := range map[string]string{
+			`{"version":1,"modules":{"rich":{"safety":"abc"}}}`:   "modules.rich.safety should be a list, but holds a string",
+			`{"version":1,"modules":{"rich":{"safety":7}}}`:       "modules.rich.safety should be a list, but holds a number",
+			`{"version":1,"modules":{"rich":{"safety":{"a":1}}}}`: "modules.rich.safety should be a list, but holds an object",
+			`{"version":1,"modules":{"rich":{"source":["x"]}}}`:   "modules.rich.source should be a string, but holds a list",
+			`{"version":1,"modules":[]}`:                          "modules should be an object, but holds a list",
+			`{"version":"one","modules":{}}`:                      "version should be a whole number, but holds a string",
+			`{"version":1,"modules":{},"created":{"a":1}}`:        "created should be a list, but holds an object",
+			`{"version":1,"modules":{"rich":{"targets":[1]}}}`:    "modules.rich.targets.0 should be a string, but holds a number",
+			`{"version":1,"modules":{"rich":{"source":true}}}`:    "modules.rich.source should be a string, but holds true or false",
+		} {
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(HaveOccurred(), body)
+			Expect(err.Error()).To(HavePrefix(path+": "), body)
+			Expect(err.Error()).NotTo(Or(ContainSubstring("unmarshal"), ContainSubstring("Go struct"), ContainSubstring("Ledger.")), body)
+			Expect(err.Error()).To(ContainSubstring(want), body)
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("restore lock.json from a backup")), body)
+		}
+	})
+
+	It("says the file, not an empty field, when the whole lock.json has the wrong type", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(path, []byte(`[]`), 0o600)).To(Succeed())
+		_, err := ledger.Load(path)
+		Expect(err).To(MatchError(path + ": the file should be an object, but holds a list"))
+	})
+
+	It("names the module entry to remove in the hint when the error is inside one", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(path, []byte(`{"version":1,"modules":{"kit":{"safety":"abc"}}}`), 0o600)).To(Succeed())
+		_, err := ledger.Load(path)
+		Expect(errs.Hints(err)).To(ConsistOf("restore lock.json from a backup, or remove the entry for kit (modules.kit) from it and reinstall kit"))
+		Expect(os.WriteFile(path, []byte(`{"version":"x","modules":{}}`), 0o600)).To(Succeed())
+		_, err = ledger.Load(path)
+		Expect(errs.Hints(err)).To(ConsistOf("restore lock.json from a backup, or fix the field the error names"))
+	})
+
+	It("says what is wrong with a lock.json that is not JSON, is empty or has a key lola does not read, with the hint to recover", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		for body, want := range map[string]string{
+			`{"version":1,`:                        "ends before the JSON is complete",
+			``:                                     "is empty",
+			`{"version":1,"x"}`:                    "is not valid JSON",
+			`{"version":1,"modules":{},"extra":1}`: `has a key lola does not read: "extra"`,
+		} {
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(HaveOccurred(), body)
+			Expect(err.Error()).To(ContainSubstring(want), body)
+			Expect(err.Error()).NotTo(ContainSubstring("invalid character"), body)
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("restore lock.json from a backup")), body)
+		}
+	})
+
 	It("rejects malformed entries at load instead of panicking", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		for body, want := range map[string]string{

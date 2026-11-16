@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"encoding/json"
 	"slices"
 	"strings"
 
@@ -48,6 +49,20 @@ type ScopeContext struct {
 	WritesTo *ContextLayer   `json:"writes_to"`
 	Restore  string          `json:"restore,omitempty"`
 	Error    string          `json:"error,omitempty"`
+}
+
+// MarshalJSON is c as JSON; when lola could not tell the profile on (Error) its profile and
+// writes_to are objects with every string empty, never null: empty means unknown. They are null
+// only where the scope's state is known and has none.
+func (c ScopeContext) MarshalJSON() ([]byte, error) {
+	type plain ScopeContext // without this method, which would recurse
+	if c.Error != "" && c.Profile == nil {
+		c.Profile = &ContextProfile{Members: []ContextLayer{}}
+	}
+	if c.Error != "" && c.WritesTo == nil {
+		c.WritesTo = &ContextLayer{}
+	}
+	return json.Marshal(plain(c))
 }
 
 // contextBase is the kind of a scope's base in its context.

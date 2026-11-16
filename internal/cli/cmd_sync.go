@@ -66,6 +66,7 @@ type syncFlags struct {
 	dry, yes, force, update, strict bool
 	installed, refetch              bool
 	trust                           engine.TrustKinds
+	unseen                          bool                               // --unseen: trust's consent kinds reach what lola has not shown
 	at                              []string                           // --at as given, <module>=<version>
 	pinned                          map[string]string                  // --at parsed (parseAt)
 	atShared                        bool                               // the run gives --at to several scopes
@@ -258,7 +259,7 @@ func (a *app) syncCmd() *cobra.Command {
 		RunE:              a.syncRun(&f, &trust, "sync", "Sync where?"),
 	}
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and the trust diff, ask nothing and write nothing")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals (only removals: it never trusts changes)")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker; confirm removals (only removals: it never trusts changes)")
 	addTrustFlag(cmd, &trust, "sync", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles (recorded as a yes is; never bypasses a refusal)")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.update, "update", false, "fetch the refs again and re-pin the modules of the run")
@@ -307,6 +308,7 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 		if f.trust, err = trust.parse(cmd, args, command, "module"); err != nil {
 			return err
 		}
+		f.unseen = trust.unseen
 		if f.pinned, err = parseAt(f.at, runWithout(cmd, args, "at")); err != nil {
 			return err
 		}
@@ -451,7 +453,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 		}
 		opts.ForceRun, opts.RenderRun = forceRun(cmd, names), renderRun(cmd, names)
 	}
-	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
+	opts.Trust, opts.Unseen, opts.Receipt = f.trust, f.unseen, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
 	at := f.pinned
 	if f.atBy != nil {

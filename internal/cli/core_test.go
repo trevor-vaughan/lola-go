@@ -292,20 +292,20 @@ var _ = Describe("core commands", func() {
 		r := lola("install", mod, "-C", proj)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: example has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(r.err).To(MatchRegexp(regexp.QuoteMeta("hint: review it: lola info -C "+proj+" "+mod+" --target claude-code\n  hint: then consent to it: lola install "+mod+" --root "+proj+
-			" --trust=hooks --at example=sha256:")+`[0-9a-f]{64}\n`), "the consent pins the version shown")
+		Expect(r.err).To(MatchRegexp(regexp.QuoteMeta("hint: review it: lola info -C "+proj+" "+mod+" --target claude-code\n  hint: lola has not shown you this hook; see it with lola install "+mod+" --root "+proj+
+			" --trust=hooks --at example=sha256:")+`[0-9a-f]{64} -n, then consent to it: `), "the consent pins the version shown")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 
 		r = lola("install", mod, "-C", proj, "--dry-run")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("→ example pre-install hook scripts/setup.sh (claude-code): would run"), "would-run is the JSON value")
+		Expect(r.out).To(MatchRegexp(`→ example pre-install hook scripts/setup.sh \(sha256 [0-9a-f]{64}, claude-code\): would run`), "would-run is the JSON value")
 		Expect(r.err).NotTo(ContainSubstring("setting up"))
 
 		r = lola("install", mod, "-C", proj, "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(ContainSubstring("setting up for claude-code"), "hook output goes to stderr")
-		Expect(r.out).To(ContainSubstring("✓ example pre-install hook scripts/setup.sh (claude-code): ran"))
-		Expect(r.out).To(ContainSubstring("✓ example post-install hook scripts/done.sh (claude-code): ran"))
+		Expect(r.out).To(MatchRegexp(`✓ example pre-install hook scripts/setup\.sh \(sha256 [0-9a-f]{64}, claude-code\): ran`))
+		Expect(r.out).To(MatchRegexp(`✓ example post-install hook scripts/done\.sh \(sha256 [0-9a-f]{64}, claude-code\): ran`))
 
 		r = lola("install", "example", "-C", proj)
 		Expect(r.code).To(Equal(0), "the consent given is recorded, so nothing asks again: %s", r.err)
@@ -325,7 +325,7 @@ var _ = Describe("core commands", func() {
 		r = lola("sync", "-C", proj)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: example has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola sync -C "+proj+" --trust=hooks\n"), "the hint is the command refused")
+		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola sync -C "+proj+" --trust=hooks\n"), "the hint is the command refused; the dry run above showed the hook")
 	})
 
 	It("install --force on a hooked module still refuses for hook consent off a terminal", func() {
@@ -340,6 +340,7 @@ var _ = Describe("core commands", func() {
 		Expect(mark).NotTo(BeAnExistingFile(), "the hook did not run")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 
+		Expect(lola("install", mod, "-C", proj, "--force", "--trust=hooks", "-n").code).To(Equal(0), "the dry run shows the hook in full")
 		r = lola("install", mod, "-C", proj, "--force", "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(mark).To(BeAnExistingFile(), "--trust=hooks is the consent")
@@ -361,6 +362,7 @@ var _ = Describe("core commands", func() {
 		Expect(mark).NotTo(BeAnExistingFile(), "the hook did not run")
 		Expect(filepath.Join(other, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 
+		Expect(lola("sync", "-C", other, "--force", "--trust", "--trust=hooks", "-n").code).To(Equal(0), "the dry run shows the hook in full")
 		r = lola("sync", "-C", other, "--force", "--trust", "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(mark).To(BeAnExistingFile(), "--trust=hooks is the consent")
@@ -458,8 +460,10 @@ var _ = Describe("core commands", func() {
 
 		r = lola("install", plugin, "-C", proj, "--dry-run", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("runtime-hook\tbrowse\tclaude-code\tmcp_server:pw\tstdio\tdeclined\tagent browser\tnew\n"))
-		Expect(r.out).To(ContainSubstring("runtime-hook\tbrowse\tclaude-code\tmcp_server:db\thttp\tdeclined\tagent browser\tnew\n"))
+		Expect(r.out).To(ContainSubstring("runtime-hook\tbrowse\tclaude-code\tmcp_server:pw\tstdio\tdeclined\tagent browser\tnew\t" +
+			"agent browser: MCP server pw: stdio; runs: \"npx\\x1b[2J\" \"a\\u202eb\"; env: LD_PRELOAD=/x/evil.so\n"))
+		Expect(r.out).To(ContainSubstring("runtime-hook\tbrowse\tclaude-code\tmcp_server:db\thttp\tdeclined\tagent browser\tnew\t" +
+			"agent browser: MCP server db: http; connects to: https://db.example; header: Authorization: Bearer ?x\n"))
 	})
 
 	It("names the event and the component of each runtime hook in --plain output", func() {
@@ -471,8 +475,8 @@ var _ = Describe("core commands", func() {
 		})
 		r := lola("install", plugin, "-C", proj, "--dry-run", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("runtime-hook\tdeploy\tclaude-code\tStop\tprompt\tdeclined\t\tnew\n"))
-		Expect(r.out).To(ContainSubstring("runtime-hook\tdeploy\tclaude-code\tPreToolUse\tprompt\tdeclined\tagent critic\tnew\n"))
+		Expect(r.out).To(ContainSubstring("runtime-hook\tdeploy\tclaude-code\tStop\tprompt\tdeclined\t-\tnew\tStop: prompt; prompt: p\n"))
+		Expect(r.out).To(ContainSubstring("runtime-hook\tdeploy\tclaude-code\tPreToolUse\tprompt\tdeclined\tagent critic\tnew\tagent critic: PreToolUse: prompt; prompt: q\n"))
 	})
 
 	Describe("new or seen in a run's report", func() {
@@ -485,7 +489,7 @@ var _ = Describe("core commands", func() {
 			})
 		})
 
-		It("ends a run's safety finding and runtime-hook rows with new or seen; lola info's rows have no such column", func() {
+		It("ends a run's safety finding rows with new or seen, and its runtime-hook rows with it and the hook; lola info's rows have no such column", func() {
 			r := lola("install", plugin, "-C", proj, "--dry-run", "--plain")
 			Expect(r.code).To(Equal(0), r.err)
 			var findings, hooks int
@@ -501,8 +505,9 @@ var _ = Describe("core commands", func() {
 					}
 				case "runtime-hook":
 					hooks++
-					Expect(cols).To(HaveLen(8), row)
+					Expect(cols).To(HaveLen(9), row)
 					Expect(cols[7]).To(Equal("new"), row)
+					Expect(cols[8]).NotTo(BeEmpty(), "the hook in full")
 				}
 			}
 			Expect(findings).To(BeNumerically(">", 0), r.out)
@@ -525,7 +530,7 @@ var _ = Describe("core commands", func() {
 				cols := strings.Split(row, "\t")
 				switch cols[0] {
 				case "runtime-hook":
-					Expect(cols).To(HaveLen(7), row)
+					Expect(cols).To(HaveLen(8), row, "no new or seen; the hook in full")
 				case "finding":
 					Expect(cols).To(HaveLen(8), row)
 				}
@@ -562,7 +567,7 @@ var _ = Describe("core commands", func() {
 			writeTree(plugin, map[string]string{
 				"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"prompt","prompt":"` + "\u009b" + `Xy` + strings.Repeat("é", 100) + `"}]}]}}`,
 			})
-			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks", "-v")
+			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks", "--unseen", "-v")
 			Expect(r.code).To(Equal(0), r.err)
 			var line string
 			for _, l := range strings.Split(r.out, "\n") {
@@ -580,14 +585,14 @@ var _ = Describe("core commands", func() {
 
 		It("shows & < > as themselves in the human step line, so a shell operator reads as one", func() {
 			writeTree(plugin, map[string]string{"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"prompt","prompt":"a && b > c"}]}]}}`})
-			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks", "-v")
+			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks", "--unseen", "-v")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring(`.claude/settings.local.json /hooks/Stop {"hooks":[{"prompt":"a && b > c","type":"prompt"}]}`))
 			Expect(r.out).NotTo(ContainSubstring(`\u00`))
 		})
 
 		It("carries the whole group in the --json step, uncut", func() {
-			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks", "--json")
+			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks", "--unseen", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			var res struct {
 				Steps []struct {
@@ -919,7 +924,7 @@ var _ = Describe("core commands", func() {
 			map[string]any{"level": "warn", "class": "safety", "text": "example comes from " + mod + ", outside the project: a teammate's sync will refuse it; " +
 				"share a module through a git repository or an https:// archive"},
 			map[string]any{"level": "info", "class": "safety", "text": "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch --json"},
-			map[string]any{"level": "info", "class": "safety", "text": "meant for every project? lola profile --user --move example --to base -C " + proj + " --json"}}))
+			map[string]any{"level": "info", "class": "safety", "text": "meant for every project? move it from this project into your user base: lola profile --user --move example --to base -C " + proj + " --json"}}))
 		Expect(v["modules"]).To(HaveLen(1))
 		Expect(withoutContext(r.out)).NotTo(ContainSubstring("null"))
 	})

@@ -755,11 +755,12 @@ var _ = Describe("the install flow", func() {
 		Expect(r.err).To(ContainSubstring("    → for claude-code (the only assistant found)\n"))
 		Expect(filepath.Join(home, ".claude/commands/deploy.md")).To(BeARegularFile())
 
-		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}}
+		p = &scripted{}
 		r = lolaP(p, "install", "review-kit", "--scope", "project", "-y")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"components:project.yml › review-kit"}), "-y applies without the review menu")
-		Expect(r.err).To(ContainSubstring("Summary:"))
+		Expect(p.calls).To(BeEmpty(), "-y asks nothing: the run an off-terminal one would be")
+		Expect(r.err).NotTo(ContainSubstring("Summary:"), "and shows no summary before it applies")
+		Expect(r.out).To(ContainSubstring("review-kit"))
 
 		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}}
 		r = lolaP(p, "install", "review-kit", "--scope", "project", "--force")
@@ -779,6 +780,42 @@ var _ = Describe("the install flow", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Remove these and apply? No writes nothing"}))
 		Expect(rule).NotTo(BeAnExistingFile())
+	})
+
+	It("asks nothing under -y, whatever else is given: it takes the choices an off-terminal run would, or refuses as it does", func() {
+		for _, extra := range [][]string{{"review-kit", "--scope", "project"}, {"review-kit", "--scope", "project", "-n"}, {"review-kit"}} {
+			p := &scripted{}
+			r := lolaP(p, append([]string{"install", "-y"}, extra...)...)
+			off := lola(append([]string{"install", "-y"}, extra...)...)
+			Expect(p.calls).To(BeEmpty(), "%v", extra)
+			Expect(r.code).To(Equal(off.code), "%v: %s", extra, r.err)
+			Expect(r.err).To(Equal(off.err), "%v: refuses as an off-terminal run does, with the same hints", extra)
+		}
+		p := &scripted{}
+		r := lolaP(p, "install", "-y")
+		Expect(r.code).NotTo(Equal(0))
+		Expect(p.calls).To(BeEmpty(), "no module: the refusal an off-terminal run gives, not the form")
+		Expect(r.err).To(Equal(lola("install", "-y").err))
+	})
+
+	It("numbers a step the same when Esc brings it back, the steps before it answered and not asked again", func() {
+		fakeAssistant(tmp, "gemini", "0.63.0")
+		claude := func(cli.AssistantStep) ([]string, error) { return []string{"claude-code"}, nil }
+		p := &scripted{
+			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project")},
+			modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit"), mods("review-kit")},
+			assistants: []func(cli.AssistantStep) ([]string, error){goneBack[cli.AssistantStep, []string], claude},
+			components: []func(cli.ComponentPage) ([]string, error){keep("skill/slow-lint")},
+			review:     []string{cli.ReviewApply},
+		}
+		r := lolaP(p, "install", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"scope", "modules", "assistants", "modules", "assistants", "components:project.yml › review-kit", "review"}))
+		Expect(p.moduleSteps[1].Step.At).To(Equal(p.moduleSteps[0].Step.At), "the modules are step 2 both times")
+		Expect(p.assistantSteps[1].Step).To(Equal(p.assistantSteps[0].Step))
+		Expect(p.moduleSteps[1].Step.Of).To(BeNumerically(">=", p.moduleSteps[0].Step.Of), "Esc never lowers the total")
+		Expect(p.assistantSteps[0].Step.Of).To(BeNumerically(">=", p.moduleSteps[0].Step.Of), "nor does a later step")
+		Expect(p.pages[0].Step.At).To(Equal(p.assistantSteps[1].Step.At+1), "the page follows the assistants, whatever was asked this pass")
 	})
 
 	It("goes back a screen on Esc: the step before asks again with its answer preselected, then the flow carries on", func() {
@@ -876,7 +913,9 @@ var _ = Describe("the install flow", func() {
 		Expect(second).NotTo(ContainElement("command/ship"), "the re-run page starts from the last answer")
 		Expect(p.moduleSteps[1].Preselect).To(Equal([]string{"review-kit", "deploy"}))
 		Expect([]cli.Steps{p.pages[1].Step, p.reviewSteps[1].Step, p.moduleSteps[1].Step, p.reviewSteps[2].Step}).To(Equal(
-			[]cli.Steps{{At: 1, Of: 4}, {At: 4, Of: 4}, {At: 1, Of: 3}, {At: 2, Of: 2}}), "a pass after a Change entry numbers only the steps it asks")
+			[]cli.Steps{{At: 3, Of: 6}, {At: 6, Of: 6}, {At: 2, Of: 5}, {At: 6, Of: 6}}), "a pass after a Change entry numbers a step as it was, held answers counted")
+		Expect(p.pages[1].Step.Of).To(BeNumerically(">=", p.pages[0].Step.Of), "Change components never lowers the total")
+		Expect(p.moduleSteps[1].Step.Of).To(BeNumerically(">=", p.moduleSteps[0].Step.Of), "nor does Change modules")
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit --scope project -t claude-code --skip review-kit:command/ship --skip review-kit:rule/style"}))
 		Expect(selections).NotTo(BeAnExistingFile(), "a dry run writes nothing")
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
@@ -1368,6 +1407,20 @@ var _ = Describe("the install flow", func() {
 			"lola install deploy review-kit --scope user -t claude-code --skip review-kit:skill/slow-lint"}))
 	})
 
+	It("folds what the summary showed under --force into one line too", func() {
+		writeTree(review, map[string]string{"lola.yml": "name: review-kit\ncomponents:\n  runtime_hooks: [{path: hooks.json}]\n",
+			"hooks.json":            `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo summed"}]}]}}`,
+			"skills/tools/SKILL.md": "---\nname: tools\ndescription: Tools.\nallowed-tools: Bash\n---\nTools.\n"})
+		Expect(lola("cache", "add", review).code).To(Equal(0))
+		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, consent: []bool{true}}
+		r := lolaP(p, "install", "review-kit", "--scope", "project", "-t", "claude-code", "--force")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).NotTo(ContainElement("review"), "--force prints the summary instead of asking")
+		Expect(r.err).To(ContainSubstring("echo summed"))
+		Expect(r.out).To(MatchRegexp(`(?m)^▸ 1 warning, 1 runtime hook shown in the review above$`))
+		Expect(r.out).NotTo(ContainSubstring("echo summed"))
+	})
+
 	It("folds into one line what the review showed", func() {
 		writeTree(review, map[string]string{"lola.yml": "name: review-kit\ncomponents:\n  runtime_hooks: [{path: hooks.json}]\n",
 			"hooks.json":            `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo reviewed"}]}]}}`,
@@ -1390,6 +1443,55 @@ var _ = Describe("the install flow", func() {
 		Expect(r.out).NotTo(ContainSubstring("shown in the review"), "no review, no fold of it")
 	})
 
+	DescribeTable("the review, and the summary --force prints in its place, show the runtime hooks: --trust consents to them unasked",
+		func(flags ...string) {
+			writeTree(review, map[string]string{"lola.yml": "name: review-kit\ncomponents:\n  runtime_hooks: [{path: hooks.json}]\n",
+				"hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo reviewed"}]}]}}`})
+			Expect(lola("cache", "add", review).code).To(Equal(0))
+			// The review's Apply is the confirmation of what it listed: no receipt asks after it.
+			p := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}
+			if slices.Contains(flags, "--force") { // --force opens the steps, then prints the summary in place of the review
+				p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, confirm: []bool{true}}
+			}
+			r := lolaP(p, append([]string{"install", "review-kit", "--scope", "project", "-t", "claude-code", "--trust=runtime-hooks"}, flags...)...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.calls).NotTo(ContainElement(HavePrefix("consent:")), "shown, so --trust answers it")
+			if !slices.Contains(flags, "--force") {
+				Expect(p.calls).NotTo(ContainElement("confirm:Proceed?"), "the Apply answered it")
+				Expect(r.err).NotTo(ContainSubstring("trusting, as"), "the review listed it")
+			} else {
+				Expect(p.calls).To(ContainElement("confirm:Proceed?"), "no Apply was answered: the receipt asks")
+			}
+			Expect(os.ReadFile(filepath.Join(proj, ".claude", "settings.local.json"))).To(ContainSubstring("echo reviewed"))
+		},
+		Entry("the review"),
+		Entry("--force", "--force"),
+	)
+
+	It("asks the receipt after Apply when --trust covers an item the review did not list", func() {
+		writeTree(review, map[string]string{"lola.yml": "name: review-kit\nhooks: {pre-install: pre.sh}\ncomponents:\n  runtime_hooks: [{path: hooks.json}]\n",
+			"pre.sh": "#!/bin/sh\nexit 0\n", "hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo reviewed"}]}]}}`})
+		Expect(os.Chmod(filepath.Join(review, "pre.sh"), 0o755)).To(Succeed())
+		Expect(lola("cache", "add", review).code).To(Equal(0))
+		Expect(lola("install", "review-kit", "--project", "-t", "claude-code", "--trust=hooks", "-n").code).To(Equal(0), "shows the install hook")
+		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}, confirm: []bool{true}}
+		r := lolaP(p, "install", "review-kit", "--scope", "project", "-t", "claude-code", "--trust=runtime-hooks,hooks")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(ContainElement("confirm:Proceed?"), "the review lists no install hook")
+		Expect(r.err).To(ContainSubstring("→ hooks: review-kit pre-install"))
+	})
+
+	It("-y opens no review: the consent question shows the runtime hooks instead", func() {
+		writeTree(review, map[string]string{"lola.yml": "name: review-kit\ncomponents:\n  runtime_hooks: [{path: hooks.json}]\n",
+			"hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo reviewed"}]}]}}`})
+		Expect(lola("cache", "add", review).code).To(Equal(0))
+		p := &scripted{consent: []bool{true}}
+		r := lolaP(p, "install", "review-kit", "--scope", "project", "-t", "claude-code", "--trust=runtime-hooks", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"consent:Install review-kit's Claude Code hooks?"}), "-y never consents; nothing showed them before")
+		Expect(cli.ShowText(p.asks[len(p.asks)-1])).To(ContainSubstring("echo reviewed"))
+	})
+
 	It("asks consent to the runtime hooks the review listed with one line pointing there", func() {
 		writeTree(review, map[string]string{"lola.yml": "name: review-kit\ncomponents:\n  runtime_hooks: [{path: hooks.json}]\n",
 			"hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo reviewed"}]}]}}`})
@@ -1403,20 +1505,19 @@ var _ = Describe("the install flow", func() {
 		Expect(cli.ShowText(consent)).To(Equal("review-kit's Claude Code hooks are the hooks listed in the review above. They run inside Claude Code with your permissions.\n"))
 	})
 
-	It("lists the runtime hooks in the consent question when the review only counted them as seen", func() {
+	It("does not ask again about runtime hooks you declined, and folds them as declined earlier", func() {
 		writeTree(review, map[string]string{"lola.yml": "name: review-kit\ncomponents:\n  runtime_hooks: [{path: hooks.json}]\n",
 			"hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo declined"}]}]}}`})
 		Expect(lola("cache", "add", review).code).To(Equal(0))
 		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}, consent: []bool{false}}
 		Expect(lolaP(p, "install", "review-kit", "--scope", "project", "-t", "claude-code").code).To(Equal(0))
 
-		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, consent: []bool{false}}
+		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}}
 		r := lolaP(p, "install", "review-kit", "--scope", "project", "-t", "claude-code", "--force")
 		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).NotTo(ContainElement(HavePrefix("consent:")), "no question about the hooks declined before")
 		summary, _, _ := strings.Cut(r.err, "Equivalent commands:")
-		Expect(summary).To(ContainSubstring("▸ 1 runtime hook seen before"), "the summary folds the hooks declined before")
-		Expect(summary).NotTo(ContainSubstring("echo declined"))
-		Expect(cli.ShowText(p.asks[len(p.asks)-1])).To(ContainSubstring("echo declined"))
+		Expect(summary).To(ContainSubstring("▸ 1 runtime hook declined earlier"))
 	})
 
 	It("lists the runtime hooks in the consent question when no review showed them", func() {
@@ -1699,7 +1800,7 @@ var _ = Describe("the install flow", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(p.UserProfiles, "team-work.yml")).NotTo(BeAnExistingFile(), "run as printed, it writes nothing")
 		sp = &scripted{where: []int{0}}
-		r = lolaP(sp, "install", "deploy", "--scope", "user", "-t", "claude-code", "-y")
+		r = lolaP(sp, "install", "deploy", "--scope", "user", "-t", "claude-code", "--force")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.whereSteps).To(Equal([]cli.WhereStep{{Title: "remote:team is read-only.", Options: []string{"Write to the base (default)"}}}),
 			"asked once, though the review's dry run and the apply both plan")
@@ -3217,6 +3318,22 @@ var _ = Describe("the version question", func() {
 			Expect(rewritten).To(Equal(map[string]any{"m": true, "n": nil}), "%v", dry)
 		}
 		Expect(eraOf(proj, "m")).To(Equal("1.0"))
+	})
+
+	It("rewrites the other modules under --force though their new version drops a file, which needs no trust", func() {
+		Expect(os.MkdirAll(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "opencode"), 0o755)).To(Succeed())
+		k := filepath.Join(tmp, "k")
+		writeTree(k, map[string]string{"lola.yml": "name: k\n", "agents/a.md": "---\ndescription: A\n---\nA\n", "agents/b.md": "---\ndescription: B\n---\nB\n"})
+		Expect(lola("install", k, "--user", "-t", "opencode@2.0", "-y").code).To(Equal(0))
+		Expect(os.Remove(filepath.Join(k, "agents", "b.md"))).To(Succeed())
+		n := filepath.Join(tmp, "n")
+		writeTree(n, map[string]string{"lola.yml": "name: n\n", "commands/d.md": "Do.\n"})
+		for _, dry := range [][]string{{"-n"}, nil} {
+			r := lola(slices.Concat([]string{"install", n, "--user", "-t", "opencode@1.0", "--force"}, dry)...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).NotTo(ContainSubstring("needs your trust first"))
+		}
+		Expect(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "opencode", "agents", "b.md")).NotTo(BeAnExistingFile())
 	})
 
 	It("refuses, nothing written, an install whose rewrite of the other modules follows an edit of target_versions not yet trusted, even under --force", func() {

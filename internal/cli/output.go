@@ -8,6 +8,8 @@ import (
 	"io"
 	"maps"
 	"os"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -16,6 +18,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // isTTY reports whether a stream is a terminal. Test buffers never are, which keeps output
@@ -65,6 +68,16 @@ func (a *app) height(w any) int {
 type style struct {
 	color, bold, plain, paged, verbose, asking, applied bool
 	width                                               int
+	// shown collects the shown record keys of the consent items the output prints in full (saw),
+	// which emit adds to the record once it has printed them; nil collects nothing.
+	shown *[]string
+}
+
+// saw notes keys, those of consent items the output prints in full, for emit to record.
+func (s style) saw(keys ...string) {
+	if s.shown != nil {
+		*s.shown = append(*s.shown, keys...)
+	}
 }
 
 // more is the command a capped listing names to list everything, or "" when the output is paged
@@ -116,6 +129,7 @@ func (a *app) bold(w any) bool {
 // than the terminal.
 func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) error {
 	w := cmd.OutOrStdout()
+	var shown []string
 	if a.json {
 		doc, err := json.Marshal(v)
 		if err != nil {
@@ -129,11 +143,73 @@ func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) erro
 			return err
 		}
 		out.WriteByte('\n')
-		_, err = w.Write(out.Bytes())
-		return err
+		if _, err = w.Write(out.Bytes()); err != nil {
+			return err
+		}
+		a.remember(cmd, shownIn(reflect.ValueOf(v)))
+		return nil
 	}
-	a.page(cmd, w, a.style(cmd), human)
+	s := a.style(cmd)
+	s.shown = &shown
+	a.page(cmd, w, s, human)
+	a.remember(cmd, shown)
 	return nil
+}
+
+// remember adds keys, those of the consent items the output printed in full, to the shown record,
+// which --trust's consent kinds grant from. Output with none needs no engine. The run has done
+// its work by then, so a failure is a warning on stderr (none under --json, whose stderr holds an
+// error alone), never the run's: the items are shown again next time.
+func (a *app) remember(cmd *cobra.Command, keys []string) {
+	keys = slices.DeleteFunc(keys, func(k string) bool { return k == "" })
+	if len(keys) == 0 {
+		return
+	}
+	eng, err := a.engine()
+	if err == nil {
+		err = eng.Shown.Add(keys...)
+	}
+	if err != nil && !a.json {
+		w := cmd.ErrOrStderr()
+		fmt.Fprintln(w, style{color: a.color(w), bold: a.bold(w)}.warn("lola could not remember what it showed you ("+
+			untrusted.CleanErr(err).Error()+"); --trust consents to it only once it is shown again"))
+	}
+}
+
+// shownIn is the shown record keys of every run result (engine.Result.ShownKeys) in v, a --json
+// document, which prints each of their consent items in full: v's exported fields JSON keeps,
+// its elements and pointers followed.
+func shownIn(v reflect.Value) []string {
+	if !v.IsValid() {
+		return nil
+	}
+	if (v.Kind() != reflect.Pointer || !v.IsNil()) && v.CanInterface() {
+		if r, ok := v.Interface().(interface{ ShownKeys() []string }); ok {
+			return r.ShownKeys()
+		}
+	}
+	var keys []string
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if !v.IsNil() {
+			keys = shownIn(v.Elem())
+		}
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if f := v.Type().Field(i); f.IsExported() && f.Tag.Get("json") != "-" {
+				keys = append(keys, shownIn(v.Field(i))...)
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			keys = append(keys, shownIn(v.Index(i))...)
+		}
+	case reflect.Map:
+		for it := v.MapRange(); it.Next(); {
+			keys = append(keys, shownIn(it.Value())...)
+		}
+	}
+	return keys
 }
 
 // jsonFielder is an error whose --json document carries more keys than error and hints (a sync

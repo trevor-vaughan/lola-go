@@ -616,5 +616,5 @@ func coachSource(words []string, cmd *cobra.Command, args []string, err error) e
 	}
 	named := slices.Clone(args)
 	named[at] = to
-	return errs.WithHints(err, strings.TrimSpace(runAs(words, cmd, named, "ref", "path", "trust")+" "+errs.ShellJoin(flags)))
+	return errs.WithHints(err, strings.TrimSpace(runAs(words, cmd, named, "ref", "path", "trust", "unseen")+" "+errs.ShellJoin(flags)))
 }

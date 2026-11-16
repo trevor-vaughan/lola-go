@@ -226,7 +226,7 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 		fmt.Fprintf(w, "  %s:\n%s", in, strings.Join(entries[in], ""))
 	}
 	found := &reportBuf{Indent: "  "}
-	printReport(found, style{bold: fl.a.bold(fl.cmd.ErrOrStderr()), verbose: fl.a.style(fl.cmd).verbose}, report{NoticesOnly: true, Result: &engine.Result{DryRun: true,
+	printReport(found, style{bold: fl.a.bold(fl.cmd.ErrOrStderr()), verbose: fl.a.style(fl.cmd).verbose, shown: &fl.summaryShown}, report{NoticesOnly: true, Result: &engine.Result{DryRun: true,
 		Modules: planned.Modules, Findings: planned.Findings, Notices: append(slices.Clone(pv.Notices), planned.EraNotices...)}})
 	found.ReplayTo(w)
 	for _, d := range []struct {

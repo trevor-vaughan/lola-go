@@ -29,7 +29,7 @@ var _ = Describe("a run whose context is cancelled after its fetch (Ctrl+C or SI
 		defer cancel()
 		asked := false
 		_, err = e.Install(ctx, engine.Scope{Kind: target.Project, ProjectDir: proj}, proj,
-			[]engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks,
+			[]engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Unseen: true,
 				Receipt: func([]engine.Consent) (bool, error) {
 					asked = true
 					cancel() // the signal arrives at the receipt, the last question before the first write

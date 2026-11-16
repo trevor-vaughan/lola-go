@@ -28,15 +28,15 @@ var profileActions = []engine.ProfileAction{engine.ProfileOn, engine.ProfileOff,
 // refusal checks them: a flag the run's action does not take, or any of them without an action, is
 // refused, since a flag that does nothing must not look accepted.
 var profileFlags = map[engine.ProfileAction][]string{
-	engine.ProfileOn:     {"yes", "trust", "dry-run", "force", "verbose"},
-	engine.ProfileOff:    {"yes", "trust", "dry-run", "force", "verbose"},
-	engine.ProfileSwitch: {"new", "from", "bundle", "yes", "trust", "dry-run", "force", "verbose"},
-	engine.ProfileEdit: {"new", "from", "bundle", "skip", "only", "unskip", "exact", "with-mentions", "target", "override", "ref", "path", "yes", "trust",
+	engine.ProfileOn:     {"yes", "trust", "unseen", "dry-run", "force", "verbose"},
+	engine.ProfileOff:    {"yes", "trust", "unseen", "dry-run", "force", "verbose"},
+	engine.ProfileSwitch: {"new", "from", "bundle", "yes", "trust", "unseen", "dry-run", "force", "verbose"},
+	engine.ProfileEdit: {"new", "from", "bundle", "skip", "only", "unskip", "exact", "with-mentions", "target", "override", "ref", "path", "yes", "trust", "unseen",
 		"dry-run", "force", "verbose"},
-	engine.ProfileMove:   {"to", "keep-off", "yes", "trust", "dry-run", "force", "verbose"},
-	engine.ProfileSplit:  {"to", "yes", "trust", "dry-run", "force", "verbose"},
+	engine.ProfileMove:   {"to", "keep-off", "yes", "trust", "unseen", "dry-run", "force", "verbose"},
+	engine.ProfileSplit:  {"to", "yes", "trust", "unseen", "dry-run", "force", "verbose"},
 	engine.ProfileAdd:    {"trust", "dry-run", "ref", "path"},
-	engine.ProfileUpdate: {"yes", "trust", "dry-run", "all", "verbose"},
+	engine.ProfileUpdate: {"yes", "trust", "unseen", "dry-run", "all", "verbose"},
 	engine.ProfileRemove: {"yes", "dry-run", "force"},
 }
 
@@ -129,16 +129,16 @@ func runAs(words []string, cmd *cobra.Command, args []string, drop ...string) st
 }
 
 // consentFlags are the flags that answer a question of the run they are given to (-y and --trust
-// of any kind), which a hint repeating the run for another reason drops: it may ask another
-// question, and only you can answer it.
-var consentFlags = []string{"yes", "trust"}
+// of any kind, with --unseen, which widens it), which a hint repeating the run for another reason
+// drops: it may ask another question, and only you can answer it.
+var consentFlags = []string{"yes", "trust", "unseen"}
 
-// completeRun is the user's run, its names args, without the flags named in drop and --trust, for
-// a hint that completes it with what a terminal would have asked (a scope it lacked, an
-// assistant): -y stays, since the completed run asks what it answered. A hint that changes a scope
+// completeRun is the user's run, its names args, without the flags named in drop and --trust (and
+// --unseen), for a hint that completes it with what a terminal would have asked (a scope it lacked,
+// an assistant): -y stays, since the completed run asks what it answered. A hint that changes a scope
 // the user chose, or names another profile, is runWithout with consentFlags.
 func completeRun(cmd *cobra.Command, args []string, drop ...string) string {
-	return runWithout(cmd, args, slices.Concat(drop, []string{"trust"})...)
+	return runWithout(cmd, args, slices.Concat(drop, []string{"trust", "unseen"})...)
 }
 
 // forceRun is the user's run, with its names args, repeated with --force and none of its
@@ -155,11 +155,14 @@ func renderRun(cmd *cobra.Command, args []string) string {
 
 // rerunFlags is the flags of lola profile --add or --update that a hint repeating the run keeps
 // beside the scope, the names and the flags the engine is given: --trust for the
-// kinds given (trust), -n, --json, --plain and --no-pager, as given.
+// kinds given (trust), --unseen beside a consent kind, -n, --json, --plain and --no-pager, as given.
 func rerunFlags(cmd *cobra.Command, trust engine.TrustKinds) []string {
 	var out []string
 	if trust != 0 {
 		out = append(out, trust.Arg())
+	}
+	if trust&engine.TrustConsent != 0 && given(cmd, "unseen") {
+		out = append(out, "--unseen")
 	}
 	for _, f := range [][2]string{{"dry-run", "-n"}, {"json", "--json"}, {"plain", "--plain"}, {"no-pager", "--no-pager"}} {
 		if given(cmd, f[0]) {
@@ -316,6 +319,7 @@ func (a *app) profileCmd() *cobra.Command {
 				if f.trust, err = trust.parse(cmd, args, command, "profile"); err != nil {
 					return err
 				}
+				f.unseen = trust.unseen
 			}
 			// Without a scope flag an update answers only the profiles' question with --trust, never a
 			// project's: entries written there would answer nothing.
@@ -445,7 +449,7 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().StringVar(&add.ref, "ref", "", "with --add or --edit: the branch, tag or commit to fetch")
 	cmd.Flags().StringVar(&add.path, "path", "", "with --add: the directory of the source that holds profiles/; with --edit: the module root inside the source")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals, and --remove (only those: it never trusts changes)")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker; confirm removals, and --remove (only those: it never trusts changes)")
 	cmd.Flags().BoolP("verbose", "v", false, "with an action that applies: print the report in full: every fold open and every notice")
 	for _, name := range []string{"skip", "only", "unskip"} {
 		_ = cmd.RegisterFlagCompletionFunc(name, a.completeComponents(1)) // lola profile <profile> --edit <module>...

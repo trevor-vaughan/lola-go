@@ -26,6 +26,23 @@ type Doc struct {
 	Template       *TemplateSource `yaml:",omitempty"`
 }
 
+// Tools is the tools an allowed-tools frontmatter value pre-approves, each as written: the items
+// of a list, or the one value; none for an absent value.
+func Tools(v any) []string {
+	switch v := v.(type) {
+	case []any:
+		out := make([]string, len(v))
+		for i, t := range v {
+			out[i] = fmt.Sprint(t)
+		}
+		return out
+	case nil:
+		return nil
+	default:
+		return []string{fmt.Sprint(v)}
+	}
+}
+
 // opensFrontmatter reports whether s begins with a line a frontmatter parser might take as an
 // opener: after one byte-order mark, anything that starts with "---". Parsers differ on what may
 // follow (trailing whitespace of any Unicode kind, or text), so lola reads only an exact "---"

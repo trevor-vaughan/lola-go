@@ -292,6 +292,7 @@ type TrustChange struct {
 	Files         []FileChange       `json:"files"`
 	FilesNote     string             `json:"files_note,omitempty"`
 	MCPServers    []ContentMCPServer `json:"mcp_servers"`
+	PreApproved   []ContentTools     `json:"pre_approved"`
 	Hooks         []ContentHook      `json:"hooks"`
 }
 
@@ -345,10 +346,11 @@ type Pin struct {
 // scope was already in sync (nothing to write, pin or remove). Changed names, in order, the modules
 // the run changes (a step, a pin, a removal or a replaced copy): a sync limited to them with the
 // same answers applies the same plan. A dry run that is not in sync names the command that applies
-// it, ToApply, and, when that needs consent, the form for no terminal, OffTerminal, with --trust;
-// EquivalentCommands is the last of them, [] for any other run. Neither carries a -y the user did
-// not give. Equivalent is, after a trust answer, the command that gives the same answers off a
-// terminal.
+// it, ToApply, and, when that needs consent or a confirmation, the form for no terminal,
+// OffTerminal, with --trust and -y for the removals it lists; EquivalentCommands is the last of
+// them, [] for any other run. ToApply carries no -y the user did not give. needsTrust says the dry
+// run needs a trust it was not given. Equivalent is, after a trust answer, the command that gives
+// the same answers off a terminal.
 type SyncResult struct {
 	*Result
 	Scope              string      `json:"scope"`
@@ -368,6 +370,7 @@ type SyncResult struct {
 	Equivalent  string    `json:"-"`
 	ToApply     string    `json:"-"`
 	OffTerminal string    `json:"-"`
+	needsTrust  bool
 	// Created is the profile files a --new makes, in the order made: the members it makes first,
 	// then the profile it switches to. Under -n they are what it would make.
 	Created []Created `json:"created,omitempty"`
@@ -496,10 +499,12 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		}
 	}
 	// shownAt is the versions the run has read once it has resolved its entries (shownVersions),
-	// which the hint that consents to a hook pins, so the consent covers the version shown alone.
+	// which a hint pins. A dry run's hint also trusts the changes it shows (dryKinds), which a real
+	// run is refused for first.
 	var shownAt map[string]string
+	var dryKinds TrustKinds
 	opts.Rerun = func(k TrustKinds) string {
-		r := req.trusting(k)
+		r := req.trusting(k | dryKinds)
 		if shownAt != nil {
 			r.At = shownAt
 		}
@@ -1257,6 +1262,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	res.Findings = append(res.Findings, probes.findings...)
 
 	shownAt = shownVersions(req, entries)
+	if opts.DryRun {
+		dryKinds = res.Trust.kinds()
+	}
 	pr, err := e.prepare(sc, led, changes, copies, nil, opts, res.Result)
 	if ce, ok := errors.AsType[*plan.ConflictError](err); ok && ce.Overridable && len(res.Removals) > 0 {
 		// The sync with --force its hint names also answers the removals (user decision,
@@ -1353,6 +1361,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			if len(res.Removals) > 0 && !req.Yes && !opts.Force && len(unreadEntries(entries)) == 0 {
 				yes = []string{"-y"}
 			}
+			res.needsTrust = missing != 0
 			if missing != 0 || len(yes) > 0 {
 				res.OffTerminal = e.commandOf(req.trusting(opts.Trust|missing), yes...)
 				res.EquivalentCommands = []string{res.OffTerminal}
@@ -1458,9 +1467,16 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 // user's own run with --trust for the kinds given and the kinds of the changes it accepted; a
 // partial answer names every entry it accepted, whose record changes even when nothing is rendered,
 // and every module the run changed, so a run limited to them applies the same plan and records the
-// same trust. -y is added when the run's removals were confirmed.
+// same trust. The consent questions answered yes add their kinds to --trust, but only when every
+// item of the kind had a yes: one answered no, or never asked, has no such command (its --trust
+// grants what the user did not, and without it what was granted is declined, its files removed),
+// so there is none: "". A consent kind it carries grants only what lola has shown you, as every
+// item a yes answered was. -y is added when the run's removals were confirmed.
 func (e *Engine) equivalent(req SyncRequest, acc *acceptance, res *SyncResult) string {
-	run := req.trusting(req.Options.Trust | res.Trust.kinds())
+	if res.said&res.withheld != 0 {
+		return ""
+	}
+	run := req.trusting(req.Options.Trust | res.Trust.kinds() | res.said)
 	var yes []string
 	if len(res.Removals) > 0 && !req.Options.Force {
 		yes = append(yes, "-y")
@@ -1959,7 +1975,7 @@ func trustReport(rep trust.Report) TrustReport {
 			fields[i] = trust.FieldChange{Field: fc.Field, From: shownValue(fc.From), To: shownValue(fc.To)}
 		}
 		c.Fields = fields
-		out.Changes = append(out.Changes, TrustChange{Change: c, Files: []FileChange{}, MCPServers: []ContentMCPServer{}, Hooks: []ContentHook{}})
+		out.Changes = append(out.Changes, TrustChange{Change: c, Files: []FileChange{}, MCPServers: []ContentMCPServer{}, PreApproved: []ContentTools{}, Hooks: []ContentHook{}})
 	}
 	return out
 }
@@ -2029,7 +2045,7 @@ func pinReasons(rep *TrustReport, entries []*syncEntry, flag string) {
 		k := slices.IndexFunc(rep.Changes, se.owns)
 		if k < 0 {
 			rep.Changes = append(rep.Changes, TrustChange{Change: trust.Change{Module: shown(se.ent.Name), Profile: se.part(), Kind: trust.ChangeChanged,
-				ContentFixed: se.ent.Digest != "", Fields: []trust.FieldChange{}}, Files: []FileChange{}, MCPServers: []ContentMCPServer{}, Hooks: []ContentHook{}})
+				ContentFixed: se.ent.Digest != "", Fields: []trust.FieldChange{}}, Files: []FileChange{}, MCPServers: []ContentMCPServer{}, PreApproved: []ContentTools{}, Hooks: []ContentHook{}})
 			k = len(rep.Changes) - 1
 			if rep.Status == trust.StatusTrusted {
 				rep.Status = trust.StatusChanged
@@ -2329,7 +2345,7 @@ func folderChanges(rep *TrustReport, entries []*syncEntry, led *ledger.Ledger) {
 		}
 		rep.Changes = append(rep.Changes, TrustChange{Change: trust.Change{Module: se.ent.Name, Profile: se.part(), Kind: kind,
 			Fields: []trust.FieldChange{{Field: "digest", From: from, To: se.v.Meta.Digest}}},
-			FolderContent: true, Files: []FileChange{}, MCPServers: []ContentMCPServer{}, Hooks: []ContentHook{}})
+			FolderContent: true, Files: []FileChange{}, MCPServers: []ContentMCPServer{}, PreApproved: []ContentTools{}, Hooks: []ContentHook{}})
 		if rep.Status == trust.StatusTrusted {
 			rep.Status = trust.StatusChanged
 		}

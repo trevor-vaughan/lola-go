@@ -182,7 +182,7 @@ func (e *Engine) remoteContent(ctx context.Context, sc Scope, q string, led *led
 			return nil, err
 		}
 		se.from = ledger.FromProfile(q) // a refusal names the remote profile's layer, not the scope's manifest
-		hooks, err := e.contentHooks(sc, se.v, se.ent, se.from, probes, templates, display)
+		hooks, _, err := e.contentHooks(sc, se.v, se.ent, se.from, probes, templates, display)
 		_, badVars := errors.AsType[*varsRefusal](err)
 		if _, refused := errors.AsType[*TemplateError](err); refused || badVars {
 			return nil, err // it names the module, its component and file itself

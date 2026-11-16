@@ -57,7 +57,7 @@ func (a *app) repairCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "list what lola would forget and write nothing")
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "open no picker and do not ask for confirmation")
 	return cmd
 }
 

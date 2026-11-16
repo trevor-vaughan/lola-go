@@ -49,6 +49,15 @@ type FileChange struct {
 	Change string `json:"change"`
 }
 
+// ContentTools is the tools a component of a module version pre-approves that the version
+// installed does not (all of them with none to compare): Kind is skill, command or agent, Name the
+// component's (a command's sidecar by its file).
+type ContentTools struct {
+	Kind  string   `json:"kind"`
+	Name  string   `json:"name"`
+	Tools []string `json:"tools"`
+}
+
 // Kinds of hooks a module's content declares.
 const (
 	HookKindInstall   = "install"    // an install hook: Event is pre-install or post-install, Detail its script
@@ -61,19 +70,23 @@ const (
 // what it runs or where it connects. A hook is identified by all its fields, so Change is added,
 // changed, unchanged or removed against the version installed: a hook whose command changed is one
 // removed and one added, while an install hook whose script file changed is changed.
+// ConsentAgain marks an unchanged runtime hook or agent MCP server of a version other than the
+// one installed: consent to it covers the module version too, so the run asks again.
 type ContentHook struct {
-	Kind   string `json:"kind"`
-	Target string `json:"target,omitempty"`
-	Event  string `json:"event"`
-	Detail string `json:"detail"`
-	Change string `json:"change"`
+	Kind         string `json:"kind"`
+	Target       string `json:"target,omitempty"`
+	Event        string `json:"event"`
+	Detail       string `json:"detail"`
+	Change       string `json:"change"`
+	ConsentAgain bool   `json:"consent_again,omitempty"`
 }
 
 // fillContent fills the content of each added or changed module of rep from the version the sync
 // resolved for it: files against the version lock.json records, from the cache
 // (never fetched: a version the cache lost lists every file as added), MCP servers, and every
 // hook the content declares (declaredRuntimeHooks), each MCP server and hook marked against the
-// version installed. A module nothing was fetched for yet is left without content. display is
+// version installed, and an unchanged runtime hook of another version installed under consent as
+// needing it again (markConsentAgain). A module nothing was fetched for yet is left without content. display is
 // the run's output flags, which a template refusal's check hint keeps.
 func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, led *ledger.Ledger, templates *templateRun, probes *probeRun,
 	display []string) error {
@@ -83,7 +96,7 @@ func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, l
 		if c.Kind == trust.ChangeRemoved || se == nil || se.v.ContentDir == "" {
 			continue
 		}
-		now, err := e.contentHooks(sc, se.v, se.pinned(), se.from, probes, templates, display)
+		now, declared, err := e.contentHooks(sc, se.v, se.pinned(), se.from, probes, templates, display)
 		_, badVars := errors.AsType[*varsRefusal](err)
 		if _, refused := errors.AsType[*TemplateError](err); refused || badVars {
 			return err // it names the module, its component and file itself
@@ -133,7 +146,18 @@ func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, l
 			before = old.Module.MCPServers
 		}
 		c.MCPServers = markServers(se.v.Module.MCPServers, before, old != nil)
+		var oldModule *module.Module
+		if old != nil {
+			oldModule = old.Module
+		}
+		c.PreApproved = newTools(se.v.Module, oldModule)
 		c.Hooks = markHooks(now, was, old != nil, c.Files)
+		if old != nil && old.Meta.Digest != se.v.Meta.Digest {
+			// c.Hooks begins with now, whose runtime hooks are declared's views, last and in order.
+			if err := e.markConsentAgain(sc, se.ent.Name, c.Hooks[len(now)-len(declared.views):len(now)], declared, led.Modules[se.ent.Name]); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -156,7 +180,7 @@ func (e *Engine) compareInstalled(sc Scope, se *syncEntry, ent manifest.Entry, o
 		}
 	}
 	ent.Vars = declared
-	was, err := e.contentHooks(sc, *old, ent, se.from, probes, templates, display)
+	was, _, err := e.contentHooks(sc, *old, ent, se.from, probes, templates, display)
 	return files, was, err
 }
 
@@ -186,6 +210,63 @@ func (e *Engine) comparedVersion(se *syncEntry, installed *ledger.Entry) (*store
 		return nil, unreadableNote(err)
 	}
 	return &old, ""
+}
+
+// componentTools is the tools m's components pre-approve through allowed-tools in their
+// frontmatter, or an attribute file's, by "kind/name", each once in the order written, as shown.
+func componentTools(m *module.Module) map[string][]string {
+	out := map[string][]string{}
+	add := func(kind, name string, doc module.Doc, attrs map[string]map[string]any) {
+		fms := []map[string]any{doc.Frontmatter}
+		for _, id := range slices.Sorted(maps.Keys(attrs)) {
+			fms = append(fms, attrs[id])
+		}
+		key := kind + "/" + name
+		for _, fm := range fms {
+			for _, k := range slices.Sorted(maps.Keys(fm)) {
+				if !strings.EqualFold(k, "allowed-tools") {
+					continue
+				}
+				for _, t := range module.Tools(fm[k]) {
+					if t = shown(t); !slices.Contains(out[key], t) {
+						out[key] = append(out[key], t)
+					}
+				}
+			}
+		}
+	}
+	for _, s := range m.Skills {
+		add("skill", s.Name, s.Doc, s.Attrs)
+	}
+	for _, c := range m.Commands {
+		add("command", c.Name, c.Doc, c.Attrs)
+		for _, sc := range c.Sidecars {
+			add("command", sc.File, sc.Doc, nil)
+		}
+	}
+	for _, a := range m.Agents {
+		add("agent", a.Name, a.Doc, a.Attrs)
+	}
+	return out
+}
+
+// newTools is the tools now's components pre-approve that before's, the version installed (nil
+// for none), do not: one entry per component with any, in kind and name order; [] for none.
+func newTools(now, before *module.Module) []ContentTools {
+	out := []ContentTools{}
+	was := map[string][]string{}
+	if before != nil {
+		was = componentTools(before)
+	}
+	tools := componentTools(now)
+	for _, key := range slices.Sorted(maps.Keys(tools)) {
+		added := slices.DeleteFunc(slices.Clone(tools[key]), func(t string) bool { return slices.Contains(was[key], t) })
+		if len(added) > 0 {
+			kind, name, _ := strings.Cut(key, "/")
+			out = append(out, ContentTools{Kind: kind, Name: name, Tools: added})
+		}
+	}
+	return out
 }
 
 // markServers is each MCP server of now, the version a sync installs, as the diff shows it and
@@ -277,20 +358,30 @@ func markHooks(now, was []ContentHook, installed bool, files []FileChange) []Con
 }
 
 // contentHooks is every hook v declares, as the diff shows it, unmarked: its install hooks, then
-// its runtime hooks and agent MCP servers (declaredRuntimeHooks).
-func (e *Engine) contentHooks(sc Scope, v store.Version, ent manifest.Entry, from string, probes *probeRun, templates *templateRun, display []string) ([]ContentHook, error) {
+// its runtime hooks and agent MCP servers (declaredRuntimeHooks), which it also returns as
+// consent shows them, the last of the list in order.
+func (e *Engine) contentHooks(sc Scope, v store.Version, ent manifest.Entry, from string, probes *probeRun, templates *templateRun,
+	display []string) ([]ContentHook, declaredHooks, error) {
 	var out []ContentHook
 	for _, h := range v.Module.DeclaredHooks {
 		out = append(out, ContentHook{Kind: HookKindInstall, Event: shown(h.Event), Detail: shown(h.Script)})
 	}
-	hooks, err := e.declaredRuntimeHooks(sc, v, ent, from, probes, templates, display)
+	declared, err := e.declaredRuntimeHooks(sc, v, ent, from, probes, templates, display)
 	if err != nil {
-		return nil, err
+		return nil, declaredHooks{}, err
 	}
-	for _, h := range hooks {
+	for _, h := range declared.views {
 		out = append(out, contentHook(h))
 	}
-	return out, nil
+	return out, declared, nil
+}
+
+// declaredHooks is a version's runtime hooks and agent MCP servers as consent shows them, and
+// the consent digest of each destination's (describeRuntimeHooks), keyed "<target>\x00<settings
+// file>".
+type declaredHooks struct {
+	views   []RuntimeHook
+	digests map[string]string
 }
 
 // declaredRuntimeHooks is every runtime hook and agent MCP server v declares, as each assistant
@@ -299,7 +390,7 @@ func (e *Engine) contentHooks(sc Scope, v store.Version, ent manifest.Entry, fro
 // newest version lola knows. display is the run's output flags, which a template refusal's
 // check hint keeps.
 func (e *Engine) declaredRuntimeHooks(sc Scope, v store.Version, ent manifest.Entry, from string, probes *probeRun, templates *templateRun,
-	display []string) ([]RuntimeHook, error) {
+	display []string) (declaredHooks, error) {
 	quiet := &probeRun{e: e, ctx: probes.ctx, versions: maps.Clone(probes.versions), exposed: probes.exposed, declares: probes.declares,
 		eras: maps.Clone(probes.eras)}
 	ids := make([]string, len(e.Targets))
@@ -311,16 +402,26 @@ func (e *Engine) declaredRuntimeHooks(sc Scope, v store.Version, ent manifest.En
 	}
 	intents, _, _, _, err := e.planModule(sc, v, ids, &ent, config.Exclusions{}, Options{Display: display, entryFrom: from}, quiet, templates)
 	if err != nil {
-		return nil, err
+		return declaredHooks{}, err
 	}
 	var gated []plan.Intent
+	by := map[string][]plan.Intent{}
 	for _, in := range intents {
 		if in.Consent != nil {
 			gated = append(gated, in)
+			by[in.Target+"\x00"+in.Consent.Settings] = append(by[in.Target+"\x00"+in.Consent.Settings], in)
 		}
 	}
-	hooks, _, err := describeRuntimeHooks(gated, v.Meta.Digest)
-	return hooks, err
+	out := declaredHooks{digests: map[string]string{}}
+	if out.views, _, err = describeRuntimeHooks(gated, v.Meta.Digest); err != nil {
+		return declaredHooks{}, err
+	}
+	for d, in := range by {
+		if _, out.digests[d], err = describeRuntimeHooks(in, v.Meta.Digest); err != nil {
+			return declaredHooks{}, err
+		}
+	}
+	return out, nil
 }
 
 // contentHook is a runtime hook or agent MCP server as the trust diff shows it; its strings are
@@ -412,4 +513,37 @@ func contentFiles(dir string, execs []string) (map[string]string, error) {
 		out[rel] = hex.EncodeToString(sum[:]) + fmt.Sprint(slices.Contains(execs, rel))
 	}
 	return out, nil
+}
+
+// markConsentAgain sets ConsentAgain on each unchanged hook of hooks, module's runtime hooks of a
+// new version in the trust diff, one for each of declared's views in order, that installed (its
+// entry ent, in lock.json, records it so: runtimeHookKey) under a consent for the version installed,
+// and whose destination's consent for the new version's digest is not recorded: the run asks again.
+// A hook declined before, or never installed, is plain unchanged.
+func (e *Engine) markConsentAgain(sc Scope, module string, hooks []ContentHook, declared declaredHooks, ent *ledger.Entry) error {
+	if ent == nil {
+		return nil
+	}
+	for j, view := range declared.views {
+		if hooks[j].Change != ChangeUnchanged {
+			continue
+		}
+		k, err := runtimeHookKey(module, view)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(ent.Safety, k) {
+			continue
+		}
+		key, err := e.consentKey(sc, module, view.Target, view.Settings)
+		if err != nil {
+			return err
+		}
+		ok, err := e.Consent.Granted(key, declared.digests[view.Target+"\x00"+view.Settings])
+		if err != nil {
+			return err
+		}
+		hooks[j].ConsentAgain = !ok
+	}
+	return nil
 }

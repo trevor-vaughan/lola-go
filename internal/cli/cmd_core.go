@@ -221,6 +221,7 @@ func (a *app) installCmd() *cobra.Command {
 			if f.trust, err = trust.parse(cmd, args, "install", "module"); err != nil {
 				return err
 			}
+			f.unseen = trust.unseen
 			if f.pinned, err = parseAt(f.at, runWithout(cmd, args, "at")); err != nil {
 				return err
 			}
@@ -251,7 +252,7 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().StringVar(&f.preInstall, "pre-install", "", "a script to run before each module copy the install writes, once per assistant (yours: no trust asked)")
 	cmd.Flags().StringVar(&f.postInstall, "post-install", "", "a script to run after each module copy the install writes, once per assistant (yours: no trust asked)")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and write nothing (not even selections.yaml)")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "apply after the pickers without the review menu")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "ask no question but consent (which only --trust answers): take the choices a run off a terminal would (or refuse as it does), and apply without the review menu")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be, applying without the review menu (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module, or an installed assistant is of another era than the version declared (a version you choose that differs from the installed one is warned of, not refused)")
 	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
@@ -302,7 +303,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 				if !yes && !dry {
 					extra = append(extra, "-y")
 				}
-				return strings.Join(append([]string{runWithout(cmd, args, "profile", "trust")}, extra...), " ")
+				return strings.Join(append([]string{runWithout(cmd, args, "profile", "trust", "unseen")}, extra...), " ")
 			}, UserRun: func() string {
 				return runWithout(cmd, args, slices.Concat(scopeFlags, consentFlags)...) + " --user"
 			}, Again: rerunFlags(cmd, 0)}

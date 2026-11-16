@@ -58,6 +58,29 @@ var _ = Describe("scope for every command", func() {
 		Expect(lola("uninstall", "example", "-y", "-s", "user").code).To(Equal(0))
 	})
 
+	DescribeTable("-y opens no scope picker: the command finds the scope it would off a terminal, or refuses as it does",
+		func(args ...string) {
+			Expect(lola("install", mod, "-C", proj, "-t", "claude-code").code).To(Equal(0))
+			writeTree(filepath.Join(tmp, "config", "lola", "profiles"), map[string]string{"go.yml": "version: 1\n"})
+			sub := filepath.Join(proj, "src")
+			Expect(os.MkdirAll(sub, 0o755)).To(Succeed())
+			GinkgoT().Chdir(sub)
+			p := &scripted{}
+			r := lolaP(p, args...)
+			Expect(p.calls).To(BeEmpty(), "%v", args)
+			Expect(p.scopeSteps).To(BeEmpty(), "%v", args)
+			off := lola(args...)
+			Expect(r.code).To(Equal(off.code), "%v: %s", args, r.err)
+			Expect(r.err).To(Equal(off.err), "%v", args)
+		},
+		Entry("sync", "sync", "-y"),
+		Entry("update", "update", "-n", "-y"),
+		Entry("repair", "repair", "-n", "-y"),
+		Entry("tidy", "tidy", "-n", "-y"),
+		Entry("profile --on", "profile", "go", "--on", "-n", "-y"),
+		Entry("profile --switch", "profile", "go", "--switch", "-n", "-y"),
+	)
+
 	It("every scoped command resolves its scope as install does", func() {
 		home := os.Getenv("HOME")
 		inProj, inHome := filepath.Join(proj, ".claude/commands/ship.md"), filepath.Join(home, ".claude/commands/ship.md")
@@ -225,8 +248,8 @@ var _ = Describe("scope for every command", func() {
 
 		By("uninstall, Project picked in the home directory")
 		GinkgoT().Chdir(home)
-		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}}
-		r := lolaP(p, "uninstall", "example", "-y")
+		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, confirm: []bool{true}}
+		r := lolaP(p, "uninstall", "example")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.scopeSteps).To(HaveLen(1))
 		Expect(inHome).NotTo(BeAnExistingFile())

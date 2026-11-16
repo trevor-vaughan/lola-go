@@ -91,7 +91,8 @@ Guards are facts of the run that skip a screen or decide where an input leads.
 | `-t` | the assistant picker is not asked; `-t <id>@<version>` also answers that assistant's version question |
 | a declared `target_versions` | that assistant's version question is not asked at that destination |
 | `--skip`, `--only`, `--unskip` | no component page is asked |
-| `-y`, `--force` | no review menu and no version question (the installed version is taken): the other open steps are still asked, then the summary is printed and applied |
+| `--force` | no review menu and no version question (the installed version is taken): the other open steps are still asked, then the summary is printed and applied |
+| `-y` | no question but consent, and no review: a run off a terminal, so every picker takes that run's choice, or the run is refused as it is, with the same hints; a consent question (hooks, runtime hooks, a project script) is still asked on a terminal, since only `--trust` consents |
 | `-n` | the run ends in a dry run: the review is shown, Apply writes nothing |
 | `--json`, or no terminal | nothing is asked |
 | single option | an assistant taken as the only one installed (or the only target set up), and a module with one component and no exclusion, are not asked |
@@ -231,7 +232,7 @@ usual one).
 | start | run | `-C` missing and `-n` | next step | prints `would create <dir>`, plans for an empty directory, creates nothing |
 | start | run | every answer given, lola chose nothing | apply | no review |
 | start | run | the only assistant installed is taken | review | the review says "the only assistant found" |
-| start | run | `-y` or `--force` | next step | the steps still open are asked (component pages included), but no version question and no review menu: the summary is printed on stderr and applied |
+| start | run | `-y` or `--force` | next step | under `--force` the steps still open are asked (component pages included), but no version question and no review menu: the summary is printed on stderr and applied; under `-y` no step opens: each takes the choice a run off a terminal would, or the run is refused as that run is, and it is applied. Either still asks a consent question on a terminal, which only `--trust` answers |
 | start | run | `--json` or no terminal | apply | nothing is asked |
 | -C confirm | yes | | next step | creates the directory |
 | -C confirm | no | | cancelled | |
@@ -637,13 +638,13 @@ directory, which is offered without a `.lola/`.
 | start | run | lola profile --split | scope | `Split where?` |
 | start | run | lola profile --remove | scope | `Check which scope before removing it?` |
 | start | scope flag | | next step | `--project`, `--user`, `-C <dir>` or `--scope`: nothing asked |
-| start | run | -n, -y or --force | scope | none of them names a scope |
+| start | run | -n or --force | scope | neither names a scope; `-y` opens no picker (below) |
 | start | run | --json | next step | nothing asked: the project found from here, else `default_scope`, else refused with the runs that name a scope |
 | scope | answer | | next step | the command runs at the scope ticked |
 | scope | answer | two ticked, one scope | scope | problem "pick one scope" |
 | scope | answer | two ticked, sync or update | next step | each scope in turn, the project first, stopping at the first that fails or is declined |
 | scope | answer | Project is the home directory, refused | scope | problem "the project here is your home directory; tick User instead", nothing ticked |
-| scope | answer | Project is the home directory, accepted | next step | tidy, repair and uninstall run at the project there |
+| scope | answer | Project is the home directory, accepted | next step | repair and uninstall run at the project there |
 | scope | answer | Project has no .lola/ | refused | `lola sync`: `no project.yml in <dir>`, hinting `lola install --project <source>` |
 | scope | answer | Other ticked | directory | |
 | scope | esc | | scope | first screen: key help note |
@@ -857,8 +858,7 @@ stateDiagram-v2
 ```
 
 Every screen also goes to `cancelled` on `ctrl+c` or `q`. The move picker is the first screen of
-tidy's own: Esc there stays, also after the scope picker. Under `-y` the pickers still run and the
-closing question is not asked.
+tidy's own: Esc there stays, also after the scope picker. `-y` opens no picker: it finds the scope and refuses a run without names as off a terminal does.
 
 ### States
 
@@ -880,19 +880,17 @@ closing question is not asked.
 | start | names | | confirm | first screen: Esc stays |
 | start | names | -y | done | moves what the names select; nothing asked |
 | start | names | --force | done | also what git tracks; nothing asked |
-| start | run | --force, no names | refused | `--force needs names or --all: N items can move`; never the picker |
+| start | run | -y or --force, no names | refused | `--force needs names or --all: N items can move`, or the off-terminal refusal under `-y`; never the picker |
 | start | run | --all | confirm | first screen: Esc stays |
 | start | run | --scope both | refused | hints the run at each scope |
 | start | run | -n | dry run | lists what would move and what is locked; asks nothing |
 | start | run | --keep or --unkeep | done | edits `keep.yaml`, with no question on a terminal too; moves nothing |
 | move | answer | | keep | the rest offered; nothing is written yet |
 | move | answer | every name ticked | confirm | no keep picker |
-| move | answer | -y, every name ticked | done | the move follows the pick |
 | move | empty submit | | keep | it then needs a pick |
 | move | esc | | move | first screen: key help note |
 | move | ctrl+c | | cancelled | |
 | keep | answer | | confirm | |
-| keep | answer | -y | done | |
 | keep | empty submit | something moves | confirm | keeps nothing |
 | keep | empty submit | nothing moves | keep | refused with the "nothing selected" note; Esc or Ctrl+C is the way out |
 | keep | esc | | move | the move ticks kept; the keep ticks dropped |
@@ -1469,7 +1467,7 @@ stateDiagram-v2
   [*] --> runtime: Claude Code hooks without consent
   [*] --> script: a project script without consent
   [*] --> later: a sync with nothing to install
-  [*] --> receipt: --trust covers it
+  [*] --> receipt: --trust covers it, shown
   [*] --> done: consent recorded, -n
   [*] --> refused: no terminal, a pre-install hook or script
   hooks --> script: yes
@@ -1496,11 +1494,11 @@ else the receipt when `--trust` covers something, else the run's writes.
 
 | state | what the user sees | asked when |
 |---|---|---|
-| hooks | `<m> has install hooks. They run as you, unconfined:`, each `<event>: <script> (sha256 <digest>)`, then `Run <m>'s install hooks?` under it (default No) | a module the run installs has hooks without a consent recorded for their digest, on a terminal, without `--json`, `-n` or a `--trust` covering hooks |
-| runtime | `<m> has Claude Code hooks:` (`… and agent MCP servers:`), each with what it runs or where it connects, or, when the install review of the run listed every one, the one line `<m>'s Claude Code hooks are the hooks listed in the review above. …`; then `Install <m>'s Claude Code hooks?` (`… and agent MCP servers?`) (default No) | a module's Claude Code hooks without a consent recorded for their digest at that settings file, on the same terms |
-| script | `The project at <root> has a <event> script. It runs as you, unconfined, for every module lola installs there:`, `<path> (sha256 <digest>)`, then `Run this project's <event> script?` (default No) | the project's pre-install or post-install script without a consent recorded for its digest, when the run installs a copy for it to wrap, on the same terms |
+| hooks | `<m> has install hooks. They run as you, unconfined:`, each `<event>: <script> (sha256 <digest>)` and its body in full (`| …`), then `Run <m>'s install hooks?` under it (default No) | a module the run installs has hooks without a consent recorded for their digest, on a terminal, without `--json`, `-n` or a `--trust` covering hooks that lola has shown you (or `--unseen`) |
+| runtime | `<m> has Claude Code hooks:` (`… and agent MCP servers:`), each with what it runs or where it connects, or, when the install review of the run listed every one, the one line `<m>'s Claude Code hooks are the hooks listed in the review above. …`; then `Install <m>'s Claude Code hooks?` (`… and agent MCP servers?`) (default No) | a module's Claude Code hooks without a consent recorded for their digest at that settings file, on the same terms, unless you answered No to them, as they are, before |
+| script | `The project at <root> has a <event> script. It runs as you, unconfined, for every module lola installs there:`, `<path> (sha256 <digest>)` and its body in full (`| …`), then `Run this project's <event> script?` (default No) | the project's pre-install or post-install script without a consent recorded for its digest, when the run installs a copy for it to wrap, on the same terms |
 | later | the same listing, then `Trust this project's pre-install script for later runs?` (default No) | `lola sync` with nothing to install, the project's pre-install script without consent |
-| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question)) | `--trust` covers something, on a terminal, without `-y` |
+| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question)) | `--trust` covers something, on a terminal, without `-y`, that the review answered Apply did not list (Apply confirms what it listed) |
 
 ### Transitions
 
@@ -1512,7 +1510,7 @@ else the receipt when `--trust` covers something, else the run's writes.
 | start | run | lola sync, nothing to install | later | a pre-install script with no copy to wrap is asked about for later runs |
 | start | run | consent recorded | done | the consent recorded for the same digest answers; nothing asked |
 | start | run | -y or --force | hooks | neither answers consent |
-| start | run | --trust | receipt | the kinds it names are not asked; each item is listed on the receipt |
+| start | run | --trust | receipt | the kinds it names are not asked about what lola has shown you (or anything, with `--unseen`); each item is listed on the receipt |
 | start | run | -n | done | asks nothing and records nothing; the hooks and scripts are listed as would-run |
 | start | run | --json or no terminal, a pre-install hook or script | refused | hints `lola info` of the version and the run with `--trust=<kind>` |
 | start | run | --json or no terminal, post-install only | done | declined and pending in lock.json, with the sync that runs it |
@@ -1523,7 +1521,7 @@ else the receipt when `--trust` covers something, else the run's writes.
 | hooks | esc | | hooks | `first step — q quits` |
 | hooks | q | | cancelled | a quit; nothing written |
 | runtime | yes | | next step | the hooks written to the assistant's settings; the consent recorded |
-| runtime | no | | next step | the rest installed without the Claude Code hooks; the next sync asks again |
+| runtime | no | | next step | the rest installed without the Claude Code hooks; no run asks about them again until they change, and the report folds them as `declined earlier` with the run that consents to them |
 | runtime | ctrl+c | | cancelled | nothing written |
 | runtime | esc | | runtime | `first step — q quits` |
 | runtime | q | | cancelled | a quit; nothing written |

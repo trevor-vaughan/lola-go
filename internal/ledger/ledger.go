@@ -4,15 +4,19 @@ package ledger
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/activeprofile"
@@ -216,7 +220,7 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 	dec.DisallowUnknownFields()
 	dec.UseNumber() // rendered_with's vars: an int64 stays exact (module.DecodedVars)
 	if err := dec.Decode(l); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, decodeError(path, err)
 	}
 	if l.Version > Version {
 		return nil, fmt.Errorf("%s was written by a newer lola (ledger version %d); upgrade lola", path, l.Version)
@@ -234,6 +238,76 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 	}
 	l.normalize()
 	return l, nil
+}
+
+// decodeError is err, what decoding the lock.json at path failed with, said in the terms of the
+// file: the field and what it holds against what it should, or what is wrong with the JSON, with
+// restoreHint.
+func decodeError(path string, err error) error {
+	var typ *json.UnmarshalTypeError
+	var syntax *json.SyntaxError
+	var msg string
+	hint := "restore lock.json from a backup, or correct the JSON by hand"
+	switch field, unknown := strings.CutPrefix(err.Error(), "json: unknown field "); {
+	case errors.As(err, &typ):
+		hint = "restore lock.json from a backup, or fix the field the error names"
+		field := cmp.Or(untrusted.Text(typ.Field, untrusted.MaxName), "the file")
+		msg = fmt.Sprintf("%s should be %s, but holds %s", field, jsonType(typ.Type), jsonValue(typ.Value))
+		if name, ok := strings.CutPrefix(typ.Field, "modules."); ok {
+			name, _, _ = strings.Cut(name, ".")
+			name = untrusted.Text(name, untrusted.MaxName)
+			hint = "restore lock.json from a backup, or remove the entry for " + name + " (modules." + name + ") from it and reinstall " + name
+		}
+	case errors.As(err, &syntax):
+		msg = "is not valid JSON (at byte " + strconv.FormatInt(syntax.Offset, 10) + ")"
+	case errors.Is(err, io.EOF):
+		msg = "is empty"
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		msg = "ends before the JSON is complete"
+	case unknown:
+		hint = "restore lock.json from a backup, or remove the key the error names"
+		msg = "has a key lola does not read: " + untrusted.Text(field, untrusted.MaxName)
+	default:
+		msg = "cannot be read: " + err.Error()
+	}
+	return errs.WithHints(fmt.Errorf("%s: %s", path, msg), hint)
+}
+
+// jsonType is what a JSON value must be to decode into t, in the terms of the file.
+func jsonType(t reflect.Type) string {
+	switch t.Kind() {
+	case reflect.Slice, reflect.Array:
+		return "a list"
+	case reflect.Map, reflect.Struct:
+		return "an object"
+	case reflect.Pointer:
+		return jsonType(t.Elem())
+	case reflect.String:
+		return "a string"
+	case reflect.Bool:
+		return "true or false"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return "a whole number"
+	case reflect.Float32, reflect.Float64:
+		return "a number"
+	}
+	return "another kind of value"
+}
+
+// jsonValue is a JSON value's kind as json.UnmarshalTypeError names it, in the terms of the file.
+func jsonValue(kind string) string {
+	switch {
+	case kind == "array":
+		return "a list"
+	case kind == "object":
+		return "an object"
+	case kind == "bool":
+		return "true or false"
+	case strings.HasPrefix(kind, "number"):
+		return "a number"
+	}
+	return "a " + kind
 }
 
 // restoreHint coaches a lock.json lola could not have written and lola repair cannot fix. lola

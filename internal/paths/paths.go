@@ -28,6 +28,8 @@ type Paths struct {
 	MarketCache    string   // CacheHome/lola/markets: one directory per marketplace, holding its catalog and source.json
 	MarketsLock    string   // StateHome/lola/locks/markets.lock: shared to read marketplaces, exclusive to write them; after the profiles lock
 	Consent        string   // StateHome/lola/consent.json: install hook consent
+	Shown          string   // StateHome/lola/shown.json: the hooks and scripts lola has shown you, which --trust consents to
+	ShownLock      string   // StateHome/lola/locks/shown.lock: around shown.json's read-modify-write
 	Trust          string   // StateHome/lola/trust.json: per project, the project.yml view the user trusted
 	TrustLock      string   // StateHome/lola/locks/trust.lock: held around trust.json's read-modify-write, after every scope lock
 	Trash          string   // StateHome/lola/trash: what lola migrate and lola tidy back up or move, one directory per run
@@ -84,6 +86,8 @@ func Resolve(getenv func(string) string) (Paths, error) {
 	p.MarketCache = filepath.Join(p.CacheHome, "lola", "markets")
 	p.MarketsLock = filepath.Join(p.Locks, "markets.lock")
 	p.Consent = filepath.Join(p.StateHome, "lola", "consent.json")
+	p.Shown = filepath.Join(p.StateHome, "lola", "shown.json")
+	p.ShownLock = filepath.Join(p.Locks, "shown.lock")
 	p.Trust = filepath.Join(p.StateHome, "lola", "trust.json")
 	p.TrustLock = filepath.Join(p.Locks, "trust.lock")
 	p.Trash = filepath.Join(p.StateHome, "lola", "trash")

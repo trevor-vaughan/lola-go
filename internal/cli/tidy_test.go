@@ -331,27 +331,27 @@ var _ = Describe("lola tidy", func() {
 		Expect(filepath.Join(proj, ".claude", "skills", "old")).To(BeADirectory())
 	})
 
-	It("-y on a terminal without names still runs the picker", func() {
+	It("-y on a terminal without names opens no picker and refuses as off a terminal", func() {
 		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n", ".claude/commands/tmp.md": "x\n"})
-		p := &scripted{tidyPick: tidyPicks("skill/old"), tidyKeep: tidyKeeps()}
+		p := &scripted{}
 		r := lolaP(p, "tidy", "-y", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"tidy-pick", "tidy-keep"}), "-y answers only the review")
-		Expect(r.out).To(ContainSubstring("✓ moved 1 item"))
-		Expect(filepath.Join(proj, ".claude", "skills", "old")).NotTo(BeAnExistingFile())
+		Expect(r.code).To(Equal(1))
+		Expect(p.calls).To(BeEmpty(), "-y asks no question")
+		Expect(r.err).To(Equal(lola("tidy", "-y", "-C", proj).err))
+		Expect(filepath.Join(proj, ".claude", "skills", "old")).To(BeAnExistingFile())
 		Expect(filepath.Join(proj, ".claude", "commands", "tmp.md")).To(BeAnExistingFile())
 
 		By("--force never runs it, on a terminal too")
 		p = &scripted{}
 		r = lolaP(p, "tidy", "--force", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: --force needs names or --all: 1 item can move\n"))
+		Expect(r.err).To(ContainSubstring("error: --force needs names or --all: 2 items can move\n"))
 		Expect(p.calls).To(BeEmpty())
 
 		By("off a terminal it still refuses with the --all -y hint")
 		r = lola("tidy", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: lola tidy needs names or --all when it cannot ask (off a terminal or with --json): 1 item can move\n"))
+		Expect(r.err).To(ContainSubstring("error: lola tidy needs names or --all when it cannot ask (off a terminal or with --json): 2 items can move\n"))
 		Expect(r.err).To(ContainSubstring("  hint: lola tidy -C " + proj + " --all -y\n"))
 	})
 

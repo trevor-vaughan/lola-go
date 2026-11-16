@@ -727,7 +727,7 @@ var _ = Describe("a folder module's new pre-install hook", func() {
 		// The consent it hints covers the version reviewed alone: a hook edited since is refused, not run.
 		consent := ""
 		for _, h := range hintLines(lola("sync", "--trust=entries").err) {
-			if c, ok := strings.CutPrefix(h, "then consent to it: "); ok {
+			if _, c, ok := strings.Cut(h, "then consent to it: "); ok {
 				consent = c
 			}
 		}
@@ -759,7 +759,7 @@ var _ = Describe("lola install --at", func() {
 		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent"))
 		consent := ""
 		for _, h := range hintLines(r.err) {
-			if c, ok := strings.CutPrefix(h, "then consent to it: "); ok {
+			if _, c, ok := strings.Cut(h, "then consent to it: "); ok {
 				consent = c
 			}
 		}
