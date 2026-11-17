@@ -1,15 +1,17 @@
 # Trust kinds
 
+A guide for lola users; back to the [README](../../README.md).
+
 How trust kinds apply to an install. It is split out of [choosing-what-to-install](choosing-what-to-install.md).
 
 Every question lola asks before it runs or installs something you did not write has a kind, and
 `--trust` answers the kinds you name, on `sync`, `update`, `profile`, `install` and `migrate`:
 
-| Kind | Covers | Recorded in |
+| Kind | Covers | Recorded in `$XDG_STATE_HOME/lola/` |
 |---|---|---|
 | `entries` | The changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write | `trust.json` |
 | `profiles` | A project profile's changes, a project profile taking your profile's place, a remote profile `--add` or `--update` shows | `trust.json` |
-| `scripts` | A project's install scripts, per project, event and the digest of the script ([Install scripts](#install-scripts)) | `consent.json` |
+| `scripts` | A project's install scripts, per project, event and the digest of the script ([Install scripts](install-scripts.md)) | `consent.json` |
 | `hooks` | A module's install hooks, by the digest of their scripts | `consent.json` |
 | `runtime-hooks` | A module's Claude Code runtime hooks and agent MCP servers, per settings file | `consent.json` |
 
@@ -17,8 +19,8 @@ Write the kinds after `=`, as a comma list or the flag repeated (`--trust=entrie
 command's help shows `--trust[=entries,profiles]` when a bare `--trust` (no `=`) grants those two
 kinds there, and `--trust=<kinds>` when a bare `--trust` grants none there.
 
-`--trust hooks` is bare `--trust` and a module named `hooks`: lola refuses an argument right after
-a bare `--trust` that names kinds (in any case, or a list such as `hooks,scripts`; after `--` it
+`--trust hooks` is refused: it reads as bare `--trust` and a module named `hooks`. lola refuses an
+argument right after a bare `--trust` that names kinds (in any case, or a list such as `hooks,scripts`; after `--` it
 is a name), hinting your run with `--trust=` the kinds you wrote, never the ones a bare `--trust`
 would add. `--trust=entries,profiles` written out is those two kinds, so `profile --add` refuses
 it. Bare `--trust` is `entries,profiles`, the kinds that run no code; `all` is every kind the
@@ -67,7 +69,7 @@ CI and on a fresh machine, where no one reads the output first. Given without a 
 `--force` never consents and never implies `--unseen`.
 
 The record is `$XDG_STATE_HOME/lola/shown.json`, your own state: no project or cache holds it.
-A dry run may add to it; it changes nothing in a project or the cache, and only remembers what it
+A dry run may add to it; it changes nothing in a project, and only remembers what it
 showed you. If it is damaged, lola refuses to read it and says so; deleting it is safe, and costs
 only showing each hook and script again before `--trust` consents to it.
 
@@ -78,7 +80,8 @@ A kind the command never asks is refused, naming the ones it takes: `install` an
 other kinds too), `profile --add` takes `profiles`, and `sync` and the other `profile` actions
 take all five. An unknown kind is refused, hinting the closest one within two edits (a stray
 comma, the value without it). `profile --update` without a scope flag refuses `--trust=entries`,
-which would answer nothing there, hinting the run with `--project` and with `--scope both`.
+which would answer nothing there, hinting the run with `--project` and with `--scope both` (see
+[Choosing a scope](choosing-what-to-install.md#choosing-a-scope)).
 
 What the kinds cover is listed once, before anything is written, as a receipt on stderr:
 
@@ -89,9 +92,9 @@ trusting, as --trust=entries,hooks allows:
 Proceed? [y/N]
 ```
 
-On a terminal lola then asks once (`-y` answers; No installs and records nothing; `install` keeps
-what it fetched in the cache, while `sync` and `update` leave the cache as it was); what the kinds leave uncovered is asked item by item first, as it is when you pass no flag.
-`profile --add`, which takes no `-y`, asks it on a terminal too. After the install review (also
+On a terminal lola then asks once (`-y` answers; No installs and records nothing, and `install`, `sync` and
+`update` leave the cache as it was); what the kinds leave uncovered is asked item by item first, as it is when you pass no flag.
+`profile --add`, which takes no `-y`, asks it on a terminal too. After the [install review](choosing-what-to-install.md#the-install-flow) (also
 `lola profile <name> --edit`'s), the Apply you answered is that confirmation for every item the
 review listed (its runtime hooks): the receipt neither prints nor asks again, unless `--trust`
 covers an item the review did not list, such as an install hook, when it asks as always.
@@ -118,7 +121,7 @@ answers the kinds do not cover is refused off a terminal, and its hint is your r
 without consent is declined with a warning that names the run with its kind. `-y` and `--force`
 never consent to any kind.
 
-Runtime hooks you answered No to at a question are not asked about again until they change: they
+Runtime hooks you answered No to at a question are asked about again only after they change: they
 stay declined, and the report folds them as `declined earlier` with the run that consents to them
 (`lola sync --trust=runtime-hooks`), which works since the question showed them. Hooks declined
 where nothing asked (off a terminal) are asked about on the next run on a terminal.

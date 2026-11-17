@@ -1,5 +1,7 @@
 # Adding or replacing an assistant with a target spec
 
+A guide for lola users; back to the [README](../../README.md).
+
 A *target* is an assistant lola installs modules into. Each one is a YAML *spec* that says where the
 assistant reads skills, commands, agents, MCP servers and rules, how lola finds it, and what its
 frontmatter accepts. lola ships specs for `claude-code`, `gemini-cli`, `opencode` and `agents`. You
@@ -122,7 +124,7 @@ The era lola renders for comes from the version the project or you declare for t
 [Declaring assistant versions](../usage.md#declaring-assistant-versions)): the last era whose
 `since` is at or below it. With nothing declared, lola renders for the newest era. The installed
 version is never used to choose by itself; it only adds findings when it falls in another era.
-`lola install` is the one command that can turn it into a declaration: for a target with more than
+`lola install` is the one command that can declare it: for a target with more than
 one era and no declared version it asks which era to write for (preselecting the installed one),
 or takes `-t <id>@<version>`, and records the answer in `target_versions` ([Picking a version at
 install](../usage.md#picking-a-version-at-install)). Era labels in that question come from the
@@ -142,7 +144,7 @@ earlier output.
 | `layout` | Where each artifact kind goes. At least one entry. |
 | `kinds` | What frontmatter each kind accepts. |
 | `behaviors` | Constructs in a command body the tool treats differently from Claude Code. |
-| `shared` | Fragments of checks to add. The only one is `skill-rules`: lola's findings for skills that run shell with ``!`…` `` or fill `$ARGUMENTS`, which tools reading a shared skills directory do not. |
+| `shared` | Fragments of checks to add, as a list: `shared: [skill-rules]`. The only one is `skill-rules`: lola's findings for skills that run shell with ``!`…` `` or fill `$ARGUMENTS`, which tools reading a shared skills directory do not. |
 
 ## `layout` and mechanisms
 
@@ -185,7 +187,8 @@ Parameters:
   `<path>/<module>/<concat>` instead of one `<path>/<module>/<rule>.md` each.
 - `register` (`rules-dir`): after writing, add a member to the JSON list `list` (a JSON Pointer
   such as `/instructions`) in `file`. `member: dir` adds the module's directory; `member: glob`
-  adds `<dir>/*.md`.
+  adds `<dir>/*.md`. For example, `register: {file: .gemini/settings.json, list: /context/includeDirectories,
+  member: dir}`.
 
 ### Path variables
 
@@ -254,7 +257,7 @@ The layout must place commands.
 
 A skill, command or agent can carry `hooks` or `mcpServers` in its frontmatter, and the assistant
 runs them. lola writes them only where you consent to running them, through the same question as a
-module's runtime hooks. A spec can opt a kind in with `hook_settings`:
+module's runtime hooks (the `runtime-hooks` kind of [install trust kinds](install-trust-kinds.md)). A spec can opt a kind in with `hook_settings`:
 
 ```yaml
 vars:

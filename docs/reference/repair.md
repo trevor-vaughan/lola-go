@@ -1,11 +1,13 @@
 # `lola repair`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola repair [-n] [-y]
 ```
 
 Forget what `lock.json` records that lola could not have written: an artifact or `created` path
-that leaves its target's root (`../`, an absolute path), and a target lola does not know. Every
+that leaves its target's root (`../`, an absolute path), and a target (an assistant such as `claude-code`) lola does not know. Every
 other command that plans from it refuses such a `lock.json` and hints `lola repair` for its
 scope ([Sync, pins and trust](../guides/sync-and-trust.md#sync-pins-and-trust)). It lists the entries,
 asks (default No), then forgets them; a module left installed on no target lola knows is
@@ -14,13 +16,13 @@ forgotten with them. It deletes and moves no file.
 | Flag | What it does |
 |---|---|
 | `-n`, `--dry-run` | List what it would forget and write nothing. |
-| `-y`, `--yes` | Do not ask for confirmation, and open no scope picker: the scope is the one found off a terminal. |
+| `-y`, `--yes` | Do not ask for confirmation, and open no scope picker: name the scope with `--project`, `--user` or `--scope` (`lola repair --user -y`), else it is found as [Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope) describes. |
 
 It prints `will forget 2 entries in <root>/.lola/lock.json; files are not touched:` and one line
 per entry: `module kit: artifact "../outside.md" on target "claude-code"`, `module kit: target
-"bogus"`, `created "../settings.json" on target "claude-code"`. After a run that forgot a path
-on a target lola knows, or a whole module, it ends with `→ lola sync puts back any file a module
-now lacks → lola sync --project`. With nothing to forget it prints `✓ nothing to repair in
+"bogus"`, `created "../settings.json" on target "claude-code"`. After a run that forgot an artifact
+on a target lola knows, or a whole module, it ends with the line `→ lola sync puts back any file a module
+now lacks → lola sync --project` (the sync that restores the files, scoped to this run). With nothing to forget it prints `✓ nothing to repair in
 <root>/.lola/lock.json` and exits 0.
 
 A run that applies it prints `✓ forgot 2 entries in <root>/.lola/lock.json; no file was

@@ -1,5 +1,7 @@
 # Templates
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Templates. It is split out of [architecture](../architecture.md).
 
 A Markdown component named `<name>.md.liquid` is a template. `module.Load` finds it
@@ -10,8 +12,8 @@ literal file beside its template (names compared case-folded) and warns about ca
 
 It
 reads partials the same way, from regular files in `_partials/` at the module root only
-(`loadPartials`, `internal/module/partials.go`: `<name>.liquid` or `<name>.<target>.liquid`, 256
-files, 256 KiB each, 4 MiB together), into `Module.Partials`; other entries warn. A root skill
+(`loadPartials`, `internal/module/partials.go`: `<name>.liquid` or `<name>.<target>.liquid`; the file
+count and sizes are capped by the constants in that file), into `Module.Partials`; other entries warn. A root skill
 excludes `_partials` and its case variants, so partials never reach a target; only the root
 entry named exactly `_partials` is read, so a case-folding file system cannot load `_Partials`,
 and a component path under `_partials` is refused.
@@ -160,7 +162,7 @@ the partial's file and line, with its first include site in graph (depth-first) 
 `IncludedFrom`: liquid does not report which site was rendering. A partial inherits the includer's
 bindings; its own `assign`s stay in its scope.
 
-**The vendored liquid.** `osteele/liquid` v1.9.2 is vendored in `third_party/liquid` with one
+**The vendored liquid.** `osteele/liquid` (the version `go.mod` requires) is vendored in `third_party/liquid` with one
 patch (`PATCHES.md`: chained right-trims flush liquid's trim buffer), under a `replace`.
 `govulncheck` therefore reports the module as `./third_party/liquid` with no version and cannot
 match advisories for `github.com/osteele/liquid` to it: those advisories are checked by hand

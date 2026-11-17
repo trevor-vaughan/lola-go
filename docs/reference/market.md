@@ -1,10 +1,12 @@
 # `lola market`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola market [<name> [<entry>] | [<name>] --add <source> [--ref <ref>] [--path <file-or-dir>] | <name>... --update | --update --all | <name> --remove]
 ```
 
-Aliases: `marketplace`, `markets`. Four paths, none of which asks:
+Aliases: `marketplace`, `markets`. Four read-only paths, none of which asks:
 
 - `lola market` lists your [marketplaces](../guides/marketplaces.md#marketplaces): format, entries,
   skipped entries, when each was fetched and its source.
@@ -16,7 +18,7 @@ Aliases: `marketplace`, `markets`. Four paths, none of which asks:
 - `lola info @acme/formatter` (see [`lola info`](info.md#lola-info)).
 
 `--add <source>` takes the source, so the name goes before it: `lola market acme --add <source>`,
-not `lola market --add acme <source>` (the refusal that follows hints the working order).
+not `lola market --add acme <source>` (refused, hinting the working order; see Refusals below).
 
 It fetches a catalog (Claude Code's `marketplace.json` or a lola YAML catalog) and
 registers it. lola looks for `.claude-plugin/marketplace.json`, then `<name>.yml`, `<name>.yaml`,
@@ -30,8 +32,8 @@ changed; `--remove` forgets one (asks; `-y`).
 `--add` and `--update` ask nothing, but a name when
 yours is taken and, on a terminal, which of the ssh hosts a catalog names to allow (below).
 
-Scope
-flags change nothing but what `lola market <name> <entry>` plans for.
+Scope flags (`--scope`, `--user`, `--project`, `-C`, as for [`lola info`](info.md#lola-info))
+change nothing but what `lola market <name> <entry>` plans for.
 
 `add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show` and `search` are not `lola market`
 verbs: each is refused with the lola command to run instead.
@@ -48,6 +50,7 @@ verbs: each is refused with the lola command to run instead.
 | `-y`, `--yes` | With `--remove`: forget it without asking. |
 | `-n`, `--dry-run` | Report what the action would do, and write nothing. |
 | `-t`, `--target <assistant>` | With `<name> <entry>`: the assistants to plan for, as `lola info`'s `-t`. |
+| `--scope`, `--user`, `--project`, `-C <dir>` | With `<name> <entry>`: the scope to plan for, as `lola info`'s. With any other action they change nothing, but one naming a scope that cannot be used is refused. |
 
 A catalog's `ssh://` and `user@host:path` sources are skipped unless you allowed their host. The
 host is a name alone (no scheme, user, port or path; lower-cased; never an IP address or
@@ -77,14 +80,28 @@ Refusals:
 - A reserved word: `ls is not a lola market verb: lola market lists your marketplaces`, hinting
   `lola market`; `add` hints the `--add` it means (`lola market acme --add
   https://github.com/acme/plugins`).
+- A source where the name goes (`lola market --add acme https://github.com/acme/plugins`): the
+  source is refused as a marketplace name, hinting the run with the two swapped (`lola market acme
+  --add https://github.com/acme/plugins`).
 
-JSON: listing prints `markets` and `notices`; showing prints the marketplace's `name`, `source`,
-`ref`, `path`, `format`, `commit`, `fetched_at`, `description`, `file`, `owner`, `version`,
-`ssh_hosts`, `entries` (each with its `ssh_host`), `skipped`, `notices` and `hints` (`lola info`
-of the first entry; `[]` without entries); `<name> <entry>` prints what `lola info` prints; `--add` and `--update` print
-`markets`, `changes`, `updates`, `notices` and `dry_run`; `--remove` prints `removed`, `notices`
-and `dry_run`.
+JSON:
 
-Known limitation: a catalog entry's host is judged by the URL's text, as a remote profile's is,
+- Listing prints `markets` (one row per marketplace) and `notices`.
+- Showing prints the marketplace's `name`, `source`, `ref`, `path`, `format`, `commit` (the commit
+  fetched), `fetched_at`, `description`, `file` (the catalog file read), `owner`, `version`,
+  `ssh_hosts`, `entries` (each with its `ssh_host`), `skipped`, `notices` and `hints` (`lola info`
+  of the first entry; `[]` without entries).
+- `<name> <entry>` prints what `lola info` prints.
+- `--add` and `--update` print:
+  - `markets`, the marketplaces fetched;
+  - `changes`, how the fetch changed each entry (`market`, `entry`, `change`: `added`, `removed`
+    or `changed`, and `fields`, which of `source`, `path`, `ref`, `commit`, `version` and
+    `components` differ);
+  - `updates`, one per marketplace of the run, in the order named (`market`, `outcome`, and for a
+    failure its `error` and `hints`);
+  - `notices` and `dry_run`.
+- `--remove` prints `removed` (the names forgotten), `notices` and `dry_run`.
+
+Known limitation: a catalog entry's host is judged by the URL's text, as a [remote profile's](../guides/remote-profiles.md) is,
 and never resolved: an entry at a host name that resolves to a loopback or private address is
 mapped and fetched.

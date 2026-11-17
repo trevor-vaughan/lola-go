@@ -1,5 +1,7 @@
 # Install hooks
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Install hooks. It is split out of [architecture](../architecture.md).
 
 `pre-install` and `post-install` scripts must be executable regular files inside the module (checked

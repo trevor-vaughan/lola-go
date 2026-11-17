@@ -1,9 +1,12 @@
 # Sync, pins and trust
 
-`lola sync` makes a project match its `.lola/project.yml` (with `--user`, your user scope match
-your default profile (`$XDG_CONFIG_HOME/lola/profiles/default.yml`, user scope's base); [Choosing a scope](choosing-what-to-install.md#choosing-a-scope) says which scope
-a run without a flag acts on), the way a teammate who cloned your repository gets what you
-installed:
+A guide for lola users; back to the [README](../../README.md).
+
+`lola sync` makes a project match its `.lola/project.yml`, the way a teammate who cloned your
+repository gets what you installed. With `--user`, it makes your user scope match your default
+profile (`$XDG_CONFIG_HOME/lola/profiles/default.yml`, the base of user scope).
+[Choosing a scope](choosing-what-to-install.md#choosing-a-scope) says which scope a run without a
+flag acts on. For example:
 
 ```
 git clone https://example.com/acme/api.git && cd api
@@ -27,7 +30,7 @@ fetched again; either way its content must have the pinned digest. When it does 
 `if you expect the change, re-pin it: lola sync --project --update <module>`.
 
 Like every sync
-hint, it names the run's scope: `--project` for the project found from where you are, `-C <dir>`
+hint, that hint names the run's scope: `--project` for the project found from where you are, `-C <dir>`
 for another, `--user` at user scope. A moved tag or a force-pushed branch never changes what sync
 installs, nor does `lola cache update`.
 
@@ -106,7 +109,8 @@ flowchart TD
   - The entry re-pins from its own source and ref instead when the catalog moved it to another
     ref, source, path or selection, or no longer lists it, or you have no marketplace of that
     name from the source the entry records. A notice says why:
-    - a changed ref, with `lola install @acme/<entry>` (a changed source or ref is an install,
+    - a changed ref, with `lola install @acme/<entry>`, where `@acme/<entry>` is a [marketplace
+      address](marketplaces.md) (a changed source or ref is an install,
       never a sync);
     - a changed source, path or selection, with what to do first, as your cache holds one module
       of a name (uninstall it and remove it from your cache, then install the address).
@@ -114,8 +118,8 @@ flowchart TD
   - `lola sync` without `--update` never reads a catalog, and `--update` fetches one only for
     entries you trusted before the run. A pulled `project.yml` requests its catalog only once you
     trust it; meanwhile its entries re-pin from their own sources, saying so, with the
-    `lola sync --update` that follows the catalog next (a dry run, which records no trust, names
-    none).
+    notice naming the `lola sync --update` command that follows the catalog next (a dry run, which
+    records no trust, names none).
 
   ```mermaid
   %%{init: {'theme': 'base', 'themeVariables': {
@@ -274,7 +278,8 @@ the version installed: an MCP server shows what it runs, with every argument tha
 word in quotes (`sh -c "curl x|sh"` is three words), or where it `connects to`, then its `env`,
 `header` and `cwd` lines, and a changed one adds a `was:` line under each part that differs; an
 unchanged one takes one line. A hook is identified by all of its fields, so a hook whose command
-changed is one `removed` and one `added`. Consent to runtime hooks covers the module version
+changed is one `removed` and one `added`. Consent to runtime hooks (a module's Claude Code hooks and agent MCP servers; see
+[trust kinds](install-trust-kinds.md)) covers the module version
 too, so an unchanged runtime hook or agent MCP server that lola installed with your consent
 reads, in a changed module, `unchanged (consent needed again: the module changed)`: the run asks
 again, or, off a terminal without `--trust=runtime-hooks`, declines it and removes what lola
@@ -346,26 +351,30 @@ you trusted again from what it already fetched, so what it applies is what it sh
   was, so the next sync asks about it again (lola remembers no answer). The result says
   `left as installed until you trust them: docs-kit → lola sync --project`;
 - the top-level `targets` and `target_versions` (one row per assistant, `~ target_versions
-  opencode "1.0" → "2.0"`) have no option of their own: *Trust all* accepts them, and so does an
-  accepted added or changed entry that has no `targets` of its own (its option says
-  `accepts the top-level targets [claude-code] → [claude-code, opencode]`, or
-  `accepts the top-level targets [claude-code]` when there were none, and `accepts project.yml's
-  target_versions`), since it installs to them;
-  a removed entry never does. When they are not accepted, every entry that installs to them stays as installed too. When
-  they are the only change, the question offers only Trust all and Cancel. Under a
-  `target_versions` change, before the question (and in the refusal off a terminal), lola prints
-  in full what of the modules it installs the new versions drop that another version keeps, two
-  at most, then `→ and 2 more — lola sync --project -n`;
+  opencode "1.0" → "2.0"`) have no option of their own:
+  - *Trust all* accepts them.
+  - So does an accepted added or changed entry that has no `targets` of its own, since it
+    installs to them. Its option says `accepts the top-level targets [claude-code] →
+    [claude-code, opencode]`, or `accepts the top-level targets [claude-code]` when there were
+    none, and `accepts project.yml's target_versions`.
+  - A removed entry never accepts them.
+  - When they are not accepted, every entry that installs to them stays as installed too.
+  - When they are the only change, the question offers only Trust all and Cancel.
+  - Under a `target_versions` change, before the question (and in the refusal off a terminal),
+    lola prints in full what of the modules it installs the new versions drop that another
+    version keeps, two at most, then `→ and 2 more — lola sync --project -n`;
 - once the removals, if any, are answered, lola prints the command that does the same off a
-  terminal: after *Trust all*, your own run with `--trust=` the kinds of the changes; after
-  *Choose…*, one naming every entry you trusted (even one whose change only the record holds,
-  such as a new `ref` at the same commit) and every module the run changed:
-  `→ the same off a terminal: lola sync lint-pack review-kit --trust=entries` (with `-y` when
-  you confirmed removals; nothing after a No). A yes to a consent question of the run (runtime
-  hooks, install hooks, a project script) adds its kind, `--trust=entries,runtime-hooks`; when
-  an item of that kind went without your yes (one module's runtime hooks, not another's, or a
-  post-install script lola did not ask about), no flag gives the same answers, and lola prints
-  no command.
+  terminal:
+  - After *Trust all*, it is your own run with `--trust=` the kinds of the changes.
+  - After *Choose…*, it names every entry you trusted (even one whose change only the record
+    holds, such as a new `ref` at the same commit) and every module the run changed:
+    `→ the same off a terminal: lola sync --project lint-pack review-kit --trust=entries`. It
+    has `-y` when you confirmed removals, and nothing follows a No.
+  - A yes to a consent question of the run (runtime hooks, install hooks, a project script) adds
+    its kind, `--trust=entries,runtime-hooks`.
+  - When an item of that kind went without your yes (one module's runtime hooks, not another's,
+    or a post-install script lola did not ask about), no flag gives the same answers, and lola
+    prints no command.
 
 `--trust <module>…` is that answer as a flag: in a run limited to those modules, `--trust`
 accepts every change of the run. A module named like a kind of trust (`hooks`, say) is refused
@@ -439,17 +448,17 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
     with lola sync --trust=runtime-hooks -n, then run this again` and `or add --unseen to consent
     without seeing them` ([What lola has shown you](install-trust-kinds.md#what-lola-has-shown-you)).
     `--unseen` is for CI and fresh machines.
-  - Runtime hooks you answered No to are not asked about again until they change; the report
+  - Runtime hooks you answered No to are asked about again only after they change; the report
     folds them as `declined earlier`, with the `--trust=runtime-hooks` run that consents to them.
 - **Project scripts.** A project's `pre_install:` and `post_install:` in `project.yml` run your
   teammates' code around every module copy a sync installs ([Install
   scripts](choosing-what-to-install.md#install-scripts)).
   - They are not entries, so `--trust=entries` never covers them.
   - Each is consented per project, event and the script's sha256. A sync asks about a script it
-    has no consent for even when it installs nothing, so a pulled `project.yml` that adds one, or
+    has not yet consented to, even when it installs nothing, so a pulled `project.yml` that adds one, or
     a pulled edit of the script, asks before anything runs it.
   - Off a terminal an untrusted `pre_install` refuses: `lola sync needs your trust for the
-    pre-install script ci/check.sh of this project (new), and there is no terminal to ask on`,
+    pre-install script ci/check.sh (sha256 <digest>) of this project (new), and there is no terminal to ask on`,
     hinting `lola info` of a module it installs, then your run with `--trust=scripts`.
   - An untrusted `post_install` is skipped with a warning and stays pending on the modules it
     would have wrapped; `lola sync <module> --trust=scripts` runs it alone in their copies.
@@ -462,9 +471,9 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
   same for `install`, `uninstall` and `migrate`).
 - User scope has no trust diff: `default.yml` and your other profiles are yours. The entries lola
   writes into a project profile (`install`, `uninstall`) are recorded as trusted, as `project.yml`'s
-  are, and a project profile's top-level `targets:` is trust content: a change to it shows as a
+  are, and the top-level `targets:` of a project profile is trust content: a change to it shows as a
   `~ targets` row under the profile and Trust all accepts it.
-- A project bundle's member list is trust content: a pull that changes it (a member added, removed
+- The member list of a project bundle is trust content: a pull that changes it (a member added, removed
   or reordered) shows `~ bundle  [review] → [review, lint]` under the bundle and is asked about as a
   profile's change (`--trust=profiles`); `-y` and `--force` never answer it. Until you trust it,
   what the changed list brings stays as installed. A remote member of a project bundle is restored
@@ -518,6 +527,7 @@ module as installed (no files, copy or hooks touched), with a warning and its re
 | `not-in-manifest` | no layer lists it any more | `lola sync`, which would remove it |
 | `targets-differ` | its entry asks for other assistants than are installed | `lola sync`, which applies the change |
 | `fetch-failed` | its source could not be fetched | what the fetch says to fix, then `lola update <module> --fetch` |
+| `source-gone` | its source folder is gone, so the version installed was rendered | restore the folder, or `lola uninstall <module>` |
 
 An entry that comes from a remote profile is left too, with a notice to run `lola profile <name>
 --update`. `lola update` fetches the rest and exits `1` when any fetch failed. To render again at

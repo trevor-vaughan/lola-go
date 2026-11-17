@@ -1,5 +1,7 @@
 # Marketplaces
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Marketplaces. It is split out of [architecture](../architecture.md).
 
 `lola market` adapts `internal/engine/market.go`; the catalogs themselves are read

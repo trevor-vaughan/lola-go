@@ -1,5 +1,7 @@
 # Bundles
 
+A guide for lola users; back to the [README](../../README.md).
+
 A bundle combines profiles into one. It is split out of [profiles](profiles.md).
 
 A bundle combines profiles. It is a profile like any other (`--on`, `--switch`, `--off`, `lola
@@ -26,15 +28,15 @@ profile <bundle>`), whose file lists other profiles in `bundle:` instead of modu
   any bare member that does not exist yet as an empty profile of yours, and switches to it, in the
   one run (`✓ new profile docs … empty`, `✓ new bundle work (go-review, docs)`). A `project:`
   member must exist already: `lola profile --project project:x --switch --new` makes it, and the
-  refusal hints that. `--switch --new` alone makes an empty profile; `--from <profile>` makes a copy
-  of a profile's entries and targets (never a pin), and copies a bundle with its members written so
+  refusal hints that. `--switch --new` alone makes an empty profile; `--from <profile>` copies
+  a profile's entries and targets (never a pin), and copies a bundle with its members written so
   they name the same profiles (qualified where the bare name would read as another); `--from
-  project:x` copies into yours only what a [move](#moving-a-module) would carry, with the same
+  project:x` copies into yours only what a [move](profiles.md#moving-a-module) would carry, with the same
   trust review and the same refusal of a project's local folders. `--create` is an alias of `--new`.
   `--from` and `--bundle` together refuse (pick one), and `--new` for a name that exists hints the
   switch. Under `-n` nothing is made (`→ would make bundle work (go-review, docs)`).
   `lola profile <bundle> --edit --bundle a,b,c` changes its members later
-  ([Editing a profile](#editing-a-profile)); the refusals it answers (a member that is gone, a
+  ([Editing a profile](profiles.md#editing-a-profile)); the refusals it answers (a member that is gone, a
   bundle with no profile lola can write, `--on` of another profile) hint it.
   - `lola profile go-review docs --switch`, and `--on` with another profile on, hint the bundle that
     holds them (`lola profile go-review-docs --switch --new --bundle go-review,docs`).
@@ -67,7 +69,7 @@ profile <bundle>`), whose file lists other profiles in `bundle:` instead of modu
   - Any command that reads such a file refuses with the line and the `--split` hint, and on a
     terminal offers the split in place (`Split work now?`) and runs again.
   - Entries keep the trust they had,
-    but a project bundle's member list is asked about afresh (`-y` and `--force` never answer it;
+    but the member list of a project's bundle is asked about afresh (`-y` and `--force` never answer it;
     accept it with `--trust=profiles`), because a split must not grant trust to content pulled from
     the project.
   - A remote profile cannot be split, and a file with only one of the keys has nothing

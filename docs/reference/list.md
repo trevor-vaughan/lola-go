@@ -1,5 +1,7 @@
 # `lola list`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola list
 ```
@@ -15,8 +17,9 @@ sync --update <module>`);
 and each target of an entry `project.yml` lists that is not installed,
 `not installed` (`not_installed` in `--json` and `--plain`), with a notice per scope counting them
 and naming the sync that installs them (`→ 1 module in project.yml is not installed → lola sync
---project`, keeping `--json`, `--plain` and `--no-pager`); whether the module's rules are on; and,
-when any module has some, how many of its components `selections.yaml` skips.
+--project`; the command repeats your `--json`, `--plain` and `--no-pager`); a `RULES` column says
+whether the module's rules are on; and a `SKIPPED` column, shown when any module has some, counts the
+components [`selections.yaml`](../guides/config-and-selections.md) skips.
 
 The `SOURCE` of a git module carries the ref `project.yml` records (`https://example.com/kit.git @ v1`;
 the URL alone when it records none).
@@ -26,14 +29,14 @@ row's `pin` and `update_available`. A module whose recorded source is a local fo
 that no longer exists shows `⚠ source gone` beside its status (`source_gone: true` in
 `--json`); git and URL sources are never checked, as `list` reads no network.
 
-`list` never reads the trust record: an entry you declined at sync's trust question shows as
+`list` never reads the trust record: an entry you declined at the [trust question](../guides/sync-and-trust.md) `lola sync` asks shows as
 `stale` or `not installed`.
 
 Entries of
-[profiles](../guides/profiles.md#profiles) are listed as the manifest's are, and when any module comes
+[profiles](../guides/profiles.md#profiles) are listed as `project.yml`'s own entries are, and when any module comes
 from a profile a `FROM` column names its layer as the context line does: `default`, `project.yml`,
-`profile go-review`, or for a member of a bundle on, `docs (bundle work)`; `--plain` and `--json`
-keep `from` as `lock.json` records it, and `--plain` ends each row with the ref (empty when none) (`profile:default`, `profile:user:docs`, `project.yml`).
+`profile go-review`, or for a member of a [bundle](../guides/bundles.md) on, `docs (bundle work)`; `--plain` and `--json`
+keep `from` as `lock.json` records it (`profile:default`, `profile:user:docs`, `project.yml`), and `--plain` ends each row with the ref (empty when none).
 Without a scope flag it shows the project found from here, if any, and user scope; every row names
 its scope ([Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope)).
 Like `lola sync`, it refuses a project whose `.lola/lock.json` git tracks, since a committed one could
@@ -43,8 +46,13 @@ turn profiles on.
 |---|---|
 | `-t`, `--target <assistant>` | Only show these assistants. |
 
+The global flags apply too ([Using lola](../usage.md#commands)): `--project`, `--user`, `-C/--root <dir>`
+and `-s/--scope` pick the scope; `--json`, `--plain` and `--no-pager` pick the output. `--plain` prints
+one tab-separated row per module and target: name, target, status, rules (`on` or `off`), source,
+scope, from, ref.
+
 Refusals: an unknown target, as `lola install` refuses it (`unknown target "nosuch"`, hinting `valid
-targets: claude-code, gemini-cli, opencode`); a tracked lock: `.lola/lock.json is tracked by git;
+targets: claude-code, gemini-cli, opencode, agents`); a tracked lock: `.lola/lock.json is tracked by git;
 lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola
 deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola
 sync --project`, hinting `git rm --cached .lola/lock.json`; when no flag chose the scopes and both

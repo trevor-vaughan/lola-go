@@ -1,5 +1,7 @@
 # Remote profiles
 
+A guide for lola users; back to the [README](../../README.md).
+
 Remote profiles are profiles fetched from a source, a git repository or an https archive, and
 shared by every scope. To write your own profiles and turn profiles on and off, see
 [Profiles](profiles.md).
@@ -59,7 +61,7 @@ lola profile go --remove                                          # delete it; a
   - A `--path` the source does not have, and a source without `profiles/`, are refused saying
     which (`the source has no profiles/ directory at its root`).
   - **`--trust` and `-n`.**
-    - `--trust` takes the `profiles` kind, all `--add` takes; any other kind,
+    - `--trust` accepts only the `profiles` [trust kind](install-trust-kinds.md); any other kind,
       `--trust=entries,profiles` written out included, is refused.
     - Off a terminal `--trust` accepts what it shows, after its receipt, which on a terminal asks
       `Proceed?` (`--add` takes no `-y`).
@@ -68,9 +70,9 @@ lola profile go --remove                                          # delete it; a
     - `-n` shows it and keeps nothing.
   - **Refused names.**
     - A remote profile of that name already kept is refused (`lola profile remote:<name>
-      --update` fetches it again; the hint keeps the run's flags but `--trust`, which answered the
-      add, never an update's change).
-    - So are the name `default`, a `user:` or `project:` name, and a file in the profile's place.
+      --update` fetches it again; the hint keeps the run's flags except `--trust`, which answered the
+      add and never covers an update's change).
+    - So are the names `default` and `base`, a `user:` or `project:` name, and a file in the profile's place.
   - **Scope.** `--add` asks no scope: the profile is shared by every scope.
     - `--project`, `--user` or `-C <dir>` only names the scope its content is compared with.
       Without them it is the project found from the working directory, else user scope
@@ -94,7 +96,8 @@ lola profile go --remove                                          # delete it; a
       fail its dry run.
   - `--json` gives `remote_profiles` (`profile`, `file`, `source`, `ref`, `path`, `commit`,
     `digest`, `previous_commit` and `previous_digest` (both `""` for `--add`), `compared_with`,
-    `description`, `changes` as in the trust diff, `written`), `notices` and `dry_run`.
+    `description`, `changes` as in the trust diff, `written`), `trusted` (`[]` for `--add`), `notices`
+    and `dry_run`.
 
 How `--update` reaches each scope that uses the profile:
 
@@ -206,9 +209,10 @@ flowchart TD
       anything is fetched (`project <dir> has changes you have not trusted (planted), which its
       sync asks about, and no flag named it: --trust then answers only for the remote profiles`),
       hinting the run with `--project`, or `--scope both`, and `--trust=` the kinds it needs.
-    - That check reads the project's trust before the update, and a project bundle that has
-      the updated remote profile as a member changes what that project trusts: an unscoped `--trust` run off a
-      terminal can then write the profile and have the project's sync refuse.
+    - That check reads the project's trust before the update.
+    - A project bundle that has the updated remote profile as a member changes what that project
+      trusts, so an unscoped `--trust` run off a terminal can write the profile and then have the
+      project's sync refuse.
     - The error's `apply it later: lola sync --project …` hint applies it once you have reviewed
       the change (add `--trust`); naming the project up front (`--project … --trust`) avoids the
       stop.
@@ -276,16 +280,17 @@ flowchart TD
   and off a terminal without it lola refuses.
   - It is refused while the scope you run it in, user scope, or the project found from the working
     directory uses the profile (`remote:go is on at user scope`, `remote:go is on in project
-    <dir>`, or `remote:go is in bundle user:mine, on user scope`), and while one of them cannot be
+    <dir>`, or `remote:go is in bundle user:mine, on at user scope`), and while one of them cannot be
     read to tell.
     - The refusal hints the `--off` that frees it (`turn the bundle off first: …`), then, for
       each bundle of yours that lists it, the run that takes it out (`or take remote:go out of
       bundle mine: lola profile mine --edit --bundle …`, the members left in place of the
-      `…`); a project's bundle is the team's to edit, so it keeps the hand edit (`or remove
-      remote:go from the bundle: of <file>`; with several files, each is named as it spells
-      the member).
-    - None of these hints carries `-y`, which answers only whether to remove the profile; `-n`
-      (`--dry-run`) and the run's `--json`, `--plain` and `--no-pager` are kept.
+      `…`); a project's bundle is the team's to edit, so it keeps the hand edit, naming the
+      file's `bundle:` list (`or remove remote:go from the bundle: of <file>`; with several
+      files, each is named as it spells the member).
+    - None of these hints carries `-y`, which answers only whether to remove the profile. Each
+      keeps the run's `--json`, `--plain` and `--no-pager`; only the `--force` hint (`or remove it
+      anyway`) also keeps `-n` (`--dry-run`).
     - lola keeps no list of every checkout, so other projects are not checked.
   - `--force` removes it anyway, turning those checks into warnings, and answers the question, off
     a terminal too.
@@ -311,7 +316,7 @@ flowchart TD
   - A file or link at the profile's place is never written over: a run that needs the profile
     refuses before it plans, naming it, and the context line says it is in the way.
 - **Your consent is its pin.** A remote profile is yours once you accept it, so its entries are
-  never asked about in the trust diff of a project.
+  never asked about in a project's [trust diff](sync-and-trust.md).
   - Every entry must carry its pin (`commit` and `digest` for git, `digest` for an archive).
   - Every entry must name a git repository or an https archive over `https://` or `ssh://` at a
     host named by name, never a path on your machine, plain `http://`, `localhost` or an address

@@ -1,5 +1,7 @@
 # Trust record
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Trust record. It is split out of [architecture](../architecture.md).
 
 `project.yml` is committed and someone else's after a pull, so lola keeps its own account of what it

@@ -1,5 +1,7 @@
 # Sources and the cache
 
+A guide for lola users; back to the [README](../../README.md).
+
 How lola reads sources and keeps them in its cache. It is split out of [usage](../usage.md).
 
 A **source** is where a module comes from. lola copies the module into your **cache**
@@ -86,7 +88,7 @@ lola never guesses:
 - A full commit SHA, in any case, is always that commit, never a branch or tag of that name.
   lola records and shows it lower-cased. A server that serves another commit for it is refused.
 - The SHA of an annotated tag object is refused; the error names the commit the tag points to,
-  and the hint is your run at that commit.
+  and the hint is your own command rerun with `--ref <commit>`.
 - Any other hex-looking name is a branch or tag.
 
 A commit that no branch or tag points to needs a server that serves such commits (servers
@@ -182,8 +184,8 @@ conversion and every `.gitattributes` conversion and filter for its checkouts, a
 symbolic link on the way to the module's `--path` before checking anything out. A link inside the
 module (anywhere in the repository when there is no `--path`) is copied as the file or directory
 it names, and refused when it leaves the source, dangles, loops, is absolute or names `.git`; a
-link elsewhere in the repository is allowed, and so is a refused link outside every component a
-marketplace entry selects.
+link elsewhere in the repository is allowed, and so is a link that would be refused but lies
+outside every component a marketplace entry selects.
 
 A git `--path` must name a directory of the repository in its exact letter case, so
 a case-insensitive file system never checks out another one in its place. Execute bits come from
@@ -191,10 +193,12 @@ the source itself (git's file modes, an archive's entry modes, a folder's files)
 file system lola copied to, so the same module has the same digest on Linux, macOS and Windows.
 
 **Trust.** `project.yml` is committed, so a `git pull` can change it. lola keeps, per project,
-what it last wrote there in `$XDG_STATE_HOME/lola/trust.json`: the top-level `targets` and each
-entry's `name`, `source`, `ref`, `path`, `components`, `commit`, `digest`, `targets`, `rules`,
+what it last wrote there in `$XDG_STATE_HOME/lola/trust.json`: the top-level `targets` and
+`target_versions`, and each entry's `name`, `source`, `ref`, `path`, `components`, `commit`,
+`digest`, `targets`, `rules`, `only` and `skip` (a project profile entry's picks),
 `vars` (the entry's overrides of the module's [vars](templating.md#vars)), `member` (for a
-project profile's entry that comes from a remote profile that is a member of a project bundle:
+project profile's entry that comes from a [remote profile](remote-profiles.md) that is a member of a
+project [bundle](bundles.md):
 that profile's name, source and pin), the member list of each project bundle (`bundle`) and `market` (the marketplace an entry says it came from; the diff shows it as `market
 (as written)`, since lola never checks it).
 
@@ -244,16 +248,17 @@ lola refuses to act on an untrusted entry as written:
   `review and apply it: lola sync --project <name>`; the partial uninstall adds
   `or remove it: lola uninstall --project <name>`;
 - an install, by name or by source, that would take its assistants from top-level `targets` you
-  have not trusted (no `-t`, and no entry with `targets` of its own) refuses before fetching
-  anything with `project.yml's top-level targets [claude-code, opencode] changed since you last trusted them` (`are not
-  trusted yet` when the record never held them, as after installs that named their assistants with
-  `-t` into a `project.yml` written by hand), hinting
-  `lola sync` or your own install with `-t <id>` added (your `--ref` and `--path` kept). When no
-  entry installs to them and nothing else in the file needs your trust, a plain sync does not ask
-  about them, so the hint is
-  `lola sync --project --trust=entries`, and the refusal first shows what that trusts, as the sync's
-  trust diff does (`+ targets       [opencode]`, `+ target_versions opencode "1.0"`; `--json` adds
-  `trust`); the install pickers ask for the assistants instead and never preselect those targets;
+  have not trusted (no `-t`, and no entry with `targets` of its own):
+  - It refuses before fetching anything with `project.yml's top-level targets [claude-code,
+    opencode] changed since you last trusted them` (`are not trusted yet` when the record never
+    held them, as after installs that named their assistants with `-t` into a `project.yml`
+    written by hand).
+  - It hints `lola sync` or your own install with `-t <id>` added (your `--ref` and `--path` kept).
+  - When no entry installs to them and nothing else in the file needs your trust, a plain sync does
+    not ask about them, so the hint is `lola sync --project --trust=entries`.
+  - That refusal first shows what the hint trusts, as the sync's trust diff does (`+ targets
+    [opencode]`, `+ target_versions opencode "1.0"`; `--json` adds `trust`).
+  - The install pickers ask for the assistants instead and never preselect those targets;
 - the install pickers leave such modules out, with one notice per project:
   `2 modules in project.yml changed since you last trusted them: a, b → lola sync --project` (`are new or
   changed since you last trusted the file` when a pull added one). Add a
@@ -303,9 +308,9 @@ needs to: a git module by its commit, which must still be on its ref, and an arc
 must still match.
 
 When the version is the pin `project.yml` names and the fetch returns other
-content or the commit is not on the ref, it suggests `lola sync --update <name>` to re-pin; when it
-is the version installed of an entry that pins none (a git version with no recorded commit, say), it
-suggests `lola install <source> [--ref r] [--path p]`, which installs what the source serves now, or
+content or the commit is not on the ref, the error suggests `lola sync --update <name>` to re-pin; when it
+is the version installed of an entry that pins none (a git version with no recorded commit, say), the
+error suggests `lola install <source> [--ref r] [--path p]`, which installs what the source serves now, or
 `lola uninstall <name>`.
 
 Hooks may build inside the copy: lola leaves its content alone, replaces
@@ -320,8 +325,8 @@ its hooks again when you consent; without consent the copy stays as it is. `lola
 for the same version and targets only to run a pending post-install hook, when you consent; declined
 again, the copy stays as it is.
 
-Known limitations: three refusals of a source read from a file (a manifest, profile or catalog
-entry) hint advice, not a command: a ref that starts with `-` (`ref "-x" starts with '-'`) hints `a
+Known limitations: some refusals of a source read from a file (a manifest, profile or catalog
+entry) hint advice, not a command. Three examples: a ref that starts with `-` (`ref "-x" starts with '-'`) hints `a
 branch, tag or commit never starts with '-'`; a folder location that is not absolute (`folder source
 x is not an absolute path`) hints `give the absolute path of the folder`; and an archive location
 that starts with `//` (`archive location starts with //, a URL without a scheme`) hints `give the

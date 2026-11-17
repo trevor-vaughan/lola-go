@@ -1,5 +1,7 @@
 # `lola info`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola info <source|@market/module|module> [-t <assistant>…] [--ref <ref>] [--path <dir>]
 ```
@@ -41,7 +43,7 @@ runtime hook or MCP server. The argument is what `lola install` takes: a module 
      that can express it.
    - Without a plan (no scope, no assistant, or a refusal) they are shown as the module declares
      them, `${CLAUDE_PLUGIN_ROOT}` and its kin unexpanded. Author text is shown on one line.
-   - Then the install scripts that would wrap the module's install, in the order they run, each
+   - Then the [install scripts](../guides/install-scripts.md) that would wrap the module's install, in the order they run, each
      with its source and sha256 and whether it needs your trust (a project's): without a scope,
      only your own from `config.yaml`.
 4. What installing it here would do, for each scope `lola install` would pick without asking:
@@ -112,7 +114,7 @@ no scope: no .lola/ was found in /work/x or above it, and config.yaml sets no de
 `--project` is not hinted in your home directory, where the user scope installs. Without `-t` and
 with no assistant set up in the scope, it says which assistants are installed and hints the run
 with `-t` and each of them (`lola info ./kit --project -t claude-code`); with none installed it
-says so and hints nothing.
+says so and hints `-t` for each target that needs no assistant (`lola info ./kit --project -t agents`).
 
 `--json` adds `native_executables`, always an array, each entry with `path`, `format` (`ELF`,
 `Mach-O` or `PE`), `kind`, `arch` (an array), `os`, `malformed`, `size`, `libraries` (an array),

@@ -1,5 +1,7 @@
 # Releasing lola
 
+For maintainers; back to the [README](../README.md).
+
 The checklist a maintainer works through before tagging a release. Every item has a pass
 condition; any item that fails blocks the tag until it passes. Run the items on the commit you
 mean to tag, with a clean work tree.
@@ -16,10 +18,10 @@ mean to tag, with a clean work tree.
    is unverified ([testing.md](testing.md#untested-by-design)).
 
 3. **The vendored liquid's advisories** (checked by hand before each release). `third_party/liquid`
-   is `github.com/osteele/liquid` v1.9.2 with one patch, under a `replace` in `go.mod`.
+   is `github.com/osteele/liquid`, at the version `go.mod` pins, with one patch, under a `replace` in `go.mod`.
    `govulncheck` reports the module as `./third_party/liquid` with no version, so it cannot match
    advisories for `github.com/osteele/liquid` to it, and `task vuln` passing says nothing about
-   them. Read every advisory for `github.com/osteele/liquid` published since v1.9.2 in:
+   them. Read every advisory for `github.com/osteele/liquid` published since that version in:
    - the GitHub advisory database (GHSA),
      <https://github.com/advisories?query=osteele%2Fliquid>;
    - the Go vulnerability database, <https://pkg.go.dev/vuln/> (vuln.go.dev), searching for
@@ -75,10 +77,10 @@ mean to tag, with a clean work tree.
    - **Refusals:** a version that is not `X.Y.Z` or not after the last release, a tag that
      exists, a dirty work tree, and a release with no Conventional Commit to list. If writing or committing `CHANGELOG.md` fails, it is restored; if only the tag
      fails, the error says how to drop the release commit and run again.
-   - **git-cliff:** both tasks first install the pinned git-cliff 2.14.2 into `.tools/bin`
+   - **git-cliff:** both tasks first install the pinned git-cliff (`GIT_CLIFF_VERSION` in `.taskfiles/release.yml`) into `.tools/bin`
      (`task release:tools`, which checks the download's SHA-512). On a platform with no pinned
      download, install it there yourself:
-     `cargo install --locked git-cliff --version 2.14.2 --root .tools`.
+     `cargo install --locked git-cliff --version <GIT_CLIFF_VERSION> --root .tools`.
 
    Nothing on this list publishes anything. `release:bump` never pushes
    (`git push origin HEAD vX.Y.Z` does, when you are ready), no image is pushed and no binary

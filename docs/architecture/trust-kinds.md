@@ -1,5 +1,7 @@
 # Trust kinds
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Trust kinds. It is split out of [architecture](../architecture.md).
 
 `--trust[=kind,…]` is one flag (`internal/cli/trust.go`, `trustFlag`) on every command that can
@@ -41,7 +43,9 @@ hook's is the sha256 of its module, settings file and raw rendering (`RuntimeHoo
 alike (lock.json's seen fold keeps `runtimeHookKey` over that view, since it is about what was
 displayed), an install
 hook's the sha256 of its event, path and script sha256 (`HookScript.ShownKey`), a project
-script's of its event, path as configured and sha256 (`installScript.shownKey`). The script's
+script's of its event, path as configured and sha256 (`installScript.shownKey`).
+
+The script's
 body (`HookScript.Body`, `ScriptRun.Body`) is read raw by `readBody` in the pass that hashes the
 stream, keeping at most `MaxBody`+1 bytes: one larger, not valid UTF-8 or holding a NUL is
 `Withheld` (`BodyTooLarge`, `BodyNotText`), never printed, never recorded, so `trustGrants`
@@ -60,13 +64,14 @@ Who adds to it is whoever printed the item, since only output shows it:
   script with nothing to wrap as `HookLater`, and the human report is never quiet while one is
   unshown (`nothingToDo`), so its `trusted` equals what the same run grants.
 - The CLI, for what it printed (`emit`, and the plan before a question in `confirm`, or in the
-  refusal off a terminal that stands for it, human or `--json`, whose plan holds the bodies): the human
-  renderers note each item they print in full through `style.saw` (`printReport` the new runtime
-  hooks, or all under `-v`; `printBody` a body printed open, never a fold; `--plain` rows;
-  `printInfo` the runtime hooks it rendered; `printMigrationRuns` the migrate preview), and
-  `--json` adds every `ShownKeys` in the document (`shownIn`, `Result.ShownKeys`,
-  `DestResult.ShownKeys`, `InfoRuns.ShownKeys`). `RuntimeHook.New` is true for a hook the record
-  lacks, so it is never folded. A failure to write the record warns and fails nothing.
+  refusal off a terminal that stands for it, human or `--json`, whose plan holds the bodies):
+  - The human renderers note each item they print in full through `style.saw`: `printReport` the
+    new runtime hooks, or all under `-v`; `printBody` a body printed open, never a fold; `--plain`
+    rows; `printInfo` the runtime hooks it rendered; `printMigrationRuns` the migrate preview.
+  - `--json` adds every `ShownKeys` in the document (`shownIn`, `Result.ShownKeys`,
+    `DestResult.ShownKeys`, `InfoRuns.ShownKeys`).
+  - `RuntimeHook.New` is true for a hook the record lacks, so it is never folded.
+  - A failure to write the record warns and fails nothing.
 
 It lives in user state, never a project or the cache, because a shared file would let one checkout
 vouch for what another user saw. It is written atomically, 0600, under `paths.ShownLock`, only when
@@ -89,9 +94,13 @@ are recorded in trust.json with the apply, as before.
 
 A later failure of the run is a `TrustedError`, whose JSON carries the grants
 written. The CLI's receipt prints them grouped by kind on stderr and asks `Proceed?` on a
-terminal unless `-y`; in the install flow, an Apply answered at the review (`reviewApplied`)
+terminal unless `-y`.
+
+In the install flow, an Apply answered at the review (`reviewApplied`)
 confirms every item the review listed in full (`reviewedConsents`), so `appliedReceipt` passes a
-receipt of those alone without printing or asking, and hands any other to the receipt; under `--json` it prints nothing, as `trusted` carries them. `Options.Rerun`
+receipt of those alone without printing or asking, and hands any other to the receipt; under `--json` it prints nothing, as `trusted` carries them.
+
+`Options.Rerun`
 is the user's run for a given set of kinds: sync builds it (`commandOf`), the CLI passes `trustRun`
 (`runWithout` the `--trust` given, through `fixedRun`) for install and migrate, and a refusal for
 want of trust hints it with the kinds given plus the missing one.

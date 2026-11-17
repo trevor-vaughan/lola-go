@@ -1,5 +1,7 @@
 # Templates
 
+A guide for lola users; back to the [README](../../README.md).
+
 A Markdown component whose file name ends in exactly `.md.liquid` is a
 [Liquid](https://shopify.github.io/liquid/) template: lola renders it for each assistant it
 installs to, frontmatter included, so one file can give each assistant keys and text of its own.
@@ -131,7 +133,8 @@ flowchart TD
 ```
 
 - **What a template sees.**
-  - `target` (`claude-code`, `gemini-cli`, `opencode` or `agents`).
+  - `target` (`claude-code`, `gemini-cli`, `opencode`, `agents` or the id of a [target
+    spec](target-specs.md) of yours).
   - `scope` (`project` or `user`).
   - `profiles`: `default` first at user scope (when `default.yml` exists), then the profile on, by
     qualified name; `[]` when none.
@@ -286,7 +289,7 @@ flowchart TD
   walks the includes, which for a partial included once is where it is included):
   `_partials/header.claude-code.liquid:2: undefined variable in {{ titel }} (included from
   skills/review/SKILL.md.liquid:4)`; `--json` puts the include site in `included_from`.
-- `_partials/` is never installed to an assistant, also by a skill at the module root, and a
+- `_partials/` is never installed to an assistant, not even as part of a skill at the module root, and a
   `components` entry or plugin path inside it is refused: partials are not components.
 
 ## Attribute files

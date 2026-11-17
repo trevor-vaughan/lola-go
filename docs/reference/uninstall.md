@@ -1,5 +1,7 @@
 # `lola uninstall`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola uninstall <module>...
 ```
@@ -16,7 +18,8 @@ base` answers.
 
 Asks before removing files; `-y` skips the question, and so does `--force`, which
 also deletes files you edited since lola wrote them. A run that removes no files asks nothing, and
-still writes. Scope as `lola install`'s.
+still writes. Scope as `lola install`'s: `--project`, `--user` and `--scope`
+([Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope)).
 
 The directories those files leave empty go too, each printed as a step
 (`→ delete claude-code .claude/commands/`; JSON `kind` `directory`, `path` without the slash), but
@@ -30,7 +33,8 @@ directory it leads to, nor one above it; an emptied directory below a link goes 
 inside the assistant's root (`~/.claude` linked to `~/dotfiles/claude`: an emptied
 `~/dotfiles/claude/commands/` goes), and none a link leads out of that root to.
 
-Every run that removes files (`sync`, `update`, `profile`) does the same.
+Every run that removes files (`install`, `sync`, `update`, `profile`) cleans up empty directories and
+skips symbolic links the same way.
 
 A project uninstall that removes a module whole also clears the module's entry from the project's
 section of `selections.yaml` (never the `global` section), so a later plain install installs
@@ -38,7 +42,7 @@ everything.
 
 It prints `→ <module>: picks cleared: <selectors> (restore: lola install … --skip …)`:
 the command, with your scope, `-t` and output flags (never `-y`: the install shows the files it deletes before it asks), saves them again
-(`--skip` for `skip:`, `--unskip` for `include:`, `--only … --exact` for `only:`). `-n` writes
+(`--skip` for `skip:`, `--unskip` for `include:`, `--only … --exact` for `only:`; see [Component flags](../guides/choosing-what-to-install.md#component-flags)). `-n` writes
 nothing and says `picks would be cleared`.
 
 A module that stays installed (another layer lists
@@ -62,7 +66,7 @@ Refusals:
 - `lola uninstall: "my-module" is not installed in this project`, hinting `installed here: lola
   list --project`. When exactly one installed module matches the name ignoring case, a first hint
   says `did you mean my-module?` with the command, scope flags kept.
-- The module comes from the base while a profile is on, off a terminal: `my-module comes from
+- The module comes from the base (`default (base)`, which `--profile base` names) while a profile is on, off a terminal: `my-module comes from
   default (base); lola uninstall needs to know whether to remove it there, and there is no
   terminal to ask on` (`change it there` under `-t`), hinting `lola uninstall my-module --user
   --profile base -y`. `-y` answers it when that is the one layer that lists the module; where
@@ -73,7 +77,7 @@ Refusals:
 - `-t` naming no assistant the module is installed on: `my-module is not installed on gemini-cli;
   it is installed on claude-code`, hinting `uninstall it there: lola uninstall my-module -t
   claude-code` with your other flags kept.
-  - The message names where its entry lists it but it is not installed (`it is listed for
+  - The message adds where the entry lists the module when that differs from where it is installed (`it is listed for
     claude-code, opencode but installed only on claude-code`; for an entry never synced, `it is
     listed for claude-code but not installed there`, hinting `remove its entry instead: lola
     uninstall my-module`).
@@ -84,5 +88,5 @@ Refusals:
 - A file edited since lola wrote it: `refusing to change anything: 1 conflict, which --force
   overrides`, each file on its own line, hinting `lola uninstall my-module --force`.
 
-JSON: `modules`, `steps`, `findings`, `notices`, `edits`, `scripts` and `dry_run`; the refusal off a
+JSON (`--json`, [Output contract](../usage.md#output-contract)): `modules`, `steps`, `findings`, `notices`, `edits`, `scripts` and `dry_run`; the refusal off a
 terminal carries the same keys beside `error` and `hints`.

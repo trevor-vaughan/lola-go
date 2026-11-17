@@ -1,5 +1,7 @@
 # `lola cache`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola cache
 ```
@@ -64,10 +66,10 @@ Remove what your cache no longer needs. Asks first.
 
 | Form | Removes |
 |---|---|
-| bare | Superseded versions (each version no head points to: a newer fetch of its ref replaced it) and scratch: each `.staging/run-*` and `tmp/check-*` that no running lola holds, a `run-*.lock` or `check-*.lock` left without its directory, and a `.staging/clean-*` a killed clean left. Every module keeps its heads. With `cache_unused_for` set in `config.yaml`, also what `--unused-for` with that age removes. |
+| bare | Superseded versions (each version no head points to: a head is the version a ref currently resolves to, and a newer fetch of the ref replaced it) and scratch: each `.staging/run-*` and `tmp/check-*` that no running lola holds, a `run-*.lock` or `check-*.lock` left without its directory, and a `.staging/clean-*` a killed clean left. Every module keeps its heads. With `cache_unused_for` set in `config.yaml`, also what `--unused-for` with that age removes. |
 | `--unused-for <n>d` or `<n>w` | Also every version no run used for at least that many days (`1w` is 7 days), current heads included: a head whose version goes is dropped, and a module whose last version goes is removed whole. |
 | `--unused-for never` | What bare removes, without the configured age. |
-| `--all` | Every module, every marketplace catalog and all scratch, except scratch a running lola holds. The cache's lock file and `probes.json` stay. |
+| `--all` | Every module, every marketplace catalog and all scratch, except scratch a running lola holds. The cache's lock file and `probes.json` (the assistant versions lola has probed, per binary build) stay. |
 
 | Flag | What it does |
 |---|---|
@@ -169,4 +171,4 @@ Alias: `find`. Search your cache alone, as `lola search` searches it.
 
 Refusals: no query: `lola cache search needs a query`.
 
-JSON: as `lola search`'s.
+JSON: as [`lola search`](search.md#lola-search)'s.

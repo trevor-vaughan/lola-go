@@ -1,5 +1,7 @@
 # Marketplaces
 
+A guide for lola users; back to the [README](../../README.md).
+
 A marketplace is a catalog of modules, each with the source it comes from. lola reads two catalog
 formats into one model: Claude Code's `.claude-plugin/marketplace.json`, the documented format,
 and lola YAML catalogs. Your marketplaces are yours alone and shared by every scope (project or
@@ -49,7 +51,7 @@ lola market acme --remove                                    # forget it; asks (
     Name --> Check{the name}
     Check -->|free and valid| Reg[registered and cached]
     Check -->|"you gave it, and it breaks the rule"| Bad["refused, saying what breaks it"]
-    Check -->|"taken by another source, or the catalog's name is unusable"| Ask["terminal asks, pre-filled; off one, refused with the --add hint"]
+    Check -->|"taken by another source, or the catalog's name is unusable"| Ask["terminal asks, pre-filled; off a terminal, refused with the --add hint"]
     Check -->|"taken by the same source, ref and file"| Upd["refused with --update"]
     classDef sysA fill:#2f6dab,color:#ffffff,stroke:#7c8ba1
     classDef sysB fill:#1d7848,color:#ffffff,stroke:#7c8ba1
@@ -68,7 +70,7 @@ lola market acme --remove                                    # forget it; asks (
     (`lola market --add <folder> --path .claude-plugin/marketplace.json`), and a local archive is
     refused: extract it and add the folder.
   - A tree is fetched whole into lola's staging, never into your cache (a marketplace is not a
-    module), and a symbolic link anywhere in it is refused.
+    module), and a symbolic link in it that is absolute, leaves the tree, dangles or loops is refused.
   - lola then looks for `.claude-plugin/marketplace.json`, `<name>.yml`, `<name>.yaml`,
     `marketplace.yml` and `marketplace.yaml` at its root, or in the directory `--path` names
     (`--path` may name the catalog file itself); two of them are refused with one `--path` command
@@ -181,7 +183,8 @@ lola market acme --remove                                    # forget it; asks (
 - **Listing and showing.** Neither fetches nor asks.
   - `lola market` lists `NAME`, `FORMAT` (`claude` or `lola-yaml`), `ENTRIES`, `SKIPPED`,
     `FETCHED` (`2 days ago`, or `not fetched` with the `--update` that fetches it) and `SOURCE`.
-  - `lola market <name>` shows the source, ref, commit, catalog file, owner and description,
+  - `lola market <name>` shows the source, ref, commit, catalog file, fetch time, owner, version, description and any
+    ssh hosts,
     every entry, by name, with its version, source kind, source, path, ref, commit and
     description, and the skipped entries grouped by reason, the most common first (`npm sources
     are not supported: … (2): npma, npmz`).
@@ -249,7 +252,8 @@ lola market acme --remove                                    # forget it; asks (
     - The fetch must find each as a real directory for a skill, a real file or directory
       otherwise, else the entry is skipped.
     - `lola market <name>` shows what each entry selects.
-  - A YAML catalog's entry needs `name` and `repository`; its `pre-install` and `post-install`
+  - A YAML catalog is a mapping with `name`, `description`, `version` and a `modules` list; a
+    module needs `name` and `repository`, and may give `description`, `version`, `path` and `ref`; its `pre-install` and `post-install`
     hooks are never run (`catalog install scripts are ignored`).
   - A catalog is refused whole, naming the field (`plugins[12].description`), when it:
     - is over 8 MiB, or, for a YAML catalog, over 512 KiB;
@@ -342,8 +346,8 @@ lola market acme --remove                                    # forget it; asks (
     sync, `lola cache update`); one that names itself otherwise is refused.
   - A relative entry pins the marketplace's own commit.
   - A catalog `sha`, or a `ref` that is a full commit SHA, must be reachable from the entry's
-    `ref` (the default branch when it gives none) before anything is cached, though Claude Code
-    would install it: `marketplace acme lists formatter at a1b2c3…, which v2.0.0 does not reach`
+    `ref` (the default branch when it gives none) before anything is cached (stricter than Claude
+    Code, which would install it): `marketplace acme lists formatter at a1b2c3…, which v2.0.0 does not reach`
     → `lola market acme --update`.
   - An archive's `sha256` must match the download before anything is extracted.
   - A source the catalog names follows no redirect to a host lola would refuse (after install,
@@ -428,10 +432,12 @@ lola market acme --remove                                    # forget it; asks (
     so a teammate who has never heard of that marketplace syncs it as any other entry.
   - lola checks that the name is a marketplace name and the source a source lola could record,
     and shows both as written (`lola list --json` gives `market`).
-  - A profile never carries it: `market:` in a profile is refused as an unknown key, naming the
+  - A remote profile never carries it: its entry is refused for taking a `market:` key, naming the
     line.
-  - These read it, and nothing else does:
+  - These read it:
     - `lola list` shows it;
+    - `lola check @<market>/<entry>` matches entries by it, and the re-run hints for an entry with
+      one name it `@<market>/<entry>`;
     - `lola market <name> --remove` counts it;
     - every `lola sync` fetches an entry whose `market` names another source than its own under
       the catalog's redirect rule;
@@ -447,8 +453,8 @@ lola market acme --remove                                    # forget it; asks (
   `lola market <name> --update`. Its relative entries are folder sources, unpinned.
 - **Where they live.** Your list of marketplaces is in your config directory, and each catalog in
   your cache.
-  - `$XDG_CONFIG_HOME/lola/markets.yaml` lists your marketplaces (`name`, `source`, `ref`, and
-    `path`, the catalog file found at `--add`); it is yours to edit, and is read strictly (a
+  - `$XDG_CONFIG_HOME/lola/markets.yaml` lists your marketplaces (`name`, `source`, `ref`, `path`, the
+    catalog file found at `--add`, and `ssh_hosts`, the ssh hosts you allow); it is yours to edit, and is read strictly (a
     folder must be an absolute path; a mistake is refused naming the line).
   - Each fetched catalog is cached byte for byte in `$XDG_CACHE_HOME/lola/markets/<name>/` with
     `source.json`, its pin:

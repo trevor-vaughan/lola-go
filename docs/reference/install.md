@@ -1,5 +1,7 @@
 # `lola install`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola install [<source|name|@market/module>...]
 ```
@@ -12,13 +14,13 @@ into your cache.
 Where a higher layer lists the module (the scope's active
 [profile](../guides/profiles.md#profiles) over its base), that layer's entry keeps winning: the
 install writes its entry and installs nothing of it, and when the entries differ it warns
-`<module>: profile go's entry wins; this change to default (base) applies when it is off`. A
+`<module>: profile go's entry wins; this change to default (base) applies when it is off` (here `go` is the profile on and `default` the base). A
 run that is cancelled, refused or `-n` leaves your cache as it was.
 
 With no argument on a terminal,
 walks you through the choices
 ([Choosing what to install](../guides/choosing-what-to-install.md)). A name installs a module already in your cache without
-touching its source. Without a scope flag it uses, in order, the terminal's scope picker, the
+touching its source. Without a scope flag (`--project`, `--user`, `--scope both`, `-C <dir>`: [Scopes and targets](../usage.md#scopes-and-targets)) it uses, in order, the terminal's scope picker, the
 project with `.lola/` at or above the current directory, then `default_scope` in `config.yaml`
 ([Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope)).
 
@@ -38,7 +40,7 @@ project with `.lola/` at or above the current directory, then `default_scope` in
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module, or an installed assistant is of another era than the version declared (`version/era-mismatch`). A version you choose that differs from the installed one is warned of, not refused (`version/chosen-era`). |
 | `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |
 | `--pre-install <path>`, `--post-install <path>` | Your own script for this run, which wraps every module copy the install writes, once per assistant, around the module's own hooks; a relative path is taken from the directory you run lola in, and the script runs from that absolute path, never a file of its name in the module copy ([Install scripts](../guides/choosing-what-to-install.md#install-scripts)). No trust is asked. |
-| `--trust=<kinds>` | Answer yes, without asking, to lola's questions before it runs code you did not write, of the kinds named, recorded as a yes at the prompt is: `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all` for the three ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
+| `--trust=<kinds>` | Answer yes, without asking, to lola's questions before it runs code you did not write, for the kinds named, each recorded as a yes at the prompt would be: `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all` for the three ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
 | `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines. Refused without one of those kinds in `--trust`; `--force` never implies it. |
 | `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be, and apply without the review question ([Safety rules](../usage.md#safety-rules)); it answers the question about files a pick change or a narrower `-t` deletes too. |
 | `-n`, `--dry-run` | Print the plan and write nothing, not even `selections.yaml`. |
@@ -82,7 +84,8 @@ inherited entry that is pinned installs at its own ref and pin.
 lola writes a profile of yours (`default.yml` included) with no `commit:` or `digest:`: the version
 installed is in `lock.json`. A project profile's entries are written with their pins and recorded
 as trusted, as `project.yml`'s are. An entry that is a marketplace address (`@market/module`) in
-`project.yml` or `default.yml` is replaced by `lola install @market/module`.
+`project.yml` or `default.yml` stays as written until `lola install @market/module` replaces it
+with the module's resolved source.
 
 Each entry written prints a line naming the file:
 
@@ -150,7 +153,8 @@ Refusals:
   my-module/1a2b3c4d does not match its digest sha256:…`, hinting `remove it from your cache, then
   install it again from its source: lola cache rm my-module`.
 - A conflict ([Safety rules](../usage.md#safety-rules)), `--strict` with a finding (`--strict: 1
-  finding(s); nothing was changed`), and a project whose `.lola/lock.json` git tracks.
+  finding(s); nothing was changed`), and a project whose `.lola/lock.json` git tracks (the hint
+  untracks it: `git rm --cached .lola/lock.json`; see [Sources and the cache](../guides/sources-and-the-cache.md)).
 - An install script that is missing, not a regular file or not executable, and a project's that
   is an absolute path, resolves outside the project or is a symbolic link, before anything is asked
   ([Install scripts](../guides/choosing-what-to-install.md#install-scripts)); the project's pre-install script without your trust off a

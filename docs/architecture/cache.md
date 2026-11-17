@@ -1,5 +1,7 @@
 # Cache
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Cache. It is split out of [architecture](../architecture.md).
 
 ```
