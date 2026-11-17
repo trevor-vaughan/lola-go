@@ -1,0 +1,19 @@
+docs/reference/uninstall.md
+  s_607b5b075fc201::t_f60b049aabe8d3 21-22,36-37,45,69,80,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "2bb2c2d452221220d84210bd2ecbe82f9bd91a31",
+  "prompts": {},
+  "sessions": {
+    "s_607b5b075fc201": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9b77f3c211a5d94a",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
