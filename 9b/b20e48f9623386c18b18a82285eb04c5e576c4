@@ -1,0 +1,19 @@
+docs/reference/update.md
+  s_08e83211bea0fc::t_875ee85b0269b8 14-15,33-34,70-71,80,90-91,105,110,122-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9bb20e48f9623386c18b18a82285eb04c5e576c4",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
