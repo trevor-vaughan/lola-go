@@ -1,0 +1,23 @@
+internal/plan/compute.go
+  s_20aaf83e2cbdc4::t_fc835fb8ce40bd 224
+internal/engine/drift_test.go
+  s_20aaf83e2cbdc4::t_392bb448cf6783 1-86
+internal/ledger/ledger.go
+  s_20aaf83e2cbdc4::t_fc835fb8ce40bd 40-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "540823e450844ef1944f5209ca310539c37f922d",
+  "prompts": {},
+  "sessions": {
+    "s_20aaf83e2cbdc4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a861514-671a-45e9-9364-20be8084f2c7",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
