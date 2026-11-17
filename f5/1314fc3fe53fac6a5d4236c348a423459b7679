@@ -1,0 +1,19 @@
+docs/reference/info.md
+  s_08e83211bea0fc::t_6af214ee98985b 46,117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f51314fc3fe53fac6a5d4236c348a423459b7679",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
