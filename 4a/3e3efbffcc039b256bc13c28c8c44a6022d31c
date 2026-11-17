@@ -1,0 +1,29 @@
+internal/engine/ops.go
+  s_20aaf83e2cbdc4::t_025156a079edec 3065-3066,3148,3186-3187,3192,3197-3201,3204-3206,3208-3211,3213,3216-3217,3224,3266
+internal/engine/drift_test.go
+  s_20aaf83e2cbdc4::t_e6a375e5a38f32 8,12,20,89-115,117-204,206-225
+  s_20aaf83e2cbdc4::t_a30457d370a5ae 116
+  s_20aaf83e2cbdc4::t_d90b90d6ae97cb 205
+  s_20aaf83e2cbdc4::t_7cc71b00072d6f 226
+internal/engine/drift.go
+  s_20aaf83e2cbdc4::t_ca1135e92bca14 54
+  s_20aaf83e2cbdc4::t_aee90fb05197ef 1-53,55-58
+internal/engine/engine.go
+  s_20aaf83e2cbdc4::t_025156a079edec 513-517
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "4a3e3efbffcc039b256bc13c28c8c44a6022d31c",
+  "prompts": {},
+  "sessions": {
+    "s_20aaf83e2cbdc4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a861514-671a-45e9-9364-20be8084f2c7",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
