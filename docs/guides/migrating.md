@@ -1,5 +1,7 @@
 # Coming from the Python lola
 
+A guide for lola users; back to the [README](../../README.md).
+
 lola does not read the Python lola's state (`~/.lola/installed.yml`, its module registry and
 marketplaces), and the Python lola does not read lola's. `lola migrate` moves you over once,
 modules and marketplaces:
@@ -10,8 +12,8 @@ lola migrate              # the plan, then "Migrate?" (default No); off a termin
 ```
 
 `-y` only answers `Migrate?`. `--force` answers it too, and also replaces files in the way and
-moves files git tracks ([Before anything is written](#before-anything-is-written)). Neither gives
-a hook's consent; `--trust=<kinds>` does.
+moves files git tracks ([Before anything is written](#before-anything-is-written)). Neither
+consents to a hook; `--trust=<kinds>` does.
 
 ## What `lola migrate` does
 
@@ -95,7 +97,7 @@ flowchart TD
     name is no pattern. Inside a git work tree where git is missing or fails, they stay.
   - Anything a lola module owns.
   - With `--keep-python`, everything lola did not replace.
-  - When lola would write such a file (one git tracks, or one below a symbolic link), the plan
+  - When lola would write a file git tracks or one below a symbolic link, the plan
     refuses and names the file and why it is kept. `--force` backs it up into the trash and
     replaces it, reported as replaced; for a symbolic link you can instead replace the link with
     a directory.
@@ -117,7 +119,8 @@ flowchart TD
     with the `lola market <name> --add <source> [--path …]` that registers it.
   - So is one whose name lola cannot use (uppercase, a space, one of the Python lola's verbs),
     that one of yours has from another source, or that an earlier one of the Python lola's
-    marketplaces has, under a free slug of it (`lola market lola-general --add …`).
+    marketplaces has: it is listed with the command that registers it under a free slug of the
+    name (`lola market lola-general --add …`).
   - When only a fetch can tell that command's `--path`, `--dry-run` says the run gives it, and
     the run fetches to name it.
   - A `url` lola cannot read at all (plain `http://` off loopback, a relative path, credentials
@@ -214,7 +217,7 @@ flowchart TD
 
 `--force` overwrites such files as `lola install --force` does, after copying each into the
 trash, and lists them as replaced. It also answers `Migrate?`, so its refusal's hint `lola
-migrate --force` runs off a terminal, though `--force` never gives a hook's consent.
+migrate --force` runs off a terminal, though `--force` never consents to a hook.
 
 When two modules the Python lola installed in one place ship a component of the same name, the
 Python lola skipped one. lola refuses, naming both modules and the component, and gives the
@@ -272,7 +275,7 @@ migrate` says which it cannot use, and how to map them:
     suggests one and such a record stays as it is.
 - **An assistant this machine lacks.**
   - lola installs a record for its own assistant only where that assistant is installed (on
-    your `PATH`) or set up, as `lola tidy` counts them: Claude Code's `.claude/` or `CLAUDE.md`,
+    your `PATH`) or set up, as [`lola tidy`](tidying.md) counts them: Claude Code's `.claude/` or `CLAUDE.md`,
     Gemini CLI's `.gemini/` or `GEMINI.md`, OpenCode's `.opencode/`, `opencode.json` or
     `opencode.jsonc`, and at user scope its config directory.
   - Otherwise, and for an assistant lola has no target for, `--map-target OLD=NEW[,NEW]` names
@@ -280,7 +283,8 @@ migrate` says which it cannot use, and how to map them:
     claude-code=opencode`. Without it the record stays as it is (`claude-code is not installed
     here`).
   - lola writes only for those: the Python lola's files for the old assistant are not on this
-    machine, and a file of yours where the new one installs is a conflict, never replaced.
+    machine, and a file of yours where the new one installs is a conflict, replaced only under `--force`
+    (after a copy into the trash).
   - `--map-target claude-code=claude-code` installs for Claude Code anyway.
   - Name each `OLD` once, with every assistant after the `=`.
 
@@ -306,7 +310,7 @@ names what to write instead: `--map-root <old root>=<where it is on this machine
 
 Whatever is left, the run ends with the command that maps it: your run with every map it used,
 plus a `--map-root` to your home for each missing root and a `--map-target` to the assistants on
-your `PATH` for each missing assistant. It drops `-y` and any `--trust` or `--trust=<kinds>`,
+your `PATH` for each missing assistant. It drops `-y`, `--unseen` and any `--trust` or `--trust=<kinds>`,
 which answer questions only you can (`remap` under `--json`):
 
 ```

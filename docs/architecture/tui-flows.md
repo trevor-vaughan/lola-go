@@ -1,5 +1,7 @@
 # TUI flows
 
+Back to the [README](../../README.md).
+
 Each interactive surface of lola, written down as a state machine: the screens it shows, every way
 from one screen to the next, and what each way out leaves on disk. It describes behaviour as built;
 when the code changes, this page changes with it. It is split out of
@@ -53,7 +55,9 @@ and cache clean, `internal/cli/misc2_paths_test.go` for init, market add, migrat
 script consent, `internal/cli/keys_paths_internal_test.go` for the viewer and pager, accessible mode
 and form keys), the input followed by its guard in
 parentheses where rows share a *from* and an *input*, or by an existing spec that file lists at its
-top in an `// also pinned (<row>; <row>): <file> "<spec>"` pointer. `task flows` checks both ways:
+top in an `// also pinned (<row>; <row>): <file> "<spec>"` pointer.
+
+`task flows` checks both ways:
 a row no name matches, and a name that matches no row. It matches a row's *from*, *input* and *to*;
 the guard in a name may be shortened, a remark may follow *to* after `, ` or ` (`, and a pointer
 without `<surface>: ` takes the surface of its file's own specs.
@@ -1300,7 +1304,9 @@ for each missing one. It plans from the answers (`migrate.NewPlan`, `internal/mi
 the modules' sources into the cache, shows the plan and asks `Migrate?` through `app.confirm`, then
 migrates each destination (`migrate.Migrate`), asking the
 [hook and script consent](#hook-and-script-consent) questions and the receipt
-([Trust question](#trust-question)) as it installs. Going back from `Migrate?` (Esc) asks the last
+([Trust question](#trust-question)) as it installs.
+
+Going back from `Migrate?` (Esc) asks the last
 mapping question again, then plans again from the answers. The plan is the question's text: printed
 on stderr with the question under it, or, when the two do not fit the terminal, in the viewer with
 the question in it (see [Viewer and pager](#viewer-and-pager)).
@@ -1436,7 +1442,9 @@ The engine asks these as it plans a write, before anything is written, through t
 yes/no question (`Prompter.Ask`) whose text is what it asks about, so it stays in sight of the
 question (inline, or in the viewer when it does not fit): the hooks with their sha256, the Claude
 Code hooks with what they run, a project's script by its path and sha256, never its body. Esc goes
-nowhere (`first step — q quits`), `q` quits and Ctrl+C ends the run, with nothing written. A run asks about its modules'
+nowhere (`first step — q quits`), `q` quits and Ctrl+C ends the run, with nothing written.
+
+A run asks about its modules'
 install hooks and Claude Code hooks first, then about the project's scripts, pre-install before
 post-install, then shows the receipt ([Trust question](#trust-question)). A yes is recorded in
 `$XDG_STATE_HOME/lola/consent.json` with the run's writes, and a consent recorded for the same
@@ -1559,6 +1567,7 @@ asks about reach the terminal: printed, through the user's pager, or in lola's v
 question follows, and the question is asked once the viewer or pager exits: sync's trust diff
 (`syncQuestions`, `internal/cli/cmd_sync.go`), the trash's restore plan (`restorePicked`,
 `internal/cli/cmd_trash.go`), and the record of what `--trust` accepted when the `Proceed?` receipt asks after it (`receiptNext`).
+
 `app.ask` (`internal/cli/ask.go`) asks a yes/no question, or the review's, under its text: inline (`inline`: the text printed, then a one-line prompt under it) when the text and the prompt line at its widest fit the terminal or paging prints, else in the viewer with the question in it (`prompt`); `$LOLA_PAGER` pages the text first and the question is asked inline after. The prompt takes one answer letter in its field and answers on Enter; a capital letter in `[y/N]` is Enter's default.
 
 ```mermaid
@@ -1865,7 +1874,7 @@ line prompt has: Esc, `q` and the viewer.
 ## Form keys
 
 `keyed` (`internal/cli/keys.go`) wraps every field of a full-screen form, so lola's keys hold on each:
-`q`, Esc and the quit question are lola's; the rest are huh's own (v2.0.3) or the adapter's
+`q`, Esc and the quit question are lola's; the rest are huh's own (the version pinned in `go.mod`) or the adapter's
 (`internal/cli/huh.go`: `requiredPick`, `sourcePick`). The other sections' tables name these keys
 where a surface uses them; this one says what each does on any form.
 

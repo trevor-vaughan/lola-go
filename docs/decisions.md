@@ -1,5 +1,7 @@
 # Decisions
 
+For maintainers; back to the [README](../README.md).
+
 <!-- docs-audit decision (2026-11-05): DOUBLE_NEGATIVE reviewed. Five sentences were rewritten
      positively. The rest pair a negator with a word in another clause ("not … without",
      "cannot be read … fails") and read plainly; leave them. -->

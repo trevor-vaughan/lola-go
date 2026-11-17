@@ -1,5 +1,7 @@
 # Plans and the ledger
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Plans and the ledger. It is split out of [architecture](../architecture.md).
 
 Targets return **intents** (`WriteFile`, `CopyTree`, `SetJSON`, `AddJSONMember`).
@@ -79,7 +81,9 @@ read as absent, so the module renders again.
 An entry also records `safety` (`ledger.Entry.Safety`): the sorted sha256 hex of each state finding's
 `module\x00target\x00kind\x00artifact\x00code\x00text` (`engine.isState` picks them), so a later
 run reports the same finding as seen. It is validated at load (refused unless each key is 64
-lowercase hex). The entry a run builds carries the run's keys (`ModuleResult`'s unexported
+lowercase hex).
+
+The entry a run builds carries the run's keys (`ModuleResult`'s unexported
 `safety`), so a module's keys are replaced on each run that writes it: `plan.Compute` swaps the
 run's entry in whenever the run brings one, and when the run brings none (it only keeps artifacts) the old
 entry stays as it was, its `safety` included. A moved module's destination entry gets fresh keys
@@ -99,9 +103,13 @@ target. An entry from before the field falls back to its artifacts' targets
 An entry records, per target, the `since` of the era its files were written for (`Entry.Eras`,
 `eras`; the engine's `ModuleResult.eras`, set from the era the planned target was rendered at,
 which an install given a version takes in place of the declared one). A target it does not name was
-written for its newest era. `ledger.Load` refuses an era that is not a version or one for a target the entry
+written for its newest era.
+
+`ledger.Load` refuses an era that is not a version or one for a target the entry
 does not list; `updateLedger` keeps the eras of the targets outside a change, and `Ledger.Forget` drops a
-forgotten target's. Sync says `<module>: rewrote <id> files for <id> <new label> (written for <old
+forgotten target's.
+
+Sync says `<module>: rewrote <id> files for <id> <new label> (written for <old
 label>)` (`would rewrite` in a dry run) for a planned
 target whose era changed (`Engine.eraRewrites`), and `Engine.rerenders` lists such a module so a
 profile switch plans it too.
@@ -159,7 +167,7 @@ byte.
 instruction file. Claude Code loads `.claude/rules/lola/<module>/<rule>.md` as is. Gemini CLI has no
 rules directory: a module's rules are joined into `.gemini/lola/<module>/GEMINI.md`, and that
 directory is an owned member of `context.includeDirectories` in `.gemini/settings.json` (Gemini
-walks it for `GEMINI.md` in trusted folders; observed with 0.63.0).
+walks it for `GEMINI.md` in trusted folders).
 
 OpenCode gets one file per rule in `.opencode/lola/<module>/` and one owned glob member in
 `instructions`. At user scope the members are absolute, because user settings apply in every

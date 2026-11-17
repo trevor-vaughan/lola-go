@@ -1,10 +1,12 @@
 # Install scripts
 
+A guide for lola users; back to the [README](../../README.md).
+
 What install scripts are and when lola runs them. It is split out of [choosing-what-to-install](choosing-what-to-install.md).
 
 Install scripts are code that runs around each copy of a module that a run installs or replaces
 (`install`, `update` replacing a copy, `sync`, `profile`, `migrate`), once per assistant, whether
-or not the module has hooks: your own, the project's (which needs your trust) and the run's, in
+or not the module has hooks: yours, the project's (which needs your trust) and this run's, in
 this order:
 
 ```mermaid
@@ -50,7 +52,7 @@ post: the module's post-install hook → --post-install → project.yml → conf
 | Source | Where | Trust |
 |---|---|---|
 | yours | `pre_install:` and `post_install:` in `config.yaml`: an absolute path or `~/…` | none |
-| the project's | top-level `pre_install:` and `post_install:` in `.lola/project.yml`, relative to the project, in plain text and without a `..` component; it must be a regular file inside the project, not a symbolic link | `scripts`, per project, event and the digest of the script |
+| the project's | top-level `pre_install:` and `post_install:` in `.lola/project.yml`, relative to the project, in plain text and without a `..` component; it must be a regular file inside the project, not a symbolic link | `scripts` (a [`--trust=` kind](install-trust-kinds.md)), per project, event and the digest of the script |
 | this run's | `install --pre-install <path>` and `--post-install <path>` | none |
 
 Each runs as a hook does, but from its absolute path, with the module copy as its working
@@ -97,22 +99,24 @@ wrap the project's modules only. `default.yml` refuses the keys; yours belong in
     about and is warned of (`post-install script ci/after.sh (project) is not trusted on this
     machine; trust it: lola sync --project --trust=scripts`).
   - Your own scripts and the flag's are checked only when a copy is written.
-- A post-install script, like a post-install hook, is declined rather than refused when you have
+- A post-install script, like a post-install hook, is declined (skipped with a warning) rather than refused when you have
   not trusted it, so the command a dry run ends with (`lola sync -n`) adds `--trust=scripts` only
   for a pre-install script; `-n` still says the post-install one needs it. A dry run of a sync that
   would run a pending script counts its module as changed; without the trust it needs, it marks
   the script and says it stays pending, as the run would.
-- `-n` lists every script in run order with its source and sha256, and says which project script
-  still needs `--trust=scripts`; a project script's body follows in full until lola has shown it.
-  JSON has `scripts` (`event`, `source`, `path`, `sha256`, a project script's `body` and `new`,
-  `module`, `target`, `status`: `would-run`, `ran`, `failed`, `declined`, or `later` for each
-  project script a sync with nothing to install checks, `trusted` and `trust_run`), and `--plain` a `script` row for
-  each (module, event, source, path, assistant, status, sha256, trusted, trust_run) and a `script-line` row per line
-  of a project script. `lola info` lists them too, by path and sha256. A project script `-n` (or
-  a question) has shown you in full is one `--trust=scripts` consents to; one it has not is
-  refused or declined until it is shown, or given `--unseen` ([What lola has shown
-  you](install-trust-kinds.md#what-lola-has-shown-you)). A refusal names the script but does not
-  show it.
+- `-n` shows the scripts:
+  - It lists every script in run order with its source and sha256, and says which project script
+    still needs `--trust=scripts`; a project script's body follows in full until lola has shown it.
+  - JSON has `scripts` (`event`, `source`, `path`, `sha256`, a project script's `body` and `new`,
+    `module`, `target`, `status`: `would-run`, `ran`, `failed`, `declined`, or `later` for each
+    project script a sync with nothing to install checks, `trusted` and `trust_run`).
+  - `--plain` has a `script` row for each (module, event, source, path, assistant, status, sha256,
+    trusted, trust_run) and a `script-line` row per line of a project script.
+  - `lola info` lists them too, by path and sha256.
+  - A project script `-n` (or a question) has shown you in full is one `--trust=scripts` consents
+    to; one it has not shown is refused or declined until it is shown, or given `--unseen` ([What
+    lola has shown you](install-trust-kinds.md#what-lola-has-shown-you)). A refusal names the
+    script but does not show it.
 - When lola refuses a run for want of trust, it hints the run with every kind it would still be
   refused for, not only the one refused: a module's pre-install hook and the project's
   pre-install script, both untrusted, hint `--trust=scripts,hooks`.

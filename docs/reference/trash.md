@@ -1,5 +1,7 @@
 # `lola trash`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola trash [<run>]
 lola trash <run> [<original>...] --restore [--force] [-n]
@@ -8,11 +10,11 @@ lola trash [<run>...] --empty [--older-than <age>] [-n] [-y]
 
 `lola tidy`, `lola migrate` and `lola profile --remove` move what they take out of place into the
 trash (`$XDG_STATE_HOME/lola/trash/`), one run per command. Each run holds `manifest.txt`, one
-`original<TAB>trash path` line per entry, and `run.yaml`: the command that made it, its scope,
-project and time, and the copies that may hold credentials. lola deletes what a run holds
+`original<TAB>trash path` line per entry, and `run.yaml`: the command that made it, its scope
+(`user` or `project`), project (`root` in `--plain` and JSON; empty at user scope) and time, and the copies that may hold credentials. lola deletes what a run holds
 only when you run `lola trash --empty`; a restore that empties a run removes the run.
 
-Without a run, `lola trash` lists the runs, newest first: the id (the run's directory name), its
+Without a run, `lola trash` lists the runs, newest first: the id (the run's directory name, what `<run>` and `<id>` stand for here), its
 time, the command that made it, its scope and project, and its files and size. With no runs it
 prints `✓ the trash is empty`. A run made before lola wrote `run.yaml` shows the command
 `unknown`.
@@ -50,7 +52,8 @@ the picker says what each key does. Nothing is written before lola shows the pla
   - When nothing ticked is left in the trash, lola says `nothing to restore, so nothing changed`.
 - `Empty ticked runs` deletes the runs whose `[whole run]` row is ticked, as `lola trash <run>...
   --empty` does: it shows the plan and asks; Esc there goes back to the picker, the ticks kept.
-  Ticking only files asks the picker again, the ticks and `Empty ticked runs` kept.
+  Ticking only files shows `Empty ticked runs deletes whole runs: tick a [whole run] row, not only
+  files` and asks the picker again, the ticks and `Empty ticked runs` kept.
 
 Off a terminal, bare `lola trash` lists the runs as above.
 
@@ -62,6 +65,9 @@ Off a terminal, bare `lola trash` lists the runs as above.
 | `--older-than <age>` | With `--empty`: only the runs older than `<n>d` or `<n>w` (weeks of 7 days). A run whose time lola cannot tell, or a run you named that is newer, is kept, with a notice. |
 | `-n`, `--dry-run` | With either action: print the plan and change nothing. |
 | `-y`, `--yes` | With `--empty`: do not ask for confirmation. |
+
+The global flags apply too ([Using lola](../usage.md#commands)): `--json` and `--plain` pick the output,
+`--no-pager` prints without lola's viewer.
 
 A restore never writes over what is there: when an original exists, the whole run is refused
 (`-n` lists such paths as `⚠ … exist, so the restore is refused`). A link comes back as a link.
@@ -77,7 +83,7 @@ MCP server from it, and the file itself stays. Restoring that copy with `--force
 whole file, so every change made since goes with it, MCP servers lola installed later included
 (`lola sync` puts those back).
 
-The plan and the review say `⚠ the restore replaces the whole file
+The plan (what `-n` prints, and what the picker shows before `Restore`) says `⚠ the restore replaces the whole file
 <path> with the copy trash run <run> holds, at mode 0600 (it may hold credentials); the file there
 now, with every change made since, moves to a new trash run first`, and the restore says
 `⚠ replaced the whole file <path> with the copy from trash run <run>, at mode 0600; the file that

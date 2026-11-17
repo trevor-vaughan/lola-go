@@ -61,12 +61,12 @@ flowchart TD
 ```
 
 - **Cleanup:** `lola tidy` moves what lola does not manage out of the assistants' directories
-  and MCP server lists into a trash you can restore from with `lola trash`, never an instruction
-  file, nor what git tracks or your [keep-list](docs/guides/tidying.md#tidying) (the names you
-  protect with `lola tidy --keep`) names unless you say so.
+  and MCP server lists into a trash you can restore from with `lola trash`. It never moves an
+  instruction file; what git tracks or your [keep-list](docs/guides/tidying.md#tidying) (the names
+  you protect with `lola tidy --keep`) names moves only if you say so.
 - **Sync and trust:** commit `.lola/project.yml`, and a teammate's `lola sync` installs every
-  module at the commit and digest it pins. A fresh clone, a changed pin or a removal is shown
-  and waits for your trust; `-y` never gives it
+  module at the version `project.yml` pins for it (its commit and content digest). A fresh clone,
+  a changed pin or a removal is shown and waits until you trust it; `-y` never trusts it for you
   ([Sync, pins and trust](docs/guides/sync-and-trust.md#sync-pins-and-trust)).
 
 ```mermaid
@@ -96,7 +96,7 @@ stateDiagram-v2
 ```
 
 - **Profiles:** each scope has a base that is always loaded (`default` at user scope, the
-  project's `project.yml`) and at most one profile on over it; a bundle combines profiles. Every
+  project's `project.yml`) and at most one profile switched on over it; a bundle combines profiles. Every
   command that reads a scope names it first (`user scope: profile go-review over default`), and
   every write names the file it changed ([Profiles](docs/guides/profiles.md#profiles)).
 - **Marketplaces:** `lola market [<name>] --add <source>` registers a Claude Code `marketplace.json` or a catalog
@@ -114,8 +114,8 @@ stateDiagram-v2
 ## Install
 
 You need Go 1.26 or later, [Task](https://taskfile.dev) (the task runner that builds lola;
-its site lists ways to install it), and git. `go.mod` pins toolchain
-go1.26.10, which fixes a reachable standard-library vulnerability; Go fetches it automatically
+its site lists ways to install it), and git. `go.mod` pins a toolchain
+release that fixes a reachable standard-library vulnerability; Go fetches it automatically
 unless `GOTOOLCHAIN=local` is set, as some distribution packages do (`go env -w
 GOTOOLCHAIN=auto` re-enables it). `task lint` and `task vuln` build their pinned
 golangci-lint and govulncheck into `.tools/bin` with the Go on your PATH the first time they
@@ -252,3 +252,6 @@ own place for it: [docs/reference/completion.md](docs/reference/completion.md#se
   keeps and the binary.
 - [docs/architecture.md](docs/architecture.md): how lola works, for contributors.
 - [docs/decisions.md](docs/decisions.md): where this build departs from the upstream ADRs.
+- [docs/template_engine_analysis.md](docs/template_engine_analysis.md): why templates use
+  Liquid, and the engines that were weighed against it.
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release.

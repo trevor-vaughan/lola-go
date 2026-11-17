@@ -1,5 +1,7 @@
 # Architecture
 
+For maintainers; back to the [README](../README.md).
+
 <!-- docs-audit decisions (2026-10-28):
      - SPLIT_CANDIDATE declined: a maintainer explanation doc that contributors search and
        cross-link by anchor; one file serves that better than several. GitHub's outline gives
@@ -78,42 +80,45 @@ Each interactive surface as a state machine: its screens, transitions and exits.
   called only where a prompt line or form is drawn: `app.ask`, `huhForms.Ask`'s accessible branch
   and `huhForms.runIn`, which on a full terminal draws it once per run of forms (`huhForms.ruled`,
   cleared by a question).
-- Progress: `engine.Options.Progress` (an `engine.Progress`; also `ChoicesRequest.Progress` and
-  `Engine.Update`'s argument) is told each slow step a run starts. `Step` takes the ordinary ones:
-  a source fetched or read (`resolveVersion` in a sync, `resolve` in an install, `lola cache
-  update`), counted `(3/12)` among the run's modules, a module rendered, an assistant run for its
-  version on a probe-cache miss. These are where measured runs spend their time; the fetch
-  dominates. `Hold` takes a step that hands the terminal on: a script or hook (not kept), which
-  gets `HookOutput`, the real stderr, untouched; a fetch or reachability check through ssh
-  (`source.UsesSSH`, kept), since ssh may ask for a passphrase or a host key on the terminal.
-  The CLI's `app.progress` (`internal/cli/progress.go`) shows them on stderr: under `--json` or
-  `--plain`, or off a terminal, nothing; in accessible mode a line per step, held ones too;
-  otherwise one line it redraws, nothing for 300ms after the run (or the last output) began, then
-  at most every 100ms (`WithProgressPace` in specs), cut to the terminal's width at each draw (80
-  when unknown). A held step clears the line and cancels any pending draw; a kept one is then
-  printed as a line that stays; nothing draws until the next `Step`. Nothing else is written over
-  the line: `app.holdProgress` clears it, and restarts the delay when the output is done, at the
-  start of every form and question (`huhForms.runIn`, `app.ask`), every printed or paged report
-  (`app.pageThen`, which `app.emit` and the trust diff print through) and the engine callbacks
-  that print without asking (`app.receipt` under `-y` or off a terminal, `ShowResolved`). Every
-  other callback a progress-wired run makes (`Ask`, `AskScript`, `AskRuntimeHooks`, `AskWhere`,
-  `Trust`, `ConfirmRemovals`, `ConfirmBack`, `ConfirmThen`, `Show`) asks or pages first, and its
-  echo lines print after that. Each caller defers `done` over the engine call and also runs it as
-  the call returns, before an error or a refusal prints. Streams are never wrapped: terminal
-  checks, the forms, the pager and the hooks need the `*os.File`.
-- State versus event: `isState` (`internal/engine/seen.go`) is the allowlist of findings that say
-  what a module is; `safetyKey` keys an artifact `--force` rendered (`Finding.Forced`) apart from
-  the same artifact skipped. `markNew` runs in `prepare` against `lock.json` as the run read it, and
-  `markEvents` at the end of `InstallAll`, `Sync` and `Uninstall` marks the rest new. The entries a
-  run builds carry `Safety`, which `plan.Apply` writes, so a run that changes nothing records too
-  and the record does not depend on the output mode. Runtime hooks are a state fact too:
-  `consentRuntimeHooks` adds each hook's `runtimeHookKey` (module, settings file, the hook as
-  consent shows it, and `declined`, or `granted` for granted and consented alike) to the entry,
-  sets `RuntimeHook.New` from it (a hook consented in an earlier run is never new) and the
-  `runtime-hooks-declined` findings' `New` from their destination's hooks, and drops what
-  `--force` rendered of the declined intents, since nothing was rendered. The consent digest
-  keeps the module version, so a new version asks again; the key leaves it out, so an unchanged
-  hook asked about again stays seen.
+- Progress: `engine.Options.Progress` (an `engine.Progress`; also `ChoicesRequest.Progress` and `Engine.Update`'s argument) is told each slow step a run starts.
+  - `Step` takes the ordinary ones: a source fetched or read (`resolveVersion` in a sync, `resolve` in
+    an install, `lola cache update`), counted `(3/12)` among the run's modules, a module rendered, an
+    assistant run for its version on a probe-cache miss.
+  - These are where measured runs spend their time; the fetch dominates.
+  - `Hold` takes a step that hands the terminal on: a script or hook (not kept), which gets
+    `HookOutput`, the real stderr, untouched; a fetch or reachability check through ssh
+    (`source.UsesSSH`, kept), since ssh may ask for a passphrase or a host key on the terminal.
+  - The CLI's `app.progress` (`internal/cli/progress.go`) shows them on stderr: under `--json` or
+    `--plain`, or off a terminal, nothing; in accessible mode a line per step, held ones too;
+    otherwise one line it redraws, nothing for 300ms after the run (or the last output) began, then at
+    most every 100ms (`WithProgressPace` in specs), cut to the terminal's width at each draw (80 when
+    unknown).
+  - A held step clears the line and cancels any pending draw; a kept one is then printed as a line
+    that stays; nothing draws until the next `Step`.
+  - Nothing else is written over the line: `app.holdProgress` clears it, and restarts the delay when
+    the output is done, at the start of every form and question (`huhForms.runIn`, `app.ask`), every
+    printed or paged report (`app.pageThen`, which `app.emit` and the trust diff print through) and
+    the engine callbacks that print without asking (`app.receipt` under `-y` or off a terminal,
+    `ShowResolved`).
+  - Every other callback a progress-wired run makes (`Ask`, `AskScript`, `AskRuntimeHooks`,
+    `AskWhere`, `Trust`, `ConfirmRemovals`, `ConfirmBack`, `ConfirmThen`, `Show`) asks or pages first,
+    and its echo lines print after that.
+  - Each caller defers `done` over the engine call and also runs it as the call returns, before an
+    error or a refusal prints.
+  - Streams are never wrapped: terminal checks, the forms, the pager and the hooks need the
+    `*os.File`.
+- State versus event: `isState` (`internal/engine/seen.go`) is the allowlist of findings that say what a module is; `safetyKey` keys an artifact `--force` rendered (`Finding.Forced`) apart from the same artifact skipped.
+  - `markNew` runs in `prepare` against `lock.json` as the run read it, and `markEvents` at the end of
+    `InstallAll`, `Sync` and `Uninstall` marks the rest new.
+  - The entries a run builds carry `Safety`, which `plan.Apply` writes, so a run that changes nothing
+    records too and the record does not depend on the output mode.
+  - Runtime hooks are a state fact too: `consentRuntimeHooks` adds each hook's `runtimeHookKey`
+    (module, settings file, the hook as consent shows it, and `declined`, or `granted` for granted and
+    consented alike) to the entry, sets `RuntimeHook.New` from it (a hook consented in an earlier run
+    is never new) and the `runtime-hooks-declined` findings' `New` from their destination's hooks, and
+    drops what `--force` rendered of the declined intents, since nothing was rendered.
+  - The consent digest keeps the module version, so a new version asks again; the key leaves it out,
+    so an unchanged hook asked about again stays seen.
 
 ## Plans and the ledger
 
@@ -125,21 +130,21 @@ Maintainer notes on Templates. It has its own page: [Templates](architecture/tem
 
 ## Targets
 
-- **A target is a YAML spec** (`internal/targetspec/specs`) that the generic target in
-  `internal/target/spec` renders through `internal/target/mech` mechanisms, one per artifact
-  kind, with `internal/target/policy` supplying lola's severities, guards and hints. It implements
-  the contract in `internal/target`; `internal/targets` registers the built-in specs in a fixed
-  order (no `init()` registration). `targets.Load(paths.Paths)` also reads the user's specs from
-  `paths.Paths.Targets` (`*.yaml`; `.yml` refused) and returns the `Registry` (built-ins in
-  their order, a user spec of a built-in's id in its place, then user-only ids sorted); the CLI
-  calls it once before it builds the command tree and passes the `Registry` down. A load error is
-  fatal for every command and never falls back to a built-in. The CLI prints `note: <id> uses
-  your target spec …` once per replaced built-in (human output), and the engine adds the info
-  finding `target/user-spec`. User-writing guide: [Target specs](guides/target-specs.md). A
-  `depguard` rule in `.golangci.yml` lets these packages import only the contract (exactly),
-  `module`, `paths`, `plan`, `targetspec`, `untrusted`, the standard library and their vetted
-  third-party packages (`yaml`, `toml`, `semver`), never the engine, the CLI or lola's state; a
-  second rule keeps `mech` from importing `spec` or `policy`.
+- **A target is a YAML spec** (`internal/targetspec/specs`) that the generic target in `internal/target/spec` renders through `internal/target/mech` mechanisms, one per artifact kind, with `internal/target/policy` supplying lola's severities, guards and hints.
+  - It implements the contract in `internal/target`; `internal/targets` registers the built-in specs
+    in a fixed order (no `init()` registration).
+  - `targets.Load(paths.Paths)` also reads the user's specs from `paths.Paths.Targets` (`*.yaml`;
+    `.yml` refused) and returns the `Registry` (built-ins in their order, a user spec of a built-in's
+    id in its place, then user-only ids sorted); the CLI calls it once before it builds the command
+    tree and passes the `Registry` down.
+  - A load error is fatal for every command and never falls back to a built-in.
+  - The CLI prints `note: <id> uses your target spec …` once per replaced built-in (human output), and
+    the engine adds the info finding `target/user-spec`.
+  - User-writing guide: [Target specs](guides/target-specs.md).
+  - A `depguard` rule in `.golangci.yml` lets these packages import only the contract (exactly),
+    `module`, `paths`, `plan`, `targetspec`, `untrusted`, the standard library and their vetted
+    third-party packages (`yaml`, `toml`, `semver`), never the engine, the CLI or lola's state; a
+    second rule keeps `mech` from importing `spec` or `policy`.
 - **Scope and root.** `Detect(scope, root)` gets the target's root for the scope, and
   `PlanContext.Root` carries it into `Plan`. OpenCode needs both: its user-scope root is its own
   config directory, whose existence marks it as set up, and it writes to `opencode.jsonc` when
@@ -189,73 +194,81 @@ Maintainer notes on Templates. It has its own page: [Templates](architecture/tem
   differently (`module.Doc.Ambiguous`). Renderers render through `Admit`, so the table is both
   what lola checks and what it does. Value-dependent checks stay in the target's code and
   return the same findings.
-- **Probes.** `Detect` combines a binary lookup over the absolute `PATH` entries
-  (`paths.Paths.Search`; relative entries are ignored, so a repository cannot plant a binary)
-  with the target's project markers, and executes nothing. Install, sync and check run each
-  participating assistant once with its version arguments (`Engine.ProbeTimeout`, no shell),
-  reading at most 4 KiB of its output, cached per binary build in
-  `$XDG_CACHE_HOME/lola/probes.json`. A spec lists its probe methods and `read` (`internal/engine/probe.go`)
-  tries them in order: an `exec` method as above, a `file` method by reading a regular file of at
-  most 1 MiB under the home, config or data directory (its `match` group, or the string at its JSON
-  `pointer`). A method whose binary or file is missing is passed over; the first one that fails
-  is the `probe/unknown-version` finding when none yields a version, else it is `probe/not-found`, naming the first missing exec binary when the
-  spec has an exec method, otherwise the first missing file. The declared version selects the era a scope renders for; the probed one only
-  adds findings (`version/era-mismatch`, `version/undeclared`, `version/before-first-era`), so
-  output is the same on every machine.
-- **Eras.** `targets.Registry` builds one target per era of each spec (`spec.At`), oldest first;
-  `Registry.All` and `Lookup` return the newest. `Registry.For(id, version)` returns the target
-  for the era a version selects (`targetspec.Spec.Select`: the last era whose `since` is at or
-  below it; a version below the first selects the first, and `Registry.Era` reports that), and
-  `""` selects the newest. `Engine.declared` reads a scope's `target_versions` (the manifest's at
-  project scope, `config.yaml`'s at user scope; `Manifest.TargetVersions`, `Config.TargetVersions`)
-  and refuses an id the registry lacks. Each plan binds the declared era per scope
-  (`Engine.atEra`), so the `target.Target` interface and `PlanContext` carry no version.
-- **Version recording.** `engine/versions.go` decides what an install records. `VersionChoices`
-  lists the questions: targets with more than one era, with era labels newest first, the probed
-  version, the version the scope declares (asked about only by the review's "Change versions"),
-  and per era the values of the modules installed it drops that another era keeps
-  (`eraDrops`); the declared era, else the installed one at a standard scope (the user scope, or
-  the project `FoundHere` reports), is preselected. `WrittenFor` is the era the modules installed
-  in a scope (but the run's) are written for, per target: the install flow asks no question and
-  offers no "Change versions" for it (`installFlow.heldEras`). `InstallAll` refuses an install
-  whose era differs from theirs (`staleEras`, `Engine.eraConflict`), hinting the run for their era
-  and the run with `--force`, under which it rewrites them in the same run (`eraSynced`). The
-  review's `versionLines` say per destination which era is written for and why. `DefaultVersions` is the
-  no-terminal answer (installed version at a standard scope, nothing when not installed) and the
-  coached refusal at any other directory. `Records` keeps the versions a scope does not declare
-  already, and the plan writes them to the manifest (with the files, in the install's
-  transaction) or to `config.yaml` (after the files, `scopePlan.saveVersions`), reporting
-  `recorded ...` or `changed ...` notices (`would record ...` under `-n`), class detail, which
-  name the era written for and the installed version (`Engine.versionNotices`); the same function
-  says when an assistant with eras is not installed at a standard scope, so nothing is recorded.
-  `Engine.eraChoices` warns (`version/chosen-era`) of a version recorded at a standard scope for
-  another era than the installed assistant's, after `--strict` judged the plan's findings;
-  `--strict` refuses a scope's `version/era-mismatch` when the install writes files there.
-  `InstallResult.TargetVersions` lists the recordings (their source from
-  `ScopeInstall.Sources`), and `SyncResult.Rewrites` the era rewrites (`Engine.eraRewrites`).
-  The CLI (`flow.go`) takes
-  `-t <id>@<version>`, else asks, else calls `DefaultVersions`; `-y` and `--force` skip the
-  question. The probe's `version/era-mismatch` and `version/undeclared` are suppressed outside a
-  standard scope, and `version/era-mismatch` in the run that records a version it is given
-  (`probeRun.chosen`); the probe keeps that one per scope (`probeRun.mismatched`), which install
-  and sync report only for a scope they write files in, and lola check always. A frontmatter value the era written for drops and another era keeps
-  (`target.Finding.Key`, admitted again through that era's capabilities by `Engine.keptBy`) gets
-  `KeptSince`, a text naming the value and the era written for, and a first hint from
-  `Options.EraRun(scope, id, since)`: the install's run at that scope with that era's `-t`, or the
-  review's "Change versions"; without one (sync, update, lola check), the edit of
-  `target_versions` and the sync that applies it (`Engine.versionsEdit`). `Engine.keptByEra` is
-  the one formatter, for every command that plans; such a finding prints in full, never in a
-  module's notice count, and has no keep-it hint where `version/chosen-era` warns of its target
-  (`Engine.warnsOfEra`). A `-C` or Other directory the run created is removed again, saying so
-  (`installFlow.removeAbandoned`; `removeCreated` removes only empty directories, never a file or
-  symlink in one's place: it rmdirs), unless the install applied there. A missing `-C` directory
-  is refused before it is made when the run would not ask a version it needs
-  (`installFlow.ensureRoot`). A hint naming an assistant with eras for a directory that declares
-  none names each era's version (`ensureAssistants`'s, `Engine.targetRuns`). `trust.View` holds
-  project.yml's `target_versions`, accepted with the top-level targets but reported on its own
-  (`trust.Report.TargetVersions`, `TrustReport.topChanged` for what installs to them). The refusal's hints, one
-  per era (`Engine.EraHints`), rebuild the run (`installFlow.versionRun`) with every assistant it
-  installs for in one `-t`.
+- **Probes.** `Detect` combines a binary lookup over the absolute `PATH` entries (`paths.Paths.Search`; relative entries are ignored, so a repository cannot plant a binary) with the target's project markers, and executes nothing.
+  - Install, sync and check run each participating assistant once with its version arguments
+    (`Engine.ProbeTimeout`, no shell), reading at most 4 KiB of its output, cached per binary build in
+    `$XDG_CACHE_HOME/lola/probes.json`.
+  - A spec lists its probe methods and `read` (`internal/engine/probe.go`) tries them in order: an
+    `exec` method as above, a `file` method by reading a regular file of at most 1 MiB under the home,
+    config or data directory (its `match` group, or the string at its JSON `pointer`).
+  - A method whose binary or file is missing is passed over; the first one that fails is the
+    `probe/unknown-version` finding when none yields a version, else it is `probe/not-found`, naming
+    the first missing exec binary when the spec has an exec method, otherwise the first missing file.
+  - The declared version selects the era a scope renders for; the probed one only adds findings
+    (`version/era-mismatch`, `version/undeclared`, `version/before-first-era`), so output is the same
+    on every machine.
+- **Eras.** `targets.Registry` builds one target per era of each spec (`spec.At`), oldest first; `Registry.All` and `Lookup` return the newest.
+  - `Registry.For(id, version)` returns the target for the era a version selects
+    (`targetspec.Spec.Select`: the last era whose `since` is at or below it; a version below the first
+    selects the first, and `Registry.Era` reports that), and `""` selects the newest.
+  - `Engine.declared` reads a scope's `target_versions` (the manifest's at project scope,
+    `config.yaml`'s at user scope; `Manifest.TargetVersions`, `Config.TargetVersions`) and refuses an
+    id the registry lacks.
+  - Each plan binds the declared era per scope (`Engine.atEra`), so the `target.Target` interface and
+    `PlanContext` carry no version.
+- **Version recording.** `engine/versions.go` decides what an install records.
+  - `VersionChoices` lists the questions: targets with more than one era, with era labels newest
+    first, the probed version, the version the scope declares (asked about only by the review's
+    "Change versions"), and per era the values of the modules installed it drops that another era
+    keeps (`eraDrops`); the declared era, else the installed one at a standard scope (the user scope,
+    or the project `FoundHere` reports), is preselected.
+  - `WrittenFor` is the era the modules installed in a scope (but the run's) are written for, per
+    target: the install flow asks no question and offers no "Change versions" for it
+    (`installFlow.heldEras`).
+  - `InstallAll` refuses an install whose era differs from theirs (`staleEras`, `Engine.eraConflict`),
+    hinting the run for their era and the run with `--force`, under which it rewrites them in the same
+    run (`eraSynced`).
+  - The review's `versionLines` say per destination which era is written for and why.
+  - `DefaultVersions` is the no-terminal answer (installed version at a standard scope, nothing when
+    not installed) and the coached refusal at any other directory.
+  - `Records` keeps the versions a scope does not declare already, and the plan writes them to the
+    manifest (with the files, in the install's transaction) or to `config.yaml` (after the files,
+    `scopePlan.saveVersions`), reporting `recorded ...` or `changed ...` notices (`would record ...`
+    under `-n`), class detail, which name the era written for and the installed version
+    (`Engine.versionNotices`); the same function says when an assistant with eras is not installed at
+    a standard scope, so nothing is recorded.
+  - `Engine.eraChoices` warns (`version/chosen-era`) of a version recorded at a standard scope for
+    another era than the installed assistant's, after `--strict` judged the plan's findings;
+    `--strict` refuses a scope's `version/era-mismatch` when the install writes files there.
+  - `InstallResult.TargetVersions` lists the recordings (their source from `ScopeInstall.Sources`),
+    and `SyncResult.Rewrites` the era rewrites (`Engine.eraRewrites`).
+  - The CLI (`flow.go`) takes `-t <id>@<version>`, else asks, else calls `DefaultVersions`; `-y` and
+    `--force` skip the question.
+  - The probe's `version/era-mismatch` and `version/undeclared` are suppressed outside a standard
+    scope, and `version/era-mismatch` in the run that records a version it is given
+    (`probeRun.chosen`); the probe keeps that one per scope (`probeRun.mismatched`), which install and
+    sync report only for a scope they write files in, and lola check always.
+  - A frontmatter value the era written for drops and another era keeps (`target.Finding.Key`,
+    admitted again through that era's capabilities by `Engine.keptBy`) gets `KeptSince`, a text naming
+    the value and the era written for, and a first hint from `Options.EraRun(scope, id, since)`: the
+    install's run at that scope with that era's `-t`, or the review's "Change versions"; without one
+    (sync, update, lola check), the edit of `target_versions` and the sync that applies it
+    (`Engine.versionsEdit`).
+  - `Engine.keptByEra` is the one formatter, for every command that plans; such a finding prints in
+    full, never in a module's notice count, and has no keep-it hint where `version/chosen-era` warns
+    of its target (`Engine.warnsOfEra`).
+  - A `-C` or Other directory the run created is removed again, saying so
+    (`installFlow.removeAbandoned`; `removeCreated` removes only empty directories, never a file or
+    symlink in one's place: it rmdirs), unless the install applied there.
+  - A missing `-C` directory is refused before it is made when the run would not ask a version it
+    needs (`installFlow.ensureRoot`).
+  - A hint naming an assistant with eras for a directory that declares none names each era's version
+    (`ensureAssistants`'s, `Engine.targetRuns`).
+  - `trust.View` holds project.yml's `target_versions`, accepted with the top-level targets but
+    reported on its own (`trust.Report.TargetVersions`, `TrustReport.topChanged` for what installs to
+    them).
+  - The refusal's hints, one per era (`Engine.EraHints`), rebuild the run (`installFlow.versionRun`)
+    with every assistant it installs for in one `-t`.
 - **Ledger eras.** `ledger.Entry.Eras` maps each target a module renders for to the `since` of the
   era it was written for (`"eras": {"opencode": "1.0"}` in `lock.json`); an entry without a
   target's era means its newest era. The sync plan (`templates.go`) compares it with the era the

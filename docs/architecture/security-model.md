@@ -1,5 +1,7 @@
 # Security model
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Security model. It is split out of [architecture](../architecture.md).
 
 - **Trust kinds cannot widen.** Each kind answers a fixed set of questions.

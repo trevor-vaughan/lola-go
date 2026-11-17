@@ -1,5 +1,7 @@
 # Fetching sources
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Fetching sources. It is split out of [architecture](../architecture.md).
 
 `source.Parse` classifies an argument: a URL (`://`, but `file://`) or git's scp form (a Windows

@@ -1,5 +1,7 @@
 # Sync
 
+Back to the [README](../../README.md).
+
 How `lola sync` works. It is split out of [architecture](../architecture.md).
 
 ```mermaid
@@ -331,7 +333,9 @@ printed.
 keys; under the text a bold rule (`rule`: `━━ lines 41–80 of 312 · ↓ 232 more`, `· end` at the last
 line), then the key line (`keyLine`, wrapped between keys to two rows when one does not hold it and cut
 from the right of the second, its rows fixed while a search runs (`keyRows`); `keyLineFor` builds it from
-`viewerKeys`, each entry tagged with the modes it shows in). It has three modes. Read mode scrolls
+`viewerKeys`, each entry tagged with the modes it shows in).
+
+It has three modes. Read mode scrolls
 and searches; `q`, Esc close it and Ctrl+C cancels (`viewCancel`). Continue mode, when `then` names
 the question asked next, puts `q  continue to: <then>` first in the key line. Prompt mode (`prompt`
 is the `Question`) puts the prompt line between the rule and the keys: only its answer letters,
@@ -341,13 +345,17 @@ prompt line is drawn alone, under text lola printed before the program: no viewp
 screen.
 
 `app.view(cmd, content, then)` runs the read or continue mode on stdout, on the alternate screen, and
-prints the text there after it quits. Questions go through `app.ask` (`internal/cli/ask.go`), which
+prints the text there after it quits.
+
+Questions go through `app.ask` (`internal/cli/ask.go`), which
 renders the question's text, then picks by the fit rule (`fits`, with `promptRows` for the prompt
 line at its widest): through a `$LOLA_PAGER`, the text goes to that pager and the prompt is inline
 after it; when text and prompt fit, the text is printed and the prompt is inline; otherwise the
 viewer runs in prompt mode on stderr. `askIn` runs the model, prints the text and answered prompt
 line after the viewer's alternate screen so both stay in scrollback, and maps the result to the
-letter, `ErrBack`, a quit or `ErrAborted`. Inline, the done model's last frame ends in a newline,
+letter, `ErrBack`, a quit or `ErrAborted`.
+
+Inline, the done model's last frame ends in a newline,
 because bubbletea erases from the last row of the last frame down when the program ends. The program reads the command's stdin: a terminal
 `os.Stdin` is wrapped in `eofFile` and passed in, so the end of input is seen; only an `os.Stdin`
 that is not a terminal falls back to bubbletea opening the terminal.

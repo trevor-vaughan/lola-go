@@ -1,9 +1,11 @@
 # `config.yaml` and `selections.yaml`
 
+A guide for lola users; back to the [README](../../README.md).
+
 What lola keeps in `config.yaml` and `selections.yaml`. It is split out of [choosing-what-to-install](choosing-what-to-install.md).
 
 Both live in `$XDG_CONFIG_HOME/lola/` (normally `~/.config/lola/`), are safe to edit by hand,
-and are checked strictly: unknown keys, wrong types, unknown kinds, bad globs, relative or
+and are checked strictly: unknown keys, wrong types, unknown kinds (a selector's kind is `skill`, `command`, `agent`, `mcp` or `rule`), bad globs, relative or
 `~` project keys, a `git:` key without `#<dir>`, two keys for one project, control or format characters in selector names,
 an `include` in the `global` section, anchors, aliases and merge keys, and files over
 1 MiB are errors that name the file, line and key, with a hint.
@@ -11,7 +13,7 @@ an `include` in the `global` section, anchors, aliases and merge keys, and files
 ```yaml
 # lola settings. Safe to edit by hand.
 version: 1
-default_scope: project   # project | user | both; read off a terminal only
+default_scope: project   # project | user | both (both scopes); used only off a terminal
 pager: true              # false prints everything without lola's viewer
 pre_install: ~/bin/lola-pre.sh     # your own install scripts: absolute or ~/…, no trust asked
 post_install: ~/bin/lola-post.sh
@@ -20,8 +22,9 @@ cache_fresh_for: 1d      # lola update serves a ref fetched less long ago from y
 theme: dark              # your terminal's background, dark or light, for the pickers' colors
 ```
 
-`selections.yaml` says which components you do not want of the modules `project.yml` lists, and
-globally. A module a profile provides, `default.yml` included, takes its picks from its profile
+`selections.yaml` says which components you do not want of the modules your project's `project.yml`
+lists (see [Files lola keeps](../usage.md#files-lola-keeps)), and globally. A module a
+[profile](profiles.md) provides, `default.yml` included, takes its picks from its profile
 entry's `only:` and `skip:` instead (plus the global `skip:`): a profile carries what it installs,
 picks included, wherever it is switched on. At user scope every module comes from a profile, so
 `selections.yaml`'s global `only:` no longer applies there; the picks live in the entries
@@ -53,8 +56,8 @@ installs a match; the skips of `global` and of the scope; and one `only:` list �
 it has one, else `global`'s — which replaces the other (no intersection) and leaves out every
 component it does not match. `only: []` is no list. `global` has no includes. A selector naming
 a component the module no longer has is a warning that names its section. With `--global`,
-`--only` or `--unskip` cannot override a glob skip in `global` (it takes no include), so when one
-still skips a component you listed, lola warns, naming the glob and `selections.yaml`: remove
+`--only` and `--unskip` cannot override a glob skip in `global`, which takes no include, so when
+such a skip still leaves out a component you listed, lola warns, naming the glob and `selections.yaml`: remove
 the glob there.
 
 Project keys name the project by its repository when it is a git clone whose `origin` remote is on

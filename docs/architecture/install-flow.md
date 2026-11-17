@@ -1,5 +1,7 @@
 # Selections and the install flow
 
+Back to the [README](../../README.md).
+
 How selections work and how the install flow runs. It is split out of
 [architecture](../architecture.md).
 

@@ -1,5 +1,7 @@
 # Using lola
 
+For lola users; back to the [README](../README.md).
+
 <!-- Each command's reference lives in reference/<command>.md (`lola cache add` etc. are
      sections of reference/cache.md). This page keeps what the commands share. -->
 
@@ -13,27 +15,31 @@ The guides walk through one workflow each:
 [choosing what to install](guides/choosing-what-to-install.md), [target specs](guides/target-specs.md),
 [authoring modules](guides/authoring-modules.md), [templating](guides/templating.md),
 [sync and trust](guides/sync-and-trust.md), [profiles](guides/profiles.md),
-[remote profiles](guides/remote-profiles.md), [marketplaces](guides/marketplaces.md),
-[migrating from LobsterTrap/lola](guides/migrating.md) and [tidying](guides/tidying.md).
+[remote profiles](guides/remote-profiles.md), [bundles](guides/bundles.md),
+[config and selections](guides/config-and-selections.md), [install scripts](guides/install-scripts.md),
+[install trust kinds](guides/install-trust-kinds.md), [profile walkthroughs](guides/profile-walkthroughs.md),
+[syncing lola between machines](guides/syncing-lola-between-machines.md),
+[marketplaces](guides/marketplaces.md), [migrating from LobsterTrap/lola](guides/migrating.md) and
+[tidying](guides/tidying.md).
 
 ## Commands
 
 Every command takes the global flags: `--json` and `--plain` pick the
 [output](#output-contract), `--no-pager` prints without lola's [viewer](#output-contract), and
 `--project`, `--user`, `-C/--root <dir>` and `-s/--scope project|user|both` pick the
-[scope](guides/choosing-what-to-install.md#choosing-a-scope). Under "Refusals", each quoted
+[scope](guides/choosing-what-to-install.md#choosing-a-scope). Under "Refusals" on each command's page, each quoted
 message is what follows `error:`; a hint that runs a command repeats your run's output, scope,
 `-C`, `-t` and `-n` flags (the command a dry run ends with, which applies it, drops `-n`).
 
-It keeps your `-y` only where it runs what you asked at the one scope you asked it of: the command
+A hint keeps your `-y` only where it runs what you asked at the one scope you asked it of: the command
 your dry run ends with, or your command completed with the scope or assistant it lacked, or with
 an ambiguous profile name qualified. A hint that changes or narrows a scope you chose, names
 another profile or command, or is a dry run (`lola sync`'s `see them: … -n`, any of `lola
 tidy`'s under `-n`) leaves `-y` out.
 
-The exceptions are listed in the "Known limitations"
+The exceptions to these rules are listed in the "Known limitations"
 paragraph that ends the pages of [`lola sync`](reference/sync.md#lola-sync),
-[`lola profile`](reference/profile.md#lola-profile) and [Sources and the cache](#sources-and-the-cache).
+[`lola profile`](reference/profile.md#lola-profile) and [Sources and the cache](guides/sources-and-the-cache.md).
 
 Each command has its own page, in the order `lola help` lists them:
 
@@ -76,7 +82,7 @@ The targets are `claude-code` (Claude Code), `gemini-cli` (Gemini CLI), `opencod
 (OpenCode) and `agents` (skills only, into `.agents/skills`, which Codex, Cursor, Copilot, Amp,
 Gemini CLI and OpenCode read; see [the agents target](guides/choosing-what-to-install.md#skills-for-every-tool-the-agents-target)).
 `agents` has no command to look for: it is set up where `.agents/skills/` exists, lola offers it
-only there, and never beside an assistant that is set up.
+only there, and off a terminal never beside an assistant that is set up.
 
 When you do not pass `-t`, lola uses the manifest's targets. Otherwise it offers the assistants
 installed on your machine (their command, `claude`, `gemini` or `opencode`, is on your
@@ -95,8 +101,8 @@ lola runs an installed assistant once, with `--version`, to learn which version 
 caches the answer in `$XDG_CACHE_HOME/lola/probes.json` until the binary changes. What lola writes
 follows the version a scope declares, not this one (teammates on other versions get the same
 files); `lola install` can record the installed version as that declaration
-([Declaring assistant versions](#declaring-assistant-versions)), and otherwise lola only warns
-when your version lacks something the module uses.
+([Declaring assistant versions](#declaring-assistant-versions)), and otherwise lola warns
+when your installed version is in a different era from the declared one, or none is declared.
 
 What lands where for `claude-code`:
 
@@ -107,6 +113,7 @@ What lands where for `claude-code`:
 | Agents | `.claude/agents/<agent>.md` | `~/.claude/agents/` |
 | MCP servers | `.mcp.json` → `mcpServers.<name>` | `~/.claude.json` → `mcpServers.<name>` |
 | Rules | `.claude/rules/lola/<module>/<rule>.md` | `~/.claude/rules/lola/<module>/<rule>.md` |
+| Runtime hooks | `.claude/settings.local.json` | `~/.claude/settings.json` |
 
 For `gemini-cli` (user scope: the same paths under `~`):
 
@@ -167,26 +174,30 @@ target_versions:
   `.lola/project.yml` cannot be.
 - lola probes the installed version (`probe/*`) and warns when its era differs from the declared
   one (`version/era-mismatch`) or when nothing is declared for an assistant not on the newest era
-  (`version/undeclared`). The probe never changes what lola writes. These two warnings are raised
-  only for the user scope and for the project lola runs in (the nearest parent with `.lola/`, else
-  the working directory); this machine's assistant says nothing of the one that reads a project in
-  another directory. The install that records a version you chose raises no `version/era-mismatch`
-  (it warns of the choice once, `version/chosen-era`), and a run that writes no files raises none.
+  (`version/undeclared`).
+  - The probe never changes what lola writes.
+  - These two warnings are raised only for the user scope and for the project lola runs in (the
+    nearest parent with `.lola/`, else the working directory); this machine's assistant says
+    nothing of the one that reads a project in another directory.
+  - The install that records a version you chose raises no `version/era-mismatch` (it warns of
+    the choice once, `version/chosen-era`), and a run that writes no files raises none.
 - `lock.json` records the era each module's files were written for. After you change a declared
   version, `lola sync` rewrites the modules written for another era into the new era's paths,
-  removes the old files and says so: `<module>: rewrote opencode files from >=2.0 to >=1.0
-  <2.0` (`would rewrite` under `-n`), ending `— no file changes` when the
-  module's files are the same byte for byte for both (JSON `rewrites` still lists it). A value the
-  new version drops that another keeps is printed in full, as install prints it (below), its first
-  hint the edit that keeps it: `keep it by writing for opencode >=1.0 <2.0: set
-  target_versions.opencode to "1.0" in .lola/project.yml, then: lola sync --project`. The hint
-  carries no `--trust`: that sync shows the edit before it applies it, asking on a terminal and,
-  off one, refusing with the diff and its own `--trust=entries` run. `lola check` prints the same
-  for a module the scope installs; for any other, which a sync would not touch, the hint is the
-  install for that version (`lola install ./mod --project -t opencode@1.0`). A sync with nothing
-  to write counts such values once per module instead (`mod: 1 value dropped — lola check
-  --project mod`), and so does an install of a module already up to date, which says `✓ mod already
-  up to date (opencode)`; `-v` prints them in full.
+  removes the old files and says so:
+  - `<module>: rewrote opencode files from >=2.0 to >=1.0
+    <2.0` (`would rewrite` under `-n`), ending `— no file changes` when the module's files are
+    the same byte for byte for both (JSON `rewrites` still lists it).
+  - A value the new version drops that another keeps is printed in full, as install prints it
+    (below), its first hint the edit that keeps it: `keep it by writing for opencode >=1.0
+    <2.0: set target_versions.opencode to "1.0" in .lola/project.yml, then: lola sync --project`.
+  - The hint carries no `--trust`: that sync shows the edit before it applies it, asking on a
+    terminal and, off one, refusing with the diff and its own `--trust=entries` run.
+  - `lola check` prints the same for a module the scope installs; for any other, which a sync
+    would not touch, the hint is the install for that version (`lola install ./mod --project
+    -t opencode@1.0`).
+  - A sync with nothing to write counts such values once per module instead (`mod: 1 value
+    dropped — lola check --project mod`), and so does an install of a module already up to date,
+    which says `✓ mod already up to date (opencode)`; `-v` prints them in full.
 
 #### Picking a version at install
 
@@ -203,15 +214,18 @@ or removed), trusted as `entries: target_versions`; `targets` is untouched by a 
 
 - `-t <id>@<version>` names it: `lola install ./kit -t opencode@1.19`, or for a project in another
   directory `lola install ./kit -C /srv/app -t opencode@1.19`. It must be a version for a target
-  lola knows, no older than its first era: `-t opencode@next`, `-t opencode@0.5`, `-t opencode@`
-  and two versions for one target are refused with your command for each version as hints (and,
-  for `opencode@`, without one). A second version after a comma (`-t opencode@2.0,1.0`) reads as
-  an assistant and is refused with `one version per assistant: lola install ./kit -t opencode@2.0`. A value with no id (`-t @1.0`, `-t @`) is refused with your
-  command for each target it may mean, without another version given for it. One version given twice, written two ways (`-t opencode@1.0 -t
-  opencode@1.0.0`), is one. A version above the newest era's major is taken, saying `opencode 99 is
-  newer than any opencode lola knows; files are written for opencode >=2.0`. A target with
-  one era (`-t claude-code@1.0`) takes any version and records nothing: `claude-code's files are
-  the same for every version lola knows; nothing recorded`.
+  lola knows, no older than its first era:
+  - `-t opencode@next`, `-t opencode@0.5`, `-t opencode@` and two versions for one target are
+    refused with your command for each version as hints (and, for `opencode@`, without one).
+  - A second version after a comma (`-t opencode@2.0,1.0`) reads as an assistant and is refused
+    with `one version per assistant: lola install ./kit -t opencode@2.0`.
+  - A value with no id (`-t @1.0`, `-t @`) is refused with your command for each target it may
+    mean, without another version given for it.
+  - One version given twice, written two ways (`-t opencode@1.0 -t opencode@1.0.0`), is one.
+  - A version above the newest era's major is taken, saying `opencode 99 is newer than any
+    opencode lola knows; files are written for opencode >=2.0`.
+  - A target with one era (`-t claude-code@1.0`) takes any version and records nothing:
+    `claude-code's files are the same for every version lola knows; nothing recorded`.
 - With `-n`, a `-C` directory that does not exist yet is refused as the run it previews would be
   (below), with the same hints, `-n` kept; otherwise lola says `would create <dir>` and plans for
   it as an empty directory. A dry run that would change something ends with the run that applies
@@ -219,16 +233,17 @@ or removed), trusted as `entries: target_versions`; `targets` is untouched by a 
   added for a directory it would create); under `--json` it is `equivalent_commands`.
 - On a terminal, lola asks "Write `<id>` files for which version?" with one answer per era, newest
   first, each saying what it changes: `>=2.0 — agent colors must be hex (#rrggbb)`,
-  `>=1.0 <2.0 — agent colors may also be theme names such as accent`. In the user scope and
-  the project lola runs in, the era of the installed assistant is preselected (`installed here:
-  2.2.5`, `installed: 2.2.5` at user scope). For another directory nothing is preselected:
-  `installed on this machine: 2.2.5 — not assumed for /srv/app; pick the version used there`; with
-  the assistant not installed, nothing is either: `opencode is not installed here; pick the version
-  you will use`. The
-  review's "Change versions" asks these questions again, unnumbered; Esc there returns to the review
-  with the answers you had. In accessible mode (`LOLA_ACCESSIBLE=1`) the number prompt says what
-  Enter takes (`Type a number (Enter = 1, matches installed 2.2.5)`) and the answer, typed or taken
-  by Enter, is echoed (`→ >=2.0`).
+  `>=1.0 <2.0 — agent colors may also be theme names such as accent`.
+  - In the user scope and the project lola runs in, the era of the installed assistant is
+    preselected (`installed here: 2.2.5`, `installed: 2.2.5` at user scope).
+  - For another directory nothing is preselected: `installed on this machine: 2.2.5 — not
+    assumed for /srv/app; pick the version used there`; with the assistant not installed,
+    nothing is either: `opencode is not installed here; pick the version you will use`.
+  - The review's "Change versions" asks these questions again, unnumbered; Esc there returns to
+    the review with the answers you had.
+  - In accessible mode (`LOLA_ACCESSIBLE=1`) the number prompt says what Enter takes (`Type a
+    number (Enter = 1, matches installed 2.2.5)`) and the answer, typed or taken by Enter, is
+    echoed (`→ >=2.0`).
 - Off a terminal, and under `-y` or `--force` (which count as not asking), the user scope and the
   project lola runs in record the installed version; with the assistant not installed, nothing is
   recorded, lola writes for the newest era and says so:
@@ -241,27 +256,32 @@ or removed), trusted as `entries: target_versions`; `targets` is untouched by a 
   `which opencode version will read /srv/app? lola assumes the installed opencode only for the project you run it in, and /srv/app declares none`
   and one hint per version, your command with every assistant it installs for:
   `for opencode >=2.0: lola install ./kit -C /srv/app -t opencode@2.0`,
-  `for opencode >=1.0 <2.0: lola install ./kit -C /srv/app -t opencode@1.0`. A `-C`
-  directory that does not exist yet is refused before it is created, each hint the run that
-  creates it: `create it, for opencode >=2.0: lola install ./kit -C /srv/app -t opencode@2.0
-  -y`. A `-C` directory that does not exist with no `-t` (and no assistant the manifest fixes) is
-  refused before it is created too, since no assistant is set up there, each hint the run that
-  creates it for one: `create it, for opencode >=2.0: … -t opencode@2.0 -y`, `create it,
-  for agents: … -t agents -y`. Every hint that names an assistant for such a directory names its
-  version, one hint per version, so none leads to this refusal. An Other directory you created and then left (Esc,
-  another pick) is removed when the install applies elsewhere; the equivalent command of an
-  install that created its directory ends with `-y`; the hints printed after a run that created
-  its `-C` directory leave out the `-y` that created it.
+  `for opencode >=1.0 <2.0: lola install ./kit -C /srv/app -t opencode@1.0`.
+  - A `-C` directory that does not exist yet is refused before it is created, each hint the run
+    that creates it: `create it, for opencode >=2.0: lola install ./kit -C /srv/app -t opencode@2.0
+    -y`.
+  - A `-C` directory that does not exist with no `-t` (and no assistant the manifest fixes) is
+    refused before it is created too, since no assistant is set up there, each hint the run that
+    creates it for one: `create it, for opencode >=2.0: … -t opencode@2.0 -y`, `create it,
+    for agents: … -t agents -y`.
+  - Every hint that names an assistant for such a directory names its version, one hint per
+    version, so none leads to this refusal.
+  - An Other directory you created and then left (Esc, another pick) is removed when the install
+    applies elsewhere.
+  - The equivalent command of an install that created its directory ends with `-y`; the hints
+    printed after a run that created its `-C` directory leave out the `-y` that created it.
 - A frontmatter value the version written for drops and another version keeps is printed in full,
   never counted in the module's notices:
   `⚠ kit: opencode agent reviewer: color "accent" dropped — opencode >=2.0: agent colors must be hex (#rrggbb)`,
   hinting first `keep it by writing for opencode >=1.0 <2.0:` and your command with
-  `-t opencode@1.0` (`choose "Change versions"` in the review), then the module's own fix. Every
-  such hint runs at the scope the finding is for (`--user`, `--project`, or `-C` as you typed it).
-  When the install warns that the version you chose is not the one the installed assistant reads
-  (`version/chosen-era`, below), or that the assistant is not installed (above), the finding has no
-  keep-it hint: the warning's or the notice's gives that run. In a run of more than one scope
-  (`--scope both`), each module finding names its scope: `⚠ kit (project): …`, `⚠ kit (user): …`.
+  `-t opencode@1.0` (`choose "Change versions"` in the review), then the module's own fix.
+  - Every such hint runs at the scope the finding is for (`--user`, `--project`, or `-C` as you
+    typed it).
+  - When the install warns that the version you chose is not the one the installed assistant
+    reads (`version/chosen-era`, below), or that the assistant is not installed (above), the
+    finding has no keep-it hint: the warning's or the notice's gives that run.
+  - In a run of more than one scope (`--scope both`), each module finding names its scope:
+    `⚠ kit (project): …`, `⚠ kit (user): …`.
 
 The answer is saved in `target_versions` of `.lola/project.yml` (`config.yaml` at user scope) and
 reported as `recorded <id> <version> in <file> (target_versions): files are written for <id> <era>`.
@@ -342,10 +362,10 @@ A hint that tells the module's author what to change in its files is printed by 
 and kept in `--json`; `install`, `sync`, `update` and `lola profile` print only the rest (the
 `render it anyway:` run), since you may not be able to edit the module.
 
-A safety finding that has
-such a fix names first the `lola check` that prints it, for example `the module's own fix: lola
-check --project kit -t gemini-cli; or render it anyway: lola install kit --force`, when a check
-can name the version installed.
+A safety finding whose fix belongs to the module's author names first the `lola check` that
+prints that fix, for example `the module's own fix: lola check --project kit -t gemini-cli; or
+render it anyway: lola install kit --force`, whenever a `lola check` can name the module
+version installed.
 
 Each finding and notice has a **class**, `class` in `--json`. **safety** is what you need to
 know about your own machine and data: runtime hooks skipped or awaiting consent, native
@@ -373,7 +393,7 @@ each assistant, with the error's code: `template-too-large`, `template-invalid-u
 `template-undefined-filter`, `template-value-too-large`, `template-value-type`,
 `template-output-too-large`, `template-panic`, `template-frontmatter`,
 `template-frontmatter-fence`, `template-frontmatter-value`, `template-name-mismatch` and
-`template-rendered-check`. Install, sync, render and profile
+`template-rendered-check`. Install, sync, update and profile
 switches refuse on the first one instead. `template-timeout` and `template-run-budget` refuse
 the run, `lola check` included: they are never skip findings.
 
@@ -381,12 +401,14 @@ the run, `lola check` included: they are never skip findings.
 |---|---|---|---|
 | `kind-unsupported` | skip | no | The target has no place for this kind of artifact (in this build, `gemini-cli` and `opencode` for a module's runtime hooks, and `agents` for commands, agents, MCP servers, rules and runtime hooks). |
 | `name-rejected` | skip | yes | The target rejects the artifact's name (for `opencode`, also a skill whose `name` differs from its directory). |
+| `description-too-long` | skip | yes | The skill's description is over the character limit of the agentskills.io rules (1024). |
 | `required-key-missing` | skip | yes | A frontmatter key the target needs is absent, empty, or was dropped for having the wrong type. |
 | `agent-tools-unenforceable` | skip | yes | The agent restricts its tools in a way the target cannot enforce (`gemini-cli`: names that are not Gemini's; `opencode`: any non-blank `tools` value, list or string). The assistant would give the agent every tool, so it is left out unless `--force`, which installs it without the list. |
 | `frontmatter-invalid` | skip | no | The frontmatter parses but lola cannot re-encode it. |
 | `frontmatter-key-dropped` | warn or info | no | The target does not support a frontmatter key, so it is left out. |
 | `frontmatter-value-dropped` | warn | no | A frontmatter key has a value of the wrong type or form for the target (for example an OpenCode agent `color: red`, or a Gemini agent `max_turns: 1.5`), so it is left out. When another version of the assistant keeps the value, the finding names the value and the version written for, and its first hint keeps it: `lola install`'s command with `-t <id>@<version>` (`choose "Change versions"` in its review); `lola sync`'s and `lola check`'s, the edit of `target_versions` and the sync that applies it. |
 | `frontmatter/yaml-ambiguous` | warn | no | An unquoted frontmatter value that YAML parsers read differently; quote it. |
+| `<id>/metadata-not-string` | warn | no | A skill's `metadata` is not a map of string keys to string values. |
 | `vars-override` | skip | no | `lola check`: the scope's entry for the module checked sets a var the module does not declare, or one of another type; the module is checked with its defaults. |
 | `vars-defaults` | info | no | `lola check` could not read the scope's manifest or a profile, so every module is checked with its default vars. |
 | `picks-keyed-by-path` | warn | no | `lola check`: git could not read the project's clone, so its picks in `selections.yaml` are read under its path, not its repository; the hint is the `git config --global --add safe.directory` that trusts a repository git refuses as someone else's. |
@@ -450,7 +472,7 @@ report. Its sections come in this order, each under a header and left out when e
 7. The outcome (`✓ installed kit`, `✓ already in sync`).
 
 A dry run of `lola install`, `lola sync` or `lola update` that would change nothing prints only
-its outcome: `→ already in sync`, or for an install `→ kit already up to date (claude-code)`, as
+its outcome: `→ already in sync` (`→ already up to date` for `lola update`), or for an install `→ kit already up to date (claude-code)`, as
 the real run words it. A runtime hook waiting for your consent that you have not seen declined
 before, a warning or skip you have not seen, or a warning notice (a module from outside the project, other modules out of sync) is
 something to show: that dry run prints its full report. So, under `-v`, is any finding, notice or
@@ -529,12 +551,13 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 lola has no uninstaller of its own; you remove your modules, then what lola keeps, then the
 binary. Each step below was run against a throwaway `HOME`.
 
-1. Uninstall every module in each project and at user scope. `lola uninstall` takes several
-   names and has no "all" flag; `lola list` shows them. It removes the entries from
-   `project.yml` (or your default profile) and the files lola wrote, then the directories that
-   leaves empty, whoever made them (a `~/.claude/commands/` that held only lola's files goes, even
-   one you made), but never the assistant's root nor a directory directly in it, such as
-   `~/.claude/`, which stays even when empty.
+1. Uninstall every module in each project and at user scope.
+   - `lola uninstall` takes several names and has no "all" flag; `lola list` shows them.
+   - It removes the entries from `project.yml` (or your default profile) and the files lola
+     wrote, then the directories that leaves empty, whoever made them (a `~/.claude/commands/`
+     that held only lola's files goes, even one you made).
+   - It never removes the assistant's root or a directory directly in it, such as `~/.claude/`,
+     which stays even when empty.
 
    ```sh
    cd my-project && lola list && lola uninstall mod-a mod-b -y
@@ -552,8 +575,8 @@ binary. Each step below was run against a throwaway `HOME`.
    | `.lola/` in each project | `project.yml`, `lock.json` (empty of modules), `.gitignore`, an empty `modules/`, and `plugin-data/` with each module's data if a module used `${PLUGIN_DATA}` (uninstall keeps it and says where). `project.yml` is yours and may be committed; remove `.lola/` if you no longer want it. |
    | `$XDG_CONFIG_HOME/lola/` (`~/.config/lola/`) | Your settings (`config.yaml`), keep-list, marketplaces, target specs (`targets/`) and profiles, including `profiles/default.yml` (no modules left in it), `selections.yaml` with your component picks, and `pins.yaml` with its record of your remote profiles. |
    | `$XDG_DATA_HOME/lola/` (`~/.local/share/lola/`) | An empty `user-modules/`; remote profiles (`profiles/`), if you added any; `plugin-data/` with each user-scope module's data, if one used `${PLUGIN_DATA}`. |
-   | `$XDG_STATE_HOME/lola/` (`~/.local/state/lola/`) | `lock.json` (the user-scope ledger), `trust.json`, `consent.json` once you have consented to a hook, `locks/`, and `trash/` with every run of `lola tidy` and `lola migrate`. Look in `trash/` (`lola trash`) before deleting it: it is the only copy of what those commands moved. |
-   | `$XDG_CACHE_HOME/lola/` (`~/.cache/lola/`) | Empty `modules/` and `.staging/`, a `.lock` file, and any marketplace catalogs and probe results. |
+   | `$XDG_STATE_HOME/lola/` (`~/.local/state/lola/`) | `lock.json` (the user-scope ledger), `trust.json`, `consent.json` once you have consented to a hook, `shown.json`, `locks/`, and `trash/` with every run of `lola tidy` and `lola migrate`. Look in `trash/` (`lola trash`) before deleting it: it is the only copy of what those commands moved. |
+   | `$XDG_CACHE_HOME/lola/` (`~/.cache/lola/`) | Empty `modules/` and `.staging/`, a `.lock` file, and probe results. |
 
    lola honours an `XDG_*` value only when it is an absolute path; an unset, empty or relative
    one means the default under `$HOME` ([Environment](#environment)). The snippet below works
@@ -585,7 +608,8 @@ binary. Each step below was run against a throwaway `HOME`.
     `lola sync` and `lola update` it completes your own run, so it keeps the `--trust`, `--at`
     and `-y` you gave, and runs as printed.
   - `--force` also answers the destructive question itself (`install`'s review and the files a
-    pick change deletes, `sync`'s removals, `uninstall`, `lola profile --remove`, `lola migrate`, `lola tidy`), on a terminal
+    pick change deletes, `sync`'s and `update`'s removals, `uninstall`, `lola profile --remove`,
+    `--on`, `--off`, `--switch` and `--edit`, `lola migrate`, `lola tidy`), on a terminal
     or off one, so the hint runs as it is; a `lola sync` refusal whose run also removes modules
     says which (`with --force it also removes, without asking: other (whole module)`).
   - `--force` never answers a consent question: a forced run that needs your trust for a pulled

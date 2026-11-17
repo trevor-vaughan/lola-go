@@ -1,5 +1,7 @@
 # `lola update`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola update [<module>...]
 ```
@@ -9,8 +11,8 @@ now and render it. The sources are the ones `project.yml` and its active
 [profiles](../guides/profiles.md#profiles) name; a [marketplace](../guides/marketplaces.md#marketplaces)
 module follows its catalog, and `update` fetches the catalogs on every run. A ref fetched less than
 `cache_fresh_for` ago (`config.yaml`; one day unless it says otherwise) is served from your cache
-with no network contact; `--fetch` fetches every ref now. A head with no fetch time recorded counts
-as stale, and a folder source is read on every run.
+with no network contact; `--fetch` fetches every ref now. A ref whose fetched head (its tip) has no fetch time
+recorded counts as stale, and a folder source is read on every run.
 
 `update` installs and removes no module. A module no layer lists any more is left as
 installed with a `not-in-manifest` warning hinting `lola sync`, which would remove it. A module
@@ -28,7 +30,8 @@ this run installs)` and the paths, and in `--json` `removals` (each with `why`).
 <module>'s new version drops, and there is no terminal to ask on`), hinting the run with `-n` and
 with `-y`.
 
-`-y` or `--force` confirms them; `-n` lists them and writes nothing.
+`-y` or `--force` confirms them (`--force` answers only this destructive question, never a consent
+question); `-n` lists them and writes nothing.
 
 A JSON member (an MCP server, or a runtime hook entry) the new version no longer ships is not a
 removal: `update` deletes it from the JSON file without asking, as `lola sync` does, because lola
@@ -64,8 +67,8 @@ is refused before anything is written (`<module> has a new version no refusal sh
 carries `-y` only when every removal it would confirm is listed; that is the guarantee.
 
 While
-an installed entry is unread (one a pull changed, or one whose source failed to serve it, which
-a notice names), the hint has none, even if you gave `-y`, the message says `until it reads
+an installed entry is unread (lola has not read its new version: a pull changed it and nothing is
+fetched before you trust it, or its source failed to serve it, which a notice names), the hint has none, even if you gave `-y`, the message says `until it reads
 <module>, the removals listed may change, so -y waits until the next run lists them`, and the
 run it hints lists every removal and asks for `-y` then. A `-y` you type yourself on a hinted
 run confirms that run's removals, listed or not. In CI, pass `--trust` with the kinds you accept
@@ -74,7 +77,7 @@ run confirms that run's removals, listed or not. In CI, pass `--trust` with the 
 | Flag | What it does |
 |---|---|
 | `--fetch` (alias `--refresh`) | Fetch every ref now, however recently it was fetched. |
-| `--at <module>=<version>` | Install the module only at this version: a git module's commit (any case), or a folder's or archive's `sha256:<digest>` (the digest the diff prints). Repeatable; given twice alike it counts once. A run given it applies only the versions it names: one its source no longer serves, and any other module whose version would change, are refused, writing nothing. A refusal's hint adds one for each new version it showed. |
+| `--at <module>=<version>` | Install the module only at this version: a git module's commit (any case), or a folder's or archive's `sha256:<digest>` (the digest the trust diff shows). Repeatable; given twice alike it counts once. A run given it applies only the versions it names: one its source no longer serves, and any other module whose version would change, are refused, writing nothing. A refusal's hint adds one for each new version it showed. |
 | `-y`, `--yes` | Open no scope picker (the scope is the one found off a terminal, or the run is refused as it is there), and confirm removing the files a new version no longer ships; it never trusts a change. |
 | `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask, as `lola sync --trust` does (bare: `entries,profiles`); it never bypasses a refusal ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
 | `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines. Refused without one of those kinds in `--trust`; `--force` never implies it. |
@@ -84,7 +87,8 @@ run confirms that run's removals, listed or not. In CI, pass `--trust` with the 
 | `-n`, `--dry-run` | Print the plan and the trust diff, ask nothing and write nothing. At project scope nothing is written; at user scope a dry run may still publish what it fetched into your cache. |
 
 It takes no `-t` (each entry says its own assistants).
-Scope is `lola sync`'s: `-C`, `--user` or `--scope project|user|both`; `--scope both` updates the
+Scope is [`lola sync`'s](sync.md): `-C`, `--user` or `--scope project|user|both` (hints name the
+scope they run in: `--project` for the project found from where you are); `--scope both` updates the
 project, then user scope, and stops at the first that fails or is declined.
 
 Output says `updated <module>` for each module it moved or re-rendered, `already up to date` when
@@ -98,12 +102,12 @@ it did not fetch or install:
   lists that are not installed, which `update` never installs; `lola sync <names>` installs them.
   A module installed but no longer listed has its `not-in-manifest` warning instead.
 
-Both commands keep your scope and output flags, and `-n` for a dry run.
+The commands in both notices keep your scope and output flags, and `-n` for a dry run.
 
 Refusals: a named module that is not installed in the scope, hinting `lola sync <name>` when
 `project.yml` lists it and `lola install <name>`; a hand-edited file: `refusing to change
 anything: 1 conflict, which --force overrides`, hinting the run with `--force`; a tracked
-`.lola/lock.json`, as `lola list`'s; changes to trust off a terminal, as `lola sync`'s.
+`.lola/lock.json`, as [`lola list`'s](list.md); changes to trust off a terminal, as `lola sync`'s.
 
 A module whose fetch fails stays installed, and is reported as a `fetch-failed` warning hinting
 `lola update <name> --fetch`, after what the fetch itself says to fix first (the refs the
@@ -114,6 +118,9 @@ A folder module whose source folder is gone is rendered at the version installed
 reported as up to date: its `source-gone` warning says `<module>: source gone; not checked`, with
 the folder, and hints restoring it or `lola uninstall <module>` (your scope flags kept). `update`
 exits `1`, as for a failed fetch, and does not print `already up to date`.
+
+Exit status is `0` on success, on a dry run and when you decline a prompt, and `1` on any error,
+a refusal included ([Output contract](output-contract.md)).
 
 JSON: the shape of `lola sync`'s: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`,
 `removals`, `equivalent_commands` and the plan's `modules`, `steps`, `findings`, `notices` and

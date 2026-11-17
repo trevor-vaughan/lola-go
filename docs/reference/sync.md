@@ -1,5 +1,7 @@
 # `lola sync`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola sync [<module>...]
 ```
@@ -9,7 +11,8 @@ render the modules already installed at their installed versions, and remove the
 the run to those modules. Shows and asks about changes to `project.yml` and its active [project
 profiles](../guides/profiles.md#project-profiles) you have not trusted yet, entry by entry, paging the
 diff on a terminal ([Sync, pins and trust](../guides/sync-and-trust.md#sync-pins-and-trust)). `--scope
-both` syncs the project, then user scope.
+both` syncs the project, then user scope. The scope flags (`--scope`, `--project`, `--user`,
+`-C`) are global ([Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope)).
 
 Removals are the modules the manifest no longer lists, the assistants an entry no longer names,
 and the files lola wrote that a version the run installs no longer ships (a component a new pin,
@@ -29,7 +32,7 @@ rules](../usage.md#safety-rules).
 |---|---|
 | `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask: `entries` (the changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write), `profiles` (the changes to its active project profiles, and a project profile taking your profile's place), `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all`; bare `--trust` is `entries,profiles`, which run no code. It never bypasses a refusal ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
 | `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines. Refused without one of those kinds in `--trust`; `--force` never implies it. |
-| `-y`, `--yes` | Open no scope picker (the scope is the one found off a terminal, or the run is refused as it is there), and confirm removals, and only removals: it never trusts changes. |
+| `-y`, `--yes` | Open no scope picker (off a terminal the scope is found as [Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope) describes, or the run is refused with hints for the scope flags), and confirm removals, and only removals: it never trusts changes. |
 | `--update` | Fetch the refs again and re-pin the modules of the run. |
 | `--at <module>=<version>` | Install the module only at this version: a git module's commit (any case), or a folder's or archive's `sha256:<digest>` (the digest the diff prints). Repeatable; given twice alike it counts once; a module the run does not include is refused (with `--scope both`, only one no scope includes). A run given it applies only the versions it names: one its source no longer serves, and any other module whose version would change, are refused before anything is written. A refusal's hint adds one for each new version it showed (a pin it would write, a folder whose content changed), so the run it hints answers only what was listed. |
 | `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |
@@ -66,7 +69,7 @@ Refusals:
   install, so the files they drop are listed too and `-y` confirms only what is listed.
 - A local source outside the project, a pin whose content does not match, a conflict, and a
   tracked `.lola/lock.json` ([Sync, pins and trust](../guides/sync-and-trust.md#sync-pins-and-trust)).
-- No manifest: `no project.yml in <dir>`. No scope found: as `lola install`'s, with hints for
+- No manifest: `no project.yml in <dir>`. No scope found: the refusal of [Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope), with hints for
   `--project`, `--user` and `--scope both`.
 
 JSON: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, `rewrites`, `equivalent_commands`
@@ -77,8 +80,9 @@ could not be read for the refusal: `<module>: could not read the version this ru
 so the files it drops are not listed: <why>`, also printed above the diff; that entry's removals
 are then unlisted, so the hint carries no `-y`).
 
-Known limitations: when sync, or the pin it writes, meets another module of the entry's name in
-your cache, the refusal hints `remove the cached one first: lola cache rm my-module` without
-your run's `--json`, `--plain` or `--no-pager`, which `lola install` keeps. An entry with no targets (`my-module: project.yml gives it no targets`) hints advice,
+Known limitations: when sync meets an installed module whose cache record does not decode, the refusal
+hints `remove it from your cache: lola cache rm my-module` with your run's `--json`, `--plain` or
+`--no-pager` (and `-y` off a terminal); content that no longer loads or now declares another module
+hints `remove it: lola uninstall my-module`, keeping those flags too. An entry with no targets (`my-module: project.yml gives it no targets`) hints advice,
 not a command: `list the assistants in project.yml, for example targets: [claude-code]`
 (`default.yml`, or the profile's file, where the entry comes from there).

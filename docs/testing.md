@@ -1,5 +1,7 @@
 # Testing lola
 
+Back to the [README](../README.md).
+
 For contributors: how lola is tested, how to add a spec, a suite or a case, and what is left
 untested on purpose. Two layers check the code. Ginkgo specs run in-process on every
 `task check`; the end-to-end suites run the release-built binary in a container, before each
@@ -201,7 +203,7 @@ e2e: 5 passed, 1 failed in 1m12s
 ```
 
 With the image cached, each suite should finish within 90 s; the summary marks a suite that overruns
-`slow` but does not fail the run, and the release checklist requires no `slow` mark. Each suite's
+`slow` and the run still passes, and the release checklist requires no `slow` mark. Each suite's
 `.test-output/e2e-<suite>/versions.txt` records the runtime's version, whether it runs rootless,
 and venom's version.
 
@@ -281,15 +283,18 @@ cache with the `cache rm` that clears it, follows a pin changed in the catalog w
 refuses an `@` address written into `project.yml` before any request, and removes a marketplace
 through its one-line refusal's hint.
 
-The **profile-first** suite walks eight scenarios, S1 to S8, in an order one home can: S1 and S2 at
-user scope (a first install that picks user scope and writes `default`; a baseline, a `go-review`
-profile over it, an override through `lola profile --edit` and the way back with `--off`), S4 and S3
-in the team project `acme` (a module installed into `project.yml` moved into a new profile in one
-step; an experiment copied from `go-review`, then back, keeping the experiment), S5 on a teammate's
-home (`b_env`: a personal profile never touches the files git tracks), then S7 and S8 back in the
-first home (a bundle whose later member wins and an install that asks which member; one glance with
-`lola profile`, in human, `--plain` and `--json`), and S6 last: a new home (`n_env`) is given only a
-copy of `~/.config/lola`.
+The **profile-first** suite walks eight scenarios, S1 to S8, in an order one home can:
+
+- S1 and S2 at user scope (a first install that picks user scope and writes `default`; a
+  baseline, a `go-review` profile over it, an override through `lola profile --edit` and the
+  way back with `--off`).
+- S4 and S3 in the team project `acme` (a module installed into `project.yml` moved into a new
+  profile in one step; an experiment copied from `go-review`, then back, keeping the
+  experiment).
+- S5 on a teammate's home (`b_env`: a personal profile never touches the files git tracks).
+- S7 and S8 back in the first home (a bundle whose later member wins and an install that asks
+  which member; one glance with `lola profile`, in human, `--plain` and `--json`).
+- S6 last: a new home (`n_env`) is given only a copy of `~/.config/lola`.
 
 S6 advances `cc-skills-golang`'s `main` (`setup.sh advance`) before the new home
 syncs, then compares both homes' `lock.json`: the same commit and digest for every module, though
@@ -299,7 +304,7 @@ Its terminals are `script`'s pseudo-terminal in accessible mode
 (`LOLA_ACCESSIBLE=1`), answered by number. `scripts/setup.sh` builds the seven repositories
 (`review-kit`, `cc-skills-golang`, `gopls`, `golang-lint`, `team-kit`, `profiles`, `acme`) and
 refuses unless their commits are the recorded SHAs. Refusals are checked with `jsoncheck.py` and
-their hints are run with `hint.py`, so a hint that does not work fails the case.
+their hints are run with `hint.py`, so a broken hint fails the case.
 
 ## Adding a suite or a case
 

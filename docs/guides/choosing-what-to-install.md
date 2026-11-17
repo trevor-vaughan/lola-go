@@ -1,5 +1,7 @@
 # Choosing what to install
 
+A guide for lola users; back to the [README](../../README.md).
+
 This guide covers how lola decides the scope, assistants and components for an install.
 
 ## The install flow
@@ -8,7 +10,7 @@ This guide covers how lola decides the scope, assistants and components for an i
 on stderr. Every list is numbered, `Step 2 of 5 — Install which modules?`, and a form with several
 lists says `enter: next` under each but the last. The count is lola's forecast until you pick the
 modules, then exact: a step lola answers itself (the only assistant installed, a module with one
-component) drops out of it. After a Change entry, the steps asked again are numbered from 1.
+component) drops out of it. After a Change entry (the review's `c` menu, below), the steps asked again are numbered from 1.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {
@@ -31,7 +33,9 @@ stateDiagram-v2
   [*] --> Scope
   Scope --> Modules
   Modules --> Assistants
+  Assistants --> Versions: assistant with several eras
   Assistants --> Components
+  Versions --> Components
   Components --> Review
   Review --> Change: c
   Change --> Review: step asked again
@@ -46,7 +50,7 @@ stateDiagram-v2
    - Nothing is preselected, not even when `config.yaml` sets `default_scope` (it applies only
      off a terminal) or the project already uses lola.
    - **Other directory…** then asks for a path: a relative one starts from the current
-     directory, and `~` is not expanded. It must be an existing directory, not the project you
+     directory, and a leading `~` or `~/` is your home directory (`~name` is not expanded). It must be an existing directory, not the project you
      ticked above, and not your home directory (that is the user scope; tick User instead);
      otherwise lola says why and asks again.
    - Ticking Project where the project is your home directory is asked again the same way.
@@ -72,6 +76,9 @@ stateDiagram-v2
    - With an empty cache and no marketplace you get Add a source… or Quit.
 3. **Assistants**: the installed assistants, as described under
    [Scopes and targets](../usage.md#scopes-and-targets).
+   - **Versions** follows only when an assistant has more than one era (a layout that changed
+     between its versions) and no `-t <id>@<version>` gives it: it asks, per assistant and
+     destination, which era to write for. `-y` and `--force` skip it.
 4. **Components**: one page per module, a list per kind (skills, commands, agents, MCP
    servers, rules).
    - Everything is preselected except what `selections.yaml` skips (labelled `(skipped in
@@ -92,10 +99,11 @@ stateDiagram-v2
    - Type `y` and Enter to apply; `n` and Ctrl+C cancel; `q` quits and Esc goes back to the last
      step you answered (see [Keys](#keys-q-quits-esc-goes-back)). Enter alone answers nothing:
      the review has no default.
-   - `c` opens a menu of Change scope, Change modules, Change assistants and Change components
-     (each offered when that step was asked), ending with **Back to the review** (Esc there goes
+   - `c` opens a menu of Change scope, Change modules, Change assistants, Change versions and
+     Change components (each offered when that step was asked; Change versions whenever an
+     assistant has more than one era), ending with **Back to the review** (Esc there goes
      back to the review too). When no step can change (every answer came from a flag or the
-     situation), the question is `[y/n]` and `c` is not an answer.
+     situation), the question is `[y/n]` and `c` is not an answer (the `[y/c/n]` prompt's `c` opens this menu).
    - Changing a step asks it again with your answers preselected, keeps later answers that still
      apply, and comes back to the review. Change scope keeps the component picks of the
      destinations you keep, and the summary counts the picks of the ones you remove as dropped.
@@ -125,7 +133,7 @@ A module whose version cannot be listed is left out of the module list, with a `
 names the command installing it: its entry's ref has no version in your cache, the scopes'
 entries resolve to two versions, its entry has no ref and the default branch is not cached, or
 your cache fetched it before lola recorded commits (`lola cache update <name>` fetches it again).
-A module argument that resolves to such a version is refused before the summary.
+A module argument that resolves to a version that cannot be listed (above) is refused before the summary.
 
 A pick kept through "Change scope" that no longer matches a scope's entry ref is refused before
 the summary, not after you confirm. When nothing would change, lola says
@@ -141,17 +149,15 @@ the `selections.yaml` entries and profile entries the run writes, notices, the
 **equivalent commands**, which do the same without a terminal, with the answers to
 [where the edit goes](profiles.md#where-your-edits-go) (`--profile base`, `--override`).
 
-Consent to hooks and scripts
-is still asked after the review, as before:
-
 ```
 Equivalent commands:
   lola cache add ../src/deploy
   lola install review-kit deploy --scope project -t claude-code --skip review-kit:skill/slow-lint
 ```
 
-With more than one destination there is one `lola install` line per destination: each
-project gets `--scope project -C <root>` and the user scope gets `--scope user`. There is no
+Consent to hooks and scripts is still asked after the review. With more than one destination
+there is one `lola install` line per destination, or per group of modules whose where-answers
+there differ: each project gets `--scope project -C <root>` and the user scope gets `--scope user`. There is no
 flag for several project roots in one run; `--scope both` still installs into one project
 and your user scope.
 
@@ -189,7 +195,7 @@ was changed`), and Ctrl+C cancels (exit 0).
 
 In a picker, space ticks the option under the cursor (`[x]`; the rest show `[ ]`), Ctrl+A ticks
 every option shown and, when each is ticked, unticks them (in the module picker it ticks the
-modules and never Add a source…), enter confirms, and Ctrl+C quits; the keys are listed under it. A picker that needs a pick (scope,
+modules and never Add a source…), enter confirms, and Ctrl+C quits; the picker's key help under it lists the keys ([Keys](#keys-q-quits-esc-goes-back)). A picker that needs a pick (scope,
 modules, assistants, and `lola tidy`'s keep-list when you chose nothing to move) refuses an empty
 one when you press Enter with nothing ticked: `nothing selected — space selects, enter confirms, ctrl+c quits`, or in
 accessible mode `nothing selected — type an option's number to select it, 0 confirms, ctrl+c
@@ -313,7 +319,7 @@ scope unless a flag gives it.
 
 A pick change that deletes installed files (a `--skip`, or an `--only` that leaves some out) is
 confirmed as `lola uninstall` is: asked on a terminal; off one it refuses, printing the files and
-hinting the same command with `-y`. `-n` writes nothing; `--force` answers without asking.
+hinting the same command with `-y`. `-n` (`--dry-run`) writes nothing; `--force` answers without asking.
 
 | Flag | Effect |
 |---|---|
@@ -371,7 +377,7 @@ say so once per module, with the command that adds them where the module comes f
 At most five are named, then `and N more`. Nothing is named when no `only:` list is in force,
 while rules are off (a new rule is not named), or when the version you had installed is no
 longer in your cache (`lola cache clean` removed it), since lola cannot tell what is new. A
-cached installed version that cannot be read gives a warning instead:
+cached installed version that cannot be read makes lola warn instead:
 `<module>: cannot tell which components are new: <reason>`.
 
 With `--json` the line is in `notices`. On a terminal, the component page says
@@ -391,7 +397,7 @@ go-review here`).
 `lola info <module>` lists, per scope, each component as its picks leave it and ends with the run
 that changes them (`→ change it: …`). For a module `project.yml` provides that is
 `lola install <module>` while no profile is on, and `lola profile --project base --edit <module>`
-while one is (on a terminal either reopens the component page; `--skip`, `--unskip` and
+while one is (a profile, over the scope's base: see [Profiles](profiles.md)) (on a terminal either reopens the component page; `--skip`, `--unskip` and
 `--only` work off one), and for a module a profile or your default provides it is
 `lola profile <name> --edit <module>`, which writes that profile. A `projects[<dir>]` entry of
 `selections.yaml` for a module a profile provides is ignored, and every sync says so, naming the

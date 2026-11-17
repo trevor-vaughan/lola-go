@@ -1,5 +1,7 @@
 # Template engine analysis of alternatives
 
+For maintainers; back to the [README](../README.md).
+
 lola templates module content opt-in, per file
 ([#195](https://github.com/LobsterTrap/lola/issues/195)). This document records which Go template
 engines were considered, how they were tested, and why lola uses Liquid through

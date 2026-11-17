@@ -1,5 +1,7 @@
 # `lola profile`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola profile [<name>] [--on|--off|--switch|--add <source>|--update [--all]|--remove]
 lola profile [<name>] --edit [<module>...] [--only|--skip|--unskip <kind/name>] [--override] [--new [--from <profile> | --bundle <a>,<b>...]]
@@ -27,11 +29,11 @@ switching to it would give.
 Listing and showing never ask for a scope: without a flag they show the
 project found from here, if any, and user scope. One action per run. One profile is on in a scope
 at a time, over the scope's base (`default` at user scope, `project.yml` in a
-project). Refuses a project whose `.lola/lock.json` git tracks.
+project). Every `lola profile` run refuses a project whose `.lola/lock.json` git tracks.
 
 | Flag | What it does |
 |---|---|
-| `--on` | Turn the named profile on, when none is. With another on, a terminal asks whether to switch; off a terminal it refuses, hinting `--switch`. `lola profile base --on` is a notice. Aliases: `--enable`, `--activate`. |
+| `--on` | Turn the named profile on, when none is. With another on, a terminal asks whether to switch; off a terminal it refuses, hinting `--switch`. `lola profile base --on` with no profile on is only a notice (the base is always loaded); with one on it is refused. Aliases: `--enable`, `--activate`. |
 | `--off` | Turn off the profile on (name it, or give no name) and apply; asks when files go (`-y`). `--off base` is refused: the base is always loaded. Aliases: `--disable`, `--deactivate`. |
 | `--switch` | Make the named profile the one on, whatever is on, and apply; never asks which. `lola profile base --switch` (at user scope also `default --switch`) turns the profile on off. With `--move`: switch to the profile the entries move to. Alias: `--use`. |
 | `--edit [<module>...]` | Edit the named profile, else the one edits go to (the profile on; the base), as `lola install --profile <name>` would write it: the modules named, their picks with `--only` (skips of the rest; with `--exact` the entry's `only:` list), `--skip` and `--unskip`, applied where it is on and saved where it is off. Asks no scope (the scope flag's, else the project found here, else user scope); a profile of yours that is on in the other scope too is applied there as well, each scope with its own context line and result. A module another layer gives asks whether to change it there (`lola profile base --edit …`) or give the profile its own entry (`--override`); on a terminal it asks before the module's component page, as does the question of which member of the bundle on gets it, or whether to write the base under a remote profile, so the page is titled with the file the answers write (`profile go-review › cc-skills-golang › skills (7)`). The first name is the profile when one has it and no module does, `base`/`default`, a qualified name, or any name with `--new`; otherwise every name is a module. A name that is both a profile and a module asks on a terminal and is refused off one, hinting each qualified. On a terminal without a module it opens a page: the profile's modules ticked, then each one's components (a module you unticked is removed once asked), a bundle's members, or for a new name whether it `Lists modules` or `Bundles profiles`. Aliases: `--pick`, `--modify`. See [Editing a profile](../guides/profiles.md#editing-a-profile). |
@@ -51,7 +53,7 @@ project). Refuses a project whose `.lola/lock.json` git tracks.
 | `--remove` | Delete a profile of yours (`user:<name>`, or a bare name only yours has; its file goes to lola's trash) or a remote one; asks (`-y`), and is refused while it is in use (on, in the bundle on, or in a bundle the one on nests) unless `--force`. A bare name both have is refused, naming both; a project's profile is committed (`git rm` it); the base is never removed. Aliases: `--rm`, `--delete`, `--del`, `--erase`, `--uninstall`. |
 | `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)): `entries` and `profiles` (the changes to `project.yml` and its profiles the run installs, a project profile taking your profile's place, a remote profile `--add` or `--update` shows), `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all`. `--add` takes `profiles` only (bare `--trust` there is `profiles`); `--update` without a scope flag applies only `profiles` to the update and the other kinds to each scope's sync. |
 | `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines; `--on`, `--off`, `--switch`, `--move`, `--split`, `--update` and `<name> --edit` take it. Refused without one of those kinds in `--trust`; `--force` never implies it. |
-| `-y`, `--yes` | Open no scope picker (the scope is the one found off a terminal, or the run is refused as it is there), confirm removals, and `--remove`; it never trusts changes, nor answers `--on`'s question. |
+| `-y`, `--yes` | Open no scope picker (the scope is the one found off a terminal, or the run is refused as it is there), confirm removals, including `--remove`'s; it never trusts changes, nor answers `--on`'s question. |
 | `--force` | With `--on`, `--off`, `--switch` or `--edit`: remove files without asking, edited ones too. With `--remove`: remove a profile in use, without asking. Never a consent question, nor `--on`'s question. |
 | `-n`, `--dry-run` | Print what the action would change, ask nothing and write nothing. |
 | `-v`, `--verbose` | With `--on`, `--off`, `--switch`, `--edit`, `--move`, `--split` or `--update`: print every notice in full instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |
@@ -148,7 +150,7 @@ Refusals:
   project's base is project.yml`.
 - `--remove` of a profile you do not have: `you have no remote profile x`.
 - `--move` without `--to`: `--move needs --to, the profile the entries move to`; `--to` without
-  `--move`: `--to applies to --move only`, hinting `drop it`.
+  `--move`: `--to applies to --move and --split only`, hinting `drop it`.
 - `--move` to a profile that is off, off a terminal, with neither flag: `me is not on at user
   scope; lola needs to know whether to switch to it, and there is no terminal to ask on`, hinting
   the run with `--switch` and with `--keep-off -y`. `--switch` with `--keep-off`: `--switch and
@@ -181,7 +183,8 @@ Refusals:
   while lola was moving it; nothing was written`, hinting the move again.
 - `--on`, `--off`, `--switch` or `--remove` without a scope found: `lola profile needs a scope: …
   (default_scope: project or user)`, with one hint per scope (`lola profile x --remove
-  --project`, then `--user`).
+  --project`, then `--user`); `default_scope` is a setting of `config.yaml`
+  ([Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope)).
 
 A change line (`~ cc-skills-golang  897c0d803c71  …`) of `--on`, `--off` and `--switch` names the
 version the run installs: for an entry of yours, the one its pin in `pins.yaml` (user scope) or
@@ -191,7 +194,8 @@ JSON:
 
 - Listing and showing print `profiles` and `notices` (each profile's `shadowed_by` is the
   qualified name of the profile that hides it, or `null` when none does; showing adds each
-  profile's `read_as` and `modules`).
+  profile's `read_as`, for an active remote profile the user profile of its name read in its
+  place, else `null`, and `modules`).
 - `--on`, `--off` and `--switch` print what `lola sync --json` prints plus `profile` (the profile
   on after the run, by qualified name, or `null`) and `changes`, and, with `--new`, `created` (one
   object per profile made, the members first: `profile`, `path`, `modules` (entries copied or 0),

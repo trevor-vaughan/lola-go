@@ -1,5 +1,7 @@
 # Module layout
 
+A guide for lola users; back to the [README](../../README.md).
+
 [`lola init`](../reference/init.md#lola-init) scaffolds a module, and [`lola check`](../reference/check.md#lola-check)
 reports what each assistant would drop, adapt or skip from it. Templates are in
 [templating.md](templating.md).
@@ -16,7 +18,7 @@ my-module/
 ```
 
 A `commands/<command>/` directory beside a command is copied with it; OpenCode would read its
-files as commands, so there it is dropped (`command-sidecar-dropped`). A native module's MCP
+files as commands, so there it is dropped (`command-sidecar-dropped`, in [Findings](../usage.md#findings)). A native module's MCP
 servers go in `mcps.json`; `.mcp.json` and `mcp.json` are the files of the Claude Code plugin
 and Agent Plugins [formats](#module-formats).
 
@@ -254,8 +256,9 @@ failing `post-install` hook leaves the installation in place with a warning. `lo
 hooks only for modules whose version changed or that gain a target, and `--dry-run` lists hooks without running them
 (`would run`).
 
-A `post-install` hook skipped without your consent stays **pending** in
-`lock.json` (`hooks_pending`): `lola sync <module>` replaces the module copy from the version lola
+A `post-install` hook skipped without your consent stays **pending** in the scope's
+`lock.json` (`.lola/lock.json` in a project, `lola/lock.json` under your state home at user
+scope; `hooks_pending`): `lola sync <module>` replaces the module copy from the version lola
 hashed, so an edited copy never runs, and asks again showing the scripts; off a terminal,
 `lola sync <module> --trust=hooks` runs it. A sync that does not name the module, and is not
 given `--trust=hooks`, asks nothing about the hook and says
@@ -269,10 +272,11 @@ cached name at the head that holds it, or, for a `lola sync` or `lola update` of
 archive, which a refused run does not cache, as its source from your working directory, e.g.
 `lola info --project ./mods/kit`; no such hint when no `lola info` can show that version), then
 your run with `--trust=` the kinds you gave, `hooks`, and any other kind the run would still be
-refused for (`scripts`, for the project's untrusted pre-install script).
+refused for (`scripts`, for the project's untrusted pre-install script; see
+[Trust kinds](install-trust-kinds.md)).
 
 For `lola sync` and
-`lola update` that run also pins, with `--at`, each version the refusal showed, so your consent
+`lola update` that run also pins, with `--at <module>=<version>`, each version the refusal showed, so your consent
 covers the hook you reviewed alone: a folder edited since is refused, its hook not run.
 Following the `lola info` hint caches the version it shows (`lola info` is not a refusal).
 
@@ -317,9 +321,9 @@ post-install ones after your `post-install` hook, once per assistant, in the mod
 same environment plus `LOLA_SCRIPT_SOURCE` (`user`, `project` or `flag`).
 
 A hook should not count
-on running first or last, nor rewrite files outside the module copy that a script may read: lola
-hashes each script again just before it runs it and does not run one that changed: a pre-install
-script stops the install, nothing written, and a post-install one is skipped with a warning
+on running first or last, nor rewrite files outside the module copy that a script may read. lola
+hashes each script again just before it runs it and does not run one that changed. A pre-install
+script then stops the install, nothing written, and a post-install one is skipped with a warning
 ([Install scripts](choosing-what-to-install.md#install-scripts)).
 
 ```mermaid
@@ -522,7 +526,7 @@ flowchart TD
     same way where it prints them; it does not yet treat other module text this way, such as
     frontmatter keys quoted in finding texts.
   - `--json` consent values are replaced the same way; the exact group lola writes is the step's
-    `member` (`steps[].member`).
+    `member` (`steps[].member` in the [`--json` receipt](../reference/output-contract.md)).
 - If the prompt fails (input closes, for example), the run stops: nothing is written and nothing
   is recorded.
 - `--trust=runtime-hooks` consents to the hooks the summary lists without asking, and the consent

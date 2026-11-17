@@ -1,5 +1,7 @@
 # Packages
 
+Back to the [README](../../README.md).
+
 Maintainer notes on Packages. It is split out of [architecture](../architecture.md).
 
 - `paths`: XDG resolution from an injected `getenv`; no globals. `ProjectKey`, the canonical form of
@@ -155,8 +157,8 @@ Maintainer notes on Packages. It is split out of [architecture](../architecture.
     marketplace's catalog.
 - `activeprofile`: The qualified name of the active profile a scope's `lock.json` stores
   (`user:go`, `project:go`, `remote:go`; never `default`), checked by `Check`; `Max` (64) only
-  bounds `rendered_with.profiles` (`default` aside): a leaf with no YAML, so
-  `ledger` imports it and `profile` may import `ledger` later without a cycle.
+  bounds `rendered_with.profiles` (`default` aside): a leaf that imports no
+  YAML, so `ledger` imports it and `profile` may import `ledger` later without a cycle.
 - `trust`: The trust record (`trust.json`): per project key, the view of `project.yml` lola wrote
   and of each project profile, and its hash; strict, permission-checked reads, locked per-project
   saves, coverage, the per-field refresh, and `Check`: the status and the typed field changes of a
@@ -211,6 +213,6 @@ Maintainer notes on Packages. It is split out of [architecture](../architecture.
   template's `cobraGlobalFlags` renders; `installHelp` panics if cobra's template loses it).
   `lola --version` is a root-only flag whose run is `printVersion`, `lola version`'s.
 - `errs`: Errors that carry coaching hints.
-- `testenv`: Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, no `LOLA_HOME` or
-  `COLUMNS`, and a `PATH` without the developer's assistants) and `ServeGit()`, a loopback git
+- `testenv`: Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, `LOLA_HOME` and
+  `COLUMNS` unset, and a `PATH` that excludes the developer's assistants) and `ServeGit()`, a loopback git
   server (`ServeGitWith` also shows each request to a spec).

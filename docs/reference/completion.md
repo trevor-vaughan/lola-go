@@ -1,5 +1,7 @@
 # `lola completion`
 
+Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
+
 ```
 lola completion bash|zsh|fish|powershell
 ```
@@ -39,7 +41,7 @@ It completes commands, their aliases and flags, and these values:
 | `--older-than`, `--unused-for` | example ages (`7d`, `30d`, `2w`; `never` for `--unused-for`) |
 | `--path`, `-C`, `lola init` | directories |
 | `--pre-install`, `--post-install`, `--add` | file names |
-| `--ref`, `--ssh-host`, `--keep` and other free text | nothing |
+| `--ref`, `--ssh-host` and other free text | nothing |
 
 Completion reads local files only: it writes nothing, never touches the network and offers
 nothing when it cannot read what it needs.

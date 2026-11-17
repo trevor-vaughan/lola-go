@@ -1,5 +1,7 @@
 # Tidying
 
+A guide for lola users; back to the [README](../../README.md).
+
 `lola tidy` moves what lola does not manage out of the places lola writes into, so a profile
 switch, a migration or an assistant's own edits leave nothing behind you did not choose to keep.
 It moves; it never deletes. Below, an *item* is one thing lola tidy can move, a *locked* item is
@@ -19,12 +21,12 @@ Every flag is in the [`lola tidy` reference](../reference/tidy.md#lola-tidy).
 
 **What it sees.** lola tidy looks at each assistant of the scope: the targets the scope's manifest
 lists (`.lola/project.yml`, or your default profile, `default.yml`, at user scope), as far as you trusted them
-([Sync, pins and trust](sync-and-trust.md)), and every assistant lola installed for; `-t` names
-others. For each assistant it sees:
+([Sync, pins and trust](sync-and-trust.md)), and every assistant lola installed for; `-t` scans
+only the assistants you name instead. For each assistant it sees:
 
 - the entries directly inside its directories (`.claude/skills`, `.claude/commands`,
-  `.claude/agents`, lola's own rule directory `.claude/rules/lola`, and the Gemini CLI and
-  OpenCode equivalents);
+  `.claude/agents`, lola's own rule directory `.claude/rules/lola`, the Gemini CLI and
+  OpenCode equivalents, and `.agents/skills` for the `agents` target);
 - the servers directly inside its MCP server list (`.mcp.json` `mcpServers`, `~/.claude.json`
   `mcpServers`, `.gemini/settings.json` `mcpServers`, and `opencode.jsonc` `mcp` when that file
   exists, else `opencode.json` `mcp`).
@@ -52,13 +54,14 @@ matches in every assistant scanned; `-t` narrows.
 
 A whole directory or MCP file is skipped, with a notice, when it leads outside the scope's root,
 onto the root or above it, onto another assistant directory, into `.git`, `.lola` or lola's own
-directories, into another lola project (with the `lola tidy -C <that project>` that tidies it), or
+directories, into another lola project (tidy that project with `lola tidy -C <that project>`, where `-C` names
+the project's directory), or
 through a symbolic link git tracks. An MCP file is also skipped when it is not a regular file,
 does not parse or names a server twice.
 
-What git tracks, or lies in an MCP file git tracks, moves only with `--include-tracked` or
-`--force`; in a git work tree where git is missing or fails, everything counts as tracked. What
-your keep-list names moves only after `--unkeep`. lola tidy refuses a project whose
+What git tracks, or lies in an MCP file git tracks, moves only with `--include-tracked` (also offer what
+git tracks) or `--force`; in a git work tree where git is missing or fails, everything counts as tracked. What
+your keep-list names moves only after `--unkeep <entry>`, which removes the entry from the keep-list. lola tidy refuses a project whose
 `.lola/lock.json` git tracks, or about which git cannot say, also with `--force`.
 
 **Asking.** Names or `--all` choose what moves. On a terminal without either, `lola tidy` asks in
@@ -89,7 +92,7 @@ flowchart TD
   Keep -->|Enter with nothing ticked when nothing moves| Keep
   Keep --> Ask
   Ask -->|Esc| Keep
-  Ask -->|Esc, when the keep picker was skipped| Move
+  Ask -->|"Esc, when the keep picker was skipped"| Move
   Ask -->|yes| Run[move and update the keep-list]
   Ask -->|no| Nothing[nothing changes]
   classDef sysA fill:#2f6dab,color:#ffffff,stroke:#7c8ba1
@@ -133,8 +136,9 @@ flowchart TD
      characters lola does not print or a word too long to print".
 
 With names or `--all`, lola lists what moves and what the keep-list gains or loses and asks the
-same question; with no picker before it, Esc there stays. `-y` answers the question; on a
-terminal without names or `--all` the pickers still run.
+same question; with no picker before it, Esc has nothing to go back to and the question stays.
+`-y` answers the question and opens no picker, so without names or `--all` it refuses, as it does
+off a terminal.
 
 In accessible mode (`LOLA_ACCESSIBLE=1` or `TERM=dumb`) the pickers are numbered lists and every
 locked item is printed above them. There a keep picker that needs a pick refuses `0` with nothing
@@ -188,12 +192,13 @@ links), and `manifest.txt`, one `original<TAB>trash path` line per item, written
 moves. The run prints the directory and its size; lola deletes it only when you run `lola trash
 --empty`.
 
-`lola trash` lists the runs, newest first, and `lola trash <run>` shows a run's items. Restore a
+`lola trash` lists the runs, newest first, each by its directory name (`20261103T120000Z`, the
+UTC time), and `lola trash <run>` shows a run's items. Restore a
 file or directory with `lola trash <run> <original> --restore`, or every item of the run without
 naming one ([`lola trash`](../reference/trash.md#lola-trash)):
 
 ```sh
-lola trash 20261103T120000Z /work/app/.claude/skills/old-review --restore
+lola trash 20261103T120000Z /home/me/work/app/.claude/skills/old-review --restore
 ```
 
 An MCP server is removed from its file in place, keeping every other byte, comments included; the

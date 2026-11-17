@@ -1,5 +1,7 @@
 # Layers
 
+Back to the [README](../../README.md).
+
 The stack of layers a scope's configuration is built from. It is split out of
 [architecture](../architecture.md).
 
@@ -204,7 +206,7 @@ every candidate named), and takes the remote profile only when no local one has 
 `shadowing` names the local profile that shadows a remote one, which `activeProfile` refuses to turn
 on and listings report (`ProfileRow.ShadowedBy`).
 
-An active `remote:<name>` whose name a user profile now has is read as that profile (`userShadow`),
+An active `remote:<name>` whose name a user profile has is read as that profile (`userShadow`),
 with the notice `user:go now replaces remote:go`, on every run: the stored name is never rewritten,
 so the remote profile is used again once the user's file goes, and `--on user:go` leaves the profile
 on as it is (`user:go is already on, in place of remote:go`).
