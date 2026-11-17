@@ -1,0 +1,21 @@
+docs/architecture/plans-and-the-ledger.md
+  s_20aaf83e2cbdc4::t_8ef4e7799a9fda 103-108
+docs/reference/list.md
+  s_20aaf83e2cbdc4::t_8ef4e7799a9fda 6,24-56,61,98-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0b98021451af32996ff374500f22656317c2b1f0",
+  "prompts": {},
+  "sessions": {
+    "s_20aaf83e2cbdc4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a861514-671a-45e9-9364-20be8084f2c7",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
