@@ -1,0 +1,19 @@
+docs/architecture/sync.md
+  s_08e83211bea0fc::t_8a348652744a1d 336-338,348-350,356-358
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b9d76519ab7ef8f7f22392a4886e579a2386f29a",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
