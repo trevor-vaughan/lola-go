@@ -1,0 +1,19 @@
+docs/guides/templating.md
+  s_08e83211bea0fc::t_605f056dad507a 136-137,292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "72b697109c209a4cd60f83a954de7625c40567ef",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
