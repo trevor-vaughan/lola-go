@@ -1,0 +1,19 @@
+docs/reference/trash.md
+  s_08e83211bea0fc::t_c5831336ca0d43 13-14,17,55-56,69-71,86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "732d754db416c84227dd8a66b3a8a86b90eeb111",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
