@@ -1,0 +1,230 @@
+docs/reference/init.md
+  s_08e83211bea0fc::t_ea3accddda98fc 10,27-33,36
+  s_08e83211bea0fc::t_2c6ed755995ce2 3-4
+docs/architecture.md
+  s_08e83211bea0fc::t_ff468e96fbf695 83-121,133-147,197-271
+  s_08e83211bea0fc::t_456cadc0f37c2c 3-4
+docs/testing.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_49081d2845aaee 206,286-297,307
+  s_08e83211bea0fc::t_41383073296158 4
+docs/release.md
+  s_08e83211bea0fc::t_6cd17df3aac383 21,24,80,83
+  s_08e83211bea0fc::t_f13a23a22737e8 3-4
+docs/guides/choosing-what-to-install.md
+  s_08e83211bea0fc::t_34b2bdeb3b0aa5 136,198,400
+  s_08e83211bea0fc::t_bb321e21867257 322,380
+  s_08e83211bea0fc::t_c73f98532af556 36,38,79-81,102-104
+  s_08e83211bea0fc::t_01924c8e667769 3-4
+  s_08e83211bea0fc::t_0e280d5c1743c5 13,106,158-160
+  s_08e83211bea0fc::t_baa9185e90b8f5 53
+docs/architecture/fetching-sources.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_6b6d0488e70013 4
+docs/guides/install-scripts.md
+  s_08e83211bea0fc::t_d63780f5b4758d 9,55,102,107-119
+  s_08e83211bea0fc::t_46674be9c08879 3-4
+docs/architecture/sync.md
+  s_08e83211bea0fc::t_2255f7104542f3 4
+  s_08e83211bea0fc::t_8a348652744a1d 336-338,348-350,356-358
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+docs/guides/marketplaces.md
+  s_08e83211bea0fc::t_8f5b10a360f602 3-4
+  s_08e83211bea0fc::t_4c5ac64e98a0a7 54,73,186-187,255-256,349-350,435,437,439-440,456-457
+docs/reference/completion.md
+  s_08e83211bea0fc::t_f66461a64db9a5 3-4
+  s_08e83211bea0fc::t_052cd774a46fc4 44
+docs/reference/market.md
+  s_08e83211bea0fc::t_49e88a73935a60 3-4
+  s_08e83211bea0fc::t_447d3b1a3af40a 9,21,35-36,53,83-105
+docs/guides/config-and-selections.md
+  s_08e83211bea0fc::t_642b183a67d233 8,16,25-27,59-60
+  s_08e83211bea0fc::t_da9736fef6fd27 3-4
+docs/architecture/security-model.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_e3494afa0ed03e 4
+docs/reference/repair.md
+  s_dcaa93082b0a88::t_32bb6db98c5cc2 10,19,23-25
+  s_08e83211bea0fc::t_b5eba8f74c45a6 3-4
+docs/reference/search.md
+  s_08e83211bea0fc::t_069b96dea6525d 3-4
+  s_08e83211bea0fc::t_73f9e2fa72766e 9-15,19-25
+docs/template_engine_analysis.md
+  s_08e83211bea0fc::t_17626e3b423fc3 3-4
+docs/architecture/templates.md
+  s_08e83211bea0fc::t_f9585d477bf951 4
+  s_08e83211bea0fc::t_052cd774a46fc4 15-16,165
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+docs/reference/tidy.md
+  s_08e83211bea0fc::t_07ac71a3706752 3-4
+  s_08e83211bea0fc::t_819943498b369c 9-11,15,21,25,29-31,52-58
+docs/guides/profiles.md
+  s_08e83211bea0fc::t_63bcc5546c3c5e 3-4
+  s_08e83211bea0fc::t_4eed2cf6643662 47-48,57,62,208,210-211,307-314,336,342-344,362,378,407-409,462-463
+docs/architecture/install-flow.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_1510ba1ee4b7c0 4
+docs/reference/trash.md
+  s_08e83211bea0fc::t_020d6073529f2b 3-4
+  s_08e83211bea0fc::t_c5831336ca0d43 13-14,17,55-56,69-71,86
+docs/architecture/lola-tidy.md
+  s_08e83211bea0fc::t_13af308275442d 4
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_7396ac42b122a6 92
+docs/architecture/trust-record.md
+  s_08e83211bea0fc::t_d069d428e2b343 4
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+docs/guides/migrating.md
+  s_08e83211bea0fc::t_75d1594ee57b84 3-4
+  s_08e83211bea0fc::t_f4b20c45a5f844 15-16,100,122-123,220,278,286-287,313
+docs/reference/list.md
+  s_08e83211bea0fc::t_7816ed64926d26 3-4
+  s_08e83211bea0fc::t_ba95beab85587f 20-22,32,36,38-39,49-53,55
+docs/guides/sync-and-trust.md
+  s_08e83211bea0fc::t_33a50f38716787 5-9,33,112-113,121-122,281-282,354-365,367-377,451,458,461,474,476,530
+  s_08e83211bea0fc::t_452e41192d03d1 3-4
+docs/architecture/install-hooks.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_cddbc0ac1d6902 4
+docs/guides/profile-walkthroughs.md
+  s_08e83211bea0fc::t_c3a145e5d68608 3-4
+  s_08e83211bea0fc::t_b0a329ad30d29e 14-20,24-26
+docs/guides/bundles.md
+  s_08e83211bea0fc::t_286df28c12c642 31-32,34,39,72
+  s_08e83211bea0fc::t_bdfaa1468544da 3-4
+docs/reference/output-contract.md
+  s_08e83211bea0fc::t_2524e586fb290e 3-4
+  s_08e83211bea0fc::t_4f1c84063e1490 10-17,23,30-41,50-68,79,94-109,111-117,127-135,151-155,184-192,199-205,268-274,296-297,315,318-328,377-386,404-406
+docs/reference/migrate.md
+  s_08e83211bea0fc::t_f4efeb8c440635 3-4
+  s_08e83211bea0fc::t_a428099da3536a 10-11,17-18,21,28-35,44-45
+README.md
+  s_08e83211bea0fc::t_9df144f7d8d00e 64-66,68-69,99,117-118
+  s_08e83211bea0fc::t_6996f4374cdd51 255-257
+docs/reference/check.md
+  s_607b5b075fc201::t_9c12c53f4885c8 18,21,23,26
+  s_08e83211bea0fc::t_646784620528b3 3-4
+docs/reference/uninstall.md
+  s_607b5b075fc201::t_f60b049aabe8d3 21-22,36-37,45,69,80,91
+  s_08e83211bea0fc::t_f7d030273b4f82 3-4
+docs/guides/target-specs.md
+  s_08e83211bea0fc::t_ae2ffae24aa901 127,147,190-191,260
+  s_08e83211bea0fc::t_89272c15e51dd6 3-4
+docs/guides/authoring-modules.md
+  s_08e83211bea0fc::t_02f91e365a0ddf 21
+  s_08e83211bea0fc::t_c24f10101be947 3-4
+  s_08e83211bea0fc::t_cdb4c8ee68236a 259-261,275-276,279,324-326,529
+docs/architecture/layers.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_2cc5dd3be5b46c 209
+  s_08e83211bea0fc::t_aaf06360a82ecd 4
+docs/reference/help.md
+  s_08e83211bea0fc::t_47c4c72dac577e 3-4
+  s_08e83211bea0fc::t_324a748b942bc9 19
+  s_08e83211bea0fc::t_8095dbe3700291 9-10,18
+docs/architecture/marketplaces.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_654bee41453313 4
+docs/reference/cache.md
+  s_08e83211bea0fc::t_51bdeb3eeae22f 69,72,174
+  s_08e83211bea0fc::t_5ce5ff911d166d 3-4
+docs/guides/syncing-lola-between-machines.md
+  s_08e83211bea0fc::t_ca18b57605493f 3-4
+  s_08e83211bea0fc::t_eb7f70baaa2180 49-50,56-57,63,74,86-87
+docs/reference/info.md
+  s_08e83211bea0fc::t_6af214ee98985b 46,117
+  s_08e83211bea0fc::t_35e511847e5972 3-4
+docs/usage.md
+  s_08e83211bea0fc::t_a1670d35a700c4 18-23,30,34,40,42,85,104-105
+  s_08e83211bea0fc::t_e10766ad35b7a5 611-612
+  s_08e83211bea0fc::t_df1fa39d2fcc14 3-4
+  s_08e83211bea0fc::t_38ec843ed1dd1f 554-560,578-579
+  s_08e83211bea0fc::t_f68127331f3b9c 116,177-183,186-200,217-228,236-246,259-272,277-284,365-368,396,404,411,475
+docs/reference/version.md
+  s_08e83211bea0fc::t_54b355682f5191 11-12
+  s_08e83211bea0fc::t_c7d973c8d12b5f 3-4
+docs/reference/update.md
+  s_08e83211bea0fc::t_875ee85b0269b8 14-15,33-34,70-71,80,90-91,105,110,122-124
+  s_08e83211bea0fc::t_f281107d464707 3-4
+docs/architecture/packages.md
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_55ad2574ffaccf 4
+  s_08e83211bea0fc::t_da231061206709 160-161,216-217
+docs/architecture/tui-flows.md
+  s_08e83211bea0fc::t_22e220fd4dbb4f 58-60,1307-1309,1445-1447,1570,1877
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_c793cee4bdc31b 4
+docs/reference/sync.md
+  s_08e83211bea0fc::t_f3d3661e492a01 3-4
+  s_08e83211bea0fc::t_4000604b475238 14-15,35,72,83-86
+docs/guides/install-trust-kinds.md
+  s_08e83211bea0fc::t_2acad58dc80194 10,14,22-23,72,83-84,95-97,124
+  s_08e83211bea0fc::t_72bf97252e55ae 3-4
+docs/architecture/trust-kinds.md
+  s_08e83211bea0fc::t_fc2d09eb5ada9e 4
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_caf9c210d0f1d8 46-48,67-74,97-99,101-103
+docs/decisions.md
+  s_08e83211bea0fc::t_f2751e3d012214 3-4
+docs/reference/install.md
+  s_08e83211bea0fc::t_baf51154d581f3 3-4
+  s_08e83211bea0fc::t_65495c6eaedae3 17,23,43,87-88,156-157
+docs/reference/profile.md
+  s_08e83211bea0fc::t_bdca1aaccfd204 3-4
+  s_08e83211bea0fc::t_8e58e4db917037 32,36,56,153,186-187,197-198
+docs/guides/templating.md
+  s_08e83211bea0fc::t_605f056dad507a 136-137,292
+  s_08e83211bea0fc::t_bd556f7ed12e97 3-4
+docs/architecture/cache.md
+  s_08e83211bea0fc::t_1b05e235a95ac1 4
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+docs/guides/sources-and-the-cache.md
+  s_08e83211bea0fc::t_d537ca1693060b 91,187-188,200-201,251-261,311-313,328-329
+  s_08e83211bea0fc::t_54ab7f3cc62ee8 196-198
+  s_08e83211bea0fc::t_17be3c3447013c 3-4
+docs/guides/tidying.md
+  s_08e83211bea0fc::t_017ac48a33b748 24-25,28-29,57-58,62-64,139-141,195-196,201
+  s_08e83211bea0fc::t_07b9b69d80fb0b 3-4
+  s_08e83211bea0fc::t_e53d76447bc318 95
+docs/guides/remote-profiles.md
+  s_08e83211bea0fc::t_ebb39451457d88 64,73-75,99-100
+  s_08e83211bea0fc::t_ab6c10c756edd4 212-215,291-293,319
+  s_08e83211bea0fc::t_41a955835ef5e9 283,288-290
+  s_08e83211bea0fc::t_04806c96246501 3-4
+docs/architecture/plans-and-the-ledger.md
+  s_08e83211bea0fc::t_e3b756406eb00a 4
+  s_08e83211bea0fc::t_71a68bf02e813f 3
+  s_08e83211bea0fc::t_beb5561a7fbfd9 84-86,106-108,110-112,170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5a2654388df1ba3e7f1937d371503e23d2d0b8f",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_607b5b075fc201": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9b77f3c211a5d94a",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_dcaa93082b0a88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a806d6311afabf3b2",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
