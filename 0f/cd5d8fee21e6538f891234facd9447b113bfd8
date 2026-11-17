@@ -1,0 +1,19 @@
+docs/reference/repair.md
+  s_dcaa93082b0a88::t_32bb6db98c5cc2 10,19,23-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0fcd5d8fee21e6538f891234facd9447b113bfd8",
+  "prompts": {},
+  "sessions": {
+    "s_dcaa93082b0a88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a806d6311afabf3b2",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
