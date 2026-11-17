@@ -1,0 +1,22 @@
+internal/cli/list_drift_test.go
+  s_20aaf83e2cbdc4::t_726bd49b4200bc 5,24
+  s_20aaf83e2cbdc4::t_3b06e504ba84f7 156
+internal/cli/cmd_core.go
+  s_20aaf83e2cbdc4::t_726bd49b4200bc 587-591
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9bbd0636a61fbc33624a2f6cc8ccf63431b94598",
+  "prompts": {},
+  "sessions": {
+    "s_20aaf83e2cbdc4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a861514-671a-45e9-9364-20be8084f2c7",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
