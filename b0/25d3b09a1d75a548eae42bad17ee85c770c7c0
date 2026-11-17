@@ -1,0 +1,19 @@
+docs/architecture/tui-flows.md
+  s_08e83211bea0fc::t_22e220fd4dbb4f 58-60,1307-1309,1445-1447,1570,1877
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b025d3b09a1d75a548eae42bad17ee85c770c7c0",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
