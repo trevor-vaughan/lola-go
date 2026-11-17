@@ -1,0 +1,19 @@
+docs/reference/tidy.md
+  s_08e83211bea0fc::t_819943498b369c 9-11,15,21,25,29-31,52-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "7876fcb6adf0a419ac47bff788c438f1e6ad9152",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
