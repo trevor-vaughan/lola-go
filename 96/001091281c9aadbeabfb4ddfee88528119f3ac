@@ -1,0 +1,19 @@
+docs/reference/check.md
+  s_607b5b075fc201::t_9c12c53f4885c8 18,21,23,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "96001091281c9aadbeabfb4ddfee88528119f3ac",
+  "prompts": {},
+  "sessions": {
+    "s_607b5b075fc201": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9b77f3c211a5d94a",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
