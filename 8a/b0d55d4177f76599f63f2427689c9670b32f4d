@@ -1,0 +1,19 @@
+docs/guides/profiles.md
+  s_08e83211bea0fc::t_4eed2cf6643662 47-48,57,62,208,210-211,307-314,336,342-344,362,378,407-409,462-463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "8ab0d55d4177f76599f63f2427689c9670b32f4d",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
