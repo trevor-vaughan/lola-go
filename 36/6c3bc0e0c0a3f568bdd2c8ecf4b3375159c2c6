@@ -1,0 +1,45 @@
+internal/cli/list_drift_test.go
+  s_20aaf83e2cbdc4::t_2f14b25e52bd0f 5,104-165,167
+  s_20aaf83e2cbdc4::t_765d8064e38b7d 166
+  s_20aaf83e2cbdc4::t_3a23a2c7c8852c 168
+internal/cli/cmd_core.go
+  s_20aaf83e2cbdc4::t_8e0338b82e5e0e 571-585
+  s_20aaf83e2cbdc4::t_f7b3694a4a705e 463-465
+  s_20aaf83e2cbdc4::t_27fe57f86fe553 481
+  s_20aaf83e2cbdc4::t_517d43d0dc81e1 406
+  s_20aaf83e2cbdc4::t_2cfd9cdb9beac8 419
+  s_20aaf83e2cbdc4::t_befae286426a6c 468
+  s_29e60d1d899ad1::t_17770e80192b91 433-436,438,448,521-522,641-646
+docs/reference/list.md
+  s_29e60d1d899ad1::t_06396a078e3c95 27-29,42,48,54
+internal/engine/drift.go
+  s_29e60d1d899ad1::t_5ed0929af94f81 48
+internal/engine/drift_test.go
+  s_29e60d1d899ad1::t_dd069543ac01a1 193-200,223,231
+internal/engine/ops.go
+  s_29e60d1d899ad1::t_89318d19f3ceaf 3065-3067
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "366c3bc0e0c0a3f568bdd2c8ecf4b3375159c2c6",
+  "prompts": {},
+  "sessions": {
+    "s_20aaf83e2cbdc4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a861514-671a-45e9-9364-20be8084f2c7",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_29e60d1d899ad1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a6c50d47e0328f302",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
