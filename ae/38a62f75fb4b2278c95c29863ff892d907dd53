@@ -1,0 +1,21 @@
+docs/guides/remote-profiles.md
+  s_08e83211bea0fc::t_ebb39451457d88 64,73-75,99-100
+  s_08e83211bea0fc::t_41a955835ef5e9 283,288-290
+  s_08e83211bea0fc::t_ab6c10c756edd4 212-215,291-293,319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "ae38a62f75fb4b2278c95c29863ff892d907dd53",
+  "prompts": {},
+  "sessions": {
+    "s_08e83211bea0fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea83fb44-21cf-4a83-a4d4-350bad2339b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
