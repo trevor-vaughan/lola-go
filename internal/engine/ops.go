@@ -3062,8 +3062,9 @@ func dirExists(p string) bool {
 // (the version installed is cached but does not load), or ok; and each entry a layer wants that
 // lock.json does not record, not_installed, per effective target. Each row names the layer its
 // module comes from (From): the layer whose entry wins now, else the one lock.json recorded. A
-// module copy's content is not compared: hooks build in it. It reads no network, never the trust
-// record, and changes nothing. It refuses a project whose lock.json git tracks, since a committed
+// module copy's content is not compared: hooks build in it. It observes every artifact of a
+// target, not just the first that drifted, and each row says which components drifted. It reads
+// no network, never the trust record, and changes nothing. It refuses a project whose lock.json git tracks, since a committed
 // one could name an active profile; the notices are the active profile when its file no longer
 // exists, git missing, and how many modules are not installed with the sync that installs them,
 // keeping display, the run's output flags.
@@ -3144,7 +3145,7 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		}
 		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest), entry.Source)
 		base := StatusRow{Name: name, From: from, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
-			UpdateAvailable: update, SourceGone: sourceGone(entry.Source, sourceRoot(sc)), Skipped: []string{}, Only: shown, OnlyFrom: onlyFrom}
+			UpdateAvailable: update, SourceGone: sourceGone(entry.Source, sourceRoot(sc)), Skipped: []string{}, Only: shown, OnlyFrom: onlyFrom, Drift: []DriftEntry{}}
 		if ment != nil {
 			base.Market = shownMarket(ment.Market)
 		}
@@ -3182,35 +3183,45 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 				return nil, nil, err
 			}
 			root := t.Root(sc.Kind, sc.ProjectDir, e.Paths)
-			status, n := "ok", 0
+			recorded := 0
+			var drifted []driftedArtifact
 			for _, a := range entry.Artifacts {
 				if a.Target != id {
 					continue
 				}
-				n++
+				recorded++
 				h, err := plan.Observe(root, a)
 				if err != nil {
 					return nil, nil, err
 				}
-				if h == "" {
-					status = "missing"
-					break
-				}
-				if h != a.SHA256 {
-					status = "modified"
+				switch {
+				case h == "":
+					drifted = append(drifted, driftedArtifact{a, driftMissing})
+				case h != a.SHA256:
+					drifted = append(drifted, driftedArtifact{a, driftModified})
 				}
 			}
-			if n == 0 {
+			status := "ok"
+			switch {
+			case recorded == 0:
 				status = "skipped"
+			case slices.ContainsFunc(drifted, func(d driftedArtifact) bool { return d.status == driftMissing }):
+				status = "missing"
+			case len(drifted) > 0:
+				status = "modified"
 			}
+			entries := groupDrift(drifted)
 			if copyMissing {
 				status = "missing"
+				copyDir := untrusted.Text(filepath.Join(e.files(sc).modules, name), untrusted.MaxName)
+				entries = append([]DriftEntry{{Kind: "copy", Path: copyDir, Status: driftMissing, Files: 1}}, entries...)
 			}
 			if status == "ok" && stale {
 				status = "stale"
 			}
 			r := base
 			r.Target, r.Status, r.Skipped = id, status, skipped
+			r.Drift, r.Recorded = entries, recorded
 			rows = append(rows, r)
 		}
 	}
@@ -3252,7 +3263,7 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted, only []strin
 	var rows []StatusRow
 	for _, t := range ts {
 		rows = append(rows, StatusRow{Name: ment.Name, From: w.From, Target: t, Status: status, Rules: ment.RulesOn(), Source: ment.Source, Ref: ment.Ref,
-			Pin: ment.Digest, UpdateAvailable: update, Skipped: []string{}, Only: only, OnlyFrom: onlyFrom, Market: shownMarket(ment.Market)})
+			Pin: ment.Digest, UpdateAvailable: update, Skipped: []string{}, Only: only, OnlyFrom: onlyFrom, Market: shownMarket(ment.Market), Drift: []DriftEntry{}})
 	}
 	return rows
 }

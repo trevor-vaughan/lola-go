@@ -3,7 +3,7 @@
 Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
 
 ```
-lola list
+lola list [module...]
 ```
 
 Alias: `ls`.
@@ -21,11 +21,45 @@ and naming the sync that installs them (`→ 1 module in project.yml is not inst
 whether the module's rules are on; and a `SKIPPED` column, shown when any module has some, counts the
 components [`selections.yaml`](../guides/config-and-selections.md) skips.
 
+## Which files drifted
+
+A `modified` or `missing` status says how many of the files lola wrote for that target drifted:
+`✗ missing 11/56`, `⚠ modified 2/56`; the count is of missing and modified files, not counting the
+module copy. A row whose module copy is gone and which has no other missing file (an edited file
+does not count) reads `✗ missing (module copy)`; with another file missing too it reads the count.
+
+Name modules (`lola list caveman`) to show only them and, under the table, a block per drifted
+row: its scope, module and target, then one line per drifted component, in full, missing before
+modified:
+
+```
+user caveman claude-code:
+    ✗ skill/caveman-learn (6 files)
+    ✗ skill/caveman-setup (3 files)
+    ⚠ skill/caveman (modified)
+    ✗ module copy
+→ restore: lola sync --user
+→ keep out: lola install --user caveman --skip skill/caveman-learn --skip skill/caveman-setup
+```
+
+A file or setting the module's rules share, or one recorded before lola kept component names, shows
+as its path (with the JSON pointer for a setting) instead. `restore` re-applies the module.
+`keep out` appears when a missing component of a kind `--skip` takes (skill, command, agent, mcp,
+rule) has a name, with one `--skip` per component; it stops installing those components (see
+[`selections.yaml`](../guides/config-and-selections.md)) and the row then reads `ok`. The commands
+carry the scope flags `list` read.
+
+Bare `lola list` keeps one line per row; when any row drifted it adds, for each scope, `→ see what
+changed: lola list --user caveman` naming the drifted modules. A named module installed in none of
+the scopes read is an error with a `lola list` hint per scope read. `-t` still limits the targets. The `--user`,
+`--project` and `--json` flags apply as they do without names, and a name completes from the
+installed modules.
+
 The `SOURCE` of a git module carries the ref `project.yml` records (`https://example.com/kit.git @ v1`;
 the URL alone when it records none).
 
 `--json` adds each
-row's `pin` and `update_available`. A module whose recorded source is a local folder or archive
+row's `pin`, `update_available`, `drift` and `recorded` (below). A module whose recorded source is a local folder or archive
 that no longer exists shows `⚠ source gone` beside its status (`source_gone: true` in
 `--json`); git and URL sources are never checked, as `list` reads no network.
 
@@ -62,4 +96,11 @@ JSON: `modules` (each `scope`, `name`, `from`, `target`, `status`, `rules`, `sou
 (`""` when none), `digest`, `pin`, `update_available`, `skipped`, `only` (the `only:` list in
 force for the module there, `[]` when none), `only_from` (the layer that sets it: `profile go`,
 `default (base)`, `selections.yaml projects[<dir>]`; `""` when none) and `market` (the
-marketplace the entry says it was installed through; absent when it names none)) and `notices`.
+marketplace the entry says it was installed through; absent when it names none), `recorded` (how
+many files lola recorded for the module on that target) and `drift`) and `notices`. `drift` is always
+present, `[]` when nothing drifted; each entry has `kind` (`skill`, `command`, `agent`, `mcp`,
+`rule`, a runtime-hook or other kind, or `copy` for the module copy), `name` (the component;
+`""` when lola recorded none), `path` (the first drifted path; the module copy's directory for
+`copy`), `key` (a JSON pointer for a setting, else `""`), `status` (`missing` or `modified`) and
+`files` (how many drifted files it covers). A component with both missing and modified files
+gives one entry for each status. `--plain` rows have no drift lines.

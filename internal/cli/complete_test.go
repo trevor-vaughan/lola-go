@@ -171,7 +171,7 @@ var _ = Describe("shell completion", func() {
 
 	It("value flags offer no file names, but for a path", func() {
 		for _, args := range [][]string{{"install", "--ref"}, {"info", "kit", "--ref"}, {"cache", "add", "--ref"}, {"market", "--ssh-host"},
-			{"migrate", "--map-root"}, {"list", "x"}, {"cache", "search"}} {
+			{"migrate", "--map-root"}, {"cache", "search"}} {
 			_, d := completions(append(args, "")...)
 			Expect(d).To(Equal(dirNoFile), strings.Join(args, " "))
 		}

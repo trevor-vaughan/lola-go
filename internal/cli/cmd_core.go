@@ -359,24 +359,28 @@ func (a *app) uninstallCmd() *cobra.Command {
 func (a *app) listCmd() *cobra.Command {
 	var targets []string
 	cmd := &cobra.Command{
-		Use:     "list",
+		Use:     "list [module...]",
 		Aliases: []string{"ls"},
 		Short:   "List installed modules and their status per target",
 		Long: "List installed modules per target. Status is ok; modified (a file lola wrote was edited);\n" +
-			"missing (a file lola wrote, or the module copy, is gone); stale (project.yml pins another version\n" +
+			"missing (a file lola wrote, or the module copy, is gone); each says how many of the files lola\n" +
+			"wrote for the target drifted (missing 2/9); stale (project.yml pins another version\n" +
 			"than the one installed: run lola sync); not installed (listed in project.yml: run lola sync); or\n" +
 			"skipped (nothing of the module could be rendered for the target).\n" +
 			"→ update available: your cache has a newer version for the ref: lola sync --update <module>.\n" +
 			"FROM, shown when a profile is involved, names where the module comes from: project.yml\n" +
 			"or a profile (profile:default, profile:user:<name>).\n\n" +
+			"Name modules to list only them and see which components drifted, with the commands that\n" +
+			"restore them (lola sync) or keep them out (lola install <module> --skip kind/name). Without\n" +
+			"names, a line points at the drifted modules to name.\n\n" +
 			"Scope: --project, --user, -C <dir> or --scope (both included); without them, the project with\n" +
 			".lola/ at or above the current directory, if any, and user scope. list never asks, and\n" +
 			"default_scope does not apply. Every row names its scope.",
-		Example:           "  lola list\n  lola list --user\n  lola list --scope both -C ~/work/app\n  lola list --json",
+		Example:           "  lola list\n  lola list --user\n  lola list --user kit\n  lola list --scope both -C ~/work/app\n  lola list --json",
 		GroupID:           groupCore,
-		Args:              cobra.NoArgs,
-		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: a.completeInstalled,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := a.engine()
 			if err != nil {
 				return err
@@ -397,7 +401,9 @@ func (a *app) listCmd() *cobra.Command {
 				return err
 			}
 			a.printContext(cmd, eng, choiceScopes(scs), nil)
-			rows, notices := []engine.StatusRow{}, []engine.Notice{}
+			all, rows, notices := []engine.StatusRow{}, []engine.StatusRow{}, []engine.Notice{}
+			installed := map[string]bool{}
+			holding := map[string]bool{} // scope kinds with a row for the -t targets, whatever the module names
 			var scopes []engine.Scope
 			for i, c := range scs {
 				got, notes, err := eng.Status(cmd.Context(), c.Scope, outputFlags(cmd))
@@ -409,15 +415,40 @@ func (a *app) listCmd() *cobra.Command {
 					return err
 				}
 				for _, r := range got {
+					installed[r.Name] = true
 					if len(targets) == 0 || slices.Contains(targets, r.Target) {
-						rows = append(rows, r)
+						holding[r.Scope] = true
+						all = append(all, r)
 					}
 				}
 				notices = append(notices, notes...)
 				scopes = append(scopes, c.Scope)
 			}
+			kinds := make([]string, len(scopes))
+			for i, sc := range scopes {
+				kinds[i] = sc.Kind.String()
+			}
+			for _, arg := range args {
+				if !installed[arg] {
+					hints := make([]string, len(scopes))
+					for i, sc := range scopes {
+						hints[i] = "list the installed modules: " + eng.Command(sc, "list")
+					}
+					return errs.WithHints(fmt.Errorf("%s is not installed in %s scope", untrusted.Text(arg, untrusted.MaxName), strings.Join(kinds, " or ")),
+						hints...)
+				}
+			}
+			for _, r := range all {
+				if len(args) == 0 || slices.Contains(args, r.Name) {
+					rows = append(rows, r)
+				}
+			}
+			detail := len(args) > 0
 			return a.emit(cmd, func(w io.Writer, s style) {
-				printStatus(w, s, scopes, rows, a.contexts, func(sc engine.Scope) string { return eng.Command(sc, "install") })
+				printStatus(w, s, scopes, rows, holding, targets, a.contexts, eng.Command, detail)
+				if detail && !s.plain {
+					printDrift(w, s, scopes, rows, eng.Command)
+				}
 				for _, n := range notices {
 					fmt.Fprintln(w, noticeLine(s, n))
 				}
@@ -429,9 +460,12 @@ func (a *app) listCmd() *cobra.Command {
 }
 
 // printStatus prints the rows of every scope list read: a table whose rows each name their
-// scope, then a line per scope with nothing installed, coaching install (the command install
-// names for a scope). --plain rows are name, target, status, rules, source, scope, from, ref.
-func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.StatusRow, contexts []engine.ScopeContext, install func(engine.Scope) string) {
+// scope, then a line per scope in which no module at all is installed (holding names the scope
+// kinds with a row for the -t targets, however the module names cut rows), coaching install (the
+// command install names for a scope; the line names the -t targets when given). A drifted row's status says how many of its files drifted. Without detail
+// (no module named), a line per scope with drift names the modules to list for what changed.
+// --plain rows are name, target, status, rules, source, scope, from, ref.
+func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.StatusRow, holding map[string]bool, targets []string, contexts []engine.ScopeContext, command func(engine.Scope, string, ...string) string, detail bool) {
 	if s.plain {
 		for _, r := range rows {
 			rules := "on"
@@ -444,12 +478,16 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 	}
 	var empty []string
 	for _, sc := range scopes {
-		if !slices.ContainsFunc(rows, func(r engine.StatusRow) bool { return r.Scope == sc.Kind.String() }) {
+		if !holding[sc.Kind.String()] {
 			where := "in " + untrusted.Text(sc.ProjectDir, untrusted.MaxName)
 			if sc.Kind == target.User {
 				where = "at user scope"
 			}
-			empty = append(empty, "nothing installed "+where+" (try: "+install(sc)+" <source>)")
+			what := "nothing installed"
+			if len(targets) > 0 {
+				what += " for " + untrusted.Text(strings.Join(targets, ", "), untrusted.MaxName)
+			}
+			empty = append(empty, what+" "+where+" (try: "+command(sc, "install")+" <source>)")
 		}
 	}
 	if len(rows) == 0 {
@@ -482,6 +520,14 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 		case "missing":
 			status = s.bad(r.Status)
 		}
+		if n := driftedFiles(r); r.Status == "missing" || r.Status == "modified" {
+			switch {
+			case onlyCopyMissing(r):
+				status = strings.Replace(status, r.Status, r.Status+" (module copy)", 1)
+			case n > 0:
+				status = strings.Replace(status, r.Status, fmt.Sprintf("%s %d/%d", r.Status, n, r.Recorded), 1)
+			}
+		}
 		if r.UpdateAvailable {
 			status += " → update available"
 		}
@@ -508,6 +554,101 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 	_ = tw.Flush()
 	for _, line := range empty {
 		fmt.Fprintln(w, line)
+	}
+	if detail {
+		return
+	}
+	for _, sc := range scopes {
+		var drifted []string
+		for _, r := range rows {
+			if r.Scope == sc.Kind.String() && len(r.Drift) > 0 {
+				drifted = append(drifted, r.Name)
+			}
+		}
+		slices.Sort(drifted)
+		if drifted = slices.Compact(drifted); len(drifted) > 0 {
+			fmt.Fprintln(w, s.info("see what changed: "+command(sc, "list", drifted...)))
+		}
+	}
+}
+
+// onlyCopyMissing reports whether r's module copy is gone and no other entry is missing (files
+// only edited do not count), so the copy is the one thing lost.
+func onlyCopyMissing(r engine.StatusRow) bool {
+	copyGone := false
+	for _, d := range r.Drift {
+		switch {
+		case d.Kind == "copy":
+			copyGone = copyGone || d.Status == "missing"
+		case d.Status == "missing":
+			return false
+		}
+	}
+	return copyGone
+}
+
+// driftedFiles is how many of r's files drifted, not counting its module copy.
+func driftedFiles(r engine.StatusRow) int {
+	n := 0
+	for _, d := range r.Drift {
+		if d.Kind != "copy" {
+			n += d.Files
+		}
+	}
+	return n
+}
+
+// skippable are the component kinds install --skip takes.
+var skippable = []string{"skill", "command", "agent", "mcp", "rule"}
+
+// printDrift prints, for each drifted row, a block naming its drifted components (in the
+// engine's order; the engine has already cleaned their text) and the commands that restore
+// them or keep the missing ones out. scopes are the scopes list read, whose flags command puts
+// in each hint.
+func printDrift(w io.Writer, s style, scopes []engine.Scope, rows []engine.StatusRow, command func(engine.Scope, string, ...string) string) {
+	for _, r := range rows {
+		if len(r.Drift) == 0 {
+			continue
+		}
+		i := slices.IndexFunc(scopes, func(sc engine.Scope) bool { return sc.Kind.String() == r.Scope })
+		if i < 0 {
+			continue // no scope to build the hint commands from
+		}
+		sc := scopes[i]
+		fmt.Fprintf(w, "%s %s %s:\n", r.Scope, untrusted.Text(r.Name, untrusted.MaxName), r.Target)
+		var keepOut []string
+		for _, d := range r.Drift {
+			var label string
+			switch {
+			case d.Kind == "copy":
+				label = "module copy"
+			case d.Name == "":
+				label = strings.TrimSpace(d.Path + " " + d.Key)
+			case d.Status == "modified":
+				label = d.Kind + "/" + d.Name + " (modified)"
+			case d.Files > 1:
+				label = fmt.Sprintf("%s/%s (%d files)", d.Kind, d.Name, d.Files)
+			default:
+				label = d.Kind + "/" + d.Name
+			}
+			if d.Status == "modified" {
+				fmt.Fprintln(w, "    "+s.warn(label))
+				continue
+			}
+			fmt.Fprintln(w, "    "+s.bad(label))
+			if d.Name != "" && slices.Contains(skippable, d.Kind) {
+				keepOut = append(keepOut, d.Kind+"/"+d.Name)
+			}
+		}
+		fmt.Fprintln(w, s.info("restore: "+command(sc, "sync")))
+		if len(keepOut) > 0 {
+			// One --skip per component: command cuts each argument at untrusted.MaxName.
+			args := []string{r.Name}
+			for _, c := range keepOut {
+				args = append(args, "--skip", c)
+			}
+			fmt.Fprintln(w, s.info("keep out: "+command(sc, "install", args...)))
+		}
 	}
 }
 
