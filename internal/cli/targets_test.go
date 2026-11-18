@@ -37,11 +37,11 @@ var _ = Describe("user target specs", func() {
 		Expect(os.WriteFile(filepath.Join(specs, name), []byte(text), 0o600)).To(Succeed())
 	}
 
-	It("lists a user target beside the built-ins in a target flag's usage", func() {
+	It("lists a user target beside the built-ins in install's help", func() {
 		write("quill.yaml", quillSpec)
 		r := lola("install", "--help")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("comma-separated: claude-code, gemini-cli, opencode, agents, quill)"))
+		Expect(r.out).To(ContainSubstring("claude-code, gemini-cli, opencode, agents, quill."))
 	})
 
 	It("installs into a user target and accepts it in a module entry's targets", func() {

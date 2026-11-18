@@ -9,8 +9,10 @@ lola info <source|@market/module|module> [-t <assistant>…] [--ref <ref>] [--pa
 Aliases: `show`, `view`. `lola market <name> <entry>` is the same run as `lola info
 @<name>/<entry>`. Show a module before you install it, running nothing: no install hook,
 runtime hook or MCP server. The argument is what `lola install` takes: a module in your cache,
-`@market/module`, or a source. A source or a marketplace entry is fetched into your cache as
-`lola cache add` fetches it, so installing the cached name afterwards fetches nothing. It prints:
+`@market/module`, or a source: a directory or archive (`.zip`, `.tar`, `.tar.gz`, `.tgz`) path or
+`file://` URL, an `https://` archive URL, or a git URL (`https://`, `ssh://` or `user@host:path`).
+A source or a marketplace entry is fetched into your cache as `lola cache add` fetches it, so
+installing the cached name afterwards fetches nothing. It prints:
 
 1. The module's identity: name, version, description, source, type, path, digest, format and
    cached heads.

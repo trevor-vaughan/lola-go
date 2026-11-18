@@ -17,7 +17,7 @@ the module comes from the base, a terminal asks whether to remove it there; off 
 base` answers.
 
 Asks before removing files; `-y` skips the question, and so does `--force`, which
-also deletes files you edited since lola wrote them. A run that removes no files asks nothing, and
+also deletes files you edited since lola wrote them; `--force` never answers a consent question. A run that removes no files asks nothing, and
 still writes. Scope as `lola install`'s: `--project`, `--user` and `--scope`
 ([Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope)).
 

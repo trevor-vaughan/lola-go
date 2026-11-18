@@ -16,7 +16,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
-	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -32,7 +31,7 @@ func (a *app) session(cmd *cobra.Command) (*engine.Engine, engine.Scope, error) 
 }
 
 func (a *app) addTargetFlag(cmd *cobra.Command, dst *[]string, usage string) {
-	cmd.Flags().StringSliceVarP(dst, "target", "t", nil, usage+" (repeatable or comma-separated: "+strings.Join(a.reg.IDs(), ", ")+")")
+	cmd.Flags().StringSliceVarP(dst, "target", "t", nil, usage+" (repeatable)")
 	_ = cmd.RegisterFlagCompletionFunc("target", a.completeTargets)
 }
 
@@ -144,74 +143,21 @@ func (a *app) installCmd() *cobra.Command {
 		Use:     "install [<source|name|@market/module>...]",
 		Aliases: []string{"add"},
 		Short:   "Install modules into this project (or --user)",
-		Long: "Install modules. Each argument is a module already in your cache (used without\n" +
-			"touching its source) or a source:\n" + source.AcceptedForms + ".\n" +
-			"--ref picks a git branch, tag or full commit SHA; --path picks the module root inside\n" +
-			"the source.\n" +
-			"@market/module installs an entry of one of your marketplaces (lola market): lola shows\n" +
-			"where it resolved, then records the module's real source, path, ref and pin, with\n" +
-			"market: {name, source} as provenance, so a teammate needs no marketplace. A catalog's\n" +
-			"commit pin must be on its ref. --ref replaces the catalog's ref and records no market;\n" +
-			"--path is refused, as the catalog gives the path. @market/module is a command-line\n" +
-			"form only, never a file's source: (a directory of that name is ./@market/module); a\n" +
-			"project.yml or profile that has one is refused, naming its line, and\n" +
-			"lola install @market/module replaces such an entry of project.yml or default.yml.\n" +
-			"The module is copied into your cache, rendered for each target, and recorded in\n" +
-			".lola/project.yml (user scope: your default profile, $XDG_CONFIG_HOME/lola/profiles/default.yml).\n" +
+		Long: "Install modules into this project, or into your user profile with --user. Each argument is a\n" +
+			"module already in your cache, a source (folder, archive or git URL) or @market/module.\n" +
+			"Assistants (-t): " + strings.Join(a.reg.IDs(), ", ") + ".\n" +
+			"Installing for fewer assistants than a module is on removes its files for the others,\n" +
+			"after asking.\n" +
 			"\n" +
-			"With no argument on a terminal, lola asks for the scope, modules, assistants and\n" +
-			"components, shows a summary with the equivalent commands, and applies on your say.\n" +
-			"Ctrl+C cancels and writes nothing. LOLA_ACCESSIBLE=1 (or TERM=dumb) asks as numbered\n" +
-			"line prompts instead. -y applies without the final menu.\n" +
+			"lola copies the module into your cache, renders it for each assistant and records it in\n" +
+			".lola/project.yml (user scope: your default profile). With no argument on a terminal it asks\n" +
+			"for scope, modules and components, and shows a review before it writes anything.\n" +
 			"\n" +
-			"Scope: --scope, --user, --project or -C; else, on a terminal, the picker (Project, User, Other\n" +
-			"directory…; nothing preselected, pick any of them); else a project with .lola/ at or\n" +
-			"above the current directory; else default_scope in $XDG_CONFIG_HOME/lola/config.yaml\n" +
-			"(version: 1, default_scope: project|user|both); otherwise install refuses to guess.\n" +
-			"A -C or Other directory that does not exist yet is created: on your yes on a terminal, or\n" +
-			"under -y or --force; a dry run never creates it.\n" +
-			"\n" +
-			"Components: $XDG_CONFIG_HOME/lola/selections.yaml lists the components you skip, globally\n" +
-			"and per project; a module from a profile takes its entry's only: and skip: instead (plus the\n" +
-			"global skip). --skip, --only and --unskip take kind/name or module:kind/name (kind: skill,\n" +
-			"command, agent, mcp, rule; name may be a glob) and save to that file, or to the profile entry\n" +
-			"the install writes; --global saves to its global section.\n" +
-			"--only saves skips of the components that exist now, so a later version's new ones\n" +
-			"install; --only --exact saves the selectors as the section's only: list instead, and\n" +
-			"lola names each new component that list leaves out.\n" +
-			"lola names the components your picks mention by name but leave out; --with-mentions\n" +
-			"adds them (one hop), saved as --unskip saves them.\n" +
-			"\n" +
-			"Where it is written: the profile on (yours or the project's), else the scope's base (project.yml;\n" +
-			"at user scope your default profile); --profile <name> writes another (base: the scope's base),\n" +
-			"and one that is off is saved, not applied. A module another layer provides asks on a terminal\n" +
-			"whether to change it there or override it in the profile on; --profile base and --override\n" +
-			"answer off one. -y and --force never answer it.\n" +
-			"\n" +
-			"Assistant versions: some assistants read files differently from one version to the next:\n" +
-			"opencode 2 takes only hex agent colors (#rrggbb), opencode 1 also theme names such as accent.\n" +
-			"lola writes for the version target_versions: declares, in .lola/project.yml or, at user\n" +
-			"scope, config.yaml. Where none is declared, lola asks on a terminal, the installed version\n" +
-			"preselected, and records your answer there; -y, --force and a run off a terminal record the\n" +
-			"installed version (when it is not installed, lola writes for the newest and records nothing).\n" +
-			"In another directory (-C) the installed version says nothing of the one that reads it, so\n" +
-			"lola asks with nothing preselected, and off a terminal stops: give -t <id>@<version>.\n" +
-			"\n" +
-			"--no-rules installs everything except the module's always-on rules and records that\n" +
-			"choice, so later renders keep it; --rules turns them back on.\n" +
-			"Install hooks run only with your consent: lola asks on a terminal (default No) and\n" +
-			"remembers a yes until one of those scripts changes. Consent covers only the scripts\n" +
-			"themselves, not files they run. --trust=hooks consents without asking.\n" +
-			"Claude Code runtime hooks (a plugin's hooks) are installed only with your consent too:\n" +
-			"lola lists them and asks on a terminal (default No), and --trust=runtime-hooks consents\n" +
-			"without asking. It holds until the module version, the hooks or the project path changes.\n" +
-			"Install scripts wrap every module copy the install writes, once per assistant, around its\n" +
-			"hooks: pre_install and post_install in config.yaml (yours), in .lola/project.yml (the\n" +
-			"project's, run only in that project's scope, and only with --trust=scripts or a yes on a\n" +
-			"terminal, until the script changes) and --pre-install/--post-install (this run's). Each\n" +
-			"runs from its absolute path, with the module copy as working directory, the hook\n" +
-			"environment and LOLA_SCRIPT_SOURCE=user, project or flag.\n" +
-			trustHelp("install"),
+			"Scope: --project, --user, -C <dir> or --scope; else the terminal's picker, the project at or\n" +
+			"above here, or default_scope in config.yaml; otherwise it refuses to guess.\n" +
+			"The project's install scripts and install hooks run only with your consent: lola asks on a\n" +
+			"terminal (default No); --trust=<kinds> answers for CI. --skip, --only and --unskip pick\n" +
+			"components; -n writes nothing.",
 		Example:           g.example(),
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
@@ -236,30 +182,29 @@ func (a *app) installCmd() *cobra.Command {
 			return a.runInstall(cmd, g, args, f)
 		},
 	}
-	a.addTargetFlag(cmd, &f.targets, "assistants to install for; naming fewer than a module is installed on removes the others' files, after asking; "+
-		"<id>@<version> also records which version to write for")
-	cmd.Flags().StringSliceVar(&f.skips, "skip", nil, "do not install these components, and remember it in selections.yaml (kind/name or module:kind/name; repeatable or comma-separated)")
-	cmd.Flags().StringSliceVar(&f.onlys, "only", nil, "install only these components of each module that has them, and remember it (repeatable or comma-separated)")
-	cmd.Flags().StringSliceVar(&f.unskips, "unskip", nil, "install these skipped components again, and remember it (repeatable or comma-separated)")
-	cmd.Flags().BoolVar(&f.global, "global", false, "save --skip, --only and --unskip in the global section of selections.yaml, for every scope")
-	cmd.Flags().BoolVar(&f.exact, "exact", false, "save --only as an only: list in selections.yaml, so components a later version adds are not installed")
-	cmd.Flags().BoolVar(&f.withMentions, "with-mentions", false, "also install the components your picks mention by name (one hop), and remember them in selections.yaml")
+	a.addTargetFlag(cmd, &f.targets, "assistants to install for; <id>@<version> also picks the version")
+	cmd.Flags().StringSliceVar(&f.skips, "skip", nil, "do not install these components (kind/name or module:kind/name; repeatable)")
+	cmd.Flags().StringSliceVar(&f.onlys, "only", nil, "install only these components of each module that has them (repeatable)")
+	cmd.Flags().StringSliceVar(&f.unskips, "unskip", nil, "install these skipped components again (repeatable)")
+	cmd.Flags().BoolVar(&f.global, "global", false, "save --skip, --only and --unskip globally, for every scope")
+	cmd.Flags().BoolVar(&f.exact, "exact", false, "with --only: save an only: list, so a later version's new components stay out")
+	cmd.Flags().BoolVar(&f.withMentions, "with-mentions", false, "also install the components your picks mention by name (one hop)")
 	cmd.Flags().StringVar(&f.ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
 	cmd.Flags().StringVar(&f.path, "path", "", "module root inside the source (monorepos)")
 	cmd.Flags().StringArrayVar(&f.at, "at", nil, atUsage)
-	cmd.Flags().BoolVar(&f.override, "override", false, "when the module comes from another layer (the base under your profile), give the profile its own entry, starting from that one (keeps the version installed)")
-	cmd.Flags().StringVar(&f.profile, "profile", "", "write the entry into this profile (base: the scope's base), not the profile on; one that is off is saved, not applied")
-	cmd.Flags().StringVar(&f.preInstall, "pre-install", "", "a script to run before each module copy the install writes, once per assistant (yours: no trust asked)")
-	cmd.Flags().StringVar(&f.postInstall, "post-install", "", "a script to run after each module copy the install writes, once per assistant (yours: no trust asked)")
-	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and write nothing (not even selections.yaml)")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "ask no question but consent (which only --trust answers): take the choices a run off a terminal would (or refuse as it does), and apply without the review menu")
-	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be, applying without the review menu (never answers a consent question)")
-	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module, or an installed assistant is of another era than the version declared (a version you choose that differs from the installed one is warned of, not refused)")
+	cmd.Flags().BoolVar(&f.override, "override", false, "give the profile its own entry for a module another layer provides")
+	cmd.Flags().StringVar(&f.profile, "profile", "", "write the entry into this profile (base: the scope's base), not the one on")
+	cmd.Flags().StringVar(&f.preInstall, "pre-install", "", "your script to run before each module copy is written (no trust asked)")
+	cmd.Flags().StringVar(&f.postInstall, "post-install", "", "your script to run after each module copy is written (no trust asked)")
+	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and write nothing")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "ask no question but consent (only --trust answers); skip the review menu")
+	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files, skip the review; never answers consent")
+	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail, writing nothing, if a target would drop, change or skip part of a module")
 	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
 	cmd.Flags().BoolVar(&f.noRules, "no-rules", false, "do not install the modules' always-on rules (remembered in the manifest)")
 	cmd.Flags().BoolVar(&f.rules, "rules", false, "install the modules' rules again after --no-rules")
 	cmd.MarkFlagsMutuallyExclusive("rules", "no-rules")
-	addTrustFlag(cmd, &trust, "install", "trust these kinds without asking: scripts, hooks, runtime-hooks or all (recorded as a yes is)")
+	addTrustFlag(cmd, &trust, "install", "trust without asking: scripts, hooks, runtime-hooks, all")
 	for _, name := range []string{"skip", "only", "unskip"} {
 		_ = cmd.RegisterFlagCompletionFunc(name, a.completeComponents(0))
 	}
@@ -349,9 +294,9 @@ func (a *app) uninstallCmd() *cobra.Command {
 	a.addTargetFlag(cmd, &targets, "only uninstall from these assistants")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
-	cmd.Flags().BoolVar(&force, "force", false, "also delete files edited since lola wrote them, without asking (never answers a consent question)")
+	cmd.Flags().BoolVar(&force, "force", false, "also delete files edited since lola wrote them, without asking")
 	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
-	cmd.Flags().StringVar(&profileName, "profile", "", "remove the entry from this profile (base: the scope's base) instead of the layer the module comes from")
+	cmd.Flags().StringVar(&profileName, "profile", "", "remove the entry from this profile (base: the scope's base)")
 	_ = cmd.RegisterFlagCompletionFunc("profile", a.completeProfiles(true))
 	return cmd
 }
@@ -363,19 +308,16 @@ func (a *app) listCmd() *cobra.Command {
 		Aliases: []string{"ls"},
 		Short:   "List installed modules and their status per target",
 		Long: "List installed modules per target. Status is ok; modified (a file lola wrote was edited);\n" +
-			"missing (a file lola wrote, or the module copy, is gone); each says how many of the files lola\n" +
-			"wrote for the target drifted (missing 2/9); stale (project.yml pins another version\n" +
-			"than the one installed: run lola sync); not installed (listed in project.yml: run lola sync); or\n" +
-			"skipped (nothing of the module could be rendered for the target).\n" +
+			"missing (a file, or the module copy, is gone), each with how many drifted (missing 2/9);\n" +
+			"stale (project.yml pins another version than the one installed: run lola sync);\n" +
+			"not installed (listed in project.yml: run lola sync); or skipped (nothing of the module\n" +
+			"could be rendered for the target).\n" +
 			"→ update available: your cache has a newer version for the ref: lola sync --update <module>.\n" +
-			"FROM, shown when a profile is involved, names where the module comes from: project.yml\n" +
-			"or a profile (profile:default, profile:user:<name>).\n\n" +
+			"FROM, shown when a profile is involved, names where the module comes from.\n\n" +
 			"Name modules to list only them and see which components drifted, with the commands that\n" +
-			"restore them (lola sync) or keep them out (lola install <module> --skip kind/name). Without\n" +
-			"names, a line points at the drifted modules to name.\n\n" +
+			"restore them (lola sync) or keep them out (lola install <module> --skip kind/name).\n\n" +
 			"Scope: --project, --user, -C <dir> or --scope (both included); without them, the project with\n" +
-			".lola/ at or above the current directory, if any, and user scope. list never asks, and\n" +
-			"default_scope does not apply. Every row names its scope.",
+			".lola/ at or above here, if any, and user scope. list never asks; default_scope does not apply.",
 		Example:           "  lola list\n  lola list --user\n  lola list --user kit\n  lola list --scope both -C ~/work/app\n  lola list --json",
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
@@ -689,7 +631,7 @@ func (a *app) checkCmd() *cobra.Command {
 			"report what each target drops, adapts or cannot express. A source, or @market/module, an\n" +
 			"entry of one of your marketplaces, is fetched the way lola cache add fetches it but is not\n" +
 			"added to your cache; any other argument names a cached module. With no argument, the\n" +
-			"current directory is checked. Sources:\n" + source.AcceptedForms + ".",
+			"current directory is checked. A source is a folder, an archive or a git URL.",
 		Example: "  lola check\n  lola check ./my-module -t gemini-cli\n  lola check my-module --strict\n  lola check ./review-1.2.0.zip\n" +
 			"  lola check @acme/formatter",
 		GroupID:           groupCore,
@@ -739,7 +681,7 @@ func (a *app) checkCmd() *cobra.Command {
 			return engine.StrictError(all, "fix the module; lola install renders what each target supports", false)
 		},
 	}
-	a.addTargetFlag(cmd, &targets, "only check these assistants; <id>@<version> checks for that version, as install takes it")
+	a.addTargetFlag(cmd, &targets, "only check these assistants; <id>@<version> checks for that version")
 	cmd.Flags().BoolVar(&strict, "strict", false, "exit with an error if any target would drop, change or skip part of a module")
 	return cmd
 }

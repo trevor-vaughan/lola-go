@@ -357,7 +357,7 @@ var _ = Describe("Target-narrowing: install -t of fewer assistants removes the d
 	It("Target-narrowing: install --help says a narrower -t removes the others' files, after asking", func() {
 		r := lola("install", "--help")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(strings.Join(strings.Fields(r.out), " ")).To(ContainSubstring("naming fewer than a module is installed on removes the others' files, after asking"))
+		Expect(strings.Join(strings.Fields(r.out), " ")).To(ContainSubstring("Installing for fewer assistants than a module is on removes its files for the others, after asking"))
 	})
 })
 

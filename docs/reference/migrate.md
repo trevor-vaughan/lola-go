@@ -14,7 +14,7 @@ with a backup or moved to the [trash](trash.md)). It shows the plan and asks (de
 |---|---|
 | `--keep-python` | Install, and replace with a backup, but move nothing else to the trash. |
 | `-y`, `--yes` | Do not ask for confirmation. |
-| `--force` | Also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks, without asking (what each is: [the guide](../guides/migrating.md#coming-from-the-python-lola)). |
+| `--force` | Also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks, without asking; it answers the question as `-y` does, never hook consent (what each is: [the guide](../guides/migrating.md#coming-from-the-python-lola)). |
 | `--trust=<kinds>` | Consent to the kinds named without asking, recorded as if you had answered yes at the prompt: `hooks` (install hooks), `runtime-hooks` (Claude Code runtime hooks), `scripts`, or `all` for the three ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
 | `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines. Refused without one of those kinds in `--trust`; `--force` never implies it. |
 | `-n`, `--dry-run` | Print the plan and write nothing. |

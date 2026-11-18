@@ -30,17 +30,13 @@ func (a *app) tidyCmd() *cobra.Command {
 		Use:   "tidy [<kind/name>...]",
 		Short: "Move what lola does not manage to the trash",
 		Long: "Move what lola does not manage out of the directories and MCP server lists lola writes into\n" +
-			"(.claude/skills, .claude/commands, .mcp.json, …) into the trash under\n" +
-			"$XDG_STATE_HOME/lola/trash: files, directories and links lola never wrote or no longer records,\n" +
-			"and MCP servers it did not install. Nothing is deleted; manifest.txt in each trash run says\n" +
-			"where every item came from.\n\n" +
-			"Name what moves as kind/name selectors (kinds: skill, command, agent, mcp, rule; the name may\n" +
-			"be a glob, and \\ escapes * ? [ \\), or pass --all; on a terminal without either, lola offers what\n" +
-			"can move in a picker, then the rest for your keep-list. lola asks before moving on a terminal; -y\n" +
-			"answers, and --force also offers what git tracks and never asks. lola never moves CLAUDE.md,\n" +
-			"AGENTS.md or GEMINI.md, anything holding one, what git tracks (without --include-tracked or\n" +
-			"--force), or what your keep-list ($XDG_CONFIG_HOME/lola/keep.yaml) names; --keep and --unkeep\n" +
-			"edit this scope's keep-list. -n lists what would move and what is locked, and why.\n\n" + scopeHelp,
+			"(.claude/skills, .mcp.json, …) into the trash under $XDG_STATE_HOME/lola/trash. Nothing is\n" +
+			"deleted; manifest.txt in each trash run says where every item came from.\n\n" +
+			"Name what moves as kind/name selectors (skill, command, agent, mcp, rule; globs allowed), or pass\n" +
+			"--all. On a terminal without either, a picker offers what can move. lola asks before moving; -y\n" +
+			"answers. It never moves CLAUDE.md, AGENTS.md or GEMINI.md, what git tracks (unless\n" +
+			"--include-tracked or --force) or what your keep-list names. -n lists what would move, what is\n" +
+			"locked, and why.\n\n" + scopeHelp,
 		Example: "  lola tidy\n  lola tidy -n\n  lola tidy skill/old-review 'command/tmp-*' -y\n  lola tidy --all -y -t claude-code\n" +
 			"  lola tidy --keep skill/notes",
 		GroupID:           groupCore,
@@ -52,7 +48,7 @@ func (a *app) tidyCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&f.all, "all", false, "move every item that is not locked")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker and do not ask for confirmation")
-	cmd.Flags().BoolVar(&f.force, "force", false, "also move what git tracks, without asking; names or --all are still needed (never answers a consent question)")
+	cmd.Flags().BoolVar(&f.force, "force", false, "also move what git tracks, without asking (names or --all still needed)")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "list what would move and what is locked, and change nothing")
 	cmd.Flags().BoolVar(&f.withTracked, "include-tracked", false, "also offer what git tracks")
 	cmd.Flags().StringArrayVar(&f.keep, "keep", nil, "add a kind/name selector to this scope's keep-list (repeatable)")

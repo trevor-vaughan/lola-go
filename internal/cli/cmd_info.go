@@ -15,7 +15,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/native"
-	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -29,23 +28,18 @@ func (a *app) infoCmd() *cobra.Command {
 		Aliases: []string{"show", "view"},
 		Short:   "Show a module, the code it runs and what installing it here would do",
 		Long: "Show a module before you install it. The argument is what lola install takes: a module in your\n" +
-			"cache, @market/module, or a source:\n" + source.AcceptedForms + ".\n" +
-			"A source or a marketplace entry is fetched into your cache as lola cache add fetches it, so\n" +
-			"installing the cached name later fetches nothing. lola info runs nothing: no install hook,\n" +
+			"cache, @market/module, or a source (folder, archive or git URL). A source or marketplace entry is\n" +
+			"fetched into your cache as lola cache add fetches it. lola info runs nothing: no install hook,\n" +
 			"runtime hook, MCP server or script.\n" +
 			"\n" +
-			"It shows the module's identity and contents; what would run code, and when: each install\n" +
-			"hook with its sha256 and first lines, the runtime hooks and MCP servers as the assistant\n" +
-			"would run them; the native executables its skills ship, with their sha256; and what\n" +
-			"installing it here would do: the plan lola install -n prints, the consent each hook\n" +
-			"needs, whether you gave it already, and the --trust kinds still needed.\n" +
-			"Its last line is the install of exactly the version shown: a git source at the commit\n" +
-			"fetched, anything else by its cached name or its marketplace address.\n" +
+			"It shows the module's identity and contents; what would run code (install hooks with their\n" +
+			"sha256, runtime hooks, MCP servers, native executables); and what installing it here would do:\n" +
+			"the plan, the consent it needs and the --trust kinds still needed. Its last line is the install\n" +
+			"of exactly the version shown.\n" +
 			"\n" +
 			"Scope: --scope, --user, --project or -C; else a project with .lola/ at or above the current\n" +
-			"directory; else default_scope in config.yaml (both shows both). lola info never asks for a\n" +
-			"scope and never guesses one: without one it shows everything but the plan and hints the\n" +
-			"runs that name one. -t names the assistants to plan for, as install's -t does.",
+			"directory; else default_scope in config.yaml (both shows both). lola info never asks for a scope:\n" +
+			"without one it shows everything but the plan and hints the runs that name one.",
 		Example: "  lola info ./my-module\n  lola info https://github.com/acme/review.git --ref v1.2.0 --project\n" +
 			"  lola info @acme/formatter --user\n  lola info my-module -t claude-code --json",
 		GroupID:           groupCore,

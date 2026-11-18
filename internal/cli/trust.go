@@ -82,7 +82,7 @@ func addTrustFlag(cmd *cobra.Command, t *trustFlag, command, usage string) {
 	_ = cmd.RegisterFlagCompletionFunc("trust", completeTrust(command))
 	if engine.CommandTrust(command)&engine.TrustConsent != 0 {
 		cmd.Flags().BoolVar(&t.unseen, "unseen", false,
-			"let --trust's scripts, hooks and runtime-hooks consent to content lola has not shown you in full (for CI and fresh machines)")
+			"let --trust consent to content lola has not shown you (CI, fresh machines)")
 	}
 }
 
@@ -267,27 +267,4 @@ func printReceipt(w io.Writer, s style, given engine.TrustKinds, items []engine.
 		}
 		fmt.Fprintln(w, "  "+s.info(kind+": "+strings.Join(line, ", ")))
 	}
-}
-
-// trustHelp is the help of --trust for command (engine.CommandTrust's name): the kinds it takes,
-// and, for one that takes a consent kind, what --unseen widens.
-func trustHelp(command string) string {
-	takes := engine.CommandTrust(command)
-	out := "--trust=<kinds> answers, without asking, what the run would ask about of the kinds named:\n" +
-		strings.ReplaceAll(takes.String(), ",", ", ") + ", or all for every one.\n"
-	if b := takes & engine.TrustBare; b != 0 {
-		out += "Bare --trust is " + b.String() + ", which run no code.\n"
-	}
-	if takes&engine.TrustConsent != 0 {
-		out += "Scripts, hooks and runtime-hooks consent only to what lola has shown you in full, every\n" +
-			"line, in any output (a dry run, a question, a report; not a refusal); --unseen consents to\n" +
-			"the rest too, for CI and fresh machines.\n"
-	}
-	out += "It lists what it covers before anything is written, and on a terminal asks once (-y\n" +
-		"answers); a grant is recorded as a yes at the prompt is."
-	if command == "install" {
-		out += "\nAfter the review, Apply is that answer for what the review listed: only an item it did not\n" +
-			"list is asked about again."
-	}
-	return out
 }
