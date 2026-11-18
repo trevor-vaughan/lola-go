@@ -1,0 +1,27 @@
+docs/reference/info.md
+  s_c90b7f9003716f::t_3477a674e8344b 13-14
+docs/reference/sync.md
+  s_c90b7f9003716f::t_163415c2162bf8 33
+internal/cli/cmd_market.go
+  s_c90b7f9003716f::t_b147196406afe9 140-141
+internal/cli/cmd_migrate.go
+  s_c90b7f9003716f::t_fa5632f6c90a4c 35-37
+internal/cli/cmd_update.go
+  s_c90b7f9003716f::t_a360b1f854684b 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "cf60a79f8d9884feb87a13a0ec3107bbf4ff65cc",
+  "prompts": {},
+  "sessions": {
+    "s_c90b7f9003716f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0caa5e4b0102db0d",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
