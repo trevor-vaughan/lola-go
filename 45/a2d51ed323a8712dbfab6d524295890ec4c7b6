@@ -1,0 +1,25 @@
+docs/reference/install.md
+  s_d54138dd79daa3::t_90eb89daa35378 18,43
+docs/reference/uninstall.md
+  s_d54138dd79daa3::t_f08d9b669e16ce 20
+internal/cli/cmd_core.go
+  s_d54138dd79daa3::t_ab199f8df59035 148-150,310,633
+internal/cli/selections_test.go
+  s_d54138dd79daa3::t_4cec982405d3e1 360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "45a2d51ed323a8712dbfab6d524295890ec4c7b6",
+  "prompts": {},
+  "sessions": {
+    "s_d54138dd79daa3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aabaa6baa91a648c4",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
