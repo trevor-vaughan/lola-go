@@ -1,0 +1,40 @@
+internal/cli/help.go
+  s_0a3a7504671917::t_d320f08e3b3592 288,308
+  s_0a3a7504671917::t_0e414947c2faf9 7-8,11,32-65,81-87,89,93-94,110,118-123,125,129-130,240-275,278-287,289-296,298-302,305-307,318-321,327-351
+  s_0a3a7504671917::t_f0a2fa4f0e04d1 322-326
+  s_0a3a7504671917::t_0d60034c17075b 111-112
+README.md
+  s_0a3a7504671917::t_5698cd387cfd36 245-247
+docs/release.md
+  s_0a3a7504671917::t_0d60034c17075b 50
+docs/usage.md
+  s_0a3a7504671917::t_5698cd387cfd36 10-11
+docs/reference/help.md
+  s_0a3a7504671917::t_5698cd387cfd36 9-21,25-26,28
+internal/cli/root.go
+  s_0a3a7504671917::t_0e414947c2faf9 332
+internal/cli/help_internal_test.go
+  s_0a3a7504671917::t_f5d7f217b2882d 32-84
+docs/architecture/packages.md
+  s_0a3a7504671917::t_5698cd387cfd36 211-217
+internal/cli/help_test.go
+  s_0a3a7504671917::t_0d60034c17075b 102-103
+  s_0a3a7504671917::t_f5d7f217b2882d 5-6,11,13,20-39,42-43,45-49,52-65,67-79,81-90,93,100-101,104-106
+  s_0a3a7504671917::t_ec8772a051c528 66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "92b23dbe7ddc8ad75e165eeba3f455863e95deb6",
+  "prompts": {},
+  "sessions": {
+    "s_0a3a7504671917": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae0ffee1-8658-42ba-87b1-c22fb14c4553",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
