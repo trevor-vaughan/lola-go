@@ -510,6 +510,11 @@ type StatusRow struct {
 	// Market is the marketplace the entry says it was installed through, as written, through
 	// untrusted.Text; absent when it names none.
 	Market *manifest.MarketRef `json:"market,omitempty"`
+	// Drift lists the components whose files are missing or modified, missing first; [] when
+	// none drifted. Recorded is how many artifacts lock.json records for the module on this
+	// target; the drifted count is the sum of Drift's Files.
+	Drift    []DriftEntry `json:"drift"`
+	Recorded int          `json:"recorded"`
 }
 
 // shownMarket is m with its name and source through untrusted.Text, nil for none: a file's

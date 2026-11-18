@@ -37,8 +37,11 @@ const Version = 1
 // SHA256 is over the file bytes or the canonical JSON of the member or element.
 // Resolved is set only when Path resolves outside the root.
 type Artifact struct {
-	Target   string          `json:"target"`
-	Kind     string          `json:"kind"`
+	Target string `json:"target"`
+	Kind   string `json:"kind"`
+	// Name is the component the artifact belongs to, empty for a file or registration the
+	// module's rules share; it is not part of ID.
+	Name     string          `json:"name,omitempty"`
 	Path     string          `json:"path"`
 	Key      string          `json:"key,omitempty"`
 	Value    string          `json:"value,omitempty"`

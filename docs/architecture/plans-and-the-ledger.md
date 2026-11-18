@@ -100,6 +100,12 @@ between them re-renders and asks trust again.
 target. An entry from before the field falls back to its artifacts' targets
 (`Entry.InstalledTargets`).
 
+Each artifact records the component it belongs to as `name` (`ledger.Artifact.Name`, set from the
+intent's name; left out for a file or setting the module's rules share). It is not part of the
+artifact's identity, so recording it plans no step for an unchanged module; an entry written
+before the field has none, and `lola list` names its drifted artifacts by path until the next run
+that writes the entry records the names.
+
 An entry records, per target, the `since` of the era its files were written for (`Entry.Eras`,
 `eras`; the engine's `ModuleResult.eras`, set from the era the planned target was rendered at,
 which an install given a version takes in place of the declared one). A target it does not name was

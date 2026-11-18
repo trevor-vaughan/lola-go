@@ -221,7 +221,7 @@ func expand(in Intent) (out []Intent, err error) {
 // artifact is the ledger record of what in desires, without its hash. An array member is
 // recorded in canonical JSON: a string as Value, any other value as Member.
 func artifact(in Intent) (ledger.Artifact, error) {
-	a := ledger.Artifact{Target: in.Target, Kind: in.Kind, Path: in.Path, Key: in.Pointer}
+	a := ledger.Artifact{Target: in.Target, Kind: in.Kind, Name: in.Name, Path: in.Path, Key: in.Pointer}
 	if in.Op != OpAddJSONMember {
 		return a, nil
 	}
