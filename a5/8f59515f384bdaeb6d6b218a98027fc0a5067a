@@ -1,0 +1,99 @@
+docs/reference/migrate.md
+  s_c90b7f9003716f::t_2efb24871999c8 17
+internal/cli/conventions_test.go
+  s_0a3a7504671917::t_7d34d3b763497e 46-65
+  s_0a3a7504671917::t_f72d93fb90a4e6 4
+  s_0a3a7504671917::t_4f0a2e2a79374d 66-67
+internal/cli/cmd_market.go
+  s_c90b7f9003716f::t_b147196406afe9 140-141
+  s_c90b7f9003716f::t_b53c62be510fb5 131,135-139,142-147,150,152-153,232,238
+internal/cli/cmd_update.go
+  s_c90b7f9003716f::t_a360b1f854684b 20
+  s_0a3a7504671917::t_c4302e0c1d9bff 37
+  s_c90b7f9003716f::t_96cf262c56a2d7 18-19,21-25,33,38,40
+docs/reference/profile.md
+  s_0a3a7504671917::t_756ba8be5ff654 47,50,57
+  s_0a3a7504671917::t_1934745b9cb57b 30-33
+internal/cli/selections_test.go
+  s_d54138dd79daa3::t_4cec982405d3e1 360
+internal/cli/flow_test.go
+  s_d54138dd79daa3::t_8daec6c50d6977 3418
+  s_0a3a7504671917::t_d8d6ff5920949c 3416
+internal/cli/trust.go
+  s_d54138dd79daa3::t_2857b25c7d389d 85
+internal/cli/cmd_info.go
+  s_c90b7f9003716f::t_fd82bca8b10b9a 31-32,35-38,41-42
+internal/cli/cmd_core.go
+  s_0a3a7504671917::t_9b7c497cc57bbe 159-160
+  s_d54138dd79daa3::t_eec293071842a0 34,146-147,152-154,156-157,185-191,195-200,202,297,299,312-314,316,318,320,684
+  s_d54138dd79daa3::t_ab199f8df59035 148-150,311,634
+  s_0a3a7504671917::t_0d60034c17075b 158
+  s_0a3a7504671917::t_c4302e0c1d9bff 201,207
+internal/cli/cmd_profile.go
+  s_0a3a7504671917::t_d8d6ff5920949c 382,405
+  s_0a3a7504671917::t_c4302e0c1d9bff 406
+  s_0a3a7504671917::t_4ae6f8a5edb782 234-236
+  s_0a3a7504671917::t_3ae75530a6b638 223,228-229,238-244
+  s_0a3a7504671917::t_3737b031c7e01b 368-381,383,385-387,389,391,393-394
+  s_0a3a7504671917::t_1934745b9cb57b 231-233
+  s_0a3a7504671917::t_0d9c9eeda8fef3 225-227,230
+docs/reference/info.md
+  s_c90b7f9003716f::t_3477a674e8344b 13
+  s_0a3a7504671917::t_3a002c3cd39e10 14-15
+  s_c90b7f9003716f::t_916a57267faa6a 12
+internal/cli/cmd_sync.go
+  s_d54138dd79daa3::t_fd6bc088a77626 266
+  s_c90b7f9003716f::t_9823e8af70fa28 239-241,244-246,256
+  s_0a3a7504671917::t_c4302e0c1d9bff 257
+docs/reference/sync.md
+  s_c90b7f9003716f::t_163415c2162bf8 33
+  s_c90b7f9003716f::t_f104f9e22c71f2 39
+internal/cli/cmd_tidy.go
+  s_0a3a7504671917::t_da4baa4f989e6a 33-39,51
+internal/cli/cmd_migrate.go
+  s_c90b7f9003716f::t_fa5632f6c90a4c 35-37
+  s_0a3a7504671917::t_c4302e0c1d9bff 138-139
+  s_c90b7f9003716f::t_e6a202718d25ea 29-30,32-34,39-41,141-142
+e2e/user-target/user-target.venom.yml
+  s_0a3a7504671917::t_347754430aa568 32
+docs/reference/uninstall.md
+  s_d54138dd79daa3::t_f08d9b669e16ce 20
+docs/reference/install.md
+  s_d54138dd79daa3::t_90eb89daa35378 18,43
+internal/cli/cmd_trash.go
+  s_0a3a7504671917::t_da4baa4f989e6a 31,34-41
+internal/cli/targets_test.go
+  s_d54138dd79daa3::t_73b8fc2f57bf76 40,44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "a58f59515f384bdaeb6d6b218a98027fc0a5067a",
+  "prompts": {},
+  "sessions": {
+    "s_0a3a7504671917": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae0ffee1-8658-42ba-87b1-c22fb14c4553",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_c90b7f9003716f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0caa5e4b0102db0d",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_d54138dd79daa3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aabaa6baa91a648c4",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
