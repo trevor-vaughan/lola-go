@@ -1,0 +1,31 @@
+docs/reference/install.md
+  s_d54138dd79daa3::t_30af1107f15186 43
+internal/cli/cmd_core.go
+  s_d54138dd79daa3::t_eec293071842a0 35,147-150,152-154,156-159,184-190,194-201,206,296,298,310-313,315,317,319,683
+internal/cli/cmd_sync.go
+  s_d54138dd79daa3::t_fd6bc088a77626 273
+internal/cli/flow_test.go
+  s_d54138dd79daa3::t_8daec6c50d6977 3418
+internal/cli/selections_test.go
+  s_d54138dd79daa3::t_e36a1f894ceffe 360
+internal/cli/targets_test.go
+  s_d54138dd79daa3::t_73b8fc2f57bf76 40,44
+internal/cli/trust.go
+  s_d54138dd79daa3::t_2857b25c7d389d 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "470950def082dcff3706f9634b3ba9df32a54746",
+  "prompts": {},
+  "sessions": {
+    "s_d54138dd79daa3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aabaa6baa91a648c4",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
