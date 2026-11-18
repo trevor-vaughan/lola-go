@@ -1,0 +1,21 @@
+docs/reference/profile.md
+  s_0a3a7504671917::t_1934745b9cb57b 30-33
+internal/cli/cmd_profile.go
+  s_0a3a7504671917::t_1934745b9cb57b 231-236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "aa9c9ea9f38559a209d05501629f722e0672dfd5",
+  "prompts": {},
+  "sessions": {
+    "s_0a3a7504671917": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae0ffee1-8658-42ba-87b1-c22fb14c4553",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
