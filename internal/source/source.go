@@ -390,7 +390,8 @@ func UsesSSH(spec Spec) bool {
 // and user name cannot be read as an ssh option. scp form never has a user name starting
 // with '-': checkLocation refuses a location that starts with one.
 func validateGitLocation(loc string) error {
-	host, shown := "", untrusted.Text(loc, untrusted.MaxName)
+	var host string
+	shown := untrusted.Text(loc, untrusted.MaxName)
 	if !strings.Contains(loc, "://") && scpRE.MatchString(loc) {
 		// The location is never echoed here: it is not a URL that can be shown without its secret.
 		if scpCredentialsRE.MatchString(loc) {

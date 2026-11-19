@@ -167,7 +167,7 @@ func (e *Engine) planVersions(res *CleanResult) error {
 			if !store.ValidID(id) {
 				continue
 			}
-			reason := ""
+			var reason string
 			switch {
 			case !slices.ContainsFunc(o.Heads, func(h store.Head) bool { return h.Digest == id }):
 				reason = CleanSuperseded

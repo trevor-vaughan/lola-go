@@ -771,7 +771,8 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 				if len(si.Targets) > 0 { // the user's -t, not a line of a file
 					return nil, err
 				}
-				path, shownAs := e.basePath(si.Scope), ""
+				path := e.basePath(si.Scope)
+				var shownAs string
 				switch {
 				case sp.target.ownTargets() && sp.target.Key != "":
 					path, shownAs = sp.target.Path, projectProfileFile(sp.target.Key)

@@ -239,7 +239,7 @@ func ReadRun(dir string) (Run, error) {
 			continue
 		}
 		orig, to, ok := strings.Cut(line, "\t")
-		why := ""
+		var why string
 		switch {
 		case !ok:
 			why = "it is not original<TAB>trash path"

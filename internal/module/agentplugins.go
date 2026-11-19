@@ -497,7 +497,7 @@ func (a *apReader) literals(field, v string) {
 // apCwd checks a stdio cwd: ./path, ${PLUGIN_ROOT}[/path] or ${PLUGIN_DATA}[/path], with
 // the path staying inside. A ./ path becomes ${PLUGIN_ROOT}/path.
 func apCwd(at, cwd string) (string, error) {
-	base, rest := "", ""
+	var base, rest string
 	switch {
 	case strings.HasPrefix(cwd, "./"):
 		base, rest = "${PLUGIN_ROOT}", strings.TrimPrefix(cwd, "./")

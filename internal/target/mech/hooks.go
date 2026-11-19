@@ -58,7 +58,7 @@ func (v hookVars) substitute(s string) string {
 	var b strings.Builder
 	last := 0
 	for _, m := range pluginVar.FindAllStringSubmatchIndex(s, -1) {
-		name := ""
+		var name string
 		if m[2] >= 0 {
 			name = s[m[2]:m[3]]
 		} else {
