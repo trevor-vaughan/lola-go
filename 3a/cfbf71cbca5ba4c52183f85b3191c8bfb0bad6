@@ -1,0 +1,35 @@
+internal/source/source.go
+  s_1270636b4914be::t_5a217fda936063 393-394
+internal/engine/clean.go
+  s_1270636b4914be::t_5a217fda936063 170
+internal/trash/trash.go
+  s_1270636b4914be::t_5a217fda936063 242
+internal/engine/choices.go
+  s_1270636b4914be::t_5a217fda936063 641
+internal/engine/ops.go
+  s_1270636b4914be::t_5a217fda936063 774-775
+internal/module/agentplugins.go
+  s_1270636b4914be::t_5a217fda936063 500
+internal/source/remote.go
+  s_1270636b4914be::t_5a217fda936063 108
+.golangci.yml
+  s_1270636b4914be::t_16f11629a71bc6 5
+internal/target/mech/hooks.go
+  s_1270636b4914be::t_5c3fc64e217ac8 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "3acfbf71cbca5ba4c52183f85b3191c8bfb0bad6",
+  "prompts": {},
+  "sessions": {
+    "s_1270636b4914be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f808f0c5-a346-48f0-bd12-2b1feb2479a6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
