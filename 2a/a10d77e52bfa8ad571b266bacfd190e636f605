@@ -1,0 +1,19 @@
+.golangci.yml
+  s_736378c62076b5::t_a926cde09324e2 3-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2aa10d77e52bfa8ad571b266bacfd190e636f605",
+  "prompts": {},
+  "sessions": {
+    "s_736378c62076b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7ba29a7-1981-46cf-b375-9797394fe54f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
