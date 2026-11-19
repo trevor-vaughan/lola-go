@@ -1,0 +1,50 @@
+internal/engine/engine_test.go
+  s_fed06242c50a4d::t_f6ecbadcab58b4 593-631
+internal/cli/cmd_profile.go
+  s_fed06242c50a4d::t_4c0c9c77ca6169 151-159
+  s_fed06242c50a4d::t_78d26213df079f 160-161
+  s_fed06242c50a4d::t_d49f1270a3ff6a 150
+internal/cli/human.go
+  s_fed06242c50a4d::t_7f0280301c6514 145
+internal/cli/core_test.go
+  s_fed06242c50a4d::t_4c0c9c77ca6169 878
+  s_fed06242c50a4d::t_b24a0029e2758d 894
+  s_fed06242c50a4d::t_cf00f7b98ec0aa 860-861,899
+  s_fed06242c50a4d::t_5d40aadde0f1df 888-893,895-898,900-922
+internal/cli/cmd_core.go
+  s_fed06242c50a4d::t_ddcf2f20fbc9df 236-239
+  s_fed06242c50a4d::t_4c0c9c77ca6169 262
+  s_fed06242c50a4d::t_78d26213df079f 221,301
+internal/plan/compute.go
+  s_fed06242c50a4d::t_6d5e624d95f321 33-37,559-562,603-607
+internal/plan/intent.go
+  s_fed06242c50a4d::t_6d5e624d95f321 95
+internal/plan/compute_test.go
+  s_fed06242c50a4d::t_fc826d97c6d904 288-329
+internal/engine/ops.go
+  s_fed06242c50a4d::t_7f0280301c6514 2675,2921-2923,2925-2939
+  s_fed06242c50a4d::t_c6c5d47377e597 2838,2924
+  s_fed06242c50a4d::t_be4dbe3f303b5d 2940-2941
+internal/engine/engine.go
+  s_fed06242c50a4d::t_7f0280301c6514 134-138,420-423,1652
+docs/reference/uninstall.md
+  s_fed06242c50a4d::t_872c90e7cdb1cb 62,65-70,96-100,102
+internal/engine/gitignore.go
+  s_fed06242c50a4d::t_7f0280301c6514 183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e7d2ef37049260674cd3d56edcf66996624711fe",
+  "prompts": {},
+  "sessions": {
+    "s_fed06242c50a4d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d740fdaf-11dc-4d83-9d55-b6671e4a154a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
