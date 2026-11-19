@@ -10,7 +10,7 @@ release ([release.md](release.md)) and whenever you change what they cover.
 | Command | Runs |
 |---|---|
 | `task test` | Every Ginkgo spec; `MODE=llm` prints only failures. |
-| `task check` | `lint`, `test`, `cross` (build and vet, tests included, for Windows and macOS), `vuln` (`govulncheck`) and `flows`: the gate every commit passes. `lint` and `vuln` use golangci-lint and govulncheck built from source at the versions pinned in `.taskfiles/go.yml` (`go:tools`, into `.tools/bin`), rebuilt whenever a pin or the Go on PATH changes. |
+| `task check` | `lint`, `test`, `cross` (build and vet, tests included, for Windows and macOS), `vuln` (`govulncheck`) and `flows`: the gate every commit passes. `lint` runs golangci-lint (its default `unused` included) and `deadcode -test`, which fails on any function neither `main` nor a test reaches; `lint` and `vuln` use golangci-lint, deadcode and govulncheck built from source at the versions pinned in `.taskfiles/go.yml` (`go:tools`, into `.tools/bin`), rebuilt whenever a pin or the Go on PATH changes. |
 | `task flows` | `scripts/tuiflows`: every transition row of [TUI flows](architecture/tui-flows.md) is named by a spec or an `also pinned` pointer, and every such name matches a row ([Reading this page](architecture/tui-flows.md#reading-this-page)). A lint, not a spec. |
 | `task e2e` | Every end-to-end suite; `task e2e -- <suite>...` runs those named. Not part of `task check`. |
 
