@@ -165,7 +165,7 @@ func renderLines(blocks []reportBlock, open []bool) []reportLine {
 				at = len(out)
 			}
 		default:
-			for _, l := range strings.Split(strings.TrimSuffix(string(bl.text), "\n"), "\n") {
+			for l := range strings.SplitSeq(strings.TrimSuffix(string(bl.text), "\n"), "\n") {
 				out = append(out, reportLine{bl.indent + l, -1, -1})
 			}
 		}

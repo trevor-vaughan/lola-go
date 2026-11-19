@@ -23,8 +23,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-func ptr(k engine.TrustKinds) *engine.TrustKinds { return &k }
-
 // consentRun is the run a refusal for want of consent hints: what follows "then consent to it: " in
 // its first hint naming it; "" for none.
 func consentRun(err error) string {
@@ -173,13 +171,13 @@ var _ = Describe("typed trust", func() {
 		},
 		Entry("bare --trust is a value no typed --trust= gives", "sync", []string{engine.TrustBareValue}, engine.TrustBare, "", nil),
 		Entry("--trust=entries,profiles written on profile --add is refused", "profile --add", []string{"entries,profiles"}, engine.TrustKinds(0),
-			"lola profile --add never asks for entries trust; it takes --trust=profiles", ptr(engine.TrustProfiles)),
+			"lola profile --add never asks for entries trust; it takes --trust=profiles", new(engine.TrustProfiles)),
 		Entry("bare --trust beside a kind install takes is still refused", "install", []string{engine.TrustBareValue, "hooks"}, engine.TrustKinds(0),
-			"lola install never asks for entries or profiles trust; it takes --trust=scripts,hooks,runtime-hooks", ptr(engine.TrustHooks)),
+			"lola install never asks for entries or profiles trust; it takes --trust=scripts,hooks,runtime-hooks", new(engine.TrustHooks)),
 		Entry("three refused kinds read as a list", "profile --add", []string{"entries,scripts,hooks"}, engine.TrustKinds(0),
-			"lola profile --add never asks for entries, scripts or hooks trust; it takes --trust=profiles", ptr(engine.TrustKinds(0))),
+			"lola profile --add never asks for entries, scripts or hooks trust; it takes --trust=profiles", new(engine.TrustKinds(0))),
 		Entry("a trailing comma hints the value without it", "sync", []string{"hooks,"}, engine.TrustKinds(0),
-			`--trust: "" is not a kind of trust; kinds are entries, profiles, scripts, hooks, runtime-hooks, all`, ptr(engine.TrustHooks)),
+			`--trust: "" is not a kind of trust; kinds are entries, profiles, scripts, hooks, runtime-hooks, all`, new(engine.TrustHooks)),
 		Entry("--trust= hints bare --trust only where the command takes entries", "profile --add", []string{""}, engine.TrustKinds(0),
 			"--trust= names no kind; kinds are entries, profiles, scripts, hooks, runtime-hooks, all", nil),
 	)

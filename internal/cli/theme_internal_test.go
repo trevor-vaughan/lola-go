@@ -25,7 +25,7 @@ const minContrast = 4.5
 // eachStyle calls visit with every lipgloss.Style in v, a huh.Styles or a struct inside one,
 // and the style's field path.
 func eachStyle(v reflect.Value, at string, visit func(string, lipgloss.Style)) {
-	if s, ok := v.Interface().(lipgloss.Style); ok {
+	if s, ok := reflect.TypeAssert[lipgloss.Style](v); ok {
 		visit(at, s)
 		return
 	}

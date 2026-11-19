@@ -44,7 +44,7 @@ func Linked(root, logical string) (bool, error) {
 		return false, fmt.Errorf("path %q must be relative and stay inside the root", logical)
 	}
 	p := filepath.Clean(root)
-	for _, c := range strings.Split(filepath.Clean(logical), string(filepath.Separator)) {
+	for c := range strings.SplitSeq(filepath.Clean(logical), string(filepath.Separator)) {
 		p = filepath.Join(p, c)
 		fi, err := os.Lstat(p)
 		if errors.Is(err, fs.ErrNotExist) {

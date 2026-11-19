@@ -488,7 +488,7 @@ func Forget(dir string, done []Entry) (bool, error) {
 		return false, err
 	}
 	var kept strings.Builder
-	for _, line := range strings.Split(strings.TrimSuffix(string(m), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(m), "\n"), "\n") {
 		orig, to, ok := strings.Cut(line, "\t")
 		if line == "" || ok && slices.ContainsFunc(done, func(e Entry) bool { return e.Original == orig && e.Trash == filepath.Clean(to) }) {
 			continue
@@ -553,7 +553,7 @@ func outsideRun(dir, p string) string {
 		return untrusted.CleanErr(err).Error()
 	}
 	at := dir
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
 		if part == "." {
 			break
 		}
@@ -677,8 +677,7 @@ func (t *Trash) removeBackedUp(parent *os.Root, name, to string) error {
 		return err
 	}
 	var left []string
-	for i := len(walked) - 1; i >= 0; i-- {
-		p := walked[i]
+	for _, p := range slices.Backward(walked) {
 		fi, err := parent.Lstat(p)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -785,7 +784,7 @@ func (t *Trash) makeParents(dir string) error {
 		return err
 	}
 	p := t.Dir
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
 		p = filepath.Join(p, part)
 		fi, err := os.Lstat(p)
 		switch {

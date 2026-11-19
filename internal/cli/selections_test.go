@@ -129,7 +129,7 @@ var _ = Describe("lola install --exact", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: --exact applies to --only\n"))
 		var hint string
-		for _, l := range strings.Split(r.err, "\n") {
+		for l := range strings.SplitSeq(r.err, "\n") {
 			if strings.HasPrefix(strings.TrimSpace(l), "hint: lola install ") {
 				hint = l
 			}
@@ -206,7 +206,7 @@ var _ = Describe("a pick change that deletes files is confirmed as uninstall is"
 		Expect(tested).To(BeAnExistingFile())
 		Expect(selections).NotTo(BeAnExistingFile(), "a refusal saves no picks")
 		var hint string
-		for _, l := range strings.Split(r.err, "\n") {
+		for l := range strings.SplitSeq(r.err, "\n") {
 			if strings.HasPrefix(strings.TrimSpace(l), "hint: lola install ") {
 				hint = strings.TrimPrefix(strings.TrimSpace(l), "hint: ")
 			}

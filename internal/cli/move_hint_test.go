@@ -61,7 +61,7 @@ var _ = Describe("the move hint after an install", func() {
 	// moveHints is the move hint lines of an install's human output, without their arrow.
 	moveHints := func(out string) []string {
 		hints := []string{}
-		for _, line := range strings.Split(out, "\n") {
+		for line := range strings.SplitSeq(out, "\n") {
 			text, ok := strings.CutPrefix(line, "→ ")
 			if ok && (strings.HasPrefix(text, "meant for ") || strings.HasPrefix(text, "keep it to yourself: ") || strings.HasPrefix(text, "other profiles: ")) {
 				hints = append(hints, text)

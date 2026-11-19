@@ -1459,7 +1459,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			b, err := os.ReadFile(log)
 			Expect(err).NotTo(HaveOccurred())
 			seen := map[string]bool{}
-			for _, dir := range strings.Fields(string(b)) {
+			for dir := range strings.FieldsSeq(string(b)) {
 				rel, err := filepath.Rel(e.Paths.Staging, dir)
 				Expect(err).NotTo(HaveOccurred())
 				if !filepath.IsLocal(rel) {

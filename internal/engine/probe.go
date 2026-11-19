@@ -449,7 +449,7 @@ func pointed(v any, ptr string) (any, bool) {
 	if ptr == "" {
 		return v, true
 	}
-	for _, tok := range strings.Split(ptr[1:], "/") {
+	for tok := range strings.SplitSeq(ptr[1:], "/") {
 		tok = strings.ReplaceAll(strings.ReplaceAll(tok, "~1", "/"), "~0", "~")
 		switch x := v.(type) {
 		case map[string]any:

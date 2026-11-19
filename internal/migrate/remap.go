@@ -354,7 +354,7 @@ func ParseTargetMaps(e *engine.Engine, args []string) (map[string][]string, erro
 			return nil, fmt.Errorf("--map-target %q is not OLD=NEW[,NEW]: write the Python lola's assistant, =, and the assistants to install its modules for, such as --map-target claude-code=opencode", shown)
 		}
 		var to []string
-		for _, id := range strings.Split(list, ",") {
+		for id := range strings.SplitSeq(list, ",") {
 			if !slices.Contains(ids, id) {
 				return nil, fmt.Errorf("--map-target %q: %q is not an assistant lola installs for; write %s", shown, untrusted.Text(id, untrusted.MaxName), strings.Join(ids, ", "))
 			}

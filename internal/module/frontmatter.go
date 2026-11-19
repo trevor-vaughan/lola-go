@@ -152,9 +152,7 @@ func (d Doc) Render() string {
 // plain YAML scalar (lola only prepends validated names).
 func (d Doc) Prepend(key, value string) Doc {
 	fm := make(map[string]any, len(d.Frontmatter)+1)
-	for k, v := range d.Frontmatter {
-		fm[k] = v
-	}
+	maps.Copy(fm, d.Frontmatter)
 	fm[key] = value
 	return Doc{Frontmatter: fm, RawFrontmatter: key + ": " + value + "\n" + d.RawFrontmatter, Body: d.Body}
 }
@@ -283,12 +281,7 @@ func hasAmbiguous(n *yaml.Node) bool {
 	if n.Kind == yaml.ScalarNode {
 		return n.Style == 0 && ambiguousScalar.MatchString(n.Value)
 	}
-	for _, c := range n.Content {
-		if hasAmbiguous(c) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(n.Content, hasAmbiguous)
 }
 
 // String returns the frontmatter value for key when it is a string, else "".

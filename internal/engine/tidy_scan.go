@@ -400,7 +400,7 @@ func (s *tidyScanner) otherProject(d *tidyDest) string {
 func (s *tidyScanner) linksOnTheWay(d *tidyDest) []string {
 	var out []string
 	parent, p := d.realRoot, d.root
-	for _, c := range strings.Split(d.logical, "/") {
+	for c := range strings.SplitSeq(d.logical, "/") {
 		p = filepath.Join(p, c)
 		fi, err := os.Lstat(p)
 		if err != nil {

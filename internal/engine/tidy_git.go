@@ -152,7 +152,7 @@ func (s *tidyScanner) lsFiles(wt string, rels []string) gitAnswer {
 		return gitAnswer{cause: "git printed what lola cannot read"}
 	}
 	var paths []string
-	for _, p := range bytes.Split(out[:len(out)-1], []byte{0}) {
+	for p := range bytes.SplitSeq(out[:len(out)-1], []byte{0}) {
 		if !filepath.IsLocal(filepath.FromSlash(string(p))) {
 			return gitAnswer{cause: "git printed what lola cannot read"}
 		}

@@ -124,7 +124,7 @@ func Init(dir, format string) (Scaffolded, error) {
 // (the write would land outside root) or when rel itself exists.
 func checkNew(root, rel string) error {
 	cur := root
-	for _, part := range strings.Split(rel, "/") {
+	for part := range strings.SplitSeq(rel, "/") {
 		cur = filepath.Join(cur, part)
 		fi, err := os.Lstat(cur)
 		switch {

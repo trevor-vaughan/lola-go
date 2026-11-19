@@ -2,8 +2,12 @@ version: "2"
 linters:
   enable: [errorlint, gosec, misspell, bodyclose, unconvert, depguard, forbidigo,
     copyloopvar, durationcheck, exptostd, fatcontext, ginkgolinter, iotamixing, mirror, nakedret,
-    nolintlint, reassign, usestdlibvars, wastedassign]
+    modernize, nolintlint, reassign, usestdlibvars, wastedassign]
   settings:
+    modernize:
+      disable:
+        # Short message concatenations read better with +=; none of them are hot.
+        - stringsbuilder
     nolintlint:
       require-explanation: true
       require-specific: true

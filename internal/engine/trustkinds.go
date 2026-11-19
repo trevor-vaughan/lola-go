@@ -225,7 +225,7 @@ func trustKindNamed(arg string, takes TrustKinds) (TrustKinds, bool) {
 // value, which pflag gives only after =. It returns the kinds arg names.
 func TrustArgument(command, arg string) (TrustKinds, bool) {
 	var k TrustKinds
-	for _, part := range strings.Split(strings.ToLower(arg), ",") {
+	for part := range strings.SplitSeq(strings.ToLower(arg), ",") {
 		named, ok := trustKindNamed(part, CommandTrust(command))
 		if !ok {
 			return 0, false
@@ -270,7 +270,7 @@ func ParseTrust(command string, values []string) (TrustKinds, error) {
 			return 0, &TrustFlagError{msg: "--trust= names no kind; kinds are " + trustKindList(), Fix: k,
 				HasFix: err == nil && takes&TrustEntries != 0}
 		}
-		for _, name := range strings.Split(v, ",") {
+		for name := range strings.SplitSeq(v, ",") {
 			k, ok := trustKindNamed(name, takes)
 			if !ok {
 				return 0, unknownKind(command, values, i, name)

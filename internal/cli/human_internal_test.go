@@ -66,7 +66,7 @@ var _ = Describe("printFindings grouping", func() {
 
 	mk := func(n int, text string) []target.Finding {
 		var out []target.Finding
-		for i := 0; i < n; i++ {
+		for i := range n {
 			out = append(out, target.Finding{Severity: target.SeverityWarn, Module: "ecc", Target: "opencode",
 				Kind: "agent", Artifact: fmt.Sprintf("agent-%d", i), Code: "model-dropped", Text: text})
 		}

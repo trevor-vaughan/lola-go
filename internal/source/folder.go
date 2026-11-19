@@ -154,7 +154,7 @@ func folderRoot(base, subpath, baseName string) (string, string, error) {
 // is a directory. shown names subpath in errors.
 func checkedRoot(base, subpath, name, shown string) (string, string, error) {
 	current := ""
-	for _, comp := range strings.Split(filepath.ToSlash(subpath), "/") {
+	for comp := range strings.SplitSeq(filepath.ToSlash(subpath), "/") {
 		current = filepath.Join(current, comp)
 		fi, err := os.Lstat(filepath.Join(base, current))
 		switch {
@@ -268,7 +268,7 @@ func gitFiles(ctx context.Context, root string, which ...string) ([]string, erro
 		return nil, fmt.Errorf("git ls-files in the source failed: %w: %s", err, untrusted.Text(strings.TrimSpace(stderr.String()), maxStderr))
 	}
 	var files []string
-	for _, f := range strings.Split(string(out), "\x00") {
+	for f := range strings.SplitSeq(string(out), "\x00") {
 		if f != "" && !ignored(f) {
 			files = append(files, filepath.FromSlash(f))
 		}

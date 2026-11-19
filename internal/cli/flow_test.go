@@ -392,7 +392,7 @@ func equivalents(stderr string) []string {
 	Expect(i).NotTo(BeNumerically("<", 0), stderr)
 	after := stderr[i+len("Equivalent commands:\n"):]
 	var out []string
-	for _, l := range strings.Split(after, "\n") {
+	for l := range strings.SplitSeq(after, "\n") {
 		if !strings.HasPrefix(l, "  ") {
 			break
 		}
@@ -2150,7 +2150,7 @@ var _ = Describe("the install flow", func() {
 				Expect(eq.code).To(Equal(0), line+"\n"+eq.err)
 				got.WriteString(eq.out)
 			}
-			for _, l := range strings.Split(strings.TrimSpace(got.String()), "\n") {
+			for l := range strings.SplitSeq(strings.TrimSpace(got.String()), "\n") {
 				if strings.HasPrefix(l, "  ") {
 					Expect(want).To(ContainSubstring(l+"\n"), fmt.Sprint(answer))
 				}

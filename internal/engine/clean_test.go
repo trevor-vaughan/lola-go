@@ -211,7 +211,7 @@ var _ = Describe("lola cache clean", func() {
 		index := filepath.Join(e.Paths.Store, "kit", "index.yml")
 		b, err := os.ReadFile(index)
 		Expect(err).NotTo(HaveOccurred())
-		before := strings.Split(string(b), "last_used:")[0]
+		before, _, _ := strings.Cut(string(b), "last_used:")
 		Expect(os.WriteFile(index, []byte(before), 0o600)).To(Succeed())
 		day = day.AddDate(0, 0, 100)
 		p := plan(engine.CleanRequest{UnusedFor: "1d"})

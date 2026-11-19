@@ -84,7 +84,7 @@ var _ = Describe("local entries inside a project", func() {
 		Expect(again.code).To(Equal(0), again.err)
 		Expect(again.out+again.err).NotTo(ContainSubstring("installs from"), "a sync says nothing of it")
 
-		for _, step := range strings.Split(twoStep, ", then ") {
+		for step := range strings.SplitSeq(twoStep, ", then ") {
 			r = runConfirmed(step)
 			Expect(r.code).To(Equal(0), r.err)
 		}

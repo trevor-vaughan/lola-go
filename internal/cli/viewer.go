@@ -551,7 +551,7 @@ func wrapKeys(line string, width, limit int) []string {
 		return []string{line}
 	}
 	var rows []string
-	for _, k := range strings.Split(line, " · ") {
+	for k := range strings.SplitSeq(line, " · ") {
 		last := len(rows) - 1
 		switch {
 		case last >= 0 && (ansi.StringWidth(rows[last]+" · "+k) <= width || len(rows) == limit):

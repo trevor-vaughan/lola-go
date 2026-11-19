@@ -399,7 +399,7 @@ var _ = Describe("lola market", func() {
 			GinkgoT().Setenv("COLUMNS", strconv.Itoa(cols))
 			r = lola("market", "acme")
 			Expect(r.code).To(Equal(0), r.err)
-			for _, line := range strings.Split(strings.TrimSuffix(r.out, "\n"), "\n") {
+			for line := range strings.SplitSeq(strings.TrimSuffix(r.out, "\n"), "\n") {
 				Expect(utf8.RuneCountInString(line)).To(BeNumerically("<=", cols), "%d columns: %q", cols, line)
 			}
 			Expect(r.out).To(MatchRegexp(`\n  description  Does many[^\n]*\n {15}\S`), "%d columns: a wrapped field keeps to its column", cols)
@@ -648,7 +648,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 					Expect(json.Unmarshal([]byte(strings.Split(strings.TrimSpace(j.err), "\n")[0]), &doc)).To(Succeed(), j.err)
 					hints, refused = doc.Hints, j.err
 				} else {
-					for _, line := range strings.Split(r.err, "\n") {
+					for line := range strings.SplitSeq(r.err, "\n") {
 						if h, ok := strings.CutPrefix(line, "  hint: "); ok {
 							hints = append(hints, h)
 						}
@@ -731,7 +731,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 					Expect(json.Unmarshal([]byte(strings.Split(strings.TrimSpace(r.err), "\n")[0]), &doc)).To(Succeed(), r.err)
 					hints = doc.Hints
 				} else {
-					for _, line := range strings.Split(r.err, "\n") {
+					for line := range strings.SplitSeq(r.err, "\n") {
 						if h, ok := strings.CutPrefix(line, "  hint: "); ok {
 							hints = append(hints, h)
 						}
@@ -792,7 +792,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 						}
 					}
 				} else {
-					for _, line := range strings.Split(r.out+r.err, "\n") {
+					for line := range strings.SplitSeq(r.out+r.err, "\n") {
 						if _, cmd, ok := strings.Cut(line, " → lola "); ok {
 							cmds = append(cmds, "lola "+cmd)
 						}
@@ -1084,7 +1084,7 @@ var _ = Describe("lola market <name> <entry>", func() {
 			r := lola(append([]string{"market"}, strings.Fields(args)...)...)
 			Expect(r.code).To(Equal(1), args)
 			Expect(r.err).To(Equal(want), args)
-			for _, line := range strings.Split(r.err, "\n") {
+			for line := range strings.SplitSeq(r.err, "\n") {
 				if h, ok := strings.CutPrefix(line, "  hint: "); ok {
 					Expect(runHint(h).code).To(Equal(0), args+": "+h)
 				}

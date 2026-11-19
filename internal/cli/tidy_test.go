@@ -441,7 +441,7 @@ var _ = Describe("lola tidy", func() {
 		r := lola("tidy", "command/tmp-*", "skill/a b'c", "-C", proj, "-t", "claude-code", "--keep", "agent/z")
 		Expect(r.code).To(Equal(1))
 		var hint string
-		for _, l := range strings.Split(r.err, "\n") {
+		for l := range strings.SplitSeq(r.err, "\n") {
 			if h, ok := strings.CutPrefix(l, "  hint: "); ok {
 				hint = h
 			}

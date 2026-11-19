@@ -146,8 +146,7 @@ func swapCopies(dir string, want []moduleCopy, perm fs.FileMode) (sw *copySwap, 
 // rollback restores the copies that were replaced, newest first.
 func (sw *copySwap) rollback() error {
 	var errs []error
-	for i := len(sw.replaced) - 1; i >= 0; i-- {
-		name := sw.replaced[i]
+	for _, name := range slices.Backward(sw.replaced) {
 		cur := filepath.Join(sw.dir, name)
 		errs = append(errs, os.RemoveAll(cur))
 		if sw.hadOld[name] {

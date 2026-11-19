@@ -216,7 +216,7 @@ var _ = Describe("install scripts in a dry run", func() {
 			Expect(r.out).NotTo(ContainSubstring("\x1b"))
 			r = lola(append(args, "--plain")...)
 			var rows []string
-			for _, l := range strings.Split(r.out, "\n") {
+			for l := range strings.SplitSeq(r.out, "\n") {
 				if strings.HasPrefix(l, "script\t") {
 					rows = append(rows, l)
 				}
