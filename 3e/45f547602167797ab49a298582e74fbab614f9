@@ -1,0 +1,23 @@
+docs/usage.md
+  s_dd223d1de430b7::t_41cb0923ae6ebd 116,530-536
+internal/engine/gitignore.go
+  s_dd223d1de430b7::t_cdbabf93272388 206
+internal/engine/machine_paths_test.go
+  s_dd223d1de430b7::t_d36a8f9502b4bd 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "3e45f547602167797ab49a298582e74fbab614f9",
+  "prompts": {},
+  "sessions": {
+    "s_dd223d1de430b7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa90f5f7a8a3f27ef",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
