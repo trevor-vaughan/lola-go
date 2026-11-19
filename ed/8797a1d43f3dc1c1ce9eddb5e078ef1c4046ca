@@ -1,0 +1,36 @@
+e2e/profile-first/profile-first.venom.yml
+  s_fed06242c50a4d::t_8548e003661803 159
+e2e/install/install.venom.yml
+  s_fed06242c50a4d::t_de2f5f6fb2a336 60,76
+  s_fed06242c50a4d::t_b49025e7b2eb6e 59,168,194-203,544,549,581,787,811-812,817-818,825
+e2e/trash-picks/trash-picks.venom.yml
+  s_fed06242c50a4d::t_8548e003661803 151,219
+e2e/picks/picks.venom.yml
+  s_c4c029670df5dc::t_5f97131f7337a8 123,156,179,184
+README.md
+  s_fed06242c50a4d::t_f0cbcd98d6ea31 159-160,165,169-171,173,182-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "ed8797a1d43f3dc1c1ce9eddb5e078ef1c4046ca",
+  "prompts": {},
+  "sessions": {
+    "s_c4c029670df5dc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a30717a0772b8f0dd",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_fed06242c50a4d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d740fdaf-11dc-4d83-9d55-b6671e4a154a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
