@@ -1,0 +1,50 @@
+internal/cli/flow_test.go
+  s_fed06242c50a4d::t_8c6ac5c90fb224 1737
+internal/cli/core_test.go
+  s_fed06242c50a4d::t_8c6ac5c90fb224 66,997
+  s_fed06242c50a4d::t_2b49be56e50685 962
+internal/cli/profile_test.go
+  s_fed06242c50a4d::t_8c6ac5c90fb224 49-50,67
+internal/cli/selections_test.go
+  s_fed06242c50a4d::t_8c6ac5c90fb224 56
+docs/reference/list.md
+  s_fed06242c50a4d::t_690fcce764995c 73
+e2e/profile-first/profile-first.venom.yml
+  s_fed06242c50a4d::t_690fcce764995c 83,214
+internal/cli/scope_test.go
+  s_fed06242c50a4d::t_cbacc8e586329b 374
+docs/reference/output-contract.md
+  s_fed06242c50a4d::t_690fcce764995c 315
+e2e/install/install.venom.yml
+  s_fed06242c50a4d::t_771678eca87875 305
+internal/cli/cmd_core.go
+  s_fed06242c50a4d::t_19f96e037d5620 408,416-420,448,459,462,464,466,471,473,476
+internal/cli/list_drift_test.go
+  s_fed06242c50a4d::t_2b49be56e50685 233-247,252-254
+  s_fed06242c50a4d::t_35cc9c8673cc44 248
+  s_fed06242c50a4d::t_213959b2f512ce 9,11,249-251
+internal/cli/human.go
+  s_fed06242c50a4d::t_eeed21b73c860f 4,8,12,32-53,55-91
+  s_fed06242c50a4d::t_690fcce764995c 54
+  s_fed06242c50a4d::t_d2dff596fd01a6 92
+internal/cli/info_test.go
+  s_fed06242c50a4d::t_213959b2f512ce 209
+internal/cli/context_test.go
+  s_fed06242c50a4d::t_8c6ac5c90fb224 315-316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9aa20d22749be2b341b9fb1a73e43ef54cb852a3",
+  "prompts": {},
+  "sessions": {
+    "s_fed06242c50a4d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d740fdaf-11dc-4d83-9d55-b6671e4a154a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
