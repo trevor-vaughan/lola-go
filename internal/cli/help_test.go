@@ -2,66 +2,106 @@ package cli_test
 
 import (
 	"encoding/json"
+	"os"
+	"regexp"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 
+	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
 var _ = Describe("help, errors and output contract", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
-	It("piped help shows the full tree with the preamble", func() {
-		for _, args := range [][]string{{"-h"}, {"help"}, {"help", "--long"}} {
-			r := lola(args...)
-			Expect(r.code).To(Equal(0), strings.Join(args, " "))
-			Expect(r.out).To(HavePrefix("GLOBAL FLAGS\n"))
-			Expect(r.out).To(ContainSubstring("--json"))
-			Expect(r.out).To(ContainSubstring("OUTPUT CONTRACT"))
-			Expect(r.out).To(ContainSubstring("ENVIRONMENT"))
-			Expect(r.out).To(ContainSubstring("== lola version =="))
-			Expect(r.out).To(ContainSubstring("== lola completion =="))
-		}
+	// find is the live command at path.
+	find := func(path ...string) *cobra.Command {
+		root, err := cli.NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		c, _, err := root.Find(path)
+		Expect(err).NotTo(HaveOccurred())
+		return c
+	}
+	const docs = "https://github.com/trevor-vaughan/lola-go/blob/main/docs/"
+
+	It("-h prints the short description, usage, examples and the command's own flags", func() {
+		c := find("install")
+		r := lola("install", "-h")
+		Expect(r.code).To(Equal(0))
+		Expect(r.out).To(HavePrefix(c.Short + "\n\nUsage:\n"))
+		Expect(r.out).To(ContainSubstring("Examples:\n"))
+		Expect(r.out).To(MatchRegexp(`Flags:\n(.*\n)*      --strict `))
+		Expect(r.out).NotTo(ContainSubstring("Global Flags:"))
+		Expect(r.out).NotTo(ContainSubstring("Reference:"))
+		Expect(r.out).To(HaveSuffix("\nMore: lola install --help\n"))
 	})
 
-	It("prints the global flags once, piped or concise", func() {
-		for _, args := range [][]string{{"install", "--help"}, {"market", "-h"}, {"help", "cache", "add"}, {"-h"}} {
-			r := lola(args...)
-			Expect(r.code).To(Equal(0), strings.Join(args, " "))
-			Expect(strings.Count(r.out, "GLOBAL FLAGS")+strings.Count(r.out, "Global Flags:")).To(Equal(1), strings.Join(args, " "))
-			if args[0] != "-h" { // the root's own flags are the global ones
-				Expect(strings.Count(r.out, "--no-pager")).To(Equal(1), strings.Join(args, " "))
-			}
-		}
-		r := lola("install", "--help")
-		Expect(r.out).To(MatchRegexp(`Flags:\n(.*\n)*      --strict `), "the command's own flags stay")
-		r = lola("help", "install", "--short")
-		Expect(strings.Count(r.out, "Global Flags:")).To(Equal(1), "concise help keeps cobra's block")
-		Expect(r.out).NotTo(ContainSubstring("GLOBAL FLAGS"))
-	})
-
-	It("a command's help off a terminal starts with its description and usage, then the global flags", func() {
+	It("--help prints the long description, the full usage and the reference link", func() {
+		c := find("install")
 		r := lola("install", "--help")
 		Expect(r.code).To(Equal(0))
-		Expect(r.out).NotTo(HavePrefix("GLOBAL FLAGS"))
-		Expect(r.out).To(MatchRegexp(`\A(.*\n)*?Usage:\n(.*\n)*GLOBAL FLAGS\n`))
-		Expect(strings.Index(r.out, "Usage:")).To(BeNumerically("<", strings.Index(r.out, "GLOBAL FLAGS")))
-		Expect(r.out).To(ContainSubstring("OUTPUT CONTRACT"))
-		r = lola("cache", "-h")
-		Expect(r.out).To(MatchRegexp(`\A(.*\n)*?Usage:\n(.*\n)*GLOBAL FLAGS\n(.*\n)*== lola cache add ==`), "its subcommands follow")
-		Expect(r.out).NotTo(ContainSubstring("== lola cache =="))
-		Expect(lola("-h").out).To(HavePrefix("GLOBAL FLAGS\n"), "the root's help is unchanged")
-		Expect(lola([]string{}...).out).To(HavePrefix("GLOBAL FLAGS\n"), "bare lola is unchanged")
+		Expect(r.out).To(HavePrefix(strings.TrimSpace(c.Long) + "\n\nUsage:\n"))
+		Expect(strings.Count(r.out, "Global Flags:")).To(Equal(1))
+		Expect(r.out).To(HaveSuffix("\nReference: " + docs + "reference/install.md\n"))
+		Expect(lola("cache", "add", "--help").out).To(HaveSuffix("\nReference: " + docs + "reference/cache.md\n"))
 	})
 
-	It("help --short prints concise grouped help with aliases inline", func() {
+	It("lola help <cmd> is --help and help --short <cmd> is -h, aliases resolved", func() {
+		Expect(lola("help", "install").out).To(Equal(lola("install", "--help").out))
+		Expect(lola("help", "--short", "add").out).To(Equal(lola("install", "-h").out))
+		Expect(lola("help", "cache", "add").out).To(Equal(lola("cache", "add", "--help").out))
+	})
+
+	It("a flag's value is never read as --help, and nothing after -- is a flag", func() {
+		short := lola("install", "-h").out
+		Expect(lola("install", "-yh").out).To(Equal(short))
+		Expect(lola("install", "-t", "--help", "-h").out).To(Equal(short))
+		Expect(lola("install", "-h", "--", "--help").out).To(Equal(short))
+		Expect(lola("install", "-h", "--help").out).To(Equal(lola("install", "--help").out))
+	})
+
+	It("the root's long help adds the environment; bare lola prints -h", func() {
+		long := lola("--help").out
+		Expect(long).To(ContainSubstring("\nEnvironment:\n"))
+		Expect(long).To(ContainSubstring("XDG_CACHE_HOME"))
+		Expect(long).To(HaveSuffix("\nReference: " + docs + "usage.md\n"))
+		Expect(lola("help").out).To(Equal(long))
+		short := lola("-h").out
+		Expect(short).NotTo(ContainSubstring("Environment:"))
+		Expect(lola([]string{}...).out).To(Equal(short))
+	})
+
+	It("piped help is not the tree; help --all is, with the global flags once", func() {
+		Expect(lola("help").out).NotTo(ContainSubstring("== lola install =="))
+		r := lola("help", "--all")
+		Expect(r.code).To(Equal(0))
+		Expect(r.out).To(ContainSubstring("== lola install ==\n"))
+		Expect(r.out).To(ContainSubstring("== lola cache add ==\n"))
+		Expect(r.out).To(ContainSubstring("== lola completion ==\n"))
+		Expect(len(regexp.MustCompile(`(?m)^\s+--no-pager\s`).FindAllString(r.out, -1))).To(Equal(1))
+		Expect(r.out).NotTo(ContainSubstring("OUTPUT CONTRACT"))
+		r = lola("help", "--all", "cache")
+		Expect(r.out).To(HavePrefix("Global Flags:\n"))
+		Expect(r.out).To(ContainSubstring("== lola cache add ==\n"))
+		Expect(r.out).NotTo(ContainSubstring("== lola install =="))
+		Expect(len(regexp.MustCompile(`(?m)^\s+--no-pager\s`).FindAllString(r.out, -1))).To(Equal(1))
+	})
+
+	It("help --short prints grouped commands with aliases inline", func() {
 		r := lola("help", "--short")
 		Expect(r.code).To(Equal(0))
-		Expect(r.out).NotTo(ContainSubstring("GLOBAL FLAGS"))
 		Expect(r.out).To(ContainSubstring("Additional:"))
 		Expect(r.out).To(MatchRegexp(`(?m)^  version \(ver\)\s+Print lola's version$`))
+	})
+
+	It("rejects an unknown help topic, --all with --short, and the removed --long", func() {
+		Expect(lola("help", "nope").err).To(ContainSubstring("no help topic \"nope\"\n  hint: see: lola help\n"))
+		Expect(lola("help", "--all", "--short").err).To(ContainSubstring(
+			"--all and --short cannot be combined\n  hint: pick one: lola help --all, or lola help --short <command>"))
+		Expect(lola("help", "--long").code).To(Equal(1))
 	})
 
 	It("help for one command resolves aliases", func() {
@@ -77,11 +117,6 @@ var _ = Describe("help, errors and output contract", func() {
 		Expect(r.out).To(MatchRegexp(`--scope string\s+act on this scope: project, user or both \(also project,user\)\n`))
 		Expect(r.out).To(MatchRegexp(`--project\s+act on project scope: --scope project\n`))
 		Expect(r.out).To(MatchRegexp(`-C, --root string\s+the project at this directory; implies project scope\n`))
-	})
-
-	It("rejects an unknown help topic and both modes at once", func() {
-		Expect(lola("help", "nope").err).To(ContainSubstring("no help topic \"nope\"\n  hint: see: lola help\n"))
-		Expect(lola("help", "--long", "--short").code).To(Equal(1))
 	})
 
 	It("coaches unknown commands with suggestions", func() {

@@ -28,24 +28,17 @@ func (a *app) trashCmd() *cobra.Command {
 	var restore, empty, force, dry, yes bool
 	var olderThan string
 	cmd := &cobra.Command{
-		Use:   "trash [<run> [<original>...] --restore | [<run>...] --empty [--older-than <age>]]",
+		Use:   "trash [<run> [<original>...] --restore | [<run>...] --empty] [flags]",
 		Short: "List, restore and empty lola's trash",
 		Long: "lola tidy, lola migrate and lola profile --remove move what they take out of place into the\n" +
-			"trash under $XDG_STATE_HOME/lola/trash, one run per command, never deleting it. Without a run,\n" +
-			"list the runs, newest first: each one's id, time, the command that made it, its scope and\n" +
-			"project, and its files and size. With a run, show its entries: each original path and where\n" +
-			"the trash holds it; a copy that may hold credentials (an MCP or settings file) is marked.\n" +
-			"On a terminal, without a run, --json or --plain, lola opens a picker instead: tick files, or a\n" +
-			"run's [whole run] row, which takes the whole run whatever of its files is ticked, then restore\n" +
-			"or empty them; lola shows the plan and asks before it writes.\n\n" +
-			"--restore moves the run's entries back, or only the originals you name (a relative path is\n" +
-			"taken from the working directory), making the directories they were in. It restores nothing\n" +
-			"when an original exists; --force first moves what is there into a new trash run, never\n" +
-			"deleting it. A credential copy comes back at mode 0600. Restored entries leave the run, and a\n" +
-			"run left empty is removed. -n prints the plan.\n\n" +
-			"--empty deletes the named runs, or every run; --older-than 30d (or 2w, weeks of 7 days) keeps\n" +
-			"the newer ones. Deleting cannot be undone: lola asks first on a terminal, and off one it\n" +
-			"needs -y. -n lists what would be deleted.",
+			"trash under $XDG_STATE_HOME/lola/trash, one run per command, never deleting it.\n\n" +
+			"Without a run, list the runs, newest first. With a run, show its entries: each original path and\n" +
+			"where the trash holds it. On a terminal, bare lola trash opens a picker to restore or empty;\n" +
+			"lola shows the plan and asks before it writes.\n\n" +
+			"--restore moves the run's entries back, or only the originals you name. It restores nothing when\n" +
+			"an original exists; --force first moves what is there into a new trash run. -n prints the plan.\n\n" +
+			"--empty deletes the named runs, or every run; --older-than 30d (or 2w) keeps the newer ones.\n" +
+			"Deleting cannot be undone: lola asks first on a terminal, and off one it needs -y.",
 		Example: "  lola trash\n  lola trash 20261103T120000Z\n  lola trash 20261103T120000Z --restore\n" +
 			"  lola trash 20261103T120000Z .claude/commands/ship.md --restore -n\n  lola trash --empty --older-than 30d -y",
 		GroupID:           groupAdditional,

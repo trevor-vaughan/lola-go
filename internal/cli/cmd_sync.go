@@ -236,21 +236,14 @@ func (a *app) syncCmd() *cobra.Command {
 		Short: "Make this project (or --user) match its manifest",
 		Long: "Install every module project.yml lists at the version it pins, render the modules already\n" +
 			"installed, and remove the ones project.yml no longer lists (asking first; -y confirms).\n" +
-			"Name modules to sync only those. An entry without a pin is installed from your cache's\n" +
-			"version for its ref, and lola writes the pin into project.yml. --update fetches the refs\n" +
-			"again and re-pins; an entry installed through a marketplace (market:) follows its catalog,\n" +
-			"fetched once, at the same source, path and ref only, and says why when it cannot.\n" +
+			"Name modules to sync only those. An entry without a pin is installed from your cache and\n" +
+			"pinned; --update fetches the refs again and re-pins.\n" +
+			"\n" +
 			"When project.yml changed since lola last wrote it or you last trusted it (after a git pull,\n" +
 			"say), sync shows each change with the files, MCP servers and hooks it brings, and asks before\n" +
-			"anything is cached or installed. Off a terminal, --trust accepts the changes (of the modules\n" +
-			"named, if any); -y does not.\n" +
-			trustHelp("sync") + "\n" +
-			"On a terminal, the diff (and a dry run's plan), when taller than the terminal, opens in full\n" +
-			"in lola's viewer, or $LOLA_PAGER when set; the question comes after it exits. --no-pager,\n" +
-			"NO_PAGER, or pager: false in $XDG_CONFIG_HOME/lola/config.yaml, prints it instead.\n" +
-			"-y and --force never give consent of any kind.\n\n" + scopeHelp + "\n" +
-			"--scope both syncs the project, then user scope, and stops at the first that fails or is\n" +
-			"declined.",
+			"anything is cached or installed. Off a terminal, --trust accepts the changes; -y and --force\n" +
+			"never do. A diff taller than the terminal opens in lola's viewer; --no-pager prints it.\n" +
+			"\n" + scopeHelp,
 		Example: "  lola sync\n  lola sync --dry-run\n  lola sync review-kit\n  lola sync --update review-kit\n" +
 			"  lola sync --trust -y\n  lola sync --trust=entries,hooks\n  lola sync --user -y\n  lola sync --scope both",
 		GroupID:           groupCore,
@@ -260,8 +253,8 @@ func (a *app) syncCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and the trust diff, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker; confirm removals (only removals: it never trusts changes)")
-	addTrustFlag(cmd, &trust, "sync", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles (recorded as a yes is; never bypasses a refusal)")
-	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals (never answers a consent question)")
+	addTrustFlag(cmd, &trust, "sync", "trust without asking: entries, profiles, scripts, hooks, runtime-hooks, all")
+	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files, render skipped, confirm removals")
 	cmd.Flags().BoolVar(&f.update, "update", false, "fetch the refs again and re-pin the modules of the run")
 	cmd.Flags().StringArrayVar(&f.at, "at", nil, atUsage)
 	_ = cmd.RegisterFlagCompletionFunc("at", a.completeAt)
@@ -270,8 +263,7 @@ func (a *app) syncCmd() *cobra.Command {
 }
 
 // atUsage is --at's help, on lola sync and lola update.
-const atUsage = "install a module only at a version a refusal showed, as its hint pins it: `<module>=<version>`, a commit, " +
-	"or sha256:<digest> for a folder or archive; refused, writing nothing, if its source now serves another (repeatable)"
+const atUsage = "install only at the version a refusal showed: <module>=<version> (repeatable)"
 
 // atVersion is a version --at takes: a git commit (SHA-1 or SHA-256), or a content digest.
 var atVersion = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64}|sha256:[0-9a-f]{64})$`)

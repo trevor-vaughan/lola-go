@@ -26,28 +26,19 @@ func (a *app) migrateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "migrate",
 		Short: "Move from the Python lola: install its modules with lola and clean up",
-		Long: "Read the Python lola's state ($LOLA_HOME, else ~/.lola), install every module it\n" +
-			"installed for claude-code, gemini-cli or opencode again with lola, at the same\n" +
-			"projects and user scope, and clean up after the Python lola.\n" +
+		Long: "Install, with lola, every module the Python lola ($LOLA_HOME, else ~/.lola) installed for\n" +
+			"claude-code, gemini-cli or opencode, at the same projects and user scope, and clean up after it.\n" +
 			"\n" +
-			"A file the Python lola recorded is treated as its own: it is copied into the trash\n" +
-			"($XDG_STATE_HOME/lola/trash/<time>/, with manifest.txt) before lola installs over it,\n" +
-			"or moved there when lola does not write it. Restoring is a move back. Instruction\n" +
-			"blocks, MCP entries lola does not write, .lola-req and installs for other assistants\n" +
-			"are listed, never changed. Each enabled marketplace of the Python lola is registered\n" +
-			"with lola market (its catalog fetched); one lola cannot register is listed with the\n" +
-			"lola market <name> --add command that would, when one can. The Python lola's home goes\n" +
-			"to the trash last, when\n" +
-			"nothing is left in it. Symbolic links and files git tracks are kept.\n" +
+			"A file the Python lola recorded is copied into the trash ($XDG_STATE_HOME/lola/trash/<time>/)\n" +
+			"before lola installs over it, or moved there when lola does not write it; restoring is a move\n" +
+			"back. Its enabled marketplaces are registered with lola market. What lola cannot migrate is\n" +
+			"listed, never changed; symlinks and git-tracked files are kept. Its home goes to the trash\n" +
+			"last. From another machine, --map-root and --map-target say where its projects and\n" +
+			"assistants are now.\n" +
 			"\n" +
-			"From another machine: a project path or local source this machine lacks is looked for at\n" +
-			"the same place below the root --map-root names, and a module installed for an assistant\n" +
-			"this machine lacks is installed for those --map-target names instead. On a terminal,\n" +
-			"without -y, lola asks for both; the run ends with the command that maps what it left.\n" +
-			"\n" +
-			"lola migrate shows the plan and asks (default No); off a terminal it needs -y.\n" +
-			"--force also overwrites other files in the way and moves files git tracks, and answers\n" +
-			"the question as -y does (never hook consent). A second run has nothing to do.\n" + trustHelp("migrate"),
+			"lola migrate shows the plan and asks (default No); off a terminal it needs -y. Hook consent is\n" +
+			"asked on a terminal; --trust=<kinds> answers it. --force also overwrites other files in the way\n" +
+			"and moves files git tracks; it answers the question as -y does, never hook consent.",
 		Example: "  lola migrate --dry-run\n  lola migrate\n  lola migrate -y --keep-python\n" +
 			"  lola migrate --map-root /Users/alice=/home/alice --map-target claude-code=opencode",
 		GroupID: groupAdditional,
@@ -144,11 +135,11 @@ func (a *app) migrateCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	f.BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
-	f.BoolVar(&force, "force", false, "also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks, without asking (never answers hook consent)")
-	addTrustFlag(cmd, &trust, "migrate", "trust these kinds without asking: scripts, hooks, runtime-hooks or all (recorded as a yes is)")
+	f.BoolVar(&force, "force", false, "replace files in the way, move git-tracked ones (trashed); never answers consent")
+	addTrustFlag(cmd, &trust, "migrate", "trust without asking: scripts, hooks, runtime-hooks, all")
 	f.BoolVar(&keep, "keep-python", false, "install and replace with backup, but move nothing else to the trash")
-	f.StringArrayVar(&mapRoots, "map-root", nil, "look for a project path or local source this machine lacks, below OLD, at the same place below NEW (OLD=NEW; repeatable; one matching nothing is a warning)")
-	f.StringArrayVar(&mapTargets, "map-target", nil, "install the modules of OLD, an assistant this machine lacks, for NEW instead (OLD=NEW[,NEW]; repeatable)")
+	f.StringArrayVar(&mapRoots, "map-root", nil, "find missing paths below OLD at the same place below NEW (OLD=NEW; repeatable)")
+	f.StringArrayVar(&mapTargets, "map-target", nil, "install OLD's modules for NEW instead: OLD=NEW[,NEW] (repeatable)")
 	_ = cmd.RegisterFlagCompletionFunc("map-root", cobra.NoFileCompletions)
 	_ = cmd.RegisterFlagCompletionFunc("map-target", cobra.NoFileCompletions)
 	return cmd

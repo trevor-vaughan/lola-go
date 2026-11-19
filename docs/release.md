@@ -47,7 +47,7 @@ mean to tag, with a clean work tree.
 
 6. **The docs, by hand.** Compare:
    - the commands `lola help` lists with the command pages of [reference/](reference/): piped,
-     `lola help` prints one `== lola … ==` heading per command and subcommand (for example
+     `lola help --all` prints one `== lola … ==` heading per command and subcommand (for example
      `== lola cache add ==`). Every heading but `== lola ==` has a `` # `lola …` `` or
      `` ## `lola …` `` heading there (`lola cache add` is a section of `cache.md`), and every such
      heading names a command `lola help` lists;

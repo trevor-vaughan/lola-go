@@ -208,9 +208,13 @@ Maintainer notes on Packages. It is split out of [architecture](../architecture.
   `manifest.txt` journal, copies and moves into it, and `UnlinkIfBackedUp`. Only `errs` and
   `untrusted` besides the standard library (depguard).
 - `cli`: Commands, help, aliases, completion, output and prompts; the install flow and its
-  `Prompter`, with the huh adapter. Long help (`renderHelp`) prints the global flags once, in its
-  preamble, and drops each command's `Global Flags:` block (`globalFlagsBlock`, the text the
-  template's `cobraGlobalFlags` renders; `installHelp` panics if cobra's template loses it).
+  `Prompter`, with the huh adapter. Help (`renderHelp`) has three forms: short (`-h`: `Short`, the usage
+  without the global flags), long (`--help`: `Long`, the full usage, the root's environment
+  variables and a `Reference:` link from `referenceURL`) and all (`help --all`: the global flags
+  once, then every command's long help). Cobra parses `-h` and `--help` into one flag, so
+  `longHelpAsked` re-reads the arguments to tell them apart. The global flags are cut from a
+  block by `globalFlagsBlock`, the text the template's `cobraGlobalFlags` renders; `installHelp`
+  panics if cobra's template loses it.
   `lola --version` is a root-only flag whose run is `printVersion`, `lola version`'s.
 - `errs`: Errors that carry coaching hints.
 - `testenv`: Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, `LOLA_HOME` and

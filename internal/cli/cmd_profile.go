@@ -220,87 +220,28 @@ func (a *app) profileCmd() *cobra.Command {
 	var edit bool
 	var ef editFlags
 	cmd := &cobra.Command{
-		Use: "profile [<name>] [--on|--off|--switch|--add <source>|--update [--all]|--remove] | [<name>] --edit [<module>...] | " +
-			"[<from>] --move <module>... --to <name> | <name> --split [--to <name>]",
+		Use:   "profile [<name>] [flags]",
 		Short: "List your profiles, show one, or turn them on and off",
-		Long: "A profile is a named set of module entries in $XDG_CONFIG_HOME/lola/profiles/<name>.yml;\n" +
-			"default.yml there is always on at user scope. A project may commit its own in\n" +
-			".lola/profiles/<name>.yml: they are used at its project scope only, and their entries are\n" +
-			"reviewed before use, and pinned, as project.yml's are. Without a name, list the profiles each\n" +
-			"scope can use and which one is on. With a name, show the profile and, per scope, the layer\n" +
-			"each of its modules comes from: the last layer listing a module wins, at user scope default,\n" +
-			"then the active profile; at project scope project.yml, then the active profile.\n" +
-			"For a profile that is off, it shows what switching to it would give. Remote\n" +
-			"profiles, fetched from a source, are kept in $XDG_DATA_HOME/lola/profiles/<name>/ and used at\n" +
-			"every scope; a profile of yours, or the project's, with the same name shadows one. A name is\n" +
-			"the profile's file name; user:<name> says it is yours, project:<name> the project's,\n" +
-			"remote:<name> the remote one. A name yours and the project's both define is refused at\n" +
-			"project scope until you qualify it.\n\n" +
-			"One profile is on at a time in a scope. --switch makes the named profile the one on, whatever\n" +
-			"is on; --on turns it on when none is (with another on it asks, on a terminal, to switch to\n" +
-			"it; off one it refuses: --switch is the way that never asks); --off turns off the profile on\n" +
-			"(name it, or give no name). Each applies the change at once, as lola sync does for the\n" +
-			"modules it changes: the modules no layer wants any more are removed, never one another layer\n" +
-			"still wants. Any action that removes files asks first; -y confirms. --force removes them\n" +
-			"without asking, edited ones too. Neither answers --on's question (on a terminal: switch, make\n" +
-			"a bundle of both, when a bundle is on add it to that bundle, which stays on, or cancel).\n" +
-			"default has no place at project scope. lola profile base --switch (default --switch at user\n" +
-			"scope) turns off the profile that is on and leaves the base. One action and one name per run.\n\n" +
-			"--edit [<module>...] edits the named profile (else the one edits go to: the profile on, or the\n" +
-			"base) as lola install would write it: a module it adds, or its picks with --only, --skip and\n" +
-			"--unskip (--only is the entry's only: list), applied where the profile is on and saved where it\n" +
-			"is off. It asks no scope: the scope flag's, else the project found here, else user scope; a\n" +
-			"profile of yours named with no scope flag is applied at user scope too when it is on there. A\n" +
-			"module another layer gives asks, on a terminal, whether to change it there or override it in\n" +
-			"the profile (--override; or name base). The first name is the profile when one has it and no\n" +
-			"module does, or with --new, which makes it (yours; project:<name> the project's; with no\n" +
-			"module it makes it empty, --from <profile> a copy, --bundle a,b a bundle); a name that is\n" +
-			"both is asked about on a terminal and refused off one (qualify it: user:<name>). --bundle a,b\n" +
-			"sets the named bundle's members, in order, making a bare one that names no profile, and\n" +
-			"applies them where the bundle is on, or nested in the bundle on; what that removes asks first.\n" +
-			"On a terminal, --edit with no module opens a page: the profile's modules ticked, then each\n" +
-			"one's components (a module you untick is removed once asked, then each other scope where the\n" +
-			"profile is on asks what it removes there; -y, --force answer both), a bundle's members, or for\n" +
-			"a name no profile has, whether it lists modules or bundles profiles.\n\n" +
-			"--move <module>... --to <name> moves whole entries, without a pin into a profile of yours,\n" +
-			"from the layer each comes from (or <from>, named first: a profile, base, default or\n" +
-			"project.yml) into <name>, a profile of yours or the project's, or base, in one transaction,\n" +
-			"and applies it. The version installed is kept. A target that lists a module already asks\n" +
-			"to replace it (-y, --force). A target that is off in the scope asks whether to switch to it\n" +
-			"(--switch: the move switches too) or keep it off (--keep-off: the modules' files are removed\n" +
-			"here, asked; -y, --force); neither -y nor --force answers that. A new name creates your\n" +
-			"profile. A remote profile is read-only: nothing moves out of or into one.\n\n" +
-			"--add <source> fetches profiles/<name>.yml from a git repository or an https archive (at\n" +
-			"--ref, under --path), shows its entries with the files, MCP servers and hooks each brings,\n" +
-			"and asks before keeping it; without a name, a terminal offers the source's profiles. Every\n" +
-			"entry of a remote profile must be pinned. Adding turns nothing on, and off a terminal it\n" +
-			"needs --trust (profiles), checked before anything is fetched. It asks no scope: the profile is shared\n" +
-			"by every scope, and a scope flag only names the scope whose installs its content is\n" +
-			"compared with, else the project found from here, else user scope.\n" +
-			"--update fetches the named remote profiles, or with --all every one you have, again from the\n" +
-			"source, ref and path each was added from, shows how each one's entries change and asks about\n" +
-			"each on its own: No keeps that one and goes on to the next, a failure is reported and the\n" +
-			"run goes on (and then fails), Ctrl+C at a question stops, keeping the ones updated. It\n" +
-			"applies them in each known scope that uses them, the project found from here (never your\n" +
-			"home directory), then user scope, stopping at the first that fails or is declined (so does\n" +
-			"--scope both); --project, --user or -C narrows it to that scope. Without a scope flag,\n" +
-			"--trust answers only for the profiles: a project's own trust is asked, or refused off a\n" +
-			"terminal. Other checkouts pick them up at their next sync.\n" + trustHelp("profile") + "\n" +
-			"--remove deletes a profile of yours (user:<name>, or a bare name only yours has), moving its file\n" +
-			"to lola's trash, or a remote profile (remote:<name>, or a bare name only a remote one has),\n" +
-			"asking first (-y); a bare name both have is refused. It is refused while the scope, user scope\n" +
-			"or the project found from here uses it (on, in the bundle on, or in a bundle the one on\n" +
-			"nests), unless --force, which also answers the question (never trust or hook consent). A\n" +
-			"project's profile is committed: git removes it, and the base is never removed.\n\n" +
-			"Scope without an action: --project, --user, -C <dir> or --scope (both included); without them,\n" +
-			"the project with .lola/ at or above the current directory, if any, and user scope. Listing and\n" +
-			"showing never ask, and default_scope does not apply.\n" +
-			"With --on, --off, --switch or --remove:\n" + strings.TrimPrefix(scopeHelp, "Scope: ") + "\n" +
-			"Every lola profile refuses a project whose .lola/lock.json git tracks.",
+		Long: "A profile is a named set of module entries: yours in $XDG_CONFIG_HOME/lola/profiles/<name>.yml,\n" +
+			"a project's in .lola/profiles/, or a remote one fetched with --add. One is on at a time in a\n" +
+			"scope, over its base (default.yml at user scope, project.yml in a project).\n\n" +
+			"Without a name it lists the profiles each scope can use and which is on. With a name it shows the\n" +
+			"profile and, per scope, the layer each of its modules comes from.\n\n" +
+			"--on, --off and --switch apply at once; --on asks to switch when another is on (off a terminal it\n" +
+			"refuses), --switch never asks. Removing files asks first (-y confirms, --force skips it).\n" +
+			"--edit changes a profile's modules and picks; --move moves entries from a profile, base or\n" +
+			"project.yml into another; --add, --update and --remove manage remote profiles (--remove also yours).\n\n" +
+			"Write user:<name>, project:<name> or remote:<name> when names clash. Listing and showing read the\n" +
+			"project here and user scope. --on, --off, --switch, --remove, --move and --split take --project,\n" +
+			"--user, -C or --scope, else ask on a terminal, else use that project, else default_scope, else refuse.",
 		Example: "  lola profile\n  lola profile go\n  lola profile go --on\n  lola profile go --switch --user\n" +
-			"  lola profile go --off -y\n  lola profile --user --json\n  lola profile go --add https://github.com/example/profiles\n" +
-			"  lola profile go --update\n  lola profile --update --all\n  lola profile go --remove -y\n  lola profile --move my-notes --to me\n" +
-			"  lola profile go-review --edit cc-skills-golang --only skill/golang-testing",
+			"  lola profile go --off -y\n  lola profile --user --json\n" +
+			"  lola profile go --add https://github.com/example/profiles\n" +
+			"  lola profile go --update\n  lola profile --update --all\n  lola profile go --remove -y\n" +
+			"  lola profile go-docs --switch --new --bundle go,docs\n  lola profile work --edit --bundle go,docs\n" +
+			"  lola profile go-review --edit cc-skills-golang --only skill/golang-testing\n" +
+			"  lola profile --move my-notes --to me\n  lola profile go --move my-notes --to me\n" +
+			"  lola profile work --split",
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: a.completeProfile,
@@ -424,33 +365,33 @@ func (a *app) profileCmd() *cobra.Command {
 				map[string]any{"profiles": rows, "notices": notices})
 		},
 	}
-	cmd.Flags().BoolVar(&on, string(engine.ProfileOn), false, "turn the named profile on, when none is (with another on it asks to switch on a terminal, and refuses off one: use --switch), and apply")
-	cmd.Flags().BoolVar(&off, string(engine.ProfileOff), false, "turn the profile on off (name it, or none) and apply (asks when files go; -y)")
-	cmd.Flags().BoolVar(&switchTo, string(engine.ProfileSwitch), false, "make the named profile the one on, whatever is on, and apply; with --move: switch to the profile the entries move to")
-	cmd.Flags().StringSliceVar(&moveModules, string(engine.ProfileMove), nil, "move these modules' entries (repeatable, or comma-separated) from the layer each comes from, or the profile named, to --to, keeping the version installed")
-	cmd.Flags().StringVar(&to, "to", "", "with --move: the profile the entries move to (base: the scope's base; a new name creates your profile); with --split: the new profile's name")
-	cmd.Flags().BoolVar(&split, string(engine.ProfileSplit), false, "rewrite a profile with both bundle: and modules: into a bundle of its members and a new <name>-modules profile of its modules (asks; -y)")
-	cmd.Flags().BoolVar(&keepOff, "keep-off", false, "with --move into a profile that is off here: keep it off, removing the modules' files here")
-	cmd.Flags().BoolVar(&edit, string(engine.ProfileEdit), false, "edit the named profile (else the one edits go to) or its modules' picks, as lola install would, and apply it where it is on")
-	cmd.Flags().StringSliceVar(&ef.skips, "skip", nil, "with --edit: leave these components out, in the profile's entry (kind/name; repeatable or comma-separated)")
-	cmd.Flags().StringSliceVar(&ef.onlys, "only", nil, "with --edit: take only these components, skipping the rest in the profile's entry, so a later version's new ones install (kind/name; repeatable or comma-separated)")
-	cmd.Flags().StringSliceVar(&ef.unskips, "unskip", nil, "with --edit: take these components back (kind/name; repeatable or comma-separated)")
-	cmd.Flags().BoolVar(&ef.exact, "exact", false, "with --edit --only: save the selectors as the entry's only: list instead, so components a later version adds are not installed")
-	cmd.Flags().BoolVar(&ef.withMentions, "with-mentions", false, "with --edit: also take the components your picks mention by name (one hop)")
-	cmd.Flags().BoolVar(&ef.override, "override", false, "with --edit: when the module comes from another layer, give the profile its own entry, starting from that one")
-	a.addTargetFlag(cmd, &ef.targets, "with --edit: the assistants a module it adds installs for; <id>@<version> also records which version to write for")
-	cmd.Flags().BoolVar(&create, "new", false, "with --switch or --edit: make the profile first (yours; project:<name> the project's), empty unless --from or --bundle")
+	cmd.Flags().BoolVar(&on, string(engine.ProfileOn), false, "turn the named profile on when none is, and apply (--switch replaces one)")
+	cmd.Flags().BoolVar(&off, string(engine.ProfileOff), false, "turn off the profile on (name it, or none) and apply; asks when files go")
+	cmd.Flags().BoolVar(&switchTo, string(engine.ProfileSwitch), false, "make the named profile the one on, whatever is on, and apply")
+	cmd.Flags().StringSliceVar(&moveModules, string(engine.ProfileMove), nil, "move these modules' entries (repeatable) to --to, keeping their version")
+	cmd.Flags().StringVar(&to, "to", "", "with --move: the target profile, or base; with --split: the new name")
+	cmd.Flags().BoolVar(&split, string(engine.ProfileSplit), false, "split a profile of bundle: and modules: into a bundle and <name>-modules")
+	cmd.Flags().BoolVar(&keepOff, "keep-off", false, "with --move to an off profile: keep it off, removing its files here")
+	cmd.Flags().BoolVar(&edit, string(engine.ProfileEdit), false, "edit the named profile or its modules' picks, as lola install would")
+	cmd.Flags().StringSliceVar(&ef.skips, "skip", nil, "with --edit: leave these components out (kind/name; repeatable)")
+	cmd.Flags().StringSliceVar(&ef.onlys, "only", nil, "with --edit: take only these components (kind/name; repeatable)")
+	cmd.Flags().StringSliceVar(&ef.unskips, "unskip", nil, "with --edit: take these components back (kind/name; repeatable)")
+	cmd.Flags().BoolVar(&ef.exact, "exact", false, "with --edit --only: save an only: list; later components stay out")
+	cmd.Flags().BoolVar(&ef.withMentions, "with-mentions", false, "with --edit: also take components your picks mention by name (one hop)")
+	cmd.Flags().BoolVar(&ef.override, "override", false, "with --edit: give the profile its own entry for another layer's module")
+	a.addTargetFlag(cmd, &ef.targets, "with --edit: assistants; <id>@<version> also picks the version")
+	cmd.Flags().BoolVar(&create, "new", false, "with --switch or --edit: make the profile first (empty unless --from, --bundle)")
 	cmd.Flags().StringVar(&from, "from", "", "with --new: copy this profile's entries and targets (never a pin)")
-	cmd.Flags().StringSliceVar(&members, "bundle", nil, "with --new: make a bundle of these profiles (comma-separated, in order); with --edit: set a bundle's members; a bare one that does not exist is made empty")
-	cmd.Flags().StringVar(&add.source, string(engine.ProfileAdd), "", "fetch a remote profile from this git repository or https archive, show it and ask")
-	cmd.Flags().BoolVar(&update, string(engine.ProfileUpdate), false, "fetch the named remote profiles again from their sources, show what changed, ask, and apply them where they are on")
+	cmd.Flags().StringSliceVar(&members, "bundle", nil, "with --new or --edit: the bundle's member profiles, in order (comma-separated)")
+	cmd.Flags().StringVar(&add.source, string(engine.ProfileAdd), "", "fetch a remote profile from a git repository or https archive and ask")
+	cmd.Flags().BoolVar(&update, string(engine.ProfileUpdate), false, "fetch the named remote profiles again, show what changed, ask, and apply")
 	cmd.Flags().BoolVar(&all, "all", false, "with --update: every remote profile you have")
-	cmd.Flags().BoolVar(&remove, string(engine.ProfileRemove), false, "delete a profile of yours (to the trash) or a remote one (asks; -y; refused while it is in use, unless --force)")
+	cmd.Flags().BoolVar(&remove, string(engine.ProfileRemove), false, "delete a profile of yours (to the trash) or a remote one (asks; -y)")
 	cmd.Flags().StringVar(&add.ref, "ref", "", "with --add or --edit: the branch, tag or commit to fetch")
-	cmd.Flags().StringVar(&add.path, "path", "", "with --add: the directory of the source that holds profiles/; with --edit: the module root inside the source")
+	cmd.Flags().StringVar(&add.path, "path", "", "with --add: the directory holding profiles/; with --edit: the module root")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker; confirm removals, and --remove (only those: it never trusts changes)")
-	cmd.Flags().BoolP("verbose", "v", false, "with an action that applies: print the report in full: every fold open and every notice")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker; confirm removals (it never trusts changes)")
+	cmd.Flags().BoolP("verbose", "v", false, "with an action that applies: print every fold and notice in full")
 	for _, name := range []string{"skip", "only", "unskip"} {
 		_ = cmd.RegisterFlagCompletionFunc(name, a.completeComponents(1)) // lola profile <profile> --edit <module>...
 	}
@@ -461,8 +402,8 @@ func (a *app) profileCmd() *cobra.Command {
 	_ = cmd.RegisterFlagCompletionFunc(string(engine.ProfileAdd), completeFiles)
 	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
 	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
-	addTrustFlag(cmd, &trust, "profile", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles; --add takes profiles only (recorded as a yes is; --update without a scope flag: profiles only)")
-	cmd.Flags().BoolVar(&f.force, "force", false, "with --on, --off, --switch or --edit: remove files without asking, edited ones too; with --remove: remove a profile in use, without asking (never answers a consent question, nor --on's question)")
+	addTrustFlag(cmd, &trust, "profile", "trust without asking: entries, profiles, scripts, hooks, runtime-hooks, all")
+	cmd.Flags().BoolVar(&f.force, "force", false, "remove files without asking, edited too; --remove: a profile in use")
 	// Aliases for muscle memory from other tools: systemctl and conda, nvm and
 	// kubectl. Additive and stable; the published table is pinned in store_test.go.
 	aliasFlags(cmd, map[string][]string{

@@ -3413,10 +3413,9 @@ var _ = Describe("the version question", func() {
 	})
 
 	It("documents -t <id>@<version> in install's help and lola profile --edit's", func() {
-		Expect(lola("profile", "--help").out).To(ContainSubstring("<id>@<version> also records which version to write for"))
+		Expect(lola("profile", "--help").out).To(ContainSubstring("<id>@<version> also picks the version"))
 		r := lola("install", "--help")
-		Expect(r.out).To(ContainSubstring("<id>@<version> also records which version to write for"))
+		Expect(r.out).To(ContainSubstring("<id>@<version> also picks the version"))
 		Expect(r.out).To(ContainSubstring("  lola install ./m -C /srv/app -t opencode@1.19\n"), "an example")
-		Expect(r.out).To(ContainSubstring("opencode 2 takes only hex agent colors"), "what differs")
 	})
 })

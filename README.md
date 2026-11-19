@@ -242,8 +242,9 @@ own place for it: [docs/reference/completion.md](docs/reference/completion.md#se
 
 ## Learn more
 
-- `lola help` prints concise help on a terminal; piped (`lola help | less`) it prints the
-  full reference, including every alias.
+- `lola <command> -h` prints short help and `lola help <command>` (or `--help`) long help with a
+  link to the command's reference page; `lola help --all | less` prints the whole reference,
+  including every alias.
 - [docs/usage.md](docs/usage.md): every command, scopes, files and the output contract.
 - [docs/guides/](docs/guides/): choosing what to install, authoring modules, templating, sync
   and trust, profiles, remote profiles, marketplaces, migrating from LobsterTrap/lola, tidying,

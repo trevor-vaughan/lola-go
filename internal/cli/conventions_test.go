@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -40,6 +41,28 @@ var _ = Describe("command-tree conventions", func() {
 			Expect(c.Short).NotTo(BeEmpty(), c.CommandPath())
 			Expect(c.Example).NotTo(BeEmpty(), c.CommandPath())
 		}
+	})
+
+	It("keeps help short: one-line Short, Long of 15 lines at most, Use and flag usages one short line", func() {
+		var over []string
+		for _, c := range commands() {
+			p := c.CommandPath()
+			if strings.Contains(strings.TrimSpace(c.Short), "\n") {
+				over = append(over, p+": Short is more than one line")
+			}
+			if n := strings.Count(strings.TrimSpace(c.Long), "\n") + 1; c.Long != "" && n > 15 {
+				over = append(over, fmt.Sprintf("%s: Long is %d lines (max 15)", p, n))
+			}
+			if n := len(c.Use); n > 72 {
+				over = append(over, fmt.Sprintf("%s: Use is %d characters (max 72)", p, n))
+			}
+			c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+				if strings.Contains(f.Usage, "\n") || len(f.Usage) > 80 {
+					over = append(over, fmt.Sprintf("%s --%s: usage is %d characters (max 80, one line)", p, f.Name, len(f.Usage)))
+				}
+			})
+		}
+		Expect(over).To(BeEmpty(), strings.Join(over, "\n"))
 	})
 
 	It("aliases never collide with a sibling's name or alias", func() {

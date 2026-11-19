@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
+	"runtime/debug"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -26,6 +29,40 @@ const cobraGlobalFlags = "{{if .HasAvailableInheritedFlags}}\n\nGlobal Flags:\n{
 // flagAliasKey is the flag annotation that lists a flag's aliases.
 const flagAliasKey = "lola_aliases"
 
+// helpForm is which help a command prints.
+type helpForm int
+
+const (
+	helpShort helpForm = iota // -h: Short and the usage, without the global flags
+	helpLong                  // --help: Long, the full usage and the reference link
+	helpAll                   // help --all: the command and every command below it, long
+)
+
+// releaseTag is a version task build stamps on a release: the tag, exactly.
+var releaseTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
+
+// majorSuffix is a Go module path's major-version element (/v2), not part of the repository URL.
+var majorSuffix = regexp.MustCompile(`^v[0-9]+$`)
+
+// environmentHelp is the root's long help's list of the environment variables lola reads.
+const environmentHelp = `
+Environment:
+  LOLA_COLOR=1|0   force color on or off
+  NO_COLOR         disable color when set (https://no-color.org)
+  LOLA_ACCESSIBLE  1 asks lola's questions and pickers as numbered line prompts and prints without the viewer (also TERM=dumb)
+  LOLA_PAGER       the pager for output taller than the terminal, instead of lola's viewer; cat prints it
+  NO_PAGER         set to a non-empty value, prints without the viewer or a pager
+  LOLA_HOME        the directory lola migrate reads (default ~/.lola)
+  HOME             user-scope root and base of the XDG defaults
+  PATH             where lola finds installed assistants; absolute entries only
+  COLUMNS          the width lola market <name> fits its lines to when stdout is not a terminal
+  LINES            the height lola's viewer takes the terminal to have when it cannot ask the terminal
+  XDG_CONFIG_HOME  config.yaml, selections.yaml, markets.yaml, keep.yaml, the user-scope manifest and OpenCode's user scope (default ~/.config)
+  XDG_DATA_HOME    user-scope module copies, plugin data and remote profiles (default ~/.local/share)
+  XDG_STATE_HOME   the user-scope ledger, hook consent, locks and the trash of lola migrate and lola tidy (default ~/.local/state)
+  XDG_CACHE_HOME   the cache, marketplace catalogs, downloads and assistant versions (default ~/.cache)
+`
+
 // installHelp routes -h and `help` through renderHelp, shown as other output is (page), and makes
 // command lists show aliases.
 func (a *app) installHelp(root *cobra.Command) {
@@ -41,14 +78,20 @@ func (a *app) installHelp(root *cobra.Command) {
 	}
 	tmpl = strings.ReplaceAll(tmpl, cobraNameCell, "{{aliasedPad .}}")
 	root.SetUsageTemplate(strings.ReplaceAll(tmpl, cobraLocalFlags, "{{aliasedFlagUsages .LocalFlags | trimTrailingWhitespaces}}"))
-	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) { a.showHelp(cmd, !isTTY(cmd.OutOrStdout())) })
+	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		form := helpShort
+		if longHelpAsked(cmd, args) {
+			form = helpLong
+		}
+		a.showHelp(cmd, form)
+	})
 
-	var long, short bool
+	var all, short bool
 	help := &cobra.Command{
 		Use:     "help [command]",
 		Short:   "Show help for lola or a command",
-		Long:    "Show help. On a terminal it is concise; piped or redirected, it prints the full command tree.",
-		Example: "  lola help install\n  lola help --long | less",
+		Long:    "Show a command's long help, as --help does. --short prints its short help, as -h does;\n--all prints it and every command below it.",
+		Example: "  lola help install\n  lola help --short install\n  lola help --all | less",
 		GroupID: groupAdditional,
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			c, _, err := cmd.Root().Find(args)
@@ -64,23 +107,27 @@ func (a *app) installHelp(root *cobra.Command) {
 			return out, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if long && short {
-				return errors.New("--long and --short cannot be combined")
+			if all && short {
+				return errs.WithHints(errors.New("--all and --short cannot be combined"),
+					"pick one: lola help --all, or lola help --short <command>")
 			}
 			c, rest, err := cmd.Root().Find(args)
 			if err != nil || len(rest) > 0 {
 				return errs.WithHints(fmt.Errorf("no help topic %q", strings.Join(args, " ")), "see: lola help")
 			}
-			mode := !isTTY(cmd.OutOrStdout())
-			if long || short {
-				mode = long
+			form := helpLong
+			switch {
+			case all:
+				form = helpAll
+			case short:
+				form = helpShort
 			}
-			a.showHelp(c, mode)
+			a.showHelp(c, form)
 			return nil
 		},
 	}
-	help.Flags().BoolVarP(&long, "long", "l", false, "print the full command tree")
-	help.Flags().BoolVar(&short, "short", false, "print concise help")
+	help.Flags().BoolVar(&all, "all", false, "print the command and every command below it")
+	help.Flags().BoolVar(&short, "short", false, "print short help, as -h does")
 	root.SetHelpCommand(help)
 }
 
@@ -190,38 +237,75 @@ func aliasCompletions(cmd *cobra.Command, args []string, toComplete string) ([]c
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
-// showHelp is the single help path for -h, `help` and a bare command group: renderHelp through
-// page, so help taller than the terminal opens in the viewer.
-func (a *app) showHelp(cmd *cobra.Command, long bool) {
-	a.page(cmd, cmd.OutOrStdout(), style{}, func(w io.Writer, _ style) { renderHelp(w, cmd, long) })
-}
-
-// renderHelp writes cmd's help to w. Concise help is the description plus cobra's usage; long help
-// is cmd's own help first (unless cmd is the root), a preamble, then every command below cmd.
-func renderHelp(w io.Writer, cmd *cobra.Command, long bool) {
-	if !long {
-		writeCommandHelp(w, cmd, "")
-		return
-	}
-	// A command's own help comes first, so it is not buried under the root's preamble; the root's
-	// own help is the preamble and the whole tree.
-	if cmd != cmd.Root() {
-		writeCommandHelp(w, cmd, globalFlagsBlock(cmd))
-		fmt.Fprintln(w)
-	}
-	writePreamble(w, cmd.Root())
-	walk(cmd, func(c *cobra.Command) {
-		if c == cmd && cmd != cmd.Root() {
-			return
+// longHelpAsked reports whether args, the arguments cobra's help function received, ask for
+// long help (--help) rather than short (-h). cobra parses both into one flag, so this walks
+// them as pflag does: a flag's value is never read as a flag (-t --help, --ref --help), and
+// nothing after "--" is one.
+func longHelpAsked(cmd *cobra.Command, args []string) bool {
+	fs := cmd.Flags()
+	takesValue := func(f *pflag.Flag) bool { return f != nil && f.NoOptDefVal == "" }
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--":
+			return false
+		case strings.HasPrefix(arg, "--"):
+			name, _, attached := strings.Cut(arg[2:], "=")
+			if name == "help" {
+				return true
+			}
+			if !attached && takesValue(fs.Lookup(name)) {
+				i++
+			}
+		case len(arg) > 1 && arg[0] == '-':
+			letters := arg[1:]
+			for j := 0; j < len(letters); j++ {
+				if letters[j] >= utf8.RuneSelf {
+					break // pflag refuses it before help runs; ShorthandLookup panics on it
+				}
+				if takesValue(fs.ShorthandLookup(letters[j : j+1])) {
+					if j == len(letters)-1 {
+						i++ // the value is the next argument
+					}
+					break // else the value is the rest of the cluster
+				}
+			}
 		}
-		fmt.Fprintf(w, "\n== %s ==\n", c.CommandPath())
-		writeCommandHelp(w, c, globalFlagsBlock(c))
-	})
+	}
+	return false
 }
 
-// writeCommandHelp prints c's description and usage, without omit, a block of the usage (""
-// for none).
-func writeCommandHelp(w io.Writer, c *cobra.Command, omit string) {
+// showHelp is the single help path for -h, --help, `help` and a bare command group: renderHelp
+// through page, so help taller than the terminal opens in the viewer.
+func (a *app) showHelp(cmd *cobra.Command, form helpForm) {
+	a.page(cmd, cmd.OutOrStdout(), style{}, func(w io.Writer, _ style) { renderHelp(w, cmd, form) })
+}
+
+// renderHelp writes cmd's help in form to w.
+func renderHelp(w io.Writer, cmd *cobra.Command, form helpForm) {
+	switch form {
+	case helpShort:
+		cmd.InitDefaultHelpFlag() // cobra adds -h/--help on execution; help, bare groups and --all reach here before it did
+		fmt.Fprintf(w, "%s\n\n%s", strings.TrimSpace(cmd.Short), strings.Replace(cmd.UsageString(), globalFlagsBlock(cmd), "", 1))
+		fmt.Fprintf(w, "\nMore: %s --help\n", cmd.CommandPath())
+	case helpLong:
+		writeLongHelp(w, cmd, "")
+	case helpAll:
+		// The global flags print once: the root's are its own Flags; below it, they lead.
+		if block := globalFlagsBlock(cmd); block != "" {
+			fmt.Fprintf(w, "%s\n", strings.TrimPrefix(block, "\n\n"))
+		}
+		walk(cmd, func(c *cobra.Command) {
+			fmt.Fprintf(w, "\n== %s ==\n", c.CommandPath())
+			writeLongHelp(w, c, globalFlagsBlock(c))
+		})
+	}
+}
+
+// writeLongHelp prints c's long description, its usage without omit (a block of the usage; ""
+// for none), the root's environment variables, and the link to c's reference page.
+func writeLongHelp(w io.Writer, c *cobra.Command, omit string) {
+	c.InitDefaultHelpFlag()
 	desc := c.Long
 	if desc == "" {
 		desc = c.Short
@@ -231,6 +315,40 @@ func writeCommandHelp(w io.Writer, c *cobra.Command, omit string) {
 		usage = strings.Replace(usage, omit, "", 1)
 	}
 	fmt.Fprintf(w, "%s\n\n%s", strings.TrimSpace(desc), usage)
+	if c == c.Root() {
+		fmt.Fprint(w, environmentHelp)
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		ver := version
+		if !releaseTag.MatchString(ver) && releaseTag.MatchString(bi.Main.Version) {
+			ver = bi.Main.Version // go install …@vX.Y.Z stamps no version, but records the module's
+		}
+		if u := referenceURL(c, bi.Main.Path, ver); u != "" {
+			fmt.Fprintf(w, "\nReference: %s\n", u)
+		}
+	}
+}
+
+// referenceURL is the web page documenting c, derived from modulePath, the module lola was built
+// from (so it follows the repository when it moves), and ver, the version task build stamps: a
+// release links to its own tag's docs, anything else to main. It assumes GitHub's /blob/ layout.
+// "" when the module path is unknown.
+func referenceURL(c *cobra.Command, modulePath, ver string) string {
+	if modulePath == "" {
+		return ""
+	}
+	if i := strings.LastIndex(modulePath, "/"); i > 0 && majorSuffix.MatchString(modulePath[i+1:]) {
+		modulePath = modulePath[:i]
+	}
+	ref := "main"
+	if releaseTag.MatchString(ver) {
+		ref = ver
+	}
+	page := "usage.md"
+	if c != c.Root() {
+		page = "reference/" + strings.Fields(c.CommandPath())[1] + ".md"
+	}
+	return "https://" + modulePath + "/blob/" + ref + "/docs/" + page
 }
 
 // globalFlagsBlock is the "Global Flags:" block of c's usage as cobraGlobalFlags renders it ("" when
@@ -249,33 +367,4 @@ func walk(c *cobra.Command, fn func(*cobra.Command)) {
 			walk(sub, fn)
 		}
 	}
-}
-
-func writePreamble(w io.Writer, root *cobra.Command) {
-	fmt.Fprintf(w, "GLOBAL FLAGS\n%s\n", root.PersistentFlags().FlagUsages())
-	fmt.Fprint(w, `OUTPUT CONTRACT
-  --json   one JSON document on stdout; snake_case keys; array keys are always present ([] when empty)
-  --plain  tab-separated lines on stdout, no color
-  errors   "error: <message>" on stderr plus indented "hint:" lines;
-           under --json a single line {"error": "...", "hints": [...]}
-  exit     0 on success or a cancelled prompt, 1 on any error
-  prompts  go to stderr; without a terminal, destructive commands need -y
-           (or --force, which never answers trust or hook consent)
-
-ENVIRONMENT
-  LOLA_COLOR=1|0   force color on or off
-  NO_COLOR         disable color when set (https://no-color.org)
-  LOLA_ACCESSIBLE  1 asks lola's questions and pickers as numbered line prompts and prints without the viewer (also TERM=dumb)
-  LOLA_PAGER       the pager for output taller than the terminal, instead of lola's viewer; cat prints it
-  NO_PAGER         set to a non-empty value, prints without the viewer or a pager
-  LOLA_HOME        the directory lola migrate reads (default ~/.lola)
-  HOME             user-scope root and base of the XDG defaults
-  PATH             where lola finds installed assistants; absolute entries only
-  COLUMNS          the width lola market <name> fits its lines to when stdout is not a terminal
-  LINES            the height lola's viewer takes the terminal to have when it cannot ask the terminal
-  XDG_CONFIG_HOME  config.yaml, selections.yaml, markets.yaml, keep.yaml, the user-scope manifest and OpenCode's user scope (default ~/.config)
-  XDG_DATA_HOME    user-scope module copies, plugin data and remote profiles (default ~/.local/share)
-  XDG_STATE_HOME   the user-scope ledger, hook consent, locks and the trash of lola migrate and lola tidy (default ~/.local/state)
-  XDG_CACHE_HOME   the cache, marketplace catalogs, downloads and assistant versions (default ~/.cache)
-`)
 }

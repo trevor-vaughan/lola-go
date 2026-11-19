@@ -29,7 +29,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install --help"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"comma-separated: claude-code, gemini-cli, opencode, agents, quill)\""
+          - "result.systemout ShouldContainSubstring \"Assistants (-t): claude-code, gemini-cli, opencode, agents, quill.\""
 
   - name: U3 Installing into quill writes every component at its layout path and drops hooks
     steps:

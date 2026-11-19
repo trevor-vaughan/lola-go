@@ -329,7 +329,7 @@ func Execute(root *cobra.Command) int {
 // exiting 0, and print help when run bare.
 func (a *app) groupRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		a.showHelp(cmd, !isTTY(cmd.OutOrStdout()))
+		a.showHelp(cmd, helpShort)
 		return nil
 	}
 	hints := []string{"see: " + cmd.CommandPath() + " --help"}

@@ -7,8 +7,8 @@ For lola users; back to the [README](../README.md).
 
 This is the reference: one page per command under [reference/](reference/), indexed under
 "Commands" below in the order `lola help` lists them, then the concepts the commands share.
-`lola help` is the always-current summary (piped, it prints the global flags once, then every
-command with its aliases and own flags). This page describes this
+`lola help` is the always-current summary (`lola help --all` prints the global flags once, then
+every command with its aliases and own flags). This page describes this
 build.
 
 The guides walk through one workflow each:

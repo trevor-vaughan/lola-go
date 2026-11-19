@@ -128,61 +128,29 @@ func (a *app) marketCmd() *cobra.Command {
 	var targets, sshHosts []string
 	var update, remove, all, dry, yes, enable, disable bool
 	cmd := &cobra.Command{
-		Use: "market [<name> [<entry>] | [<name>] --add <source> [--ref <ref>] [--path <file-or-dir>] | <name>... --update | " +
-			"--update --all | <name> --remove]",
+		Use:     "market [<name> [<entry>]] [flags]",
 		Aliases: []string{"marketplace", "markets"},
 		Short:   "List, add and update the marketplaces whose catalogs you browse",
 		Long: "A marketplace is a catalog of modules, each with the source it is fetched from. lola reads\n" +
-			"Claude Code's .claude-plugin/marketplace.json, and lola YAML catalogs\n" +
-			"(<name>.yml, marketplace.yml, lola.yml), into one model. Your marketplaces are yours alone, shared by\n" +
-			"every scope: they are listed in $XDG_CONFIG_HOME/lola/markets.yaml, which you may edit, and\n" +
-			"each fetched catalog is cached in $XDG_CACHE_HOME/lola/markets/<name>/; a wiped cache costs\n" +
-			"a lola market --update --all.\n\n" +
-			"Without a name, list your marketplaces; with one, show its source, pin, entries (by name) and\n" +
-			"the entries lola skips, grouped by why, every line fitted to the terminal's width and paged\n" +
-			"on a terminal; --plain and --json keep every text whole. Listing and showing a marketplace\n" +
-			"never fetch and never ask. With a name and an entry, show the entry exactly as lola info\n" +
-			"@<name>/<entry> does, with the same flags (a scope, -t, the output flags): it is fetched into\n" +
-			"your cache, and nothing runs.\n\n" +
-			"--add <source> fetches a catalog and registers it, named as you name it, else by the catalog's\n" +
-			"own name. The source is a git repository (https://, ssh:// or user@host:path), an https://\n" +
-			"archive, an https:// URL of the catalog file itself (.json, .yml, .yaml), or a folder: a\n" +
-			"folder you are authoring is recorded by its absolute path and cached like any other, so its\n" +
-			"edits reach lola only through --update. lola looks for .claude-plugin/marketplace.json, then\n" +
-			"<name>.yml, <name>.yaml, marketplace.yml and marketplace.yaml, and as a last resort lola.yml and\n" +
-			"lola.yaml, at the root or in the directory --path names; --path may name the catalog file\n" +
-			"itself. Adding asks nothing (a catalog installs and runs nothing) but, on a terminal, another\n" +
-			"name when yours is taken.\n" +
-			"--update fetches the named marketplaces, or every one with --all, again from where each was\n" +
-			"added and reports which entries were added, removed or changed; a failure costs only that\n" +
-			"marketplace, whose cached catalog is kept.\n" +
-			"--remove forgets a marketplace and drops its cached catalog; it asks first, and off a\n" +
-			"terminal it needs -y. What you installed from it keeps its real source and stays installed.\n\n" +
-			"lola install @<name>/<entry> installs an entry, recording its real source and pin; lola\n" +
-			"install @<name> offers its entries on a terminal, and lola search searches every fetched\n" +
-			"catalog. None of them fetches a catalog: --update does.\n\n" +
-			"add, ls, list, rm, remove, update, set, show and search are not lola market verbs: each is\n" +
-			"refused with the lola command to run instead (lola market add <name> <url> is lola market\n" +
-			"<name> --add <url>, ls is lola market, rm is --remove, update is --update --all, search is\n" +
-			"lola search), and none of them can name a marketplace.\n\n" +
-			"A catalog is a stranger's input. lola skips, with its reason, an entry it cannot use and keeps\n" +
-			"the rest: npm and command sources, ssh sources unless you allowed their host (--ssh-host),\n" +
-			"any source that is not https:// at a host given by name, entries that declare their\n" +
-			"hooks, MCP or LSP servers or other components in the catalog (a relative entry may list the\n" +
-			"skills, commands and agents of the marketplace's own tree that form it; an entry of another\n" +
-			"repository may not), or carry headers or a headersHelper,\n" +
-			"relative entries outside the marketplace or missing from it, malformed pins, and two entries\n" +
-			"of one name. No catalog field ever runs a command, and a YAML catalog's install hooks are\n" +
-			"never run. A catalog over 8 MiB, or with control or invisible characters, is refused whole.\n" +
-			"--ssh-host <host> (repeatable, with --add or --update) lets the catalog's ssh sources at that\n" +
-			"host use your ssh keys and agent; on a terminal lola asks about the hosts a catalog names;\n" +
-			"with --remove it stops allowing the host.\n\n" +
-			"Scope flags change nothing but what lola market <name> <entry> plans for: marketplaces belong\n" +
-			"to you, not to a scope.",
+			"Claude Code's .claude-plugin/marketplace.json and lola YAML catalogs. Yours are shared by\n" +
+			"every scope, listed in $XDG_CONFIG_HOME/lola/markets.yaml; each fetched catalog is cached in\n" +
+			"$XDG_CACHE_HOME/lola/markets/.\n" +
+			"\n" +
+			"Without a name, list them; with one, show its source, pin, entries and the entries lola skips;\n" +
+			"with a name and an entry, show it as lola info @<name>/<entry> does (it fetches that module into\n" +
+			"your cache). Listing and showing a marketplace never fetch and never ask.\n" +
+			"\n" +
+			"--add <source> (git repository, https:// archive or catalog file, or folder) fetches a catalog and\n" +
+			"registers it; --update fetches again (--all for every one); --remove forgets one (asks; -y).\n" +
+			"A catalog is a stranger's input: lola skips, with its reason, an entry it cannot use (npm and\n" +
+			"command sources, ssh hosts you did not allow with --ssh-host, declared hooks or MCP servers) and\n" +
+			"runs nothing from it. Install an entry with lola install @<name>/<entry>.",
 		Example: "  lola market\n  lola market acme\n  lola market acme formatter -t claude-code\n" +
 			"  lola market acme --add https://github.com/acme/plugins\n" +
+			"  lola market acme --add https://github.com/acme/plugins --ref v1.2 --path catalog\n" +
 			"  lola market --add https://raw.githubusercontent.com/acme/market/main/general.yml\n" +
-			"  lola market acme --update\n  lola market acme --update --ssh-host git.example.com\n" +
+			"  lola market acme --update\n  lola market acme beta --update\n" +
+			"  lola market acme --update --ssh-host git.example.com\n" +
 			"  lola market --update --all\n  lola market acme --remove -y",
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
@@ -261,13 +229,13 @@ func (a *app) marketCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&update, string(engine.MarketUpdate), false, "fetch the named marketplaces' catalogs again and report what changed")
 	cmd.Flags().BoolVar(&all, "all", false, "with --update: every marketplace you have")
 	cmd.Flags().StringVar(&ref, "ref", "", "with --add: the branch, tag or commit of a git source")
-	cmd.Flags().StringVar(&path, "path", "", "with --add: the catalog file, or the directory to look for it in, inside the source")
+	cmd.Flags().StringVar(&path, "path", "", "with --add: the catalog file, or the directory holding it, in the source")
 	_ = cmd.RegisterFlagCompletionFunc(string(engine.MarketAdd), completeFiles)
 	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
 	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
 	cmd.Flags().BoolVar(&remove, string(engine.MarketRemove), false, "forget the named marketplace and drop its cached catalog (asks; -y)")
 	cmd.Flags().StringArrayVar(&sshHosts, "ssh-host", nil,
-		"with --add or --update: let the catalog's ssh sources at this host use your ssh keys (repeatable); with --remove: stop allowing it")
+		"let ssh sources at this host use your keys (repeatable; --remove: revoke)")
 	_ = cmd.RegisterFlagCompletionFunc("ssh-host", cobra.NoFileCompletions)
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "report what the action would do, write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "with --remove: forget it without asking")
