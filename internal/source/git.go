@@ -510,7 +510,7 @@ func checkTree(ctx context.Context, repo, rev, sub string) ([]string, error) {
 	mod := path.Clean(filepath.ToSlash(sub))
 	var execs []string
 	found, otherCase, exists := mod == "." || !filepath.IsLocal(sub), "", ""
-	for _, rec := range strings.Split(string(out), "\x00") {
+	for rec := range strings.SplitSeq(string(out), "\x00") {
 		meta, p, ok := strings.Cut(rec, "\t")
 		if ok && !found {
 			if strings.HasPrefix(p, mod+"/") {

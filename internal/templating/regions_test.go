@@ -121,7 +121,7 @@ var _ = Describe("frontmatter and body regions", func() {
 		doc := component("---\n{% include 'v' %}\n---\n{% include 'v' %}\n")
 		_, err = templating.RenderDoc(context.Background(), doc, p, data, templating.DefaultLimits(), []string{"lang"}, module.PlainRead)
 		e, _ := errors.AsType[*templating.Error](err)
-		Expect(e).NotTo(BeNil(), "%v", err)
+		Expect(e).To(HaveOccurred(), "%v", err)
 		Expect(e.Error()).To(Equal("_partials/v.liquid:2: " + one("attrs.nl") + " (included from " + file + ":2)"))
 		doc.Body = "---\nk: 1\n---\n{% include 'v' %}\n"
 		r, err = templating.RenderDoc(context.Background(), doc, p, data, templating.DefaultLimits(), []string{"lang"}, module.PlainRead)

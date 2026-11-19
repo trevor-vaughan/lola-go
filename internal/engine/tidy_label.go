@@ -31,7 +31,7 @@ func serverLabel(value []byte) string {
 	case string:
 		// A shell-style string: leading NAME=value words set environment, the next names
 		// what runs.
-		for _, w := range strings.Fields(c) {
+		for w := range strings.FieldsSeq(c) {
 			if !envAssign.MatchString(w) {
 				exe = w
 				break

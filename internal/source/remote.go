@@ -105,7 +105,7 @@ func CheckRemote(src, who string) error {
 		b := addr.As16()
 		addr = netip.AddrFrom4([4]byte(b[12:]))
 	}
-	kind := ""
+	var kind string
 	switch {
 	case addr.IsLoopback():
 		kind = "loopback"

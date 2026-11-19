@@ -1,7 +1,34 @@
 version: "2"
 linters:
-  enable: [errorlint, gosec, misspell, bodyclose, unconvert, depguard, forbidigo]
+  enable:
+    - errorlint
+    - gosec
+    - misspell
+    - bodyclose
+    - unconvert
+    - depguard
+    - forbidigo
+    - copyloopvar
+    - durationcheck
+    - exptostd
+    - fatcontext
+    - ginkgolinter
+    - iotamixing
+    - mirror
+    - nakedret
+    - modernize
+    - nolintlint
+    - reassign
+    - usestdlibvars
+    - wastedassign
   settings:
+    modernize:
+      disable:
+        # Short message concatenations read better with +=; none of them are hot.
+        - stringsbuilder
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     # depguard lets internal/market import source, yamldoc, manifest and module for their lexical
     # rules; these are the functions of theirs that reach the disk, the network or git, which no
     # catalog string may. Scoped to internal/market by the exclusion below.

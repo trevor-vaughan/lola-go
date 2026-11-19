@@ -137,7 +137,7 @@ func belowBase(base, p string) string {
 // stand for one. A link's target is compared more strictly than the copy's ignored, since the
 // link's author chose it to reach whatever the file system resolves it to.
 func linkIgnored(base, p string) bool {
-	for _, seg := range strings.Split(belowBase(base, p), "/") {
+	for seg := range strings.SplitSeq(belowBase(base, p), "/") {
 		if shortNameRE.MatchString(seg) {
 			return true
 		}

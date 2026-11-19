@@ -138,7 +138,7 @@ var _ = Describe("partials", func() {
 		doc.Frontmatter = true
 		_, err = templating.RenderDoc(context.Background(), doc, p, data, templating.DefaultLimits(), []string{"lang"}, module.PlainRead)
 		e, _ = errors.AsType[*templating.Error](err)
-		Expect(e).NotTo(BeNil(), "%v", err)
+		Expect(e).To(HaveOccurred(), "%v", err)
 		Expect(e.Code).To(Equal("template-frontmatter-value"))
 		Expect(e.Error()).To(Equal("_partials/inner.liquid:3: in frontmatter, this {{ }} rendered a line break; end it with | json so the value stays one YAML value: {{ v | json }} (included from _partials/fm.liquid:2)"))
 		doc.Body = "---\nk: 1\n---\n{% include 'body' %}\n"

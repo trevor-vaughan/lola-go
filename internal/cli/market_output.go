@@ -280,7 +280,7 @@ func fitLines(w io.Writer, text string, width int) {
 func wrapWords(text string, limit int) []string {
 	var lines []string
 	cur := ""
-	for _, word := range strings.Fields(text) {
+	for word := range strings.FieldsSeq(text) {
 		switch {
 		case cur != "" && ansi.StringWidth(cur)+1+ansi.StringWidth(word) <= limit:
 			cur += " " + word

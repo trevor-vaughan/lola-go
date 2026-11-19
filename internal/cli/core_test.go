@@ -493,7 +493,7 @@ var _ = Describe("core commands", func() {
 			r := lola("install", plugin, "-C", proj, "--dry-run", "--plain")
 			Expect(r.code).To(Equal(0), r.err)
 			var findings, hooks int
-			for _, row := range strings.Split(strings.TrimSpace(r.out), "\n") {
+			for row := range strings.SplitSeq(strings.TrimSpace(r.out), "\n") {
 				cols := strings.Split(row, "\t")
 				switch cols[0] {
 				case "finding":
@@ -517,7 +517,7 @@ var _ = Describe("core commands", func() {
 			c := lola("check", plugin, "--plain")
 			Expect(c.code).To(Equal(0), c.err)
 			Expect(c.out).To(MatchRegexp(`(?m)^finding\t`))
-			for _, row := range strings.Split(strings.TrimSpace(c.out), "\n") {
+			for row := range strings.SplitSeq(strings.TrimSpace(c.out), "\n") {
 				if strings.HasPrefix(row, "finding\t") {
 					Expect(strings.Split(row, "\t")).To(HaveLen(8), row)
 				}
@@ -526,7 +526,7 @@ var _ = Describe("core commands", func() {
 			i := lola("info", plugin, "--plain")
 			Expect(i.code).To(Equal(0), i.err)
 			Expect(i.out).To(MatchRegexp(`(?m)^runtime-hook\t`))
-			for _, row := range strings.Split(strings.TrimSpace(i.out), "\n") {
+			for row := range strings.SplitSeq(strings.TrimSpace(i.out), "\n") {
 				cols := strings.Split(row, "\t")
 				switch cols[0] {
 				case "runtime-hook":
@@ -570,7 +570,7 @@ var _ = Describe("core commands", func() {
 			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks", "--unseen", "-v")
 			Expect(r.code).To(Equal(0), r.err)
 			var line string
-			for _, l := range strings.Split(r.out, "\n") {
+			for l := range strings.SplitSeq(r.out, "\n") {
 				if strings.Contains(l, ".claude/settings.local.json /hooks/Stop ") {
 					line = l
 				}
@@ -625,7 +625,7 @@ var _ = Describe("core commands", func() {
 		r := lola("install", plugin, "-C", proj, "--dry-run")
 		Expect(r.code).To(Equal(0), r.err)
 		var heads, runs []string
-		for _, l := range strings.Split(r.out, "\n") {
+		for l := range strings.SplitSeq(r.out, "\n") {
 			if strings.HasPrefix(l, "    Stop: command") {
 				heads = append(heads, l)
 			}

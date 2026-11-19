@@ -184,7 +184,7 @@ func shownIn(v reflect.Value) []string {
 		return nil
 	}
 	if (v.Kind() != reflect.Pointer || !v.IsNil()) && v.CanInterface() {
-		if r, ok := v.Interface().(interface{ ShownKeys() []string }); ok {
+		if r, ok := reflect.TypeAssert[interface{ ShownKeys() []string }](v); ok {
 			return r.ShownKeys()
 		}
 	}

@@ -131,12 +131,12 @@ type era struct{ since, label, summary string }
 func (e *Engine) eras(id string) []era {
 	sinces, summaries := e.Registry.Eras(id), e.Registry.Summaries(id)
 	var out []era
-	for i := len(sinces) - 1; i >= 0; i-- {
-		label := ">=" + sinces[i]
+	for i, since := range slices.Backward(sinces) {
+		label := ">=" + since
 		if i < len(sinces)-1 {
-			label = ">=" + sinces[i] + " <" + sinces[i+1]
+			label = ">=" + since + " <" + sinces[i+1]
 		}
-		out = append(out, era{sinces[i], label, untrusted.Text(summaries[i], untrusted.MaxName)})
+		out = append(out, era{since, label, untrusted.Text(summaries[i], untrusted.MaxName)})
 	}
 	return out
 }

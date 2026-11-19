@@ -128,7 +128,7 @@ var _ = Describe("list drift", func() {
 	It("keep out repeats --skip once per component, so no argument is cut short", func() {
 		files := map[string]string{}
 		var names []string
-		for i := 0; i < 20; i++ {
+		for i := range 20 {
 			n := fmt.Sprintf("skill-number-%02d-with-a-long-name", i)
 			names = append(names, n)
 			files["skills/"+n+"/SKILL.md"] = skill(n)

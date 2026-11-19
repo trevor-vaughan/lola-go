@@ -339,8 +339,7 @@ func JSONDelete(b []byte, ptr string) ([]byte, error) {
 		}
 		path = append(path, next)
 	}
-	for d := len(path) - 1; d >= 0; d-- {
-		obj := path[d]
+	for d, obj := range slices.Backward(path) {
 		i := memberIndex(obj, toks[d])
 		if i < 0 {
 			return b, nil

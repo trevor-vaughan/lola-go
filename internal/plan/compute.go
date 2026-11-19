@@ -106,9 +106,7 @@ func Compute(req Request) (*Plan, error) {
 	}
 
 	for _, o := range replanned {
-		for id, a := range o.old {
-			p.releasing[id] = a
-		}
+		maps.Copy(p.releasing, o.old)
 	}
 	for name, e := range req.Ledger.Modules {
 		for _, a := range e.Artifacts {

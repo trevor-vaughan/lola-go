@@ -439,7 +439,7 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.out).To(ContainSubstring("the Python lola's home " + home + " stays: 2 marketplaces lola did not register are still in " +
 			filepath.Join(home, "market")))
 		var hints []string
-		for _, line := range strings.Split(r.out, "\n") {
+		for line := range strings.SplitSeq(r.out, "\n") {
 			if h, ok := strings.CutPrefix(strings.TrimSpace(line), "hint: lola market"); ok {
 				hints = append(hints, "lola market"+h)
 			}

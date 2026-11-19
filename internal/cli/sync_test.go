@@ -649,7 +649,7 @@ var _ = Describe("lola sync", func() {
 			strings.Repeat(" ", 32) + "was: runs a-mcp\n        env: K=v\n        was env: (none)\n" +
 			"      MCP server b (http), unchanged\n"))
 		Expect(r.out).To(ContainSubstring("      review the edits: git log -p -- mods/srv\n      edited it yourself? lola install --project ./mods/srv\n"))
-		for _, line := range strings.Split(r.out, "\n") {
+		for line := range strings.SplitSeq(r.out, "\n") {
 			if strings.Contains(line, "sha256:") {
 				Expect(len([]rune(line))).To(BeNumerically("<=", 96), line)
 			}
@@ -794,7 +794,7 @@ var _ = Describe("lola sync", func() {
 		r := lola("sync", "-n", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).NotTo(BeEmpty())
-		for _, line := range strings.Split(strings.TrimSuffix(r.out, "\n"), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSuffix(r.out, "\n"), "\n") {
 			Expect(line).To(MatchRegexp(`^[a-z-]+\t`), "cut -f1 reads the row's kind")
 		}
 		writeTree(filepath.Join(proj, "mods", "third"), map[string]string{"lola.yml": "name: third\n", "commands/third.md": "T\n"})

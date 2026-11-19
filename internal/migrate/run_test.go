@@ -163,7 +163,7 @@ var _ = Describe("Migrate", func() {
 		Expect(d.NotMigrated).To(ContainElement(HaveField("Path", filepath.Join(proj, "CLAUDE.md"))))
 		Expect(read(filepath.Join(proj, "CLAUDE.md"))).To(ContainSubstring("Be kind."), "instructions are never edited")
 
-		for _, line := range strings.Split(strings.TrimSpace(read(filepath.Join(res.Trash, "manifest.txt"))), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSpace(read(filepath.Join(res.Trash, "manifest.txt"))), "\n") {
 			orig, to, ok := strings.Cut(line, "\t")
 			Expect(ok).To(BeTrue())
 			Expect(filepath.IsAbs(orig)).To(BeTrue())

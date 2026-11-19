@@ -49,7 +49,7 @@ var _ = Describe("hints", func() {
 				Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
 				got = doc.Hints
 			} else {
-				for _, line := range strings.Split(r.err, "\n") {
+				for line := range strings.SplitSeq(r.err, "\n") {
 					if h, ok := strings.CutPrefix(line, "  hint: "); ok {
 						got = append(got, h)
 					}
@@ -227,7 +227,7 @@ func plantTarget(proj string) {
 // hintLines are the hints of a refusal's human stderr.
 func hintLines(stderr string) []string {
 	var got []string
-	for _, line := range strings.Split(stderr, "\n") {
+	for line := range strings.SplitSeq(stderr, "\n") {
 		if h, ok := strings.CutPrefix(line, "  hint: "); ok {
 			got = append(got, h)
 		}

@@ -638,7 +638,7 @@ func (e *Engine) listedVersion(run *StagedRun, def store.Version, scopes []Scope
 			rv.Commit = h.Commit
 		}
 		// InstallAll pins the version at the commit of the head it records as the entry's ref.
-		ref := ""
+		var ref string
 		if ent != nil {
 			ref = ent.Ref
 		} else if ref, err = e.listedRef(run, VersionRef{Name: rv.Name, ID: rv.ID}); err != nil {

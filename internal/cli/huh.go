@@ -497,12 +497,7 @@ func (h *huhForms) pathInput(in *huh.Input, typed *string) *huh.Input {
 }
 
 func contains(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(xs, x)
 }
 
 func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
