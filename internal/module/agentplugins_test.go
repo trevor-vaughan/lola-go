@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
+	"github.com/onsi/gomega/types"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/module"
@@ -32,7 +33,7 @@ var _ = Describe("the Agent Plugins adapter", func() {
 		return module.Detect(root, "fallback", targets.Builtin().IDs())
 	}
 	// refused asserts err is a coached refusal that leaks neither Go type names nor the staging path.
-	refused := func(err error, msg any) {
+	refused := func(err error, msg types.GomegaMatcher) {
 		Expect(err).To(MatchError(msg))
 		Expect(errs.Hints(err)).NotTo(BeEmpty(), "every refusal coaches")
 		for _, leak := range []string{"Go value", "module.", "json.RawMessage", "struct {", root} {
@@ -100,7 +101,7 @@ var _ = Describe("the Agent Plugins adapter", func() {
 	DescribeTable("validates the manifest against the closed schema",
 		func(fields, msg string) {
 			_, err := detect(`{`+apSchema+fields+`}`, map[string]string{"skills/s/SKILL.md": skill("s")})
-			refused(err, msg)
+			refused(err, Equal(msg))
 		},
 		Entry("an unknown field", `,"name":"p","targets":["x"]`, "plugin.json: targets: is not an Agent Plugins manifest field"),
 		Entry("no name", ``, "plugin.json: name: is required"),
@@ -171,7 +172,7 @@ var _ = Describe("the Agent Plugins adapter", func() {
 	DescribeTable("refuses an mcp.json that breaks a rule",
 		func(doc, msg string) {
 			_, err := detect(`{`+apSchema+`,"name":"p"}`, map[string]string{"mcp.json": doc, "skills/s/SKILL.md": skill("s")})
-			refused(err, msg)
+			refused(err, Equal(msg))
 		},
 		Entry("another top-level field", `{`+mcpSchema+`,"mcpServers":{},"x":1}`, "mcp.json must hold exactly $schema and mcpServers"),
 		Entry("no $schema", `{"mcpServers":{}}`, "mcp.json must hold exactly $schema and mcpServers"),
@@ -377,7 +378,7 @@ var _ = Describe("the Agent Plugins adapter", func() {
 
 	It("coaches a package whose skills are all invalid and that holds nothing else", func() {
 		_, err := detect(`{`+apSchema+`,"name":"p"}`, map[string]string{"skills/Bad/SKILL.md": skill("Bad")})
-		refused(err, "plugin.json declares nothing lola can install")
+		refused(err, Equal("plugin.json declares nothing lola can install"))
 		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("skills/Bad/SKILL.md is not a valid Agent Skill")))
 	})
 

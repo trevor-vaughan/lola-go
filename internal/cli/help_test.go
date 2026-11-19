@@ -81,13 +81,13 @@ var _ = Describe("help, errors and output contract", func() {
 		Expect(r.out).To(ContainSubstring("== lola install ==\n"))
 		Expect(r.out).To(ContainSubstring("== lola cache add ==\n"))
 		Expect(r.out).To(ContainSubstring("== lola completion ==\n"))
-		Expect(len(regexp.MustCompile(`(?m)^\s+--no-pager\s`).FindAllString(r.out, -1))).To(Equal(1))
+		Expect(regexp.MustCompile(`(?m)^\s+--no-pager\s`).FindAllString(r.out, -1)).To(HaveLen(1))
 		Expect(r.out).NotTo(ContainSubstring("OUTPUT CONTRACT"))
 		r = lola("help", "--all", "cache")
 		Expect(r.out).To(HavePrefix("Global Flags:\n"))
 		Expect(r.out).To(ContainSubstring("== lola cache add ==\n"))
 		Expect(r.out).NotTo(ContainSubstring("== lola install =="))
-		Expect(len(regexp.MustCompile(`(?m)^\s+--no-pager\s`).FindAllString(r.out, -1))).To(Equal(1))
+		Expect(regexp.MustCompile(`(?m)^\s+--no-pager\s`).FindAllString(r.out, -1)).To(HaveLen(1))
 	})
 
 	It("help --short prints grouped commands with aliases inline", func() {

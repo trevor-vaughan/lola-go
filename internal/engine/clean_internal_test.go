@@ -37,6 +37,7 @@ var _ = Describe("moveAside", func() {
 		ok, err := moveAside(CleanItem{abs: lock, lock: lock}, filepath.Join(tmp, "aside"), rename)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeTrue())
+		//nolint:ginkgolinter // runtime.GOOS is a constant, so it reads Equal(true) on one platform; the spec is per-platform
 		Expect(held).To(Equal(runtime.GOOS != "windows"), "no run can take the lock between its check and its rename")
 		Expect(filepath.Join(tmp, "aside")).To(BeARegularFile())
 	})

@@ -12,6 +12,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -588,29 +589,29 @@ var _ = Describe("typed trust", func() {
 	})
 
 	DescribeTable("a receipt answered No, a refusal or an abort records no consent given by --trust",
-		func(opts engine.Options, want any) {
+		func(opts engine.Options, want types.GomegaMatcher) {
 			kit("{pre-install: hooks/pre.sh}")
 			writeTree(proj, map[string]string{"mods/kit2/lola.yml": "name: kit2\nhooks: {pre-install: hooks/pre.sh}\n", "mods/kit2/commands/kit2.md": "Kit2\n",
 				"mods/kit2/hooks/pre.sh": script})
 			Expect(os.Chmod(filepath.Join(proj, "mods", "kit2", "hooks", "pre.sh"), 0o755)).To(Succeed())
 			pull("kit", "kit2")
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: opts})
-			Expect(err).To(MatchError(want))
+			Expect(err).To(want)
 			Expect(consented()).To(BeEmpty())
 			Expect(trusts("kit")).To(BeFalse())
 			Expect(ran()).To(BeNil())
 			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
 		},
-		Entry("No", engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true, Receipt: answer(false, nil)}, engine.ErrDeclined),
+		Entry("No", engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true, Receipt: answer(false, nil)}, MatchError(engine.ErrDeclined)),
 		Entry("a refusal for another kind", engine.Options{Trust: engine.TrustHooks, Unseen: true, Receipt: answer(true, nil)},
-			"lola sync needs your trust for .lola/project.yml, which has not been trusted on this machine, and there is no terminal to ask on"),
-		Entry("Ctrl+C", engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true, Receipt: answer(false, context.Canceled)}, context.Canceled),
+			MatchError("lola sync needs your trust for .lola/project.yml, which has not been trusted on this machine, and there is no terminal to ask on")),
+		Entry("Ctrl+C", engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Unseen: true, Receipt: answer(false, context.Canceled)}, MatchError(context.Canceled)),
 		Entry("a terminal yes, then No at the receipt", engine.Options{Trust: engine.TrustEntries, Ask: askYes("kit", "kit2"),
-			Receipt: answer(false, nil)}, engine.ErrDeclined),
+			Receipt: answer(false, nil)}, MatchError(engine.ErrDeclined)),
 		Entry("a terminal yes, then Ctrl+C at the receipt", engine.Options{Trust: engine.TrustEntries, Ask: askYes("kit", "kit2"),
-			Receipt: answer(false, context.Canceled)}, context.Canceled),
+			Receipt: answer(false, context.Canceled)}, MatchError(context.Canceled)),
 		Entry("a terminal yes, then a refusal of another module's hook", engine.Options{Trust: engine.TrustEntries, Ask: askYes("kit"),
-			Receipt: answer(true, nil)}, HavePrefix("kit2 has a pre-install hook, and lola runs hooks only with your consent: ")),
+			Receipt: answer(true, nil)}, MatchError(HavePrefix("kit2 has a pre-install hook, and lola runs hooks only with your consent: "))),
 	)
 
 	It("an error showing the --trust record ends the sync before the receipt, recording nothing", func() {

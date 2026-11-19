@@ -27,6 +27,6 @@ var _ = Describe("hinted errors", func() {
 
 	It("returns nil hints for plain errors and passes nil through", func() {
 		Expect(errs.Hints(errors.New("x"))).To(BeEmpty())
-		Expect(errs.WithHints(nil, "h")).To(BeNil())
+		Expect(errs.WithHints(nil, "h")).To(Succeed())
 	})
 })

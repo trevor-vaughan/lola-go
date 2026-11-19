@@ -1862,7 +1862,7 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(asked).To(Equal([]string{"example"}))
 			Expect(read(".lola/modules/example/hooks/post.sh")).To(Equal(edited))
-			Expect(hookLog()).To(HaveLen(0))
+			Expect(hookLog()).To(BeEmpty())
 			Expect(pending()).To(BeTrue())
 		})
 
