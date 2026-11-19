@@ -1,0 +1,103 @@
+internal/engine/tidy_scan.go
+  s_1270636b4914be::t_25d577b128c06e 403
+internal/engine/copies.go
+  s_1270636b4914be::t_25d577b128c06e 149
+internal/cli/huh.go
+  s_1270636b4914be::t_25d577b128c06e 500
+internal/cli/reportbuf.go
+  s_1270636b4914be::t_25d577b128c06e 168
+internal/cli/viewer.go
+  s_1270636b4914be::t_25d577b128c06e 554
+internal/migrate/remap.go
+  s_1270636b4914be::t_25d577b128c06e 357
+internal/source/links.go
+  s_1270636b4914be::t_25d577b128c06e 140
+internal/cli/inproject_test.go
+  s_1270636b4914be::t_25d577b128c06e 87
+internal/engine/trustkinds_test.go
+  s_1270636b4914be::t_700c07860d7ce0 174,176,178,180
+internal/cli/core_test.go
+  s_1270636b4914be::t_25d577b128c06e 496,520,529,573,628
+internal/cli/hints_test.go
+  s_1270636b4914be::t_25d577b128c06e 52,230
+internal/engine/ops.go
+  s_1270636b4914be::t_25d577b128c06e 593-594
+internal/engine/trustkinds.go
+  s_1270636b4914be::t_25d577b128c06e 228,273
+internal/plan/compute.go
+  s_1270636b4914be::t_25d577b128c06e 109
+internal/fsx/resolve.go
+  s_1270636b4914be::t_25d577b128c06e 47
+internal/cli/market_output.go
+  s_1270636b4914be::t_25d577b128c06e 283
+internal/source/git.go
+  s_1270636b4914be::t_25d577b128c06e 513
+internal/engine/tidy_git.go
+  s_1270636b4914be::t_25d577b128c06e 155
+internal/fsx/jsonc.go
+  s_1270636b4914be::t_25d577b128c06e 342
+internal/cli/output.go
+  s_1270636b4914be::t_25d577b128c06e 187
+.golangci.yml
+  s_1270636b4914be::t_eb8b0215f50b5d 5,7-10
+internal/engine/init.go
+  s_1270636b4914be::t_25d577b128c06e 127
+internal/migrate/run_test.go
+  s_1270636b4914be::t_25d577b128c06e 166
+internal/cli/list_drift_test.go
+  s_1270636b4914be::t_25d577b128c06e 131
+internal/engine/clean_test.go
+  s_1270636b4914be::t_25d577b128c06e 214
+internal/module/components_test.go
+  s_1270636b4914be::t_25d577b128c06e 5,66
+internal/trash/trash.go
+  s_1270636b4914be::t_25d577b128c06e 491,556,680,787
+internal/engine/sources_test.go
+  s_1270636b4914be::t_25d577b128c06e 1462
+internal/cli/tidy_test.go
+  s_1270636b4914be::t_25d577b128c06e 444
+internal/cli/migrate_test.go
+  s_1270636b4914be::t_25d577b128c06e 442
+internal/cli/scripts_test.go
+  s_1270636b4914be::t_25d577b128c06e 219
+internal/cli/sync_test.go
+  s_1270636b4914be::t_25d577b128c06e 652,797
+internal/cli/flow_test.go
+  s_1270636b4914be::t_25d577b128c06e 395,2153
+internal/cli/market_test.go
+  s_1270636b4914be::t_25d577b128c06e 402,651,734,795,1087
+internal/cli/human_internal_test.go
+  s_1270636b4914be::t_25d577b128c06e 69
+internal/engine/probe.go
+  s_1270636b4914be::t_25d577b128c06e 452
+internal/engine/versions.go
+  s_1270636b4914be::t_25d577b128c06e 134-135,137,139
+internal/module/frontmatter.go
+  s_1270636b4914be::t_25d577b128c06e 155,284
+internal/cli/move_hint_test.go
+  s_1270636b4914be::t_25d577b128c06e 64
+internal/cli/theme_internal_test.go
+  s_1270636b4914be::t_25d577b128c06e 28
+internal/cli/selections_test.go
+  s_1270636b4914be::t_25d577b128c06e 132,209
+internal/engine/tidy_label.go
+  s_1270636b4914be::t_25d577b128c06e 34
+internal/source/folder.go
+  s_1270636b4914be::t_25d577b128c06e 157,271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c77fef4d13dadadaafbdcbae46e2f4db479aeb41",
+  "prompts": {},
+  "sessions": {
+    "s_1270636b4914be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f808f0c5-a346-48f0-bd12-2b1feb2479a6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
