@@ -2639,6 +2639,46 @@ func (e *Engine) notInstalled(sc Scope, name string, led *ledger.Ledger, display
 	return errs.WithHints(fmt.Errorf("lola uninstall: %q is not installed %s", name, e.where(sc)), hints...)
 }
 
+// UninstallAllNames are the modules lola uninstall --all removes at sc, in order: those lola list
+// shows (the base's and the profile on's), or, when req.Profile names a layer, the modules that
+// layer's file lists, whether or not it is on. It is empty, never nil, when there are none.
+func (e *Engine) UninstallAllNames(ctx context.Context, sc Scope, req TargetRequest, display []string) ([]string, error) {
+	names := []string{}
+	if req.Profile == "" {
+		rows, _, err := e.Status(ctx, sc, display)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			names = append(names, r.Name)
+		}
+		slices.Sort(names)
+		return slices.Compact(names), nil
+	}
+	unlockProfiles, err := e.readProfiles(true)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockProfiles()
+	man, led, _, err := e.load(sc, true)
+	if err != nil {
+		return nil, err
+	}
+	layers, _, err := e.layers(sc, man, led)
+	if err != nil {
+		return nil, err
+	}
+	t, _, err := e.uninstallTarget(sc, layers, req)
+	if err != nil {
+		return nil, err
+	}
+	for _, ent := range t.Entries {
+		names = append(names, ent.Name)
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
 // Uninstall removes modules' artifacts (on opts.Targets, or everywhere) and drops them from
 // the manifest once nothing remains.
 func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts Options) (_ *Result, err error) {
@@ -2688,9 +2728,10 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	}
 	want, _ := desired(layers)
 	var changes []plan.ModuleChange
-	removing := map[string]*writeTo{} // module → the layer its entry is removed from
-	narrowed := map[string][]string{} // module → the targets its entry in removing keeps, when the run installs nothing of that edit
-	saved := map[string]bool{}        // the files of profiles that are not on whose edit was said to be saved only
+	removing := map[string]*writeTo{}   // module → the layer its entry is removed from
+	narrowed := map[string][]string{}   // module → the targets its entry in removing keeps, when the run installs nothing of that edit
+	alsoFrom := map[string][]*writeTo{} // module → the other layers that list it, whose entries opts.AllLayers removes too
+	saved := map[string]bool{}          // the files of profiles that are not on whose edit was said to be saved only
 	noteSaved := func(from *writeTo) {
 		if !from.on && !saved[from.Path] {
 			saved[from.Path] = true
@@ -2790,9 +2831,22 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 			// Another layer that still lists it keeps it installed; -t keeps the entry, so it still
 			// wants it there.
 			if rest := stillWanted(layers, from.Name, name); rest != nil && !partial {
-				noteSaved(from)
-				res.Notices = append(res.Notices, e.staysNotices(sc, layers, infos, rest, entry)...)
-				continue
+				if !opts.AllLayers {
+					noteSaved(from)
+					res.Notices = append(res.Notices, e.staysNotices(sc, layers, infos, rest, entry)...)
+					continue
+				}
+				// Every layer that lists it loses the entry, so nothing keeps the module installed.
+				for _, l := range layers {
+					if l.Name == from.Name || !slices.ContainsFunc(l.Entries, func(x manifest.Entry) bool { return x.Name == name }) {
+						continue
+					}
+					if remoteLayer(l.Name) {
+						return nil, errs.WithHints(fmt.Errorf("%s comes from %s, which is read-only; lola does not edit remote profiles", shown(name), layerLabel(infos, l.Name)),
+							e.remoteOnHints(sc, infos, l, opts.Display)...)
+					}
+					alsoFrom[name] = append(alsoFrom[name], &writeTo{Layer: l, on: true, label: layerLabel(infos, l.Name)})
+				}
 			}
 		}
 		from := removing[name]
@@ -2862,17 +2916,22 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 				c.Set = []manifest.Entry{from.fileEntry(sc, *kept)}
 			}
 		}
-		if !from.Profile {
-			base = from
-			change.Remove, change.Set = append(change.Remove, c.Remove...), append(change.Set, c.Set...)
-			continue
+		for i, l := range append([]*writeTo{from}, alsoFrom[name]...) {
+			if i > 0 {
+				c = manifest.Change{Remove: []string{name}}
+			}
+			if !l.Profile {
+				base = l
+				change.Remove, change.Set = append(change.Remove, c.Remove...), append(change.Set, c.Set...)
+				continue
+			}
+			f := files[l.Path]
+			if f == nil {
+				f = &fileEdit{layer: l.Layer}
+				files[l.Path], targets[l.Path], order = f, l, append(order, l.Path)
+			}
+			f.change.Remove, f.change.Set = append(f.change.Remove, c.Remove...), append(f.change.Set, c.Set...)
 		}
-		f := files[from.Path]
-		if f == nil {
-			f = &fileEdit{layer: from.Layer}
-			files[from.Path], targets[from.Path], order = f, from, append(order, from.Path)
-		}
-		f.change.Remove, f.change.Set = append(f.change.Remove, c.Remove...), append(f.change.Set, c.Set...)
 	}
 	if base != nil {
 		res.Edits = append(res.Edits, editsOf(ctx, sc, *base, change.Set, change.Remove, nil)...)

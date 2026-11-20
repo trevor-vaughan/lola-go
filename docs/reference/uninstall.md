@@ -4,6 +4,7 @@ Command reference, for lola users; back to [Using lola](../usage.md) and the [RE
 
 ```
 lola uninstall <module>...
+lola uninstall --all
 ```
 
 Aliases: `remove`, `rm`, `erase`, `delete`, `del`. Remove the module's entry from the layer it
@@ -56,6 +57,7 @@ says `saved to profile rust; it is not on at user scope → lola profile --user 
 | Flag | What it does |
 |---|---|
 | `-t`, `--target <assistant>` | Only uninstall from these assistants, of those it is installed on; the entry keeps the others, and writes `targets:` only when they differ from its file's. With `--profile` naming a layer the module does not come from (a lower layer, or a profile that is off), it narrows that entry's targets and removes no files. |
+| `--all` | Remove every module `lola list` shows for the scope, the base's and the profile on's, in place of names. With `--profile`, the modules that profile's file lists (even one that is off). `--scope both` runs it at each scope. It asks once per scope, with every module in the plan, and answers which layer a module comes from, so a base module goes while a profile is on. Without `--profile` a module several layers list loses each entry, so nothing stays installed (plain `uninstall <module>` leaves it, naming the layer). Combines with `-t`, `--keep-edits` and `--force`. |
 | `--profile <name>` | Remove the entry from this profile (`base` is the scope's base) instead of the layer the module comes from. |
 | `-y`, `--yes` | Do not ask for confirmation. |
 | `--force` | Also delete files edited since lola wrote them, without asking; what it replaces or deletes goes to a new trash run (`lola trash`). |
@@ -96,8 +98,11 @@ Refusals:
   overrides`, each file on its own line, hinting two runs: `lola uninstall my-module --keep-edits`
   (leaves the edited files, your flags kept; `-y` only if you gave it, so off a terminal that run's own refusal hints it) and `lola uninstall my-module --force`
   (deletes them).
+- `--all` with names: `--all removes every module, and my-module names some`, hinting the run without
+  `--all` and the run without the names.
+- `--all` with nothing installed prints `nothing to uninstall` and succeeds, also off a terminal without `-y`.
 - `--keep-edits` with `--force`: `--keep-edits and --force cannot be combined; pick one`, hinting each
   run without the other.
 
-JSON (`--json`, [Output contract](../usage.md#output-contract)): `modules`, `steps`, `findings`, `notices`, `edits`, `scripts`, `kept` and `dry_run`; the refusal off a
+JSON (`--json`, [Output contract](../usage.md#output-contract)): with `--all` over two scopes, one document, `scopes`, an array of the per-scope results below; otherwise `modules`, `steps`, `findings`, `notices`, `edits`, `scripts`, `kept` and `dry_run`; the refusal off a
 terminal carries the same keys beside `error` and `hints`.

@@ -218,19 +218,29 @@ func (a *app) installCmd() *cobra.Command {
 
 func (a *app) uninstallCmd() *cobra.Command {
 	var targets []string
-	var dry, yes, force, keepEdits bool
+	var dry, yes, force, keepEdits, all bool
 	var profileName string
 	g := argGuide{noun: "module", find: "lola list", usage: "lola uninstall <module>... [-t target] [-y]",
 		examples: []string{"lola uninstall my-module -y", "lola uninstall my-module -t claude-code", "lola uninstall my-module --dry-run"}}
 	cmd := &cobra.Command{
-		Use:     "uninstall <module>...",
+		Use:     "uninstall <module>... | --all",
 		Aliases: []string{"remove", "rm", "erase", "delete", "del"},
 		Short:   "Remove modules from this project (or --user)",
 		Long: "Remove the modules' entries from the layer each comes from — the profile on, or the base (asked\nwhen a profile is on; --profile base answers off a terminal) — and everything lola wrote for\nthem (on -t targets only, if given: the entry keeps the others). A module another layer still\nlists stays installed. The modules stay in your cache; remove them there with lola cache rm.\n\n" +
+			"--all removes every module lola list shows for the scope, or, with --profile, those that profile\nlists; it asks once per scope, listing them, and --scope both runs it at each scope. It takes no names.\n\n" +
 			scopeHelp,
-		Example:           g.example(),
-		GroupID:           groupCore,
-		Args:              g.args(1),
+		Example: g.example(),
+		GroupID: groupCore,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if !all {
+				return g.args(1)(cmd, args)
+			}
+			if len(args) == 0 {
+				return nil
+			}
+			return errs.WithHints(fmt.Errorf("--all removes every module, and %s names some", untrusted.Text(strings.Join(args, ", "), untrusted.MaxName)),
+				"remove only those: "+runWithout(cmd, args, "all"), "remove them all: "+runWithout(cmd, nil))
+		},
 		ValidArgsFunction: a.completeInstalled,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if keepEdits && force {
@@ -241,11 +251,12 @@ func (a *app) uninstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			scs, err := a.scopes(cmd, eng, args, "Uninstall from where?", false, false)
+			scs, err := a.scopes(cmd, eng, args, "Uninstall from where?", all, false)
 			if err != nil {
 				return err
 			}
-			req := engine.TargetRequest{Profile: profileName, Yes: yes, Rerun: func(extra ...string) string {
+			// --all answers which layer a module comes from, as -y does: it names every module.
+			req := engine.TargetRequest{Profile: profileName, Yes: yes || all, Rerun: func(extra ...string) string {
 				// -y stays, and a run that lacked it gains it: the hinted run then asks nothing the
 				// hint itself does not answer (the layer by --profile, the plan by -y).
 				if !yes && !dry {
@@ -255,43 +266,89 @@ func (a *app) uninstallCmd() *cobra.Command {
 			}, UserRun: func() string {
 				return runWithout(cmd, args, slices.Concat(scopeFlags, consentFlags)...) + " --user"
 			}, Again: rerunFlags(cmd, 0)}
-			a.printContext(cmd, eng, []engine.Scope{scs[0].Scope}, &req)
-			sc := scs[0].Scope
+			a.printContext(cmd, eng, choiceScopes(scs), &req)
 			// The preview's where-question is answered once and reused by the run (askWhere remembers it).
 			opts := engine.Options{Targets: targets, DryRun: true, Force: force, ForceRun: forceRun(cmd, args), Display: outputFlags(cmd),
-				KeepEdits: keepEdits, KeepRun: keepRun(cmd, args), Target: req, AskWhere: a.askWhere(a.prompter(cmd), nil), Retarget: func(module string, ts []string) string {
+				KeepEdits: keepEdits, KeepRun: keepRun(cmd, args), AllLayers: all && profileName == "", Target: req, AskWhere: a.askWhere(a.prompter(cmd), nil), Retarget: func(module string, ts []string) string {
 					run := runWithout(cmd, []string{module}, "target")
 					if len(ts) == 0 {
 						return run
 					}
 					return run + " " + errs.ShellJoin([]string{"-t", untrusted.Text(strings.Join(ts, ","), untrusted.MaxName)})
 				}}
-			// --force answers the question, as -y does (user decision, 2026-10-22).
-			if !dry && !yes && !force {
-				// The preview is a dry run, whose refusal of an @ source would hint -n: coach it as this run.
-				if _, err := eng.Manifest(sc); err != nil {
-					if _, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
-						return eng.CoachUnresolved(err, []engine.Scope{sc}, dry, outputFlags(cmd))
+			// uninstallIn removes names, or with --all every module sc lists, from sc, as the user answers.
+			// Hints name args, not names: a run with --all hints --all, which names none.
+			uninstallIn := func(sc engine.Scope, several bool) (res *engine.Result, names []string, err error) {
+				names = args
+				if all {
+					if names, err = eng.UninstallAllNames(cmd.Context(), sc, req, outputFlags(cmd)); err != nil {
+						return nil, nil, err
 					}
 				}
-				preview, err := eng.Uninstall(cmd.Context(), sc, args, opts)
+				// --force answers the question, as -y does (user decision, 2026-10-22).
+				if !dry && !yes && !force && len(names) > 0 {
+					// The preview is a dry run, whose refusal of an @ source would hint -n: coach it as this run.
+					if _, err := eng.Manifest(sc); err != nil {
+						if _, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
+							return nil, nil, eng.CoachUnresolved(err, []engine.Scope{sc}, dry, outputFlags(cmd))
+						}
+					}
+					preview, err := eng.Uninstall(cmd.Context(), sc, names, opts)
+					if err != nil {
+						return nil, nil, err
+					}
+					// A plan that removes no files (it only edits a profile) has nothing to confirm.
+					if len(preview.Modules) > 0 {
+						shown := make([]string, len(names))
+						for i, n := range names {
+							shown[i] = untrusted.Text(n, untrusted.MaxName)
+						}
+						question := "Uninstall " + strings.Join(shown, ", ")
+						if several {
+							question += " from " + destLabel(sc)
+						}
+						show := func(w io.Writer, s style) { printReport(w, s, report{Result: preview}) }
+						if err := a.confirm(cmd, args, question+"?", Nav{}, preview, show); err != nil {
+							return nil, nil, err
+						}
+					}
+				}
+				opts.DryRun = dry
+				res, err = eng.Uninstall(cmd.Context(), sc, names, opts)
+				return res, names, err
+			}
+			results := make([]*engine.Result, 0, len(scs))
+			for _, c := range scs {
+				res, names, err := uninstallIn(c.Scope, len(scs) > 1)
 				if err != nil {
 					return err
 				}
-				// A plan that removes no files (it only edits a profile) has nothing to confirm.
-				if len(preview.Modules) > 0 {
-					show := func(w io.Writer, s style) { printReport(w, s, report{Result: preview}) }
-					if err := a.confirm(cmd, args, "Uninstall "+strings.Join(args, ", ")+"?", Nav{}, preview, show); err != nil {
+				results = append(results, res)
+				human := func(w io.Writer, s style) {
+					if len(scs) > 1 && !s.plain {
+						fmt.Fprintln(w, destLabel(c.Scope)+":")
+					}
+					if len(names) == 0 {
+						if !s.plain {
+							fmt.Fprintln(w, s.info("nothing to uninstall"))
+						}
+						return
+					}
+					printReport(w, s, report{Result: res, Verb: "uninstalled"})
+				}
+				switch {
+				case len(scs) == 1:
+					return a.emit(cmd, human, res)
+				case !a.json:
+					if err := a.emit(cmd, human, nil); err != nil {
 						return err
 					}
 				}
 			}
-			opts.DryRun = dry
-			res, err := eng.Uninstall(cmd.Context(), sc, args, opts)
-			if err != nil {
-				return err
+			if a.json {
+				return a.emit(cmd, nil, map[string]any{"scopes": results})
 			}
-			return a.emit(cmd, func(w io.Writer, s style) { printReport(w, s, report{Result: res, Verb: "uninstalled"}) }, res)
+			return nil
 		},
 	}
 	a.addTargetFlag(cmd, &targets, "only uninstall from these assistants")
@@ -299,6 +356,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	cmd.Flags().BoolVar(&force, "force", false, "also delete files edited since lola wrote them, without asking")
 	cmd.Flags().BoolVar(&keepEdits, "keep-edits", false, "leave files edited since lola wrote them as they are, and stop managing them")
+	cmd.Flags().BoolVar(&all, "all", false, "remove every module the scope lists (--profile: that profile's)")
 	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
 	cmd.Flags().StringVar(&profileName, "profile", "", "remove the entry from this profile (base: the scope's base)")
 	_ = cmd.RegisterFlagCompletionFunc("profile", a.completeProfiles(true))

@@ -136,6 +136,9 @@ type Options struct {
 	// which that refusal hints before ForceRun, "" for no hint.
 	KeepEdits bool
 	KeepRun   string
+	// AllLayers is uninstall only (--all): a module another layer also lists loses that entry too,
+	// instead of staying installed.
+	AllLayers bool
 	// TargetRun is the user's run at scope sc with -t naming only the target given, which a
 	// refusal of two targets' destinations that are one real file hints once per target; nil for
 	// no hint.

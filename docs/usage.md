@@ -559,7 +559,8 @@ lola has no uninstaller of its own; you remove your modules, then what lola keep
 binary. Each step below was run against a throwaway `HOME`.
 
 1. Uninstall every module in each project and at user scope.
-   - `lola uninstall` takes several names and has no "all" flag; `lola list` shows them.
+   - `lola uninstall --all` removes every module `lola list` shows for the scope; `--scope both`
+     does it at each scope in one run.
    - It removes the entries from `project.yml` (or your default profile) and the files lola
      wrote, then the directories that leaves empty, whoever made them (a `~/.claude/commands/`
      that held only lola's files goes, even one you made).
@@ -567,8 +568,7 @@ binary. Each step below was run against a throwaway `HOME`.
      which stays even when empty.
 
    ```sh
-   cd my-project && lola list && lola uninstall mod-a mod-b -y
-   lola list --user && lola uninstall --user mod-a mod-b -y
+   cd my-project && lola uninstall --all --scope both -y
    ```
 
 2. Optionally move what lola does not manage out of the assistants' directories

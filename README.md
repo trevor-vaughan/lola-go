@@ -3,7 +3,7 @@
 lola is a package manager for AI-assistant context: skills, slash commands, subagents, MCP
 servers and always-on rules. You install a module once; lola renders it into each
 assistant's native layout and records exactly what it wrote, so it can render again or
-uninstall cleanly, without touching anything it did not write.
+uninstall cleanly: it removes only what it wrote, and the directories that leaves empty.
 
 Already using [LobsterTrap/lola](https://github.com/LobsterTrap/lola)? `lola migrate` installs
 what it installed and moves its files to a trash you can restore from with `lola trash`
