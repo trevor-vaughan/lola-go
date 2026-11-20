@@ -5,7 +5,8 @@ Back to the [README](../../README.md).
 Maintainer notes on Security model. It is split out of [architecture](../architecture.md).
 
 - **Trust kinds cannot widen.** Each kind answers a fixed set of questions.
-  - Bare `--trust` covers only `entries,profiles`, which run no code.
+  - Bare `--trust` covers only `entries,profiles`. lola runs no code for them, but accepting
+    entries is also the consent to the MCP servers they list (see **Module MCP servers**).
   - A kind a command never asks is refused.
   - A hint adds exactly the kinds its refusal misses and never writes `all`.
   - `-y` and `--force` grant none.
@@ -28,6 +29,15 @@ Maintainer notes on Security model. It is split out of [architecture](../archite
     shown record, [Trust kinds](trust-kinds.md#the-shown-record)), so a pull that changes a hook
     through an entry's vars or targets, or a project script, cannot ride on a flag given for
     something else; `--unseen` lifts that, by name, for CI.
+- **Module MCP servers.**
+  - lola writes them as members of the assistant's own files: `.mcp.json`, `~/.claude.json`,
+    `.gemini/settings.json` and `opencode.json`.
+  - `entries` consent covers a module's servers; the trust diff prints each server's command
+    before you accept. `runtime-hooks` consent covers an agent's servers, from its frontmatter
+    `mcpServers`.
+  - lola never starts a server. Your assistant does.
+  - **Residual risk:** at user scope some assistants start a server without asking again, so
+    accepting the entry is the only prompt you get.
 - **Sources are not trusted.**
   - A symlink in module content is copied as the regular file it names only when it is relative and
     resolves, through at most 8 links and no linked directory, to a regular file inside the source
