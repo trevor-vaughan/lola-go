@@ -1,0 +1,323 @@
+docs/reference/check.md
+  s_6f225ac7a3eb2f::t_0991007a4842fa 16-17,19
+internal/config/write.go
+  s_aea7c8dedfd847::t_cf7b8df1425ddf 173
+  s_aea7c8dedfd847::t_b58fac4490c216 158-159
+e2e/install/scripts/setup.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 20,35-36
+internal/testenv/testenv.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 180
+go.mod
+  s_aea7c8dedfd847::t_5f8b9215579f57 22
+  s_aea7c8dedfd847::t_de6380d1775315 23,52-56
+internal/engine/info_test.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 265
+internal/cli/context.go
+  s_aea7c8dedfd847::t_fabf6fa254c0c7 171
+.github/workflows/e2e.yml
+  s_aea7c8dedfd847::t_58555f4664319f 28
+internal/profile/profile.go
+  s_aea7c8dedfd847::t_3997ea233bc892 338-349,351-352,354,373,375
+  s_aea7c8dedfd847::t_47bb3b112de991 388,962
+.editorconfig
+  s_aea7c8dedfd847::t_5e90408f32ed1a 1-6
+docs/reference/trash.md
+  s_6f225ac7a3eb2f::t_a0c4408eb6eab9 61-68
+scripts/e2e.sh
+  s_aea7c8dedfd847::t_1f93ee9223bc0f 49-52,73-76,101
+  s_aea7c8dedfd847::t_f9e8bb417a11ee 84-85,122
+  s_aea7c8dedfd847::t_4b806073b1453c 141-142,156,186-187,217-223
+docs/architecture/packages.md
+  s_aea7c8dedfd847::t_2cc6f80ef37a54 15
+e2e/picks/picks.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 32,37-38,40,43,45,56,58,63,85,88,97,99,122,129,131,148,151,158,163,168,192,194,197,202,204,212,214
+docs/decisions.md
+  s_6f225ac7a3eb2f::t_ec905a979691fc 11-223
+internal/engine/trustkinds.go
+  s_aea7c8dedfd847::t_d4a21de9fe2929 165-167,169,176-183,195
+e2e/template/fixtures/bad/lola.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 2
+internal/cli/cmd_sync.go
+  s_aea7c8dedfd847::t_fabf6fa254c0c7 199
+internal/cli/trust_test.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 206,478
+internal/engine/target.go
+  s_aea7c8dedfd847::t_4c2c8573517fa0 877
+docs/reference/info.md
+  s_6f225ac7a3eb2f::t_c9155e0c1515bc 97-98,100-101
+docs/guides/templating.md
+  s_6f225ac7a3eb2f::t_d5b81813107a41 68,72-73,80
+docs/reference/help.md
+  s_6f225ac7a3eb2f::t_e8400cd0dc22cd 11-15,23-26
+e2e/template/template.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 36,91,119
+e2e/common/snapshot.py
+  s_aea7c8dedfd847::t_438626c5c90f1b 1,28,44
+  s_aea7c8dedfd847::t_5d45b6b43b7176 2-5,7-9,17,20-21,23-27,32,35-39,41-42
+e2e/common/hint.py
+  s_aea7c8dedfd847::t_438626c5c90f1b 1,28
+  s_aea7c8dedfd847::t_f65bdc5d6d7036 6-11,19,22-23,38,41-43,45,47,60-62,64
+internal/templating/templating.go
+  s_aea7c8dedfd847::t_46162b747e3004 105,238
+internal/source/git.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 455
+internal/templating/screen.go
+  s_aea7c8dedfd847::t_7b59ec8e47b8d6 4,166-177,225-228,281-303
+  s_aea7c8dedfd847::t_cb55740397a901 304-305
+internal/templating/graph.go
+  s_aea7c8dedfd847::t_46162b747e3004 100
+docs/reference/cache.md
+  s_6f225ac7a3eb2f::t_941fc83cf17201 22-25,48-49,67-79
+e2e/update/update.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 124,143,156,232,235,249,266-267,272-274,321-323
+.github/workflows/check.yml
+  s_aea7c8dedfd847::t_58555f4664319f 23
+internal/yamldoc/yamldoc.go
+  s_aea7c8dedfd847::t_464d7afbb0751e 147-157
+third_party/liquid/go.sum
+  s_aea7c8dedfd847::t_a8178773d08219 688-689,728-729,751-752,803-804,821-822,876-877
+internal/engine/trustkinds_test.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 927,946
+docs/architecture/trust-record.md
+  s_6f225ac7a3eb2f::t_99106166a8696e 14
+docs/architecture/marketplaces.md
+  s_6f225ac7a3eb2f::t_b3944398e41925 8
+docs/architecture/install-hooks.md
+  s_6f225ac7a3eb2f::t_814250420fa128 12
+internal/cli/profile_update.go
+  s_aea7c8dedfd847::t_fabf6fa254c0c7 461
+e2e/team/scripts/setup.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 59-64,74-77
+internal/templating/regions.go
+  s_aea7c8dedfd847::t_7b59ec8e47b8d6 325-328,356-362
+internal/cli/info_test.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 78
+internal/source/reach_test.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 78,84
+docs/reference/install.md
+  s_6f225ac7a3eb2f::t_a356b7589ba49c 27-47
+docs/testing.md
+  s_6f225ac7a3eb2f::t_2b8ab02c778f35 10-12,14-15,79-88,314-320
+  s_aea7c8dedfd847::t_f9e8bb417a11ee 102
+internal/engine/templates_hint_internal_test.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 19
+docs/guides/sync-and-trust.md
+  s_6f225ac7a3eb2f::t_e132ff4fc72fc8 537-542
+.taskfiles/go.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 1,9,25,30,32-33,47,49,66,77,82,90,95
+e2e/market/market.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 47-48,131,175-176,234,309
+e2e/migrate/scripts/python-setup.sh
+  s_aea7c8dedfd847::t_9c768689461a46 18-21
+docs/reference/update.md
+  s_6f225ac7a3eb2f::t_781e5cdd5b94cf 77-87
+e2e/install/install.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 60,68,75-76,100,102,125,141-146,171-178,180-185,187,230,259,316,423,458-459,494-496,535,661,685,765,773,787,809-812,817-818,823-824
+third_party/liquid/PATCHES.md
+  s_aea7c8dedfd847::t_08c3974d9a2904 10,14
+  s_aea7c8dedfd847::t_2cc6f80ef37a54 11-13
+internal/market/mapping.go
+  s_aea7c8dedfd847::t_dd8c9697509b3e 90-105,128-130,260-262
+internal/module/frontmatter.go
+  s_aea7c8dedfd847::t_813e22c0a97f7a 16
+  s_aea7c8dedfd847::t_47bb3b112de991 195-196,200,203,233-234,241
+docs/guides/choosing-what-to-install.md
+  s_6f225ac7a3eb2f::t_7ed27a20585bca 250-251,253-255,266-272,326-333,363-365,378-381,456-458
+internal/cli/output.go
+  s_aea7c8dedfd847::t_fabf6fa254c0c7 222-231,239
+docs/template_engine_analysis.md
+  s_6f225ac7a3eb2f::t_6b3de216a9d144 54-64
+e2e/profile-first/profile-first.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 62-66,77-78,92-93,98-100,105-106,111-117,120,133-136,138,149-151,156-159,164,170-171,180,182-183,226-227,248-249,254-255,257,259,274-276,281-283,288-289,303-307,312,317,322,327-330,344-346,351-353,366,406-407,417,422-423,444-446,456-458
+internal/targetspec/specs/opencode.yaml
+  s_aea7c8dedfd847::t_357ad433313e06 137-147
+  s_aea7c8dedfd847::t_ba3d19c4940234 7-13,15,17,21,23-52,55-65,70,72-82,85-88,95-106,109-133,157
+.devskim.json
+  s_aea7c8dedfd847::t_a9898e56f6a4e4 19-20
+  s_aea7c8dedfd847::t_58555f4664319f 1-18,21-26
+e2e/common/gitserve.py
+  s_aea7c8dedfd847::t_f2ae8d823faa07 3-8,17,19-26,29,36,42-53,55-61,84
+  s_aea7c8dedfd847::t_438626c5c90f1b 1,77,85-87
+docs/reference/list.md
+  s_6f225ac7a3eb2f::t_c167b9df000610 79-80
+docs/guides/install-scripts.md
+  s_6f225ac7a3eb2f::t_8bece58a8ea206 52-54,56
+e2e/migrate/scripts/python-setup-c.sh
+  s_aea7c8dedfd847::t_ad125bc0c927aa 20
+.mega-linter.yml
+  s_aea7c8dedfd847::t_58555f4664319f 4-7
+internal/cli/report.go
+  s_aea7c8dedfd847::t_1d3a0cfb7aa6c3 258
+docs/reference/sync.md
+  s_6f225ac7a3eb2f::t_ea476eb947371c 31-40
+docs/reference/migrate.md
+  s_6f225ac7a3eb2f::t_80839274bbe624 13-22
+internal/cli/huh_internal_test.go
+  s_aea7c8dedfd847::t_a7be853f6b3c9b 1005,1010
+internal/store/store_test.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 131
+internal/market/registry.go
+  s_aea7c8dedfd847::t_938deb14335505 167,206,229
+docs/usage.md
+  s_6f225ac7a3eb2f::t_f36769ef5660a7 111-118,122-128,133-139,143-146,406-453,530-557,586-590,592,714-733
+go.sum
+  s_aea7c8dedfd847::t_d683e202ebb5bd 127-140
+docs/reference/output-contract.md
+  s_6f225ac7a3eb2f::t_8096b5e797f126 104,220-227
+  s_6f225ac7a3eb2f::t_cb09d160420084 51
+.taskfiles/release.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 1,6-7,23,30,37,42
+internal/manifest/manifest_test.go
+  s_aea7c8dedfd847::t_38495eec9cc005 58,85,96,221,223,241,244,527,538,541,545,572,575,577
+.trufflehog-exclude-paths.txt
+  s_aea7c8dedfd847::t_3b548dc4095bf9 12-13
+  s_aea7c8dedfd847::t_f6b1590038e137 1-11,14-21
+internal/cli/cmd_info.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 36
+internal/targetspec/specs/gemini-cli.yaml
+  s_aea7c8dedfd847::t_ba3d19c4940234 5-11,13-14,18-45,48-59,65-80,83-88,93,95-98,101-111,115
+internal/trust/trust_test.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 112,119
+scripts/install-git-cliff.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 12-14,32
+internal/cli/human.go
+  s_aea7c8dedfd847::t_1d3a0cfb7aa6c3 490-502,513
+docs/architecture/templates.md
+  s_6f225ac7a3eb2f::t_14e3880dd5d27d 51,54
+  s_6f225ac7a3eb2f::t_a3ce7a8d0f2eb2 69
+internal/templating/filters.go
+  s_aea7c8dedfd847::t_46162b747e3004 172,179,802
+internal/templating/error.go
+  s_aea7c8dedfd847::t_46162b747e3004 208,210
+docs/reference/tidy.md
+  s_6f225ac7a3eb2f::t_7f03b2773a8112 18-27
+e2e/common/jsoncheck.py
+  s_aea7c8dedfd847::t_438626c5c90f1b 1,55,105
+  s_aea7c8dedfd847::t_d64ea6b0465407 7-9,11-14,19-24,28-32,34-38,40-44,46-51,69,74,86,88,95-100
+e2e/migrate/scripts/check.py
+  s_aea7c8dedfd847::t_b0dfa2fd5c363d 7-8,104,128-129
+  s_aea7c8dedfd847::t_0718a9e20d914a 81,92,167,226
+  s_aea7c8dedfd847::t_947d63f39743c3 2,15,23-24,26-29,34,41-44,52-54,60,67-70,78-80,82,84,90-91,93,117,120-123,151,153-166,168,177-181,184-185,189-193,196-207,209-212,216-220,225,227-231
+  s_aea7c8dedfd847::t_438626c5c90f1b 1,35,37,215
+  s_aea7c8dedfd847::t_36deac19454bac 3-5,103,105,133-135,140-143
+  s_aea7c8dedfd847::t_6b7f1d38593aee 6
+internal/manifest/edit.go
+  s_aea7c8dedfd847::t_caa49be75d89ce 176
+scripts/release-bump.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 34-35,78,80,82
+e2e/common/tls.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 18-19
+e2e/tidy/scripts/check.py
+  s_aea7c8dedfd847::t_438626c5c90f1b 1,30,115
+  s_aea7c8dedfd847::t_36deac19454bac 4-7,9-18
+  s_aea7c8dedfd847::t_fe6c3659afece3 24,26,32,36-38,40-43,45,51,57,61,67-70,75-78,82-90,92-95,103-106,113
+internal/engine/templates.go
+  s_aea7c8dedfd847::t_ab08b76a516f99 620
+docs/guides/install-trust-kinds.md
+  s_6f225ac7a3eb2f::t_bc995e23ebfee2 10-16,36
+internal/cli/cmd_core.go
+  s_aea7c8dedfd847::t_fabf6fa254c0c7 390
+internal/config/pins.go
+  s_aea7c8dedfd847::t_ac7c008f1fb99f 217-218,221
+internal/source/reach.go
+  s_aea7c8dedfd847::t_e046d83267e3fe 66
+e2e/trash-picks/trash-picks.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 30-31,55-56,71-73,91-92,100-101,103,108,119-120,122,127,138-141,143,154-156,158,169,174-177,190,207-210,222
+third_party/liquid/go.mod
+  s_aea7c8dedfd847::t_de6380d1775315 3,7,182,207-211
+internal/source/source_test.go
+  s_aea7c8dedfd847::t_456c257b06daba 281
+  s_aea7c8dedfd847::t_e046d83267e3fe 400,411,415
+  s_aea7c8dedfd847::t_9aab56bf804bc3 410
+e2e/tidy/tidy.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 25
+internal/targetspec/specs/agents.yaml
+  s_aea7c8dedfd847::t_ba3d19c4940234 6,9-10,14,20-35
+internal/cli/huh.go
+  s_aea7c8dedfd847::t_a83190fcac235d 1052,1085,1152
+  s_aea7c8dedfd847::t_944b0eb2482499 1133
+  s_aea7c8dedfd847::t_344023bc4d8edf 1099-1100
+docs/reference/market.md
+  s_6f225ac7a3eb2f::t_cbab40b66ceac1 41-52
+docs/architecture/lola-tidy.md
+  s_6f225ac7a3eb2f::t_4590f118ee7a8f 93
+e2e/team/team.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 318,409,416,426,439-440,479,489,501,542,559
+docs/guides/sources-and-the-cache.md
+  s_6f225ac7a3eb2f::t_4bba6a313b5d64 11-18,152-160
+e2e/image/requirements.txt
+  s_aea7c8dedfd847::t_d01273de9e2073 104-105
+internal/cli/sync_output.go
+  s_aea7c8dedfd847::t_1d3a0cfb7aa6c3 303
+e2e/user-target/user-target.venom.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 24,32,39,57-60,65,86,96,103,105,108,121,128-130,134,139,159-160,175,192,216,237-238,250-252,265-268,277-280,291,296,301-302,309,312,323,328,333
+Taskfile.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 1
+docs/architecture/security-model.md
+  s_6f225ac7a3eb2f::t_cf37bb779b1ba4 10-28,135,147,163
+docs/reference/init.md
+  s_6f225ac7a3eb2f::t_9fb0a4f54dfa4b 18-19,21
+docs/architecture/tui-flows.md
+  s_6f225ac7a3eb2f::t_fd087e16c73e45 42,63,67-78,91-102,209-221,225-306,310-315,322-332,441-453,457-536,540-547,551-558,605-617,621-624,631-662,666-670,674-678,751-756,760-790,794-799,803-807,869-874,878-908,912-918,922-927,987-992,996-1030,1034-1039,1043-1047,1091-1092,1097-1109,1113-1117,1121-1123,1170-1171,1176-1188,1192-1197,1201-1203,1254-1257,1261-1281,1285-1289,1293-1297,1370-1376,1380-1414,1418-1424,1428-1434,1503-1504,1506,1508-1509,1513-1546,1550-1554,1558-1560,1644-1652,1656-1720,1724-1728,1730-1731,1735-1737,1803-1808,1812-1834,1841-1864,1868-1872,1876-1878,1943-1949,1953-1986,1990-1991,1993-1994,1998-2001
+  s_6f225ac7a3eb2f::t_078afa7aa1f27b 62,1505,1507
+docs/release.md
+  s_aea7c8dedfd847::t_f9e8bb417a11ee 41
+docs/reference/profile.md
+  s_6f225ac7a3eb2f::t_b199cec958df30 37-62
+internal/source/recorded_test.go
+  s_aea7c8dedfd847::t_38495eec9cc005 16,21,25-26,51-54
+internal/profile/split.go
+  s_aea7c8dedfd847::t_3997ea233bc892 33-35
+  s_aea7c8dedfd847::t_47bb3b112de991 88,94
+.taskfiles/e2e.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 1,22,24-25
+internal/targetspec/specs/claude-code.yaml
+  s_aea7c8dedfd847::t_ba3d19c4940234 7-13,15-16,20,23-24,26-50,53-54,62-66,70-74,79
+docs/reference/uninstall.md
+  s_6f225ac7a3eb2f::t_2f704d1e293669 57-65
+docs/reference/repair.md
+  s_6f225ac7a3eb2f::t_a63f163765e2bf 16-19
+e2e/template/fixtures/tpl/commands/review.targets.yaml
+  s_aea7c8dedfd847::t_ba3d19c4940234 1
+e2e/template/fixtures/tpl/lola.yml
+  s_aea7c8dedfd847::t_ba3d19c4940234 2
+docs/reference/completion.md
+  s_6f225ac7a3eb2f::t_3a23123d69b48e 14-19,27-44
+docs/guides/target-specs.md
+  s_6f225ac7a3eb2f::t_7fa4a83b7051e7 61-69,132,137-147,155-163
+e2e/profile-first/scripts/setup.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 74-81
+internal/engine/profile.go
+  s_aea7c8dedfd847::t_4c2c8573517fa0 296,603-615
+  s_aea7c8dedfd847::t_f923e611fde50d 616-617
+scripts/tuiflows/main.go
+  s_aea7c8dedfd847::t_cc6d7a61cbc745 62
+  s_aea7c8dedfd847::t_a8b88522f85eaf 108-111,115
+  s_aea7c8dedfd847::t_8001872215f456 122
+  s_aea7c8dedfd847::t_e12b6183938412 136-160,164-171
+  s_aea7c8dedfd847::t_120c9c9e311d50 60-61,161-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53179d344c61610d5331ab1489cac1bc0f919716",
+  "prompts": {},
+  "sessions": {
+    "s_6f225ac7a3eb2f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae28ab37e381f5348",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_aea7c8dedfd847": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e41f7643-e890-4cae-a076-3aca8c461aa1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
