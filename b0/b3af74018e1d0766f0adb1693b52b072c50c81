@@ -1,0 +1,19 @@
+internal/engine/gitignore.go
+  s_fed06242c50a4d::t_59aa8534dd745b 201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b0b3af74018e1d0766f0adb1693b52b072c50c81",
+  "prompts": {},
+  "sessions": {
+    "s_fed06242c50a4d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d740fdaf-11dc-4d83-9d55-b6671e4a154a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
