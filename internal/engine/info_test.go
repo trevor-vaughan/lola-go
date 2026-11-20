@@ -253,6 +253,15 @@ var _ = Describe("lola info", func() {
 		Expect(e.Paths.Consent).NotTo(BeAnExistingFile(), "no consent was recorded")
 	})
 
+	It("info warns that a module's mcp.json is not read, beside what the module runs", func() {
+		Expect(os.Remove(filepath.Join(kit, "mcps.json"))).To(Succeed())
+		writeTree(kit, map[string]string{"mcp.json": `{"mcpServers":{"tools":{"command":"tools-mcp"}}}`})
+		info, err := e.Info(ctx, claudeHere())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Warnings).To(ConsistOf("mcp.json is not read: a lola module declares MCP servers in mcps.json"))
+		Expect(info.Runs.MCPServers).To(BeEmpty())
+	})
+
 	It("info shows each hook's sha256 and first lines cleaned, and runtime hooks and MCP servers as the assistant would run them", func() {
 		script := "#!/bin/sh\necho \x1b[2Jcleared\n"
 		writeTree(kit, map[string]string{"setup.sh": script})

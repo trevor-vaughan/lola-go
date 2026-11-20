@@ -20,7 +20,8 @@ my-module/
 A `commands/<command>/` directory beside a command is copied with it; OpenCode would read its
 files as commands, so there it is dropped (`command-sidecar-dropped`, in [Findings](../usage.md#findings)). A native module's MCP
 servers go in `mcps.json`; `.mcp.json` and `mcp.json` are the files of the Claude Code plugin
-and Agent Plugins [formats](#module-formats).
+and Agent Plugins [formats](#module-formats); a native module that ships either without `mcps.json` gets a
+warning (in `lola check` and `lola info`) that the file is not read.
 
 Any of these Markdown files may instead be a template, `<name>.md.liquid` ([Templates](templating.md#templates)).
 
