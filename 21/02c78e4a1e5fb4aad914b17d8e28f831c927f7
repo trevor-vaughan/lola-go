@@ -1,0 +1,23 @@
+docs/testing.md
+  s_aea7c8dedfd847::t_f9e8bb417a11ee 102
+scripts/e2e.sh
+  s_aea7c8dedfd847::t_f9e8bb417a11ee 78-79,116
+docs/release.md
+  s_aea7c8dedfd847::t_f9e8bb417a11ee 41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "2102c78e4a1e5fb4aad914b17d8e28f831c927f7",
+  "prompts": {},
+  "sessions": {
+    "s_aea7c8dedfd847": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e41f7643-e890-4cae-a076-3aca8c461aa1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
