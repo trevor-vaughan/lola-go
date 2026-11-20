@@ -3144,7 +3144,11 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		if ment != nil {
 			pin, ref = ment.Digest, ment.Ref
 		}
-		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest), entry.Source)
+		commit := entry.Commit
+		if pin != "" {
+			commit = ment.Commit
+		}
+		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest), commit, entry.Source)
 		base := StatusRow{Name: name, From: from, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
 			UpdateAvailable: update, SourceGone: sourceGone(entry.Source, sourceRoot(sc)), Skipped: []string{}, Only: shown, OnlyFrom: onlyFrom, Drift: []DriftEntry{}}
 		if ment != nil {
@@ -3257,7 +3261,7 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted, only []strin
 	status, update := "not_installed", false
 	if ment.Digest != "" {
 		var err error
-		if update, err = e.updateAvailable(ment.Name, ment.Ref, ment.Digest, ment.Source); err != nil {
+		if update, err = e.updateAvailable(ment.Name, ment.Ref, ment.Digest, ment.Commit, ment.Source); err != nil {
 			status = "unreadable" // the cache's record of the module cannot be loaded
 		}
 	}
@@ -3340,9 +3344,12 @@ func versionID(digest string) string {
 }
 
 // updateAvailable reports whether the cache head for ref of name holds another version than
-// digest, in the origin recorded for src as the entry writes it, else the newest. It reads the
-// cache index only, and a folder's head never counts: a folder is read again by every sync.
-func (e *Engine) updateAvailable(name, ref, digest, src string) (bool, error) {
+// digest, in the origin recorded for src as the entry writes it, else the newest. When the head
+// and the installed commit are different commits whose committer times the cache recorded, it is
+// true only if the head's is later (equal times order nothing): a pin at a newer commit than the head is not out of date. With
+// either time unknown, or both equal, it compares digests. It reads the cache index only, and a folder's head
+// never counts: a folder is read again by every sync.
+func (e *Engine) updateAvailable(name, ref, digest, commit, src string) (bool, error) {
 	origins, err := e.Store.Origins(name)
 	if err != nil || len(origins) == 0 {
 		return false, err
@@ -3355,9 +3362,16 @@ func (e *Engine) updateAvailable(name, ref, digest, src string) (bool, error) {
 		return false, nil
 	}
 	for _, h := range o.Heads {
-		if h.Ref == ref {
-			return h.Digest != versionID(digest), nil
+		if h.Ref != ref {
+			continue
 		}
+		if h.Digest == versionID(digest) {
+			return false, nil
+		}
+		if installed, ok := e.Store.CommitTime(name, commit); ok && commit != "" && h.Commit != commit && !h.Committed.IsZero() && !h.Committed.Equal(installed) {
+			return h.Committed.After(installed), nil
+		}
+		return true, nil
 	}
 	return false, nil
 }

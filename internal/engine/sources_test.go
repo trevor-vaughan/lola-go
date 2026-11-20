@@ -21,6 +21,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
@@ -1413,18 +1414,85 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(row()).To(And(HaveField("Status", "ok"), HaveField("Pin", "")), "an unpinned entry is never stale")
 		})
 
-		It("says an update is available when the cache head for the entry's ref differs, and is not stale", func() {
+		// pushAt commits a change to work at the committer time at, pushes it to the served
+		// repository and returns the commit; the first commit is made now, so a later at is newer
+		// and an earlier at older.
+		pushAt := func(content string, at time.Time) string {
+			GinkgoHelper()
+			work := filepath.Join(tmp, "work")
+			writeTree(work, map[string]string{"commands/ship.md": content})
+			gitIn(work, "add", "-A")
+			cmd := exec.Command("git", "-C", work, "commit", "-q", "-m", content)
+			cmd.Env = append(os.Environ(), "GIT_COMMITTER_DATE="+at.Format(time.RFC3339))
+			out, err := cmd.CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(out))
+			gitIn(work, "push", "-q", "--all", filepath.Join(tmp, "srv", "example.git"))
+			return gitIn(work, "rev-parse", "HEAD")
+		}
+		later, earlier := time.Now().AddDate(1, 0, 0), time.Now().AddDate(-1, 0, 0)
+
+		It("says an update is available when the cache head for the entry's ref is a newer commit, and is not stale", func() {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
-			work := filepath.Join(tmp, "work")
-			writeTree(work, map[string]string{"commands/ship.md": "Ship v2\n"})
-			gitIn(work, "commit", "-qam", "v2")
-			gitIn(work, "push", "-q", "--all", filepath.Join(tmp, "srv", "example.git"))
+			pushAt("Ship v2\n", later)
 			_, err = e.Update(ctx, nil, engine.Progress{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(row()).To(And(HaveField("Status", "ok"), HaveField("UpdateAvailable", true)))
 			editPin("")
 			Expect(row()).To(HaveField("UpdateAvailable", true), "unpinned: the head against the version installed")
+		})
+
+		It("says no update is available when the installed commit is newer than the ref's head", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			pushAt("Ship v2\n", later)
+			// The head of main stays the first commit: the second is cached through another ref, then pinned.
+			gitIn(filepath.Join(tmp, "work"), "tag", "v2")
+			gitIn(filepath.Join(tmp, "work"), "push", "-q", "--tags", filepath.Join(tmp, "srv", "example.git"))
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v2"}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			editPin(lockFile().Modules["example"].Digest)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(row()).To(And(HaveField("Status", "ok"), HaveField("UpdateAvailable", false)), "the head is older than what is installed")
+		})
+
+		It("says an update is available when the head and the installed commit share a committer second", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			first, err := time.Parse(time.RFC3339, gitIn(filepath.Join(tmp, "work"), "show", "-s", "--format=%cI", "HEAD"))
+			Expect(err).NotTo(HaveOccurred())
+			pushAt("Ship v2\n", first)
+			_, err = e.Update(ctx, nil, engine.Progress{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(row()).To(HaveField("UpdateAvailable", true), "equal times order nothing: the differing digests decide")
+		})
+
+		It("compares digests when the cache recorded no commit times", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			pushAt("Ship v2\n", earlier)
+			_, err = e.Update(ctx, nil, engine.Progress{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(row()).To(HaveField("UpdateAvailable", false), "the head is an older commit")
+
+			// An index written before times were recorded has no committed or commits keys.
+			idx := filepath.Join(e.Paths.Store, "example", "index.yml")
+			b, err := os.ReadFile(idx)
+			Expect(err).NotTo(HaveOccurred())
+			var doc map[string]any
+			Expect(yaml.Unmarshal(b, &doc)).To(Succeed())
+			delete(doc, "commits")
+			for _, o := range doc["origins"].([]any) {
+				for _, h := range o.(map[string]any)["heads"].([]any) {
+					delete(h.(map[string]any), "committed")
+				}
+			}
+			old, err := yaml.Marshal(doc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(old).NotTo(ContainSubstring("committed"))
+			Expect(os.WriteFile(idx, old, 0o600)).To(Succeed())
+			Expect(row()).To(HaveField("UpdateAvailable", true), "no times to compare: the head differs from what is installed")
 		})
 	})
 

@@ -937,7 +937,7 @@ func (e *Engine) fetchRequest(ctx context.Context, spec source.Spec, name, fallb
 	}
 	return store.PutRequest{Staged: f.Dir, FallbackName: cmp.Or(fallback, name, f.Name), Name: name, Source: spec.Location, Type: string(spec.Kind),
 		Components: spec.Components,
-		Path:       spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), ReplaceGoneOrigin: true}, nil
+		Path:       spec.Path, Ref: spec.Ref, Commit: f.Commit, Committed: f.Committed, Executables: f.Executables, Now: e.Now(), ReplaceGoneOrigin: true}, nil
 }
 
 // fetchAs copies a source into the store, staging it in the run directory run (fetchRequest

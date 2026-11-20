@@ -40,6 +40,9 @@ type Head struct {
 	// the ref again once it is older than cache_fresh_for. A folder's head has none: a folder is
 	// read on every run.
 	Fetched string `yaml:"fetched,omitempty"`
+	// Committed is the committer time of Commit (git only; zero when unknown, as in heads written
+	// before it was recorded). The author writes it: it orders versions for advice only.
+	Committed time.Time `yaml:"committed,omitempty"`
 }
 
 // Origin is one source a stored module was fetched from, with the heads of its refs (index.yml
@@ -78,6 +81,9 @@ func (o Origin) From(k SourceKey) bool {
 type index struct {
 	Origins  []Origin          `yaml:"origins"`
 	LastUsed map[string]string `yaml:"last_used,omitempty"`
+	// Commits is the committer time of each commit a committed fetch resolved, pinned fetches
+	// included (they move no head): a commit has one time, where a version can come from several.
+	Commits map[string]time.Time `yaml:"commits,omitempty"`
 }
 
 // view is the Origin of x.Origins[i] a reader sees: its heads, then, when merged, the heads of
@@ -163,9 +169,11 @@ type Version struct {
 type PutRequest struct {
 	Staged, FallbackName, Name      string
 	Source, Type, Path, Ref, Commit string
-	Executables                     []string
-	Now                             time.Time
-	ReplaceGoneOrigin               bool
+	// Committed is Commit's committer time (source.Fetched.Committed); zero when unknown.
+	Committed         time.Time
+	Executables       []string
+	Now               time.Time
+	ReplaceGoneOrigin bool
 	// Components is the selection the staged content was fetched with (source.Spec.Components).
 	Components *source.Components
 }
@@ -231,6 +239,7 @@ type Staged struct {
 	source, typ, path string
 	ref               string
 	components        *source.Components
+	committed         time.Time
 }
 
 // Key is the source st was fetched from.
@@ -246,7 +255,7 @@ func (st Staged) Index(o Origin, found, headIfAbsent bool) Origin {
 		o = Origin{Source: st.source, Type: st.typ, Path: st.path, Components: st.components}
 	}
 	if !headIfAbsent || !slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Ref == st.ref }) {
-		h := Head{Ref: st.ref, Digest: st.Version.ID, Commit: st.Version.Commit, Fetched: st.Version.Meta.FetchedAt}
+		h := Head{Ref: st.ref, Digest: st.Version.ID, Commit: st.Version.Commit, Committed: st.committed, Fetched: st.Version.Meta.FetchedAt}
 		// A folder is read every run and never stale: a stamp nothing reads
 		// would rewrite index.yml on every run that read it again.
 		if st.typ == string(source.KindFolder) {
@@ -466,7 +475,7 @@ func (s *Store) Prepare(req PutRequest) (Staged, error) {
 		FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest, Executables: execs}
 	v := Version{Name: m.Name, ID: strings.TrimPrefix(digest, "sha256:")[:12], ContentDir: req.Staged, Commit: req.Commit, Meta: meta, Module: cached}
 	return Staged{Version: v, LoadWarnings: loadWarnings, ReplaceGoneOrigin: req.ReplaceGoneOrigin, source: req.Source, typ: req.Type, path: req.Path,
-		ref: ref, components: req.Components.Clone()}, nil
+		ref: ref, components: req.Components.Clone(), committed: req.Committed}, nil
 }
 
 // Commit publishes a prepared version under the cache lock: it records its source as an origin of
@@ -526,6 +535,12 @@ func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
 		idx.LastUsed = map[string]string{}
 	}
 	idx.LastUsed[sv.ID] = s.today()
+	if sv.Commit != "" && !st.committed.IsZero() {
+		if idx.Commits == nil {
+			idx.Commits = map[string]time.Time{}
+		}
+		idx.Commits[sv.Commit] = st.committed
+	}
 	if err := writeYAML(filepath.Join(s.dir, sv.Name, indexFile), idx); err != nil {
 		return Version{}, err
 	}
@@ -584,6 +599,18 @@ func setHead(heads []Head, head Head) []Head {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Ref < out[j].Ref })
 	return out
+}
+
+// CommitTime is the committer time the cache recorded for commit of name, and whether it did:
+// not for an index written before times were recorded, a commit no committed fetch resolved, or
+// an index that cannot be read (the caller then has nothing to compare and falls back).
+func (s *Store) CommitTime(name, commit string) (time.Time, bool) {
+	idx, found, err := s.readIndex(name)
+	if err != nil || !found {
+		return time.Time{}, false
+	}
+	t, ok := idx.Commits[commit]
+	return t, ok
 }
 
 // Head returns the newest version fetched for ref from the newest origin of name, else from

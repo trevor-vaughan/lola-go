@@ -337,6 +337,14 @@ func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fe
 	if err != nil {
 		return Fetched{}, err
 	}
+	when, err := runGit(ctx, scratch, "show", "-s", "--format=%cI", "HEAD")
+	if err != nil {
+		return Fetched{}, err
+	}
+	committed, err := time.Parse(time.RFC3339, strings.TrimSpace(string(when)))
+	if err != nil {
+		return Fetched{}, fmt.Errorf("git reported a commit time lola cannot read: %w", err)
+	}
 	root, name, err := folderRoot(scratch, spec.Path, repoName(spec.Location))
 	if err != nil {
 		return Fetched{}, err
@@ -355,7 +363,7 @@ func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fe
 			execs = append(execs, path.Join(filepath.ToSlash(rel), link))
 		}
 	}
-	return Fetched{Dir: dir, Name: name, Commit: strings.TrimSpace(string(head)), Executables: executablesUnder(execs, filepath.ToSlash(rel), dir),
+	return Fetched{Dir: dir, Name: name, Commit: strings.TrimSpace(string(head)), Committed: committed.UTC(), Executables: executablesUnder(execs, filepath.ToSlash(rel), dir),
 		Root: fetchedRoot(rel)}, nil
 }
 

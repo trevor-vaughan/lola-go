@@ -585,6 +585,37 @@ var _ = Describe("Store", func() {
 		Expect(h.ID).To(Equal(v2.ID), "a ref without a head gets one")
 	})
 
+	It("records each committed commit's time, a pinned fetch's too, and moves a head only for an unpinned one", func() {
+		c1, c2 := strings.Repeat("1", 40), strings.Repeat("2", 40)
+		t1, t2 := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC), time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC)
+		commit := func(files map[string]string, c string, at time.Time, headIfAbsent bool) {
+			GinkgoHelper()
+			st, err := s.Prepare(store.PutRequest{Staged: stage(files), FallbackName: "example", Source: "https://example.invalid/example.git",
+				Type: "git", Ref: "main", Commit: c, Committed: at, Now: now})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = s.Commit(st, headIfAbsent)
+			Expect(err).NotTo(HaveOccurred())
+		}
+		commit(map[string]string{"commands/a.md": "A"}, c1, t1, false)
+		commit(map[string]string{"commands/a.md": "B"}, c2, t2, true)
+
+		h, ok, err := s.Head("example", "main")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		Expect(h.Commit).To(Equal(c1), "a pinned fetch never moves a head")
+		o, _, err := s.Origin("example")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(o.Heads).To(ConsistOf(HaveField("Committed", BeTemporally("==", t1))))
+		got, known := s.CommitTime("example", c1)
+		Expect([]any{got, known}).To(Equal([]any{t1, true}))
+		got, known = s.CommitTime("example", c2)
+		Expect([]any{got, known}).To(Equal([]any{t2, true}))
+		_, known = s.CommitTime("example", strings.Repeat("3", 40))
+		Expect(known).To(BeFalse())
+		_, known = s.CommitTime("absent", c1)
+		Expect(known).To(BeFalse())
+	})
+
 	Describe("Prepare and Commit", func() {
 		It("prepares content in staging without touching the cache, and commits a copy of it", func() {
 			staged := stage(map[string]string{"commands/a.md": "A", "bin/x.sh": "x"})

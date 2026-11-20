@@ -6,9 +6,10 @@ Maintainer notes on Cache. It is split out of [architecture](../architecture.md)
 
 ```
 $XDG_CACHE_HOME/lola/modules/<name>/
-  index.yml                # origins: [{source, type, path, components, heads: [{ref, digest, commit}]}],
+  index.yml                # origins: [{source, type, path, components, heads: [{ref, digest, commit, committed}]}],
                            #   newest first, one per source the module was fetched from;
-                           #   last_used: {<digest12>: YYYY-MM-DD}, shared (versions are by content)
+                           #   last_used: {<digest12>: YYYY-MM-DD}, shared (versions are by content),
+                           #   commits: {<commit>: committer time}, shared (a commit has one time)
   versions/<digest12>/
     content/               # the normalized module: native layout + one generated lola.yml
     .lola-origin           # format, manifest, others_present, ref, commit, fetched_at,
@@ -61,7 +62,11 @@ recorded digest) the error carries two hints: `lola install <source> [--ref r] [
 `install` pins git and archive entries (`commit` from the fetch or head, `digest`); folders are
 never pinned. `status` reports `stale` when the manifest's pin differs from the ledger's digest, and
 `update_available` when the cache head for the entry's ref differs from the pin (or from the
-ledger's digest when unpinned).
+ledger's digest when unpinned) and is a later commit: `Store.Commit` records each committed
+commit's committer time in the index's `commits` map (a pinned fetch fills it too, though it
+moves no head) and on the head as `committed`, and a head older than the installed commit is no
+update. With either time unknown (an index from before times were recorded, a folder) the digests
+decide. The committer time is author-written: it drives only this advisory flag, never trust.
 
 `last_used` is the UTC day a run last used each version. `Store.Commit` writes it
 for every version it commits, `Store.Pinned` for the version `sync` and `profile` read,

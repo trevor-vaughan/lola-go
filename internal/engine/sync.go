@@ -3253,7 +3253,7 @@ func (e *Engine) prepareFetch(ctx context.Context, name string, spec source.Spec
 		return store.Staged{}, &fetchFailedError{err}
 	}
 	return e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: name, Name: name, Source: spec.Location, Type: string(spec.Kind),
-		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), Components: spec.Components})
+		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Committed: f.Committed, Executables: f.Executables, Now: e.Now(), Components: spec.Components})
 }
 
 // publish commits an entry's staged version to the cache, once. A pinned fetch never moves a

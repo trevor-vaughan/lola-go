@@ -81,6 +81,24 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(entries).To(HaveLen(1)) // the clone is gone
 	})
 
+	It("records the committer time of the commit it resolved, and none for a folder", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "A"})
+		writeTree(r.work, map[string]string{"commands/a.md": "B"})
+		git(r.work, "add", "-A")
+		cmd := exec.Command("git", "-C", r.work, "commit", "-q", "-m", "dated")
+		cmd.Env = append(os.Environ(), "GIT_COMMITTER_DATE=2031-02-03T04:05:06+02:00")
+		out, err := cmd.CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), string(out))
+		git(r.work, "push", "-q", "--all", r.bare)
+		f, err := fetch(r.url, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(f.Committed).To(BeTemporally("==", time.Date(2031, 2, 3, 2, 5, 6, 0, time.UTC)))
+
+		folder, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: r.work}, staging)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(folder.Committed.IsZero()).To(BeTrue())
+	})
+
 	It("git follows no redirect for a catalog-derived source, and a typed one's", func() {
 		r := newRemote(tmp, map[string]string{"commands/a.md": "A"})
 		away := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
