@@ -1,0 +1,23 @@
+internal/cli/human.go
+  s_aea7c8dedfd847::t_1d3a0cfb7aa6c3 490-502,513
+internal/cli/report.go
+  s_aea7c8dedfd847::t_1d3a0cfb7aa6c3 258
+internal/cli/sync_output.go
+  s_aea7c8dedfd847::t_1d3a0cfb7aa6c3 303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "20ed2cdde7efcfa54c8cc72b25b35e82489f0880",
+  "prompts": {},
+  "sessions": {
+    "s_aea7c8dedfd847": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e41f7643-e890-4cae-a076-3aca8c461aa1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
