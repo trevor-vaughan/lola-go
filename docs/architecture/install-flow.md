@@ -221,10 +221,12 @@ which asks nothing and writes nothing, and prints its findings (`printFindings`)
 
 Each pass of the flow numbers the steps it asks, `Steps{At, Of}`: `done` counts the fields asked so
 far, and `remaining` forecasts the rest, exactly once what decides a step is known
-(`componentPages`, shared with `ensureComponents`, and `ComponentPage.lists`), one field per step
-before.
+(`componentPages`, shared with `ensureComponents`, and `ComponentPage.lists`). Before that it has
+no upper bound for the module and component lists (or for the version questions while the scopes or
+assistants are open), so `steps` gives `Of` 0 and the header omits the total: a total shown never
+grows.
 
-The huh adapter titles each list `Step n of m — <title>` and says `enter: next` under each but a form's
+The huh adapter titles each list `Step n of m — <title>` (`Step n — <title>` while `Of` is 0) and says `enter: next` under each but a form's
 last. It asks the review through `Prompter.Ask` (`huhForms.Review`): `Apply these changes? [y/c/n]`
 with no default, under the summary or with it in the viewer by `app.ask`'s fit rule. `y` applies, `n`
 and Ctrl+C cancel, `q` quits, Esc goes back a step, and `c` opens the Change menu (`menu`), whose last

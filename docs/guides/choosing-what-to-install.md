@@ -8,9 +8,10 @@ This guide covers how lola decides the scope, assistants and components for an i
 
 `lola install` with no argument, on a terminal, asks what it needs, one step at a time, inline
 on stderr. Every list is numbered, `Step 2 of 5 — Install which modules?`, and a form with several
-lists says `enter: next` under each but the last. The count is lola's forecast until you pick the
-modules, then exact: a step lola answers itself (the only assistant installed, a module with one
-component) drops out of it. After a Change entry (the review's `c` menu, below), the steps asked again are numbered from 1.
+lists says `enter: next` under each but the last. Until lola knows how many lists the modules have,
+the header says `Step 2` with no total; once it does, the total is exact and never grows: a step
+lola answers itself (the only assistant installed, a module with one component) drops out of it.
+After a Change entry (the review's `c` menu, below), the steps asked again are numbered from 1.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {

@@ -84,7 +84,7 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   is at least as tall as the terminal, so use `-y 6` to force it. A question (`[y/N]`) opens it when its
   text and prompt line do not fit; otherwise the text prints and the prompt sits under it.
 - **Surfaces** (ready marker): `lola help <cmd>` / bare `lola` viewer (`━━ lines N–M of T`); `lola install`
-  form (`Step 1 of 5`, review `Apply these changes? [y/c/n]`); scope pickers on `tidy`, `update`,
+  form (`Step 1`, review `Apply these changes? [y/c/n]`); scope pickers on `tidy`, `update`,
   `sync`, `repair`, `profile … --on/--switch/--move` (`<Verb> where?`); `trash` (`Restore or empty
   which?`); `cache clean` (`Remove these from your cache?`); `init` without `-y`; `profile <n> --edit
   <mod>` (`Step 1 of 3`); trust diff on `sync`/`update` (`Trust these changes?`); yes/no questions

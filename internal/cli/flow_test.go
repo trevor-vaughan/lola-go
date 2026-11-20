@@ -627,12 +627,12 @@ var _ = Describe("the install flow", func() {
 			"deploy has one component and no exclusion, so it gets no page")
 
 		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home,
-			ProjectContext: "project.yml", UserContext: "default", Step: cli.Steps{At: 1, Of: 5}}), "nothing preselected")
+			ProjectContext: "project.yml", UserContext: "default", Step: cli.Steps{At: 1}}), "nothing preselected")
 		Expect(p.moduleSteps[0].Options).To(Equal([]cli.ModuleOption{
 			{Name: "deploy", Label: deploy + " · deploy"},
 			{Name: "review-kit", Label: review + " · review-kit — Code review helpers"}}))
 		Expect(p.assistantSteps[0]).To(Equal(cli.AssistantStep{Options: []string{"claude-code", "gemini-cli"}, Preselect: []string{"claude-code"},
-			Scopes: []string{"project (" + proj + ")"}, Step: cli.Steps{At: 3, Of: 7}, Nav: cli.Nav{Back: true, Answered: 2}}))
+			Scopes: []string{"project (" + proj + ")"}, Step: cli.Steps{At: 3}, Nav: cli.Nav{Back: true, Answered: 2}}))
 		pg := p.pages[0]
 		Expect(pg.Groups).To(HaveLen(3))
 		Expect(pg.Groups[0].Title).To(Equal("skills (2)"))
@@ -640,10 +640,10 @@ var _ = Describe("the install flow", func() {
 		Expect(pg.Groups[2].Title).To(Equal("rules (1)"))
 		Expect(p.reviewSteps[0].Options).To(Equal([]string{"apply", "scope", "modules", "assistants", "components", "quit"}))
 
-		// Numbered across the pass: the count is a forecast until the modules are picked,
-		// then exact; review-kit's page has three lists, deploy's one component no page.
+		// Numbered across the pass: no total until the modules are picked, then exact, so it never
+		// grows; review-kit's page has three lists, deploy's one component no page.
 		Expect([]cli.Steps{p.scopeSteps[0].Step, p.moduleSteps[0].Step, p.assistantSteps[0].Step, pg.Step, p.reviewSteps[0].Step}).To(Equal(
-			[]cli.Steps{{At: 1, Of: 5}, {At: 2, Of: 5}, {At: 3, Of: 7}, {At: 4, Of: 7}, {At: 7, Of: 7}}))
+			[]cli.Steps{{At: 1}, {At: 2}, {At: 3}, {At: 4, Of: 7}, {At: 7, Of: 7}}))
 		Expect(r.err).To(ContainSubstring("Summary:\n  project (" + proj + "), picked:\n    → for claude-code (picked)\n" +
 			"      review-kit: + skill/review, + command/ship, + rule/style\n      deploy: + command/deploy\n"))
 		Expect(r.err).To(ContainSubstring("  selections.yaml (" + selections + "):\n    review-kit in projects[" + proj + "]: skip [skill/slow-lint]\n"))
@@ -798,6 +798,53 @@ var _ = Describe("the install flow", func() {
 		Expect(r.err).To(Equal(lola("install", "-y").err))
 	})
 
+	for name, args := range map[string]func() []string{
+		"a path":                      func() []string { return []string{review} },
+		"a path, scope and assistant": func() []string { return []string{review, "--scope", "project", "-t", "claude-code"} },
+		"a named module":              func() []string { return []string{"review-kit"} },
+		"a path and a name":           func() []string { return []string{review, "deploy"} },
+	} {
+		It("never grows the step total installing "+name+", and the last step is the total", func() {
+			p := &scripted{
+				scope:      []func(cli.ScopeStep) ([]string, error){scopes("project")},
+				modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
+				assistants: []func(cli.AssistantStep) ([]string, error){func(cli.AssistantStep) ([]string, error) { return []string{"claude-code"}, nil }},
+				components: slices.Repeat([]func(cli.ComponentPage) ([]string, error){keep()}, 4),
+				review:     []string{cli.ReviewApply},
+			}
+			r := lolaP(p, append([]string{"install"}, args()...)...)
+			Expect(r.code).To(Equal(0), r.err)
+			type header struct{ at, of int }
+			var seen []header
+			for _, st := range p.scopeSteps {
+				seen = append(seen, header{st.Step.At, st.Step.Of})
+			}
+			for _, st := range p.moduleSteps {
+				seen = append(seen, header{st.Step.At, st.Step.Of})
+			}
+			for _, st := range p.assistantSteps {
+				seen = append(seen, header{st.Step.At, st.Step.Of})
+			}
+			for _, pg := range p.pages { // a page's last list is its last header
+				seen = append(seen, header{pg.Step.At, pg.Step.Of}, header{pg.Step.At + len(pg.Groups) - 1, pg.Step.Of})
+			}
+			for _, st := range p.reviewSteps {
+				seen = append(seen, header{st.Step.At, st.Step.Of})
+			}
+			Expect(p.reviewSteps).NotTo(BeEmpty(), "the form ends with the review: %v", p.calls)
+			slices.SortStableFunc(seen, func(a, b header) int { return a.at - b.at })
+			shown := 0 // the last total a header gave: 0 while it is left out
+			for _, h := range seen {
+				if shown > 0 {
+					Expect(h.of).To(And(BeNumerically(">", 0), BeNumerically("<=", shown)), "a total shown never grows or goes: %v", seen)
+				}
+				shown = h.of
+			}
+			last := seen[len(seen)-1]
+			Expect(last.of).To(Equal(last.at), "the last header is the total: %v", seen)
+		})
+	}
+
 	It("numbers a step the same when Esc brings it back, the steps before it answered and not asked again", func() {
 		fakeAssistant(tmp, "gemini", "0.63.0")
 		claude := func(cli.AssistantStep) ([]string, error) { return []string{"claude-code"}, nil }
@@ -913,7 +960,7 @@ var _ = Describe("the install flow", func() {
 		Expect(second).NotTo(ContainElement("command/ship"), "the re-run page starts from the last answer")
 		Expect(p.moduleSteps[1].Preselect).To(Equal([]string{"review-kit", "deploy"}))
 		Expect([]cli.Steps{p.pages[1].Step, p.reviewSteps[1].Step, p.moduleSteps[1].Step, p.reviewSteps[2].Step}).To(Equal(
-			[]cli.Steps{{At: 3, Of: 6}, {At: 6, Of: 6}, {At: 2, Of: 5}, {At: 6, Of: 6}}), "a pass after a Change entry numbers a step as it was, held answers counted")
+			[]cli.Steps{{At: 3, Of: 6}, {At: 6, Of: 6}, {At: 2}, {At: 6, Of: 6}}), "a pass after a Change entry numbers a step as it was, held answers counted, the total left out until the modules are picked")
 		Expect(p.pages[1].Step.Of).To(BeNumerically(">=", p.pages[0].Step.Of), "Change components never lowers the total")
 		Expect(p.moduleSteps[1].Step.Of).To(BeNumerically(">=", p.moduleSteps[0].Step.Of), "nor does Change modules")
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit --scope project -t claude-code --skip review-kit:command/ship --skip review-kit:rule/style"}))
@@ -1016,7 +1063,7 @@ var _ = Describe("the install flow", func() {
 		r := lolaP(p, "install")
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home,
-			ProjectContext: "project.yml", UserContext: "default", Step: cli.Steps{At: 1, Of: 5}}))
+			ProjectContext: "project.yml", UserContext: "default", Step: cli.Steps{At: 1}}))
 	})
 
 	It("asks for the Other directory again, with the reason, until it is a directory that is not the project above", func() {

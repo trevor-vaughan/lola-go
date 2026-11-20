@@ -1353,9 +1353,14 @@ func (fl *installFlow) bySource(renamed *engine.RenamedEntryError) (string, bool
 func (fl *installFlow) reviews() bool { return fl.ask && (len(fl.shown) > 0 || fl.auto) }
 
 // steps numbers the step the flow asks at stage (ReviewScope, …): after the fields this pass
-// asked, of those and the fields the flow expects to ask from stage on (remaining).
+// asked, of those and the fields the flow expects to ask from stage on (remaining). While that
+// forecast has no upper bound the total is 0, which the header leaves out (Steps).
 func (fl *installFlow) steps(stage string) Steps {
-	return fl.floored(stage, Steps{At: fl.done + 1, Of: fl.done + fl.remaining(stage)})
+	n, exact := fl.remaining(stage)
+	if !exact {
+		return Steps{At: fl.done + 1}
+	}
+	return fl.floored(stage, Steps{At: fl.done + 1, Of: fl.done + n})
 }
 
 // floored is st, the numbering of a step of stage, with a total no lower than the stage was last
@@ -1374,11 +1379,13 @@ func (fl *installFlow) floored(stage string, st Steps) Steps {
 // picker's one; the module picker's lists when no argument names the modules and they are not
 // answered; the assistant picker's one when neither -t nor an answer gives them; the version
 // questions (versionFields); the component pages still open, unless --skip, --only or --unskip
-// answers them. A step is counted exactly once what decides it is known, and as one field (a
-// component page per module argument) before: an assistant taken as the only one installed, or a
-// module with one component, drops out of the count at the next step. An answer the run holds counts the fields it was asked with (numbered).
-func (fl *installFlow) remaining(stage string) int {
-	n := 1 // the review
+// answers them. A step is counted exactly once what decides it is known. Before, the forecast is
+// its largest where that is knowable, so a step the answers drop out of the count never adds one;
+// exact is false where it is not (the lists of modules not yet read, version questions for
+// scopes or assistants not yet chosen), and the count then lacks those fields. An answer the run
+// holds counts the fields it was asked with (numbered).
+func (fl *installFlow) remaining(stage string) (n int, exact bool) {
+	n, exact = 1, true // the review
 	stages := []string{ReviewScope, ReviewModules, ReviewAssistants, ReviewVersions, ReviewComponents}
 	for _, s := range stages[slices.Index(stages, stage):] {
 		switch {
@@ -1386,51 +1393,60 @@ func (fl *installFlow) remaining(stage string) int {
 			n++
 		case s == ReviewModules && fl.modules == nil && len(fl.args) == 0 && fl.choices != nil:
 			n += moduleFields(ModuleStep{Markets: fl.marketGroups()})
-		case s == ReviewModules && fl.modules == nil && len(fl.args) == 0:
-			n++
+		case s == ReviewModules && fl.modules == nil && len(fl.args) == 0: // the catalog's lists are not read yet
+			n, exact = n+1, false
 		case s == ReviewAssistants && fl.targets == nil && len(fl.f.targets) == 0:
 			n++
 		case s == ReviewVersions && fl.versions == nil:
-			n += fl.versionFields()
+			f, ok := fl.versionFields()
+			n, exact = n+f, exact && ok
 		case s == ReviewComponents && len(fl.edits) == 0:
-			n += fl.componentFields()
+			f, ok := fl.componentFields()
+			n, exact = n+f, exact && ok
 		case fl.shown[s]: // an answer held from an earlier pass still has its fields, so a total never drops
 			n += fl.fields[s]
 		}
 	}
-	return n
+	return n, exact
 }
 
 // versionFields forecasts the version questions: one per assistant with more than one era that -t
 // gives no version for, at each destination, once -t or an answer gives the assistants; one a
-// destination declares drops out at the next step. Off a terminal, under -y or --force, and
-// before the assistants are known, it forecasts none.
-func (fl *installFlow) versionFields() int {
+// destination declares drops out at the next step. Off a terminal and under -y or --force it
+// forecasts none. exact is false while the scopes or the assistants are unknown and an assistant
+// they may include has a version to ask: the count is not knowable.
+func (fl *installFlow) versionFields() (n int, exact bool) {
 	if !fl.ask || fl.f.yes || fl.f.force {
-		return 0
+		return 0, true
 	}
-	n := 0
+	asks := func(ids []string) int {
+		return len(slices.DeleteFunc(slices.Clone(ids), func(id string) bool {
+			_, flagged := fl.flagVersions[id]
+			return flagged || len(fl.eng.Registry.Eras(id)) < 2
+		}))
+	}
+	switch {
+	case fl.targets == nil && len(fl.f.targets) == 0:
+		return 0, asks(fl.eng.Registry.IDs()) == 0
+	case fl.scopes == nil:
+		return 0, asks(fl.f.targets) == 0
+	}
 	for _, c := range fl.scopes {
 		ids := fl.f.targets
 		if fl.targets != nil {
 			ids = fl.assistants(c.Scope.Key())
 		}
-		for _, id := range ids {
-			if _, ok := fl.flagVersions[id]; !ok && len(fl.eng.Registry.Eras(id)) > 1 {
-				n++
-			}
-		}
+		n += asks(ids)
 	}
-	return n
+	return n, true
 }
 
 // componentFields forecasts the lists the component pages still ask: exactly once the modules
-// are picked, and one page per module argument (at least one) before.
-func (fl *installFlow) componentFields() int {
+// are picked; before, their lists are not knowable and the count is not exact.
+func (fl *installFlow) componentFields() (n int, exact bool) {
 	if fl.choices == nil || fl.modules == nil {
-		return max(len(fl.args), 1)
+		return 0, false
 	}
-	n := 0
 	for _, name := range fl.modules {
 		if m := fl.choices.Module(name); m != nil {
 			_, pages := fl.componentPages(m)
@@ -1439,7 +1455,7 @@ func (fl *installFlow) componentFields() int {
 			}
 		}
 	}
-	return n
+	return n, true
 }
 
 // reviewed shows summary in the review and acts on its answer (review): done once Apply confirms
@@ -2235,7 +2251,10 @@ func (fl *installFlow) ensureVersions() error {
 		}
 		nav := fl.nav(ReviewVersions)
 		nav.Back = nav.Back || k > 0 || again != nil
-		step := fl.floored(ReviewVersions, Steps{At: fl.done + 1, Of: fl.done + len(open) - k + fl.remaining(ReviewComponents)})
+		step := Steps{At: fl.done + 1}
+		if rest, exact := fl.remaining(ReviewComponents); exact {
+			step = fl.floored(ReviewVersions, Steps{At: step.At, Of: fl.done + len(open) - k + rest})
+		}
 		if again != nil {
 			step = Steps{}
 		}
