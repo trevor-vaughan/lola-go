@@ -148,7 +148,7 @@ testcases:
   - name: N2 With -y the same pick deletes the skill in that clone, and the shared entry records it
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/b -t claude-code --skip skill/bravo -y"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/b -t claude-code --skip skill/bravo -y -v"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"→ delete claude-code .claude/skills/bravo/SKILL.md\""
@@ -216,7 +216,7 @@ testcases:
   - name: X2 With -y it removes them now, and lola list and the next sync agree
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code -y"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code -y -v"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"→ delete gemini-cli  .gemini/skills/alpha/SKILL.md\""

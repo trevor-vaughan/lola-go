@@ -156,7 +156,7 @@ testcases:
           - "result.systemerr ShouldEqual \"project /work/acme: project.yml\""
           - "result.systemout ShouldContainSubstring \"✓ added my-notes to project.yml (base, shared: git tracks it)\""
           - "result.systemout ShouldContainSubstring \"→ meant for another profile? lola profile --project --move my-notes --to go-review --switch\""
-          - "result.systemout ShouldContainSubstring \"→ meant for every project? lola profile --user --move my-notes --to base\""
+          - "result.systemout ShouldContainSubstring \"→ meant for every project? move it from this project into your user base: lola profile --user --move my-notes --to base\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} git -C /work/acme status --porcelain"
         assertions:
