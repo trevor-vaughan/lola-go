@@ -384,8 +384,8 @@ func (e *Engine) bothRead(req EditArgsRequest, profiles []profile.Info, layers [
 		}
 	}
 	if req.Ask == nil {
-		return "", nil, errs.WithHints(fmt.Errorf("%s names %s and a module; lola profile --edit needs to know which to edit, and there is no terminal to ask on",
-			module, andJoin(named)), hints...)
+		return "", nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("%s names %s and a module; lola profile --edit needs to know which to edit, and there is no terminal to ask on",
+			module, andJoin(named))), hints...)
 	}
 	c, err := req.Ask(WhereQuestion{Scope: req.Scope, Title: module + " names " + andJoin(named) + " and a module.",
 		Choices: append(choices, WhereChoice{Label: modLabel})})
@@ -716,8 +716,8 @@ func (e *Engine) confirmAlso(ctx context.Context, first SyncRequest, also []Scop
 			continue
 		}
 		if first.ConfirmRemovals == nil {
-			return false, errs.WithHints(fmt.Errorf("lola profile needs your confirmation to remove %s %s, and there is no terminal to ask on; nothing was written",
-				strings.Join(removalNames(res.Removals), ", "), scopeWhere(o)),
+			return false, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("lola profile needs your confirmation to remove %s %s, and there is no terminal to ask on; nothing was written",
+				strings.Join(removalNames(res.Removals), ", "), scopeWhere(o))),
 				"see what goes: "+e.commandOf(first, "-n"), "then confirm them: "+e.commandOf(first, "-y"))
 		}
 		yes, err := first.ConfirmRemovals(slices.Clone(res.Removals))

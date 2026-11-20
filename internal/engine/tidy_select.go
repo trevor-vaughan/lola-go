@@ -56,8 +56,8 @@ func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res 
 	case req.Choose == nil:
 		r := req
 		r.Yes = true
-		return refuse(scan.Candidates, errs.WithHints(fmt.Errorf("lola tidy needs names or --all when it cannot ask (off a terminal or with --json): %s can move",
-			CountItems(len(scan.Candidates))), tidyHints(e.tidyRun(r, nil, "--all"))...))
+		return refuse(scan.Candidates, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("lola tidy needs names or --all when it cannot ask (off a terminal or with --json): %s can move",
+			CountItems(len(scan.Candidates)))), tidyHints(e.tidyRun(r, nil, "--all"))...))
 	default:
 		picked = true
 		var err error
@@ -108,8 +108,8 @@ func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res 
 		for i, c := range chosen {
 			names[i] = c.Kind + "/" + c.Name + " (" + c.Rel + ")"
 		}
-		return refuse(chosen, errs.WithHints(fmt.Errorf("lola tidy would move %s: %s; it cannot ask (off a terminal or with --json), so it needs -y to move them",
-			CountItems(len(chosen)), strings.Join(names, ", ")), tidyHints(e.tidyRerun(r))...))
+		return refuse(chosen, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("lola tidy would move %s: %s; it cannot ask (off a terminal or with --json), so it needs -y to move them",
+			CountItems(len(chosen)), strings.Join(names, ", "))), tidyHints(e.tidyRerun(r))...))
 	}
 	var seen []config.Pattern
 	for _, k := range append(slices.Clone(req.Keep), choice.Keep...) {

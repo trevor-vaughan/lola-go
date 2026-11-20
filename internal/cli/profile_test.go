@@ -81,7 +81,7 @@ var _ = Describe("profiles", func() {
 		writeTree(p.UserProfiles, map[string]string{"one.yml": listC, "two.yml": listC, "work.yml": "version: 1\nbundle: [one, two]\n"})
 		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c", "-y")
-		Expect(r.code).To(Equal(1), r.err)
+		Expect(r.code).To(Equal(3), r.err)
 		Expect(r.err).To(Equal("user scope: bundle work (one, two) over default\n"+
 			"error: c comes from profile two; lola uninstall needs to know whether to remove it there, and there is no terminal to ask on\n"+
 			"  hint: lola uninstall c --user --yes --profile user:two\n"), "-y does not choose between layers")
@@ -95,7 +95,7 @@ var _ = Describe("profiles", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
 		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c")
-		Expect(r.code).To(Equal(1), r.err)
+		Expect(r.code).To(Equal(3), r.err)
 		Expect(r.err).To(Equal("user scope: profile go over default\n" +
 			"error: c comes from default (base); lola uninstall needs to know whether to remove it there, and there is no terminal to ask on\n" +
 			"  hint: lola uninstall c --user --profile base -y\n"))
@@ -111,7 +111,7 @@ var _ = Describe("profiles", func() {
 		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
 		Expect(lola("sync", "--user").code).To(Equal(0))
 		r := lola("uninstall", "--user", "beta", "-t", "opencode", "-y")
-		Expect(r.code).To(Equal(1), r.err)
+		Expect(r.code).To(Equal(3), r.err)
 		Expect(r.err).To(ContainSubstring("lola uninstall needs to know whether to change it there, and there is no terminal to ask on"))
 	})
 
@@ -157,7 +157,7 @@ var _ = Describe("profiles", func() {
 		Expect(lola("list", "--user", "--plain").out).To(ContainSubstring("c\tclaude-code\tok"), "go still installs it")
 
 		r = lola("uninstall", "--user", "c")
-		Expect(r.code).To(Equal(1), "removing files still asks")
+		Expect(r.code).To(Equal(3), "removing files still asks")
 		Expect(r.err).To(ContainSubstring("needs confirmation, and there is no terminal to ask on"))
 	})
 
@@ -253,12 +253,12 @@ var _ = Describe("profiles", func() {
 		writeTree(p.UserProfiles, map[string]string{"try.yml": "version: 1\n"})
 		try := filepath.Join(p.UserProfiles, "try.yml")
 		r := lola("profile", "try", "--remove", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(HaveSuffix("error: lola profile --remove asks before it moves " + try + " to the trash, and there is no terminal to ask on\n" +
 			"  hint: move " + try + " to the trash: lola profile --user user:try --remove -y\n"))
 		no := &confirming{answers: []bool{false}}
 		r = lolaAsking(no, "profile", "user:try", "--remove", "--user")
-		Expect(r.code).To(Equal(0), "a No is a cancel")
+		Expect(r.code).To(Equal(4), "a No is a cancel")
 		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(no.questions).To(Equal([]string{"Remove profile user:try (" + try + ")? It goes to the trash"}))
 		Expect(try).To(BeARegularFile())
@@ -318,7 +318,7 @@ var _ = Describe("profiles", func() {
 			"the state form's hints show state")
 
 		r = lola("profile", "docs", "--on")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("  in profile project:docs (.lola/profiles/docs.yml):\n  + b             mods/b\n"))
 		Expect(r.err).To(ContainSubstring("error: lola profile needs your trust for .lola/profiles/docs.yml, which has not been trusted on this machine"))
 		Expect(r.err).To(ContainSubstring("hint: then accept them: lola profile --project project:docs --on --trust=profiles\n"))
@@ -347,7 +347,7 @@ var _ = Describe("profiles", func() {
 		Expect(r.out).To(ContainSubstring("⚠ project:go also exists → lola profile -C " + proj + " project:go --on\n"))
 
 		r = lola("profile", "project:go", "--on", "-C", proj, "-y")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("  ~ project:go now replaces user:go (b, c)\n"))
 		Expect(r.err).To(ContainSubstring("error: lola profile needs your trust for project:go replacing user:go and .lola/profiles/go.yml, which has not been trusted on this machine, "))
 
@@ -387,7 +387,7 @@ var _ = Describe("profiles", func() {
 		// A project:go with no entries asks nothing of its own: the replacement is the only change.
 		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\n"})
 		r := lola("profile", "project:go", "--switch", "-C", proj, "-y")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("an activation would put a project profile in place of one of yours; it needs your trust for:\n  ~ project:go now replaces user:go (c)\n"))
 		Expect(r.err).NotTo(MatchRegexp(`(?m)^ is unchanged`))
 	})
@@ -469,14 +469,14 @@ var _ = Describe("profiles", func() {
 		Expect(inHome("a")).To(BeARegularFile())
 
 		r = lola("profile", "go", "--off", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("error: lola profile needs your confirmation to remove a, and there is no terminal to ask on\n" +
 			"  hint: see them: lola profile --user user:go --off -n\n  hint: then confirm them: lola profile --user user:go --off -y\n"))
 		Expect(inHome("a")).To(BeARegularFile())
 
 		ask := &confirming{answers: []bool{false}}
 		r = lolaAsking(ask, "profile", "go", "--off", "--user")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(ask.questions).To(Equal([]string{"Remove these and apply? No applies nothing"}))
 		Expect(r.err).To(ContainSubstring("removals declined; user scope was not changed."))
 		Expect(inHome("a")).To(BeARegularFile())
@@ -536,7 +536,7 @@ var _ = Describe("profiles", func() {
 		Expect(gmd).To(BeARegularFile())
 
 		r := lola("profile", "work", "--switch", "--new", "--bundle", "docs,notes", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		run := "lola profile --user user:work --switch --new --bundle docs,notes"
 		Expect(r.err).To(HaveSuffix("error: lola profile needs your confirmation to remove g, and there is no terminal to ask on\n" +
 			"  hint: see them: " + run + " -n\n  hint: then confirm them: " + run + " -y\n"))
@@ -594,7 +594,7 @@ var _ = Describe("profiles", func() {
 		work := filepath.Join(p.UserProfiles, "work.yml")
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go]\nmodules:\n  - {name: a, source: ../a}\n"})
 		r := lola("profile", "work", "--split", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(HaveSuffix("error: lola profile --split rewrites " + work + " and makes " + filepath.Join(p.UserProfiles, "work-modules.yml") +
 			", and there is no terminal to ask on\n  hint: split it: lola profile --user work --split -y\n"))
 
@@ -674,7 +674,7 @@ var _ = Describe("profiles", func() {
 
 		for _, run := range [][]string{{"go", "--off"}, {"none", "--switch"}} {
 			r := lola(append(append([]string{"profile"}, run...), "--user", "-y")...)
-			Expect(r.code).To(Equal(1), "%v", run)
+			Expect(r.code).To(Equal(3), "%v", run)
 			Expect(r.err).To(ContainSubstring("error: refusing to change anything: 1 conflict, which --force overrides\n"), "%v", run)
 			Expect(r.err).To(ContainSubstring("lola profile "+run[0]+" "+run[1]+" --user --force\n"), "%v: the hint drops -y", run)
 		}
@@ -698,7 +698,7 @@ var _ = Describe("profiles", func() {
 		for _, extra := range []string{"-y", "--force"} {
 			no := &confirming{scripted: scripted{where: []int{-1}}}
 			r := lolaAsking(no, "profile", "docs", "--on", "--user", extra)
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(no.whereSteps).To(Equal([]cli.WhereStep{question}), "%s never answers it", extra)
 			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			led, err := ledger.Load(p.UserLedger)
@@ -837,7 +837,7 @@ var _ = Describe("profiles", func() {
 
 		ask := &confirming{trusts: []engine.TrustAnswer{{All: true}}, answers: []bool{false}}
 		r = lolaAsking(ask, "profile", "docs", "--switch", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(ask.questions).To(Equal([]string{"trust", "Remove these and apply? No applies nothing"}))
 		Expect(r.err).To(ContainSubstring("removals declined; the project was not changed."))
 		Expect(r.err).To(ContainSubstring("The changes you trusted are recorded; the next lola profile -C " + proj + " user:docs --switch asks only about the removals.\n"))

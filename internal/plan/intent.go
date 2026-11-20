@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -158,6 +160,12 @@ type Conflict struct {
 type ConflictError struct {
 	Conflicts   []Conflict
 	Overridable bool
+}
+
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer) when --force
+// overrides every conflict; one it cannot override is an error.
+func (e *ConflictError) Is(target error) bool {
+	return target == errs.ErrNeedsAnswer && !slices.ContainsFunc(e.Conflicts, func(c Conflict) bool { return !c.Forceable })
 }
 
 func (e *ConflictError) Error() string {

@@ -142,7 +142,7 @@ off a terminal.
 
 In accessible mode (`LOLA_ACCESSIBLE=1` or `TERM=dumb`) the pickers are numbered lists and every
 locked item is printed above them. There a keep picker that needs a pick refuses `0` with nothing
-selected, and Ctrl+C or the end of input cancels.
+selected, and Ctrl+C cancels, and the end of input refuses (exit 3).
 
 **When lola cannot ask** (off a terminal, or with `--json`), a run without names or `--all` lists
 every candidate and refuses ("lola tidy needs names or --all when it cannot ask (off a terminal or

@@ -99,7 +99,7 @@ var _ = Describe("trust question paths", func() {
 		swap()
 		sp := &scripted{trust: []func(cli.TrustStep) (engine.TrustAnswer, error){aborted[cli.TrustStep, engine.TrustAnswer]}}
 		r := lolaP(sp, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"trust"}))
 		Expect(otherMd).NotTo(BeAnExistingFile())
 		Expect(kitMd).To(BeARegularFile())
@@ -126,7 +126,7 @@ var _ = Describe("trust question paths", func() {
 		swap()
 		sp := &scripted{trust: []func(cli.TrustStep) (engine.TrustAnswer, error){trustAll}, confirmCancels: 1}
 		r := lolaP(sp, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"trust", removeQ}))
 		Expect(otherMd).NotTo(BeAnExistingFile())
 		Expect(kitMd).To(BeARegularFile())
@@ -141,7 +141,7 @@ var _ = Describe("trust question paths", func() {
 		swap()
 		sp := &scripted{trust: []func(cli.TrustStep) (engine.TrustAnswer, error){trustAll}, confirm: []bool{false}}
 		r := lolaP(sp, "sync", "--scope", "both")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"trust", removeQ}))
 		Expect(r.err).To(ContainSubstring("removals declined; the project was not changed. The changes you trusted are recorded"))
 		Expect(filepath.Join(pp.Home, ".claude", "commands", "solo.md")).NotTo(BeAnExistingFile(), "user scope, after it, is not synced")
@@ -167,7 +167,7 @@ var _ = Describe("trust question paths", func() {
 	It("trust: removals --esc (first screen)--> removals", func() {
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
 		sp := &scripted{trust: []func(cli.TrustStep) (engine.TrustAnswer, error){trustAll}, confirm: []bool{false}}
-		Expect(lolaP(sp, "sync", "--project").code).To(Equal(0))
+		Expect(lolaP(sp, "sync", "--project").code).To(Equal(4))
 		sp = &scripted{confirm: []bool{true}}
 		r := lolaP(sp, "sync", "--project")
 		Expect(r.code).To(Equal(0), r.err)
@@ -216,7 +216,7 @@ var _ = Describe("scope picker paths", func() {
 			before := state()
 			sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){aborted[cli.ScopeStep, []string]}}
 			r := lolaP(sp, args...)
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.calls).To(Equal([]string{"scope"}))
 			Expect(sp.scopeSteps[0]).To(And(HaveField("Question", question), HaveField("One", one), HaveField("Nav.Back", false),
 				HaveField("Preselect", BeEmpty()), HaveField("ProjectRoot", proj), HaveField("Home", home)))
@@ -248,7 +248,7 @@ var _ = Describe("scope picker paths", func() {
 		for _, flag := range []string{"-n", "--force"} {
 			sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){aborted[cli.ScopeStep, []string]}}
 			r := lolaP(sp, "sync", flag)
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.calls).To(Equal([]string{"scope"}), "%s does not name a scope", flag)
 		}
 	})
@@ -297,7 +297,7 @@ var _ = Describe("scope picker paths", func() {
 			{"profile", "--move", "kit", "--to", "go"}, {"profile", "go", "--split"}, {"profile", "go", "--remove"}} {
 			sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject), aborted[cli.ScopeStep, []string]}}
 			r := lolaP(sp, args...)
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.calls).To(Equal([]string{"scope", "scope"}), "%v", args)
 			Expect(sp.scopeSteps[1]).To(And(HaveField("Problem", "the project here is your home directory; tick User instead"),
 				HaveField("Preselect", BeEmpty())), "%v", args)
@@ -358,7 +358,7 @@ var _ = Describe("scope picker paths", func() {
 		before := state()
 		sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject, cli.ScopeOther)}, dirs: fns}
 		r := lolaP(sp, "sync")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		var problems []string
 		for _, st := range sp.dirSteps[1:] {
 			problems = append(problems, st.Problem)
@@ -373,7 +373,7 @@ var _ = Describe("scope picker paths", func() {
 		sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeOther)},
 			dirs: []func(cli.DirectoryStep) (string, error){dir(home), aborted[cli.DirectoryStep, string]}}
 		r := lolaP(sp, "sync")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.dirSteps[1].Problem).To(Equal("that is your user scope (~); tick User instead"))
 	})
 
@@ -381,7 +381,7 @@ var _ = Describe("scope picker paths", func() {
 		sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeUser, cli.ScopeOther), aborted[cli.ScopeStep, []string]},
 			dirs: []func(cli.DirectoryStep) (string, error){dir(filepath.Join(tmp, "missing")), goneBack[cli.DirectoryStep, string]}}
 		r := lolaP(sp, "sync")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"scope", "directory", "directory", "scope"}))
 		Expect(sp.scopeSteps[1]).To(And(HaveField("Preselect", []string{cli.ScopeUser, cli.ScopeOther}), HaveField("Problem", "")), "the ticks kept")
 	})
@@ -390,7 +390,7 @@ var _ = Describe("scope picker paths", func() {
 		sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeOther), scopes(cli.ScopeOther)},
 			dirs: []func(cli.DirectoryStep) (string, error){dir(filepath.Join(tmp, "missing")), goneBack[cli.DirectoryStep, string], aborted[cli.DirectoryStep, string]}}
 		r := lolaP(sp, "sync")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"scope", "directory", "directory", "scope", "directory"}))
 		Expect(sp.dirSteps[2]).To(And(HaveField("Value", ""), HaveField("Problem", "")), "the path typed is dropped")
 	})
@@ -400,7 +400,7 @@ var _ = Describe("scope picker paths", func() {
 		sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject, cli.ScopeOther)},
 			dirs: []func(cli.DirectoryStep) (string, error){aborted[cli.DirectoryStep, string]}}
 		r := lolaP(sp, "sync")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(state()).To(Equal(before), "nothing is synced, not even the project ticked with it")
 	})
 })

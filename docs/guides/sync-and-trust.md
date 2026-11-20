@@ -384,7 +384,7 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
 - The record is written once the sync has applied, so a failure asks again next time. Cancel or
   Ctrl+C prints `✗ cancelled — the project was not changed` (your cache may already hold versions you
   trusted before). In accessible mode (`LOLA_ACCESSIBLE=1`), Ctrl+C at any question cancels the
-  same way, with exit 0.
+  same way, with exit 4.
 - **A No to the removals** applies nothing.
   - It records the trust you just gave (only when it changed what the record holds), without the
     pins lola did not write, and says what the next sync asks again: `✗ removals declined; the

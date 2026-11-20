@@ -314,6 +314,9 @@ type TrustRefusalError struct {
 
 func (e *TrustRefusalError) Error() string { return e.msg }
 
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer).
+func (e *TrustRefusalError) Is(target error) bool { return target == errs.ErrNeedsAnswer }
+
 // JSONFields are the keys the error document of a --json refusal carries next to error and hints:
 // the changes it needs trust for and the removals, so a CI consumer gets them without a second run.
 func (e *TrustRefusalError) JSONFields() map[string]any {

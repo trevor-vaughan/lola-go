@@ -106,7 +106,7 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 	// it was given for, and a hint must not answer another.
 	confirm := slices.Concat(again, []string{"-y"})
 	if req.Confirm == nil && !req.DryRun && !req.Force {
-		return nil, errs.WithHints(errors.New("lola profile --remove asks before it deletes a profile, and there is no terminal to ask on"),
+		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola profile --remove asks before it deletes a profile, and there is no terminal to ask on")),
 			"confirm it: "+e.Command(sc, "profile", confirm...))
 	}
 	res.Notices = append(res.Notices, notes...)

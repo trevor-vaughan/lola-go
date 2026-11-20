@@ -371,6 +371,10 @@ func (e *Engine) unaskedKinds(copies []moduleCopy, scripts []installScript, opts
 	return k, nil
 }
 
+// ErrConsentDeclined marks a consent refusal the user caused by answering No on a terminal. Unlike
+// ErrDeclined, which the CLI turns into a cancel, the refusal prints as it is, and exits 4.
+var ErrConsentDeclined = errors.New("consent declined")
+
 // hookConsentError refuses a pre-install hook without consent. Its hints review the version and
 // consent to it; a retry without consent would refuse again, so withRetry adds none. The message
 // names the module's hooks, each script and its sha256; unseen says the run's --trust covered
@@ -379,6 +383,9 @@ type hookConsentError struct {
 	module  string
 	scripts []HookScript
 	unseen  bool
+	// declined: the user was asked and said no, which is a decline (ErrConsentDeclined), not a refusal
+	// for want of an answer.
+	declined bool
 }
 
 func (e *hookConsentError) Error() string {
@@ -390,6 +397,12 @@ func (e *hookConsentError) Error() string {
 		return e.module + " has a pre-install hook lola had not shown you: " + strings.Join(shown, ", ")
 	}
 	return e.module + " has a pre-install hook, and lola runs hooks only with your consent: " + strings.Join(shown, ", ")
+}
+
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer), or, when the
+// user declined the question, as a decline (ErrConsentDeclined).
+func (e *hookConsentError) Is(target error) bool {
+	return target == errs.ErrNeedsAnswer && !e.declined || target == ErrConsentDeclined && e.declined
 }
 
 // planHooks prepares the hooks of every copy that runs them, before anything is written, and
@@ -463,7 +476,7 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, unasked 
 				// The refusal names the hooks but does not show them, so it records nothing. Ones lola
 				// has not shown are hinted the dry run that shows them first, since --trust alone
 				// would be refused for them; unseen is --trust covering them all the same.
-				refusal := &hookConsentError{module: c.name, scripts: scripts, unseen: opts.Trust.Covers(TrustHooks) && !held}
+				refusal := &hookConsentError{module: c.name, scripts: scripts, unseen: opts.Trust.Covers(TrustHooks) && !held, declined: opts.Ask != nil}
 				if k := slices.IndexFunc(scripts, func(s HookScript) bool { return s.Withheld != "" }); k >= 0 {
 					hints = withheldInstead(hints, "this hook", scripts[k].Withheld, scripts[k].file)
 				} else if !held {

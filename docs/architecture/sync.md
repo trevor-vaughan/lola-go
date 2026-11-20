@@ -378,10 +378,10 @@ line of its own. Widths are measured and cut with `charmbracelet/x/ansi`.
 **Accessible mode.** huh's line prompts read stdin in cooked mode, where Ctrl+C is a SIGINT.
 While an accessible-mode form waits, `eofReader.catch` holds `signal.Notify(os.Interrupt)`; the
 reader reads stdin in a goroutine, and an interrupt ends its input, so the form
-returns `ErrAborted` (exit 0, the command's abort message). A goroutine left blocked on stdin
+returns `ErrAborted` (exit 4, the command's abort message). A goroutine left blocked on stdin
 ends with the process, since a cancel always ends the command. The process-wide handler
 (`cli.NotifyContext`) cancels the run's context too, but `Execute` maps `ErrAborted` before it
-looks at the context's cause, so the form's cancel keeps exit 0.
+looks at the context's cause, so the form's cancel keeps exit 4.
 
 **Restoring remote profiles** (`restoreRemotes`, `internal/engine/restore.go`). `Sync`,
 `InstallAll`, `--switch`/`--on` and a `Move` that can cross scopes (for both scopes, before its

@@ -76,7 +76,7 @@ var _ = Describe("the consent-diff pager", func() {
 
 	It("the question comes after the pager exits", func() {
 		p, r := asking(true, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.seen).To(Equal([]bool{true}), "the pager ran and exited before the question")
 		Expect(p.before[0]).NotTo(ContainSubstring(header), "the diff went to the pager, not stderr")
 		got, err := os.ReadFile(paged)
@@ -117,7 +117,7 @@ var _ = Describe("the consent-diff pager", func() {
 		root.SetErr(p.stderr)
 		root.SetIn(in)
 		root.SetArgs([]string{"sync", "--project"})
-		Expect(cli.Execute(root)).To(Equal(0), p.stderr.String())
+		Expect(cli.Execute(root)).To(Equal(4), p.stderr.String())
 		Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
 		Expect(out.String()).To(ContainSubstring(header))
 		Expect(out.String()).To(ContainSubstring("+ commands/c24.md\n"), "the viewer's text is uncapped")
@@ -148,7 +148,7 @@ var _ = Describe("the consent-diff pager", func() {
 		root.SetErr(p.stderr)
 		root.SetIn(in)
 		root.SetArgs([]string{"sync", "--project"})
-		Expect(cli.Execute(root)).To(Equal(0), p.stderr.String())
+		Expect(cli.Execute(root)).To(Equal(4), p.stderr.String())
 		Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
 		Expect(out.String()).To(ContainSubstring("q  continue to: Trust these changes?"))
 		Expect(p.questions).To(BeEmpty(), "Ctrl+C ended the sync: the trust question is not asked")
@@ -181,7 +181,7 @@ var _ = Describe("the consent-diff pager", func() {
 		root.SetErr(c.stderr)
 		root.SetIn(in)
 		root.SetArgs([]string{"sync", "--project", "--trust"})
-		Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
+		Expect(cli.Execute(root)).To(Equal(4), c.stderr.String())
 		Expect(out.String()).To(ContainSubstring("q  continue to: Proceed?"))
 		Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the sync: the receipt is not asked")
 		Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
@@ -222,7 +222,7 @@ var _ = Describe("the consent-diff pager", func() {
 
 	It("never pages when stderr is not a terminal, printing the diff there unpaged", func() {
 		p, r := askingOn(true, false, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(paged).NotTo(BeAnExistingFile())
 		Expect(p.before[0]).To(ContainSubstring(header))
 		Expect(p.before[0]).To(ContainSubstring("… and 5 more"))
@@ -237,7 +237,7 @@ var _ = Describe("the consent-diff pager", func() {
 		Expect(os.WriteFile(filepath.Join(tmp, "bin", "quitter"), []byte("#!/bin/sh\nexit 0\n"), 0o755)).To(Succeed())
 		GinkgoT().Setenv("LOLA_PAGER", "quitter")
 		p, r := asking(true, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).NotTo(ContainSubstring("⚠"))
 		Expect(p.questions).To(Equal([]string{"trust"}), "the question is still asked")
 	})
@@ -247,7 +247,7 @@ var _ = Describe("the consent-diff pager", func() {
 	It("prints the diff unpaged, capped, before the question when the pager fails", func() {
 		GinkgoT().Setenv("PAGER_EXIT", "3")
 		p, r := asking(true, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.before[0]).To(ContainSubstring("⚠ the pager fakepager failed: exit status 3; showing it here\n" + header))
 		Expect(p.before[0]).To(ContainSubstring("… and 5 more (lola sync --project -n --json lists them all)\n"))
 
@@ -261,7 +261,7 @@ var _ = Describe("the consent-diff pager", func() {
 		GinkgoT().Setenv("PATH", "."+string(os.PathListSeparator)+os.Getenv("PATH"))
 		GinkgoT().Setenv("LOLA_PAGER", "evilpager")
 		p, r := asking(true, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(paged + ".evil").NotTo(BeAnExistingFile())
 		Expect(p.before[0]).To(ContainSubstring("⚠ not paging: the pager evilpager is in the current directory, " +
 			"which lola never runs a program from; showing it here\n" + header))

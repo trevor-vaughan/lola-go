@@ -10,7 +10,7 @@ package cli_test
 // also pinned (tidy: start --names--> confirm): tidy_test.go "asks the review on a terminal when names are given, and declining moves nothing"
 // also pinned (tidy: start --run (--force, no names)--> refused; tidy: start --run (-y, no names)--> refused): tidy_test.go "-y on a terminal without names opens no picker and refuses as off a terminal"
 // also pinned (tidy: start --run (--scope both)--> refused): tidy_test.go "--scope both is refused with the run at each scope"
-// also pinned (tidy: keep --empty submit (nothing moves)--> keep): huh_internal_test.go "a picker that needs a pick refuses none, naming the keys, and still cancels at end of input" Entry("tidy's keep-list when nothing moves")
+// also pinned (tidy: keep --empty submit (nothing moves)--> keep): huh_internal_test.go "a picker that needs a pick refuses none, naming the keys, and still refuses at end of input" Entry("tidy's keep-list when nothing moves")
 // also pinned (tidy: keep --esc--> move): tidy_test.go "goes back from the keep picker to the move picker on Esc, its answer preselected"
 // also pinned (trash: start --run (runs in the trash, on a terminal)--> pick): trash_test.go "on a terminal, bare lola trash opens a picker: runs newest first as [whole run] rows, each followed by its files, credential copies marked first"
 // also pinned (trash: start --run (--json, --plain or no terminal)--> done): trash_test.go "opens no picker off a terminal, or under --json or --plain, and lists the runs"
@@ -28,7 +28,7 @@ package cli_test
 // also pinned (cache clean: start --run (--json, on a terminal)--> confirm): confirm_test.go "c3: on a terminal under --json, <cmd> prints the plan and the question on stderr and one JSON document on stdout" Entry("cache clean")
 // also pinned (cache clean: start --run (no terminal)--> refused): confirm_test.go "c2: off a terminal without --json, <cmd> prints the plan, then the error and its hint" Entry("cache clean")
 // also pinned (cache clean: confirm --yes (an item changed since the plan)--> done): clean_test.go "a confirmed clean whose every item changed says nothing was removed"
-// also pinned (cache clean: confirm --no--> cancelled): confirm_test.go "c5: declining <cmd> on a terminal writes nothing and exits 0" Entry("cache clean")
+// also pinned (cache clean: confirm --no--> cancelled): confirm_test.go "c5: declining <cmd> on a terminal writes nothing and exits 4" Entry("cache clean")
 
 import (
 	"bytes"
@@ -81,7 +81,7 @@ var _ = Describe("tidy paths", func() {
 	It("tidy: start --scope flag--> move", func() {
 		p := &scripted{tidyPick: []func(cli.TidyPickStep) ([]string, error){aborted[cli.TidyPickStep, []string]}}
 		r := lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick"}), "no scope picker")
 		Expect(tidyLabels(p.tidyPickSteps[0].Options)).To(Equal([]string{"claude-code  skill/old  .claude/skills/old/",
 			"claude-code  command/tmp  .claude/commands/tmp.md"}))
@@ -103,7 +103,7 @@ var _ = Describe("tidy paths", func() {
 	It("tidy: start --run (--all)--> confirm", func() {
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "tidy", "--all", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Move 2 items to the trash?"}), "no picker")
 		Expect(p.confirmNavs[0].Back).To(BeFalse(), "a first screen: Esc stays")
 		untouched()
@@ -165,7 +165,7 @@ var _ = Describe("tidy paths", func() {
 			return tidyIDs(st.Options, "skill/old"), nil
 		}}, tidyKeep: []func(cli.TidyKeepStep) ([]string, error){aborted[cli.TidyKeepStep, []string]}}
 		r := lolaP(sp, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(held).To(BeTrue(), "the scope's lock is held while the picker waits")
 		Expect(sp.calls).To(Equal([]string{"tidy-pick", "tidy-keep"}))
 		Expect(tidyLabels(sp.tidyKeepSteps[0].Options)).To(Equal([]string{"command/tmp  claude-code"}), "the rest")
@@ -176,7 +176,7 @@ var _ = Describe("tidy paths", func() {
 	It("tidy: move --answer (every name ticked)--> confirm", func() {
 		p := &scripted{tidyPick: tidyPicks("claude-code"), confirm: []bool{false}}
 		r := lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "confirm:Move 2 items to the trash?"}), "no keep picker")
 		untouched()
 	})
@@ -194,7 +194,7 @@ var _ = Describe("tidy paths", func() {
 	It("tidy: move --ctrl+c--> cancelled", func() {
 		p := &scripted{tidyPick: []func(cli.TidyPickStep) ([]string, error){aborted[cli.TidyPickStep, []string]}}
 		r := lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		untouched()
 	})
@@ -202,7 +202,7 @@ var _ = Describe("tidy paths", func() {
 	It("tidy: keep --answer--> confirm", func() {
 		p := &scripted{tidyPick: tidyPicks("skill/old"), tidyKeep: tidyKeeps("command/tmp"), confirm: []bool{false}}
 		r := lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "tidy-keep", "confirm:Move 1 item to the trash and keep 1?"}))
 		Expect(r.err).To(ContainSubstring("  → keep command/tmp\n"))
 		Expect(r.err).To(ContainSubstring("Equivalent command:\n  lola tidy -C " + proj + " skill/old --keep command/tmp\n"))
@@ -222,7 +222,7 @@ var _ = Describe("tidy paths", func() {
 	It("tidy: keep --ctrl+c--> cancelled", func() {
 		p := &scripted{tidyPick: tidyPicks("skill/old"), tidyKeep: []func(cli.TidyKeepStep) ([]string, error){aborted[cli.TidyKeepStep, []string]}}
 		r := lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "tidy-keep"}))
 		untouched()
 	})
@@ -261,7 +261,7 @@ var _ = Describe("tidy paths", func() {
 	It("tidy: confirm --no--> cancelled", func() {
 		p := &scripted{tidyPick: tidyPicks("skill/old"), tidyKeep: tidyKeeps("command/tmp"), confirm: []bool{false}}
 		r := lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		untouched()
 	})
@@ -269,7 +269,7 @@ var _ = Describe("tidy paths", func() {
 	It("tidy: confirm --ctrl+c--> cancelled", func() {
 		p := &scripted{tidyPick: tidyPicks("skill/old"), tidyKeep: tidyKeeps("command/tmp"), confirmCancels: 1}
 		r := lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "tidy-keep", "confirm:Move 1 item to the trash and keep 1?"}))
 		untouched()
 	})
@@ -312,7 +312,7 @@ var _ = Describe("tidy paths", func() {
 		// huh's Esc on a first screen is pinned in keys_internal_test.go "on the first screen, Esc says q quits in the key help, not as an error, and stays".
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "tidy", "skill/old", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Move 1 item to the trash?"}))
 		Expect(p.confirmNavs[0].Back).To(BeFalse(), "a first screen: Esc stays")
 		Expect(old).To(BeADirectory())
@@ -356,7 +356,7 @@ var _ = Describe("trash paths", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashEmpty), trashQuit}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "trash-pick"}))
 		Expect(p.trashPickSteps[1].Problem).To(Equal("nothing ticked: tick files or runs, then pick what to do with them"))
 		Expect(p.trashPickSteps[1].Action).To(Equal(cli.TrashEmpty), "the action is kept")
@@ -367,7 +367,7 @@ var _ = Describe("trash paths", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashQuit}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(ship).NotTo(BeAnExistingFile())
 		Expect(filepath.Join(trashDir, id)).To(BeADirectory())
@@ -394,7 +394,7 @@ var _ = Describe("trash paths", func() {
 		root.SetErr(&errb)
 		root.SetIn(in)
 		root.SetArgs([]string{"trash"})
-		Expect(cli.Execute(root)).To(Equal(0), errb.String())
+		Expect(cli.Execute(root)).To(Equal(4), errb.String())
 		Expect(out.String()).To(ContainSubstring("q  continue to: Restore 1 item from the trash?"))
 		Expect(p.calls).To(Equal([]string{"trash-pick"}), "Ctrl+C ended the run: the restore question is not asked")
 		Expect(errb.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
@@ -454,7 +454,7 @@ var _ = Describe("trash paths", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "ship.md"), trashQuit}, where: []int{-1}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "where", "trash-pick"}))
 		Expect(p.trashPickSteps[1].Preselect).To(Equal(tidyIDs(p.trashPickSteps[0].Options, "ship.md")), "the ticks are kept")
 		Expect(ship).NotTo(BeAnExistingFile())
@@ -465,7 +465,7 @@ var _ = Describe("trash paths", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "ship.md")}, where: []int{whereCtrlC}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "where"}), "the run ends: no picker again")
 		Expect(r.out).To(BeEmpty())
 		Expect(ship).NotTo(BeAnExistingFile())
@@ -498,7 +498,7 @@ var _ = Describe("trash paths", func() {
 		writeTree(proj, map[string]string{".claude/commands/ship.md": "new\n"})
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "ship.md")}, where: []int{0}, confirmCancels: 1}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "where", "confirm:Move 1 item in the way into a new trash run, then restore 1 item?"}))
 		Expect(read(ship)).To(Equal("new\n"))
 		runs, err := os.ReadDir(trashDir)
@@ -511,7 +511,7 @@ var _ = Describe("trash paths", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashEmpty, "lola tidy")}, confirmCancels: 1}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "confirm:Delete 1 trash run? This cannot be undone."}), "the run ends")
 		Expect(filepath.Join(trashDir, id)).To(BeADirectory())
 	})
@@ -538,7 +538,7 @@ var _ = Describe("trash paths", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashEmpty, "ship.md"), trashQuit}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "trash-pick"}))
 		Expect(p.trashPickSteps[1].Problem).To(Equal("Empty ticked runs deletes whole runs: tick a [whole run] row, not only files"))
 		Expect(p.trashPickSteps[1].Preselect).To(Equal(tidyIDs(p.trashPickSteps[0].Options, "ship.md")), "the ticks are kept")
@@ -551,7 +551,7 @@ var _ = Describe("trash paths", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "trash", "--empty")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Delete 1 trash run? This cannot be undone."}))
 		Expect(p.confirmNavs[0].Back).To(BeFalse(), "a first screen: Esc stays")
 		Expect(filepath.Join(trashDir, id)).To(BeADirectory())
@@ -609,7 +609,7 @@ var _ = Describe("cache clean paths", func() {
 		old := cacheTwice(p)
 		sp := &scripted{confirm: []bool{false}}
 		r := lolaP(sp, "cache", "clean")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{removeQ}))
 		Expect(sp.confirmNavs[0].Back).To(BeFalse(), "a first screen: Esc stays")
 		Expect(old).To(BeADirectory())
@@ -619,7 +619,7 @@ var _ = Describe("cache clean paths", func() {
 		old := cacheTwice(p)
 		sp := &scripted{confirmCancels: 1}
 		r := lolaP(sp, "cache", "clean")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{removeQ}))
 		Expect(r.out).To(BeEmpty())
 		Expect(old).To(BeADirectory())

@@ -86,7 +86,7 @@ var _ = Describe("uninstall --all", func() {
 
 	It("--profile off a terminal without -y refuses, and the hint keeps --profile", func() {
 		r := lola("uninstall", "--all", "--profile", "go", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("lola uninstall needs confirmation"))
 		Expect(r.err).To(HaveSuffix("  hint: lola uninstall --all --profile go --user -y\n"))
 		Expect(command("c")).To(BeARegularFile())
@@ -138,7 +138,7 @@ var _ = Describe("uninstall --all", func() {
 
 	It("off a terminal without -y refuses, removes nothing, and hints the same run with -y", func() {
 		r := lola("uninstall", "--all", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("lola uninstall needs confirmation"))
 		Expect(r.err).To(HaveSuffix("  hint: lola uninstall --all --user -y\n"))
 		for _, n := range []string{"a", "b", "c"} {

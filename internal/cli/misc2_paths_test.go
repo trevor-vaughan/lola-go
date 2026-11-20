@@ -8,14 +8,14 @@ package cli_test
 // also pinned (init: start --run (no terminal)--> refused): confirm_test.go "off a terminal, refuses with the plan and a hint that keeps the run's flags, writing nothing"
 // also pinned (init: start --run (an invalid name)--> refused): confirm_test.go "refuses an invalid name before asking anything"
 // also pinned (init: confirm --yes--> done): confirm_test.go "on a terminal, shows the plan, asks, and scaffolds when you accept"
-// also pinned (init: confirm --no--> cancelled): confirm_test.go "on a terminal, declining writes nothing and exits 0"
+// also pinned (init: confirm --no--> cancelled): confirm_test.go "on a terminal, declining writes nothing and exits 4"
 // also pinned (market add: start --run (the catalog's own name cannot name a marketplace)--> name): market_test.go "asks a name on a terminal for a catalog whose own name no marketplace can have, pre-filled with its slug"
 // also pinned (market add: name --esc--> name): keys_internal_test.go "Esc on the marketplace name question stays: it is a first screen"
 // also pinned (migrate: start --run (no terminal)--> refused): migrate_test.go "needs -y off a terminal, printing the plan and writing nothing"
 // also pinned (migrate: root --answer--> next step; migrate: targets --answer--> next step): migrate_test.go "asks where each missing root is and which assistants stand in for each missing one, then migrates with the answers"
 // also pinned (migrate: root --esc (first screen)--> root; migrate: targets --esc (the first, after a root question)--> root): migrate_test.go "goes back from an assistant question to the root question on Esc, the root answered pre-filled"
 // also pinned (migrate: confirm --yes--> done): confirm_test.go "c4: on a terminal without --json, <cmd> asks after the plan and prints the human result"
-// also pinned (migrate: confirm --no--> cancelled): confirm_test.go "c5: declining <cmd> on a terminal writes nothing and exits 0"
+// also pinned (migrate: confirm --no--> cancelled): confirm_test.go "c5: declining <cmd> on a terminal writes nothing and exits 4"
 // also pinned (migrate: consent --yes--> done): misc2_paths_test.go "migrate: confirm --yes (a hook or script without your consent)--> consent"
 // also pinned (consent: start --run (--json or no terminal, post-install only)--> done): scripts_test.go "an untrusted project pre script refuses off a terminal with --trust=scripts; post is declined and pending"
 // also pinned (consent: hooks --esc--> hooks; consent: runtime --esc--> runtime; consent: script --esc--> script; consent: later --esc--> later): keys_paths_internal_test.go "viewer: inline --esc (no screen before)--> inline"
@@ -75,7 +75,7 @@ var _ = Describe("market add paths", func() {
 		before := markets()
 		sp := &scripted{names: []string{"mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
 		r := lolaP(sp, "market", "--add", priv)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name", "ssh-hosts"}))
 		Expect(sp.nameSteps[0]).To(Equal(cli.MarketNameStep{Why: "priv is already a marketplace, from " + acme, Value: "priv-2"}))
 		Expect(markets()).To(Equal(before))
@@ -95,7 +95,7 @@ var _ = Describe("market add paths", func() {
 	It("market add: start --run (ssh hosts not allowed)--> ssh", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
 		r := lolaP(sp, "market", "--add", priv)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"ssh-hosts"}))
 		Expect(sp.sshSteps[0].Market).To(Equal("priv"))
 		Expect(sp.sshSteps[0].Hosts).To(Equal([]cli.SSHHostChoice{{Host: "git.corp.test", Entries: 2}, {Host: "other.test", Entries: 1}}))
@@ -153,7 +153,7 @@ var _ = Describe("market add paths", func() {
 	It("market add: name --answer--> ssh", func() {
 		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
 		sp := &scripted{names: []string{"mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		Expect(lolaP(sp, "market", "--add", priv).code).To(Equal(0))
+		Expect(lolaP(sp, "market", "--add", priv).code).To(Equal(4))
 		Expect(sp.calls).To(Equal([]string{"market-name", "ssh-hosts"}))
 		Expect(sp.sshSteps[0].Market).To(Equal("mine"))
 	})
@@ -175,7 +175,7 @@ var _ = Describe("market add paths", func() {
 		before := markets()
 		sp := &scripted{names: []string{cancelRun}}
 		r := lolaP(sp, "market", "--add", priv)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name"}))
 		Expect(markets()).To(Equal(before))
 		Expect(filepath.Join(p.MarketCache, "priv-2")).NotTo(BeAnExistingFile())
@@ -204,7 +204,7 @@ var _ = Describe("market add paths", func() {
 		before := markets()
 		sp := &scripted{names: []string{"mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
 		r := lolaP(sp, "market", "--add", priv)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(markets()).To(Equal(before), "the name answered is not registered")
 		Expect(filepath.Join(p.MarketCache, "mine")).NotTo(BeAnExistingFile())
 	})
@@ -214,7 +214,7 @@ var _ = Describe("market add paths", func() {
 		before := markets()
 		sp := &scripted{names: []string{"Bad Name", "priv", "mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
 		r := lolaP(sp, "market", "--add", priv)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name", "market-name", "market-name", "ssh-hosts"}))
 		why := "priv is already a marketplace, from " + acme
 		Expect(sp.nameSteps[0]).To(Equal(cli.MarketNameStep{Why: why, Value: "priv-2"}))
@@ -244,7 +244,7 @@ var _ = Describe("market add paths", func() {
 	It("market add: ssh --esc (first screen)--> ssh", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
 		r := lolaP(sp, "market", "--add", priv)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"ssh-hosts"}))
 		Expect(sp.sshSteps[0].Nav).To(Equal(cli.Nav{}), "a first screen: Esc stays")
 		Expect(p.Markets).NotTo(BeAnExistingFile())
@@ -315,7 +315,7 @@ var _ = Describe("migrate paths", func() {
 	It("migrate: start --run--> confirm", func() {
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Migrate?"}))
 		Expect(r.err).To(ContainSubstring("plan (nothing written yet; the question below applies it):\n\nproject "+proj+":\n  install review"), "the plan first")
 		untouched()
@@ -328,7 +328,7 @@ var _ = Describe("migrate paths", func() {
 		fromAnotherMachine()
 		p := &scripted{roots: []string{cancelRun}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice"}))
 		Expect(p.rootSteps[0]).To(Equal(cli.MigrateRootStep{Old: "/Users/alice", Suggest: filepath.Join(tmp, "home"), Value: filepath.Join(tmp, "home"), Records: 1}))
 		Expect(read(filepath.Join(moved, ".claude/commands/ship.md"))).To(Equal("python ship\n"))
@@ -339,7 +339,7 @@ var _ = Describe("migrate paths", func() {
 		userRecords("claude-code")
 		p := &scripted{mapTargets: [][]string{{cancelRun}}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"migrate-targets:claude-code"}))
 		Expect(p.mapTargetSteps[0]).To(Equal(cli.MigrateTargetStep{Old: "claude-code", Supported: true, Modules: 1, Options: []string{"opencode"}}),
 			"every option ticked; a first screen: Esc stays")
@@ -352,7 +352,7 @@ var _ = Describe("migrate paths", func() {
 			"- {module: review, assistant: claude-code, scope: user, commands: [ship]}\n"})
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Migrate?"}), "no assistant to offer: not asked")
 		Expect(r.err).To(ContainSubstring("unmappable review (claude-code): claude-code is not installed here"))
 		untouched()
@@ -362,7 +362,7 @@ var _ = Describe("migrate paths", func() {
 		fromAnotherMachine()
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "migrate", "--map-root", "/Users/alice="+filepath.Join(tmp, "home"), "--map-target", "claude-code=opencode")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Migrate?"}), "what the flags map is not asked")
 		Expect(p.confirmNavs[0]).To(Equal(cli.Nav{}))
 		Expect(r.err).To(ContainSubstring("project " + moved + ":\n  install review (claude-code)"))
@@ -405,7 +405,7 @@ var _ = Describe("migrate paths", func() {
 			"- {module: other, assistant: claude-code, scope: user, commands: [ship]}\n"})
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "migrate", "--json")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Migrate?"}), "under --json the mapping questions are not asked")
 		Expect(r.out).To(BeEmpty())
 		untouched()
@@ -425,7 +425,7 @@ var _ = Describe("migrate paths", func() {
 		fromAnotherMachine()
 		p := &scripted{roots: []string{""}, mapTargets: [][]string{{"opencode"}}, confirm: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice", "migrate-targets:claude-code", "confirm:Migrate?"}))
 		Expect(r.err).To(ContainSubstring("unmappable review (claude-code at /Users/alice/proj): project_path /Users/alice/proj no longer exists"), "its records are left")
 	})
@@ -440,7 +440,7 @@ var _ = Describe("migrate paths", func() {
 			"- {module: review, assistant: claude-code, scope: project, project_path: /Users/bob/proj, commands: [ship]}\n"})
 		p := &scripted{roots: []string{"/srv/a", goBack, filepath.Join(tmp, "home"), bob}, confirm: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice", "migrate-root:/Users/bob", "migrate-root:/Users/alice", "migrate-root:/Users/bob", "confirm:Migrate?"}))
 		Expect(p.rootSteps[1].Nav).To(Equal(cli.Nav{Back: true, Answered: 1}))
 		Expect(p.rootSteps[2].Value).To(Equal("/srv/a"), "asked again as answered")
@@ -452,7 +452,7 @@ var _ = Describe("migrate paths", func() {
 		fromAnotherMachine()
 		p := &scripted{roots: []string{cancelRun}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(read(filepath.Join(moved, ".claude/commands/ship.md"))).To(Equal("python ship\n"))
 		Expect(home).To(BeADirectory())
 		Expect(filepath.Join(tmp, "state", "lola", "trash")).NotTo(BeAnExistingFile())
@@ -465,7 +465,7 @@ var _ = Describe("migrate paths", func() {
 			"- {module: review, assistant: claude-code, scope: user, commands: [ship]}\n"})
 		p := &scripted{mapTargets: [][]string{{}}, confirm: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"migrate-targets:claude-code", "confirm:Migrate?"}))
 		Expect(r.err).To(ContainSubstring("unmappable review (claude-code): claude-code is not installed here"), "the records are left")
 	})
@@ -475,7 +475,7 @@ var _ = Describe("migrate paths", func() {
 		userRecords("claude-code", "gemini-cli")
 		p := &scripted{mapTargets: [][]string{{"opencode"}, {goBack}, {"opencode"}, {"opencode"}}, confirm: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"migrate-targets:claude-code", "migrate-targets:gemini-cli", "migrate-targets:claude-code",
 			"migrate-targets:gemini-cli", "confirm:Migrate?"}))
 		Expect(p.mapTargetSteps[1].Nav).To(Equal(cli.Nav{Back: true, Answered: 1}))
@@ -487,7 +487,7 @@ var _ = Describe("migrate paths", func() {
 		userRecords("claude-code")
 		p := &scripted{mapTargets: [][]string{{"opencode"}}, confirm: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.mapTargetSteps[0].Nav).To(Equal(cli.Nav{}), "no question before it: Esc stays")
 	})
 
@@ -496,7 +496,7 @@ var _ = Describe("migrate paths", func() {
 		userRecords("claude-code")
 		p := &scripted{mapTargets: [][]string{{cancelRun}}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"migrate-targets:claude-code"}))
 		Expect(home).To(BeADirectory())
 		Expect(lola("list", "--user").out).NotTo(ContainSubstring("review"))
@@ -520,7 +520,7 @@ var _ = Describe("migrate paths", func() {
 		Expect(os.Chmod(filepath.Join(src, "pre.sh"), 0o755)).To(Succeed())
 		p := &scripted{confirm: []bool{true}, consent: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(4))
 		Expect(r.out + r.err).To(ContainSubstring("review has a pre-install hook, and lola runs hooks only with your consent"))
 		Expect(mark).NotTo(BeAnExistingFile())
 		untouched()
@@ -531,7 +531,7 @@ var _ = Describe("migrate paths", func() {
 		Expect(os.Chmod(filepath.Join(src, "pre.sh"), 0o755)).To(Succeed())
 		p := &scripted{confirm: []bool{true, false}}
 		r := lolaP(p, "migrate", "--trust=hooks")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.out+r.err).To(ContainSubstring("    | exit 0\n"), "the preview shows the hook in full, so --trust consents to it")
 		Expect(p.calls).To(Equal([]string{"confirm:Migrate?", "confirm:Proceed?"}))
 		Expect(r.err).To(ContainSubstring("trusting, as --trust=hooks allows:\n"))
@@ -556,7 +556,7 @@ var _ = Describe("migrate paths", func() {
 	It("migrate: confirm --ctrl+c--> cancelled", func() {
 		p := &scripted{confirmCancels: 1}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Migrate?"}))
 		untouched()
 	})
@@ -583,7 +583,7 @@ var _ = Describe("migrate paths", func() {
 			"- {module: review, assistant: claude-code, scope: project, project_path: /Users/alice/proj, commands: [ship]}\n"})
 		p := &scripted{roots: []string{filepath.Join(tmp, "home"), filepath.Join(tmp, "home")}, confirmBacks: 1, confirm: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice", "confirm:Migrate?", "migrate-root:/Users/alice", "confirm:Migrate?"}))
 		Expect(p.confirmNavs[0]).To(Equal(cli.Nav{Back: true, Answered: 1}))
 		Expect(p.rootSteps[1].Value).To(Equal(filepath.Join(tmp, "home")), "the root is offered as answered")
@@ -597,7 +597,7 @@ var _ = Describe("migrate paths", func() {
 	It("migrate: confirm --esc (no mapping question)--> confirm", func() {
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Migrate?"}))
 		Expect(p.confirmNavs[0]).To(Equal(cli.Nav{}), "a first screen: Esc stays")
 		untouched()
@@ -664,7 +664,7 @@ var _ = Describe("consent paths", func() {
 	It("consent: start --run (hooks without your consent, on a terminal)--> hooks", func() {
 		p := &scripted{consentCancels: 1}
 		r := install(p, kit, "-y")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"consent:Run kit's install hooks?"}))
 		Expect(r.err).To(MatchRegexp(`kit has install hooks\. They run as you, unconfined:\n    pre-install: pre\.sh \(sha256 [0-9a-f]{64}\)\n`+
 			`    \| #!/bin/sh\n    \| touch '[^']*/pre-ran'\n`+
@@ -676,7 +676,7 @@ var _ = Describe("consent paths", func() {
 	It("consent: start --run (Claude Code hooks without your consent, on a terminal)--> runtime", func() {
 		p := &scripted{consentCancels: 1}
 		r := install(p, rt, "-y")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"consent:Install rt's Claude Code hooks?"}))
 		Expect(r.err).To(ContainSubstring("rt has Claude Code hooks:\n    Stop: command\n      runs: "))
 		Expect(r.err).To(ContainSubstring("\n  These run inside Claude Code with your permissions.\n"))
@@ -687,7 +687,7 @@ var _ = Describe("consent paths", func() {
 		scripts()
 		p := &scripted{consentCancels: 1}
 		r := install(p, plain, "-y")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"consent:Run this project's pre-install script?"}))
 		Expect(r.err).To(MatchRegexp(`The project at `+regexp.QuoteMeta(proj)+` has a pre-install script\. It runs as you, unconfined, for every module lola installs there:\n`+
 			`    ci/check\.sh \(sha256 [0-9a-f]{64}\)\n    \| #!/bin/sh\n    \| touch '[^']*/check-ran'\n`), "the script in full")
@@ -702,7 +702,7 @@ var _ = Describe("consent paths", func() {
 		before := read(consentJSON)
 		p := &scripted{consentCancels: 1}
 		r := lolaP(p, "sync", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"consent:Trust this project's pre-install script for later runs?"}))
 		Expect(read(consentJSON)).To(Equal(before))
 		Expect(ran("check-ran")).To(BeFalse())
@@ -722,7 +722,7 @@ var _ = Describe("consent paths", func() {
 		for _, flag := range []string{"-y", "--force"} {
 			p := &scripted{consentCancels: 1}
 			r := install(p, kit, flag)
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(p.calls).To(Equal([]string{"consent:Run kit's install hooks?"}), flag+" never answers consent")
 			untouched()
 		}
@@ -757,7 +757,7 @@ var _ = Describe("consent paths", func() {
 			} else {
 				r = lola(append([]string{"install", kit, "-C", proj, "-t", "claude-code"}, args...)...)
 			}
-			Expect(r.code).To(Equal(1), r.err)
+			Expect(r.code).To(Equal(3), r.err)
 			Expect(p.calls).To(BeEmpty())
 			Expect(r.err).To(ContainSubstring("kit has a pre-install hook, and lola runs hooks only with your consent"))
 			Expect(r.err).To(ContainSubstring("--trust=hooks"))
@@ -780,7 +780,7 @@ var _ = Describe("consent paths", func() {
 	It("consent: hooks --no (a pre-install hook)--> refused", func() {
 		p := &scripted{consent: []bool{false}}
 		r := install(p, kit, "-y")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(4))
 		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: pre.sh (sha256 "))
 		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola install " + kit))
 		untouched()
@@ -803,7 +803,7 @@ var _ = Describe("consent paths", func() {
 		scripts()
 		p := &scripted{consentCancels: 1}
 		r := install(p, kit, "-y")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"consent:Run kit's install hooks?"}))
 		untouched()
 	})
@@ -837,7 +837,7 @@ var _ = Describe("consent paths", func() {
 	It("consent: runtime --ctrl+c--> cancelled", func() {
 		p := &scripted{consentCancels: 1}
 		r := install(p, rt, "-y")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		untouched()
 	})
 
@@ -855,7 +855,7 @@ var _ = Describe("consent paths", func() {
 		scripts()
 		p := &scripted{consent: []bool{false}}
 		r := install(p, plain, "-y")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(4))
 		Expect(p.calls).To(Equal([]string{"consent:Run this project's pre-install script?"}))
 		Expect(r.err).To(ContainSubstring("pre-install script ci/check.sh"))
 		untouched()
@@ -876,7 +876,7 @@ var _ = Describe("consent paths", func() {
 		scripts()
 		p := &scripted{consentCancels: 1}
 		r := install(p, plain, "-y")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"consent:Run this project's pre-install script?"}))
 		untouched()
 	})
@@ -901,7 +901,7 @@ var _ = Describe("consent paths", func() {
 		before := read(consentJSON)
 		p := &scripted{consent: []bool{false}}
 		r := lolaP(p, "sync", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(4))
 		Expect(r.err).To(ContainSubstring("pre-install script ci/check.sh"))
 		Expect(read(consentJSON)).To(Equal(before))
 	})
@@ -956,7 +956,7 @@ var _ = Describe("init paths", func() {
 	It("init: start --run--> confirm", func() {
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "init")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{question()}))
 		Expect(r.err).To(HavePrefix("will create module fresh in "+dir+" (agent-plugins):\n    plugin.json\n"), "the plan first")
 		empty(dir)
@@ -1004,7 +1004,7 @@ var _ = Describe("init paths", func() {
 
 	It("init: confirm --esc--> confirm", func() {
 		p := &scripted{confirm: []bool{false}}
-		Expect(lolaP(p, "init").code).To(Equal(0))
+		Expect(lolaP(p, "init").code).To(Equal(4))
 		Expect(p.confirmNavs).To(Equal([]cli.Nav{{}}), "a first screen: Esc stays")
 		empty(dir)
 	})
@@ -1012,7 +1012,7 @@ var _ = Describe("init paths", func() {
 	It("init: confirm --ctrl+c--> cancelled", func() {
 		p := &scripted{confirmCancels: 1}
 		r := lolaP(p, "init")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{question()}))
 		empty(dir)
 	})

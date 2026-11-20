@@ -78,9 +78,9 @@ without `<surface>: ` takes the surface of its file's own specs.
 | an option | picks that option of a question (`Lists modules`, `Edit profile …`) |
 
 The forms adapter (`internal/cli/huh.go`) turns keys into answers and errors; the flow only sees
-answers, `ErrBack` (Esc) and errors that are `ErrAborted` (Ctrl+C, end of input, a No that cancels,
+answers, `ErrBack` (Esc) and errors that are `ErrAborted` (Ctrl+C, a No that cancels,
 Quit, and `q`'s `quitError`). The flow treats every `ErrAborted` alike, and every one prints
-`✗ cancelled — nothing was changed` and exits 0 (a command that names what the cancel left, as sync
+`✗ cancelled — nothing was changed` and exits 4 (a command that names what the cancel left, as sync
 does with `✗ cancelled — the project was not changed`, says so in the same form). A screen that requires a pick (the scope, module and assistant
 pickers) refuses an empty submit in the form and stays; the flow never sees it.
 
@@ -115,7 +115,7 @@ has each one's transitions, and [Viewer and pager](#viewer-and-pager) the viewer
   back to — q quits" once answers are held) in the key help, and stays.
 - `ctrl+c` cancels at once, without asking; in the viewer showing a confirmation's plan it ends the
   command before the question.
-- Every cancel prints `✗ cancelled — nothing was changed` and exits 0.
+- Every cancel prints `✗ cancelled — nothing was changed` and exits 4.
 - Accessible mode (`LOLA_ACCESSIBLE=1`, `TERM=dumb`) asks numbered line prompts: `q` is no answer
   there and nothing goes back ([Accessible mode](#accessible-mode)).
 
@@ -311,8 +311,8 @@ usual one).
 |---|---|---|---|
 | done | Apply, or a run that does not review | the module files, the destination's `.lola/lock.json` (user scope: `$XDG_STATE_HOME/lola/lock.json`), the entry in `.lola/project.yml` (user scope: `default.yml`, or the profile the install writes) or the picks in `selections.yaml`, any `target_versions` recorded; what the run fetched is committed to the cache | `✓ installed <module> (<targets>)` for each module installed; a module only rewritten for the new version has its `<module>: rewrote … files` line instead; 0 |
 | up to date | the plan changes nothing | nothing | `✓ already up to date`; 0 |
-| cancelled | Ctrl+C, q, Quit, a No that cancels | nothing; what the run fetched is dropped; a directory lola created for the run is removed (`removed <dir> (lola created it; nothing was installed there)`); a source added with Add a source… stays in your cache | `✗ cancelled — nothing was changed`; 0 |
-| refused | an error after the answers, or before any screen | nothing; created directories removed as on cancel | `error: …` with `hint:` lines; 1 |
+| cancelled | Ctrl+C, q, Quit, a No that cancels | nothing; what the run fetched is dropped; a directory lola created for the run is removed (`removed <dir> (lola created it; nothing was installed there)`); a source added with Add a source… stays in your cache | `✗ cancelled — nothing was changed`; 4 |
+| refused | an error after the answers, or before any screen | nothing; created directories removed as on cancel | `error: …` with `hint:` lines; 3 when it needs your answer, else 1 |
 
 Under `-n` the done exit writes nothing: it prints the plan and, after a review, the equivalent
 commands.
@@ -543,8 +543,8 @@ profile opens go back to it.
 | created | `--new`, Apply on a new profile with nothing ticked, a new bundle's members | the new profile's file; nothing applied | `✓ new profile <n> (<path>, empty)` or `✓ new bundle <n> (<members>)`, and the `--switch` that turns it on; 0 |
 | unchanged | only modules your cache lacks are kept and nothing unticked | nothing | `→ <label> is unchanged…`, with the `lola cache add` to run; 0 |
 | up to date | the plan changes nothing | nothing | `✓ already up to date`; 0 |
-| cancelled | Ctrl+C, q, Quit, Cancel, a No that cancels | nothing | as Install's cancelled; 0 |
-| refused | an error before any screen or after the answers | nothing | `error: …` with `hint:` lines; 1 |
+| cancelled | Ctrl+C, q, Quit, Cancel, a No that cancels | nothing | as Install's cancelled; 4 |
+| refused | an error before any screen or after the answers | nothing | `error: …` with `hint:` lines; 3 when it needs your answer, else 1 |
 
 ### Re-entry
 
@@ -666,7 +666,7 @@ directory, which is offered without a `.lola/`.
 | exit | when | on disk | output, exit code |
 |---|---|---|---|
 | next step | an answer | what the command then writes at that scope | the command's own; its context line names the scope |
-| cancelled | Ctrl+C, q | nothing | the command's cancel message; 0 |
+| cancelled | Ctrl+C, q | nothing | the command's cancel message; 4 |
 | refused | the scope cannot be taken, or no scope can be resolved off a terminal | nothing | `error: …` with `hint:` lines; 1 |
 
 ### Re-entry
@@ -794,9 +794,9 @@ Esc there stays.
 | exit | when | on disk | output, exit code |
 |---|---|---|---|
 | done | the answers allow the apply, or `-n` | the files, `lock.json`, the pins written to the project's files, the trust record (`$XDG_STATE_HOME/lola/trust.json`); under `-n`, nothing in the project | the sync's output; after a trust answer, `→ the same off a terminal: <run>`; 0 |
-| declined | a No to the removals | the trust record only | `✗ removals declined; the project was not changed. The changes you trusted are recorded; …`; 0 |
-| cancelled | Cancel, a No at the receipt, Ctrl+C, q | nothing, and nothing is cached | `✗ cancelled — the project was not changed` (`user scope` for a user-scope run, or `nothing was changed`); 0 |
-| refused | no terminal to ask on, or a change a refusal guards | nothing | `error: …` with `hint:` lines; 1 |
+| declined | a No to the removals | the trust record only | `✗ removals declined; the project was not changed. The changes you trusted are recorded; …`; 4 |
+| cancelled | Cancel, a No at the receipt, Ctrl+C, q | nothing, and nothing is cached | `✗ cancelled — the project was not changed` (`user scope` for a user-scope run, or `nothing was changed`); 4 |
+| refused | no terminal to ask on, or a change a refusal guards | nothing | `error: …` with `hint:` lines; 3 |
 
 ### Re-entry
 
@@ -914,8 +914,8 @@ tidy's own: Esc there stays, also after the scope picker. `-y` opens no picker: 
 | done | a yes, `-y`, `--force`, `--keep`/`--unkeep` alone, or nothing to tidy | one trash run under `$XDG_STATE_HOME/lola/trash/` holding what moved, with `manifest.txt`; the scope's entries in `$XDG_CONFIG_HOME/lola/keep.yaml` | `✓ moved N items (<size>) to the trash: <run>`, `keep-list: added …`; 0 |
 | dry run | `-n` | nothing | what would move and what is locked, and why; 0 |
 | failed | a move fails | what moved before it, in the trash run; `keep.yaml` as the run asked | `error: …`, the keep-list edits and `what moved is in <run>`; 1 |
-| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 0 |
-| refused | the run cannot be asked or done as given | nothing | `error: …` with `hint:` lines; 1 |
+| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
+| refused | the run cannot be asked or done as given | nothing | `error: …` with `hint:` lines; 3 when it needs your answer, else 1 |
 
 ### Re-entry
 
@@ -1035,8 +1035,8 @@ stays. Esc at any question after it goes back to the picker, never to the questi
 |---|---|---|---|
 | done | an answer that restores or deletes, a run that asks nothing, or nothing left to restore | restored files back at their originals, a run emptied by its restore removed; what `--force` moved, in a new trash run; deleted runs gone from `$XDG_STATE_HOME/lola/trash/` | `✓ restored N items from trash run <run>`, `✓ deleted N trash runs, freeing <size>`, the listing, or `→ nothing to restore, so nothing changed`; 0 |
 | failed | a run's restore fails | the runs restored before it, restored; that run and the runs after it, as they were | the results so far, then `error: …`; 1 |
-| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 0 |
-| refused | a restore over what is there, or `--empty` with no terminal to ask on | nothing | `error: …` with `hint:` lines; 1 |
+| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
+| refused | a restore over what is there, or `--empty` with no terminal to ask on | nothing | `error: …` with `hint:` lines; 3 |
 
 ### Re-entry
 
@@ -1113,8 +1113,8 @@ The question also goes to `cancelled` on `ctrl+c` or `q`. It is a first screen: 
 | exit | when | on disk | output, exit code |
 |---|---|---|---|
 | done | a yes, `-y`, `-n`, or nothing to remove | the items removed from `$XDG_CACHE_HOME/lola/`; each module's `index.yml` updated; under `-n`, nothing | each item removed and kept, the bytes freed, or `✓ nothing to clean`; 0 |
-| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 0 |
-| refused | no terminal to ask on | nothing | `error: …` with `hint:` lines; 1 |
+| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
+| refused | no terminal to ask on | nothing | `error: …` with `hint:` lines; 3 |
 
 ### Re-entry
 
@@ -1193,8 +1193,8 @@ The question also goes to `cancelled` on `ctrl+c` or `q`. It is a first screen: 
 |---|---|---|---|
 | done | a yes, a directory, or `-y` | the module's files in the directory | `✓ created module <name> in <dir> (<format>)`, its files and `→ try it: lola install …`; 0 |
 | failed | a write fails | the files written before it | `error: …`; 1 |
-| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 0 |
-| refused | no terminal to ask on or an invalid name | nothing | `error: …` with `hint:` lines; 1 |
+| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
+| refused | no terminal to ask on or an invalid name | nothing | `error: …` with `hint:` lines; 3 |
 
 ### Re-entry
 
@@ -1285,8 +1285,8 @@ Esc there stays; so is the ssh question when the run asked no name.
 | exit | when | on disk | output, exit code |
 |---|---|---|---|
 | done | an answer that registers, a run that asks nothing, or `-n` | the registration (name, source, ref, the catalog file, `ssh_hosts`) in `$XDG_CONFIG_HOME/lola/markets.yaml`, the catalog in `$XDG_CACHE_HOME/lola/markets/<name>/`; under `-n`, nothing | `✓ marketplace <name>: N entries (<format>) from <source>` and its notices; 0 |
-| cancelled | Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 0 |
-| refused | the name is this marketplace, or will not do and cannot be asked | nothing | `error: …` with `hint:` lines; 1 |
+| cancelled | Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
+| refused | the name is this marketplace, or will not do and cannot be asked | nothing | `error: …` with `hint:` lines; 3 when it needs your answer, else 1 |
 
 ### Re-entry
 
@@ -1420,8 +1420,8 @@ mapping question was asked.
 | done | a yes, `-y`, `--force`, or nothing to migrate | each destination's modules installed with lola; the Python lola's files copied or moved into a trash run; its home moved to the trash when nothing is left in it; its marketplaces registered | the report; 0 |
 | dry run | `-n` | nothing but the sources in the cache | the plan; 0 |
 | failed | a destination fails | the other destinations, migrated | the report, then `error: …`; 1 |
-| cancelled | No, Ctrl+C, q | nothing but the sources in the cache | `✗ cancelled — nothing was changed`; 0 |
-| refused | no terminal to ask on | nothing | `error: …` with `hint:` lines; 1 |
+| cancelled | No, Ctrl+C, q | nothing but the sources in the cache | `✗ cancelled — nothing was changed`; 4 |
+| refused | no terminal to ask on | nothing | `error: …` with `hint:` lines; 3 |
 
 ### Re-entry
 
@@ -1550,8 +1550,8 @@ else the receipt when `--trust` covers something, else the run's writes.
 | exit | when | on disk | output, exit code |
 |---|---|---|---|
 | done | the run's answers allow its writes | the run's writes; a consent for each yes in `$XDG_STATE_HOME/lola/consent.json`; a declined post-install hook or script pending in lock.json (`hooks_pending`, `scripts_pending`); declined Claude Code hooks not installed | the run's output, with a warning naming the sync that asks again; 0 |
-| refused | a No to a pre-install hook or script, or one that cannot be asked | nothing | `error: <m> has a pre-install hook, and lola runs hooks only with your consent` (or the script's), with `hint:` lines; 1 |
-| cancelled | Ctrl+C, or a No at the receipt | nothing | `✗ cancelled — nothing was changed`; 0 |
+| refused | a No to a pre-install hook or script, or one that cannot be asked | nothing | `error: <m> has a pre-install hook, and lola runs hooks only with your consent` (or the script's), with `hint:` lines; 4 for a No, 3 when it cannot be asked |
+| cancelled | Ctrl+C, or a No at the receipt | nothing | `✗ cancelled — nothing was changed`; 4 |
 
 ### Re-entry
 
@@ -1698,7 +1698,7 @@ opens or closes the highlighted one; `space` with none highlighted pages. The ke
 | inline | q | fewer than two answers | cancelled | a quit |
 | inline | q | two or more answers | quit | |
 | inline | ctrl+c | | cancelled | the prompt line left with its field empty |
-| inline | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y`; 1 |
+| inline | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y`; 3 |
 | prompt | scroll | | prompt | the rule line's position follows; Enter never scrolls |
 | prompt | an answer letter | | prompt | the field holds it |
 | prompt | enter | a letter typed, or a default | answered | the text and the answered prompt line printed to stderr |
@@ -1726,9 +1726,9 @@ opens or closes the highlighted one; `space` with none highlighted pages. The ke
 | printed | a `start` row prints, or the pager failed | nothing | the text; the command goes on |
 | done | the viewer closed, or the pager exited | nothing | the text in the scrollback; the command goes on, a question that follows asked next |
 | back | Esc at a question with a screen before | nothing | the flow's screen before (see [Install](#install) and [Profile edit](#profile-edit)) |
-| cancelled | Ctrl+C at a question or in a viewer a question follows, a quit | nothing | `✗ cancelled — nothing was changed` (or the command's own wording, see [Inputs](#inputs)); 0 |
+| cancelled | Ctrl+C at a question or in a viewer a question follows, a quit | nothing | `✗ cancelled — nothing was changed` (or the command's own wording, see [Inputs](#inputs)); 4 |
 | answered | a letter or the default answered on Enter | nothing | the line with the answer stays; the command goes on with it |
-| refused | stdin ended at a question | nothing | the prompt line with its field empty, then the error, with `hint:` lines; 1 |
+| refused | stdin ended at a question | nothing | the prompt line with its field empty, then the error, with `hint:` lines; 3 |
 
 ### Re-entry
 
@@ -1776,17 +1776,22 @@ stateDiagram-v2
   line --> next: answer, a blank line
   yesno --> next: y, n, a blank line
   yesno --> yesno: q, invalid
-  pick --> cancelled: end of input, ctrl+c
-  choose --> cancelled: end of input, ctrl+c
-  line --> cancelled: end of input, ctrl+c
-  yesno --> cancelled: end of input, ctrl+c
+  pick --> refused: end of input
+  pick --> cancelled: ctrl+c
+  choose --> refused: end of input
+  choose --> cancelled: ctrl+c
+  line --> refused: end of input
+  line --> cancelled: ctrl+c
+  yesno --> refused: end of input
+  yesno --> cancelled: ctrl+c
   next --> [*]
   cancelled --> [*]
+  refused --> [*]
 ```
 
 The flows are the full screen's (the same states, in the same order, and the same exits), with these
 differences: nothing goes back, as there is no Esc, so no re-entry rule reached by Esc applies; `q`
-quits nothing; end of input cancels with exit 0 where a full screen's is an error; output never opens
+quits nothing; end of input refuses with exit 3, as a full screen's does; output never opens
 the viewer; and the review is printed, then asked as the "Apply these changes?" menu, whose Change
 entries reach the same steps the question's `c` does.
 
@@ -1842,20 +1847,20 @@ line prompt has: Esc, `q` and the viewer.
 | pick | a blank line | | pick | `Invalid: must be a number between 0 and N` |
 | pick | q | | pick | invalid, as any word is |
 | pick | esc | | pick | invalid: nothing goes back |
-| pick | end of input | | cancelled | |
+| pick | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y` |
 | choose | answer | | next | |
 | choose | a blank line | a default | next | the default taken |
 | choose | a blank line | no default | choose | `Invalid: must be a number between 1 and N`; the review's menu and the trust question have none, so Apply and trust need their number |
 | choose | invalid | | choose | the same message |
-| choose | end of input | | cancelled | |
+| choose | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y` |
 | line | answer | | next | |
 | line | a blank line | a value pre-filled | next | the pre-filled value |
 | line | a blank line | nothing pre-filled | next | an empty answer |
-| line | end of input | | cancelled | |
+| line | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y` |
 | yesno | y or n | | next | |
 | yesno | a blank line | | next | the default, No |
 | yesno | invalid | | yesno | `answer y or n (Enter means no)` |
-| yesno | end of input | | cancelled | |
+| yesno | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y` |
 | choose | ctrl+c | | cancelled | as at any prompt |
 
 ### Exits
@@ -1863,7 +1868,8 @@ line prompt has: Esc, `q` and the viewer.
 | exit | when | on disk | output, exit code |
 |---|---|---|---|
 | next | an answer | as the flow does | the flow's next screen |
-| cancelled | end of input, Ctrl+C, Quit, a No that cancels | nothing | `✗ cancelled — nothing was changed` (or the command's own wording); 0 |
+| cancelled | Ctrl+C, Quit, a No that cancels | nothing | `✗ cancelled — nothing was changed` (or the command's own wording); 4 |
+| refused | end of input | nothing | `error: input ended before the question was answered`, with `hint:` lines; 3 |
 
 ### Re-entry
 
@@ -1960,7 +1966,7 @@ in: keys read with the Esc or `q` that ended a form are dropped.
 | screen | esc | nothing before | screen | the key help says `first step — q quits` until the next key, in place of any note before it (an empty submit's `nothing selected …`) |
 | screen | esc | nothing before, answers held | screen | the key help says `no step to go back to — q quits` |
 | screen | ctrl+c | | cancelled | at once, never asking; no quit |
-| screen | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y`; 1 |
+| screen | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y`; 3 |
 | quit | y | | cancelled | a quit |
 | quit | n, enter or esc | | screen | as it was |
 | quit | ctrl+c | | cancelled | |
@@ -1984,8 +1990,8 @@ in: keys read with the Esc or `q` that ended a form are dropped.
 | exit | when | on disk | output, exit code |
 |---|---|---|---|
 | next, back | an answer, an Esc that goes back | as the flow does | the ended full-screen form is erased, on a submit, a back, a quit and a cancel alike, so only the flow's next screen shows; not erased: a form stopped by end of input (refused), and accessible mode's line prompts, which stay as typed |
-| cancelled | Ctrl+C, a quit | nothing | the full-screen form erased (but for the exceptions above), then `✗ cancelled — nothing was changed` (or the command's own wording); 0 |
-| refused | stdin ends | nothing | the error, with `hint:` lines; 1 |
+| cancelled | Ctrl+C, a quit | nothing | the full-screen form erased (but for the exceptions above), then `✗ cancelled — nothing was changed` (or the command's own wording); 4 |
+| refused | stdin ends | nothing | the error, with `hint:` lines; 3 |
 
 ### Re-entry
 

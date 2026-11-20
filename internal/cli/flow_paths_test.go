@@ -16,13 +16,13 @@ package cli_test
 // also pinned (scope --answer (Other not ticked)--> next step (picks of destinations dropped)): flow_test.go "keeps the picks of the destinations Change scope keeps, and drops and counts the rest"
 // also pinned (modules --answer--> next step (an installed module is not preselected)): flow_test.go "does not preselect an installed module at first, and keeps it when the user picked it"
 // also pinned (modules --answer--> next step (picks of modules removed are dropped and counted)): flow_test.go "drops the component picks of a module removed in the review, and says so"
-// also pinned (modules --ctrl+c--> cancelled; directory --ctrl+c--> cancelled; review --quit--> cancelled): flow_test.go "cancel writes nothing and exits 0"
+// also pinned (modules --ctrl+c--> cancelled; directory --ctrl+c--> cancelled; review --quit--> cancelled): flow_test.go "cancel writes nothing and exits 4"
 // also pinned (review --quit (n or ctrl+c)--> cancelled): huh_internal_test.go "asks the review with y, c and n and no default, c opening the steps to change"
 // also pinned (directory --answer (a usable directory)--> next step; directory --answer (not usable)--> directory): flow_test.go "asks for the Other directory again, with the reason, until it is a directory that is not the project above"
 // also pinned (directory --answer (missing)--> create other; create other --yes--> next step): flow_test.go "creates an Other directory that does not exist yet on your yes, and installs there"
 // also pinned (create other --yes--> next step (removed again on a cancel)): flow_test.go "removes an Other directory it created when you quit at the review"
 // also pinned (start --run (-C missing, on a terminal)--> -C confirm; -C confirm --yes--> next step): flow_test.go "on a terminal, asks before creating it and installs on your yes"
-// also pinned (-C confirm --no--> cancelled): flow_test.go "on a terminal, your no creates nothing and exits 0"
+// also pinned (-C confirm --no--> cancelled): flow_test.go "on a terminal, your no creates nothing and exits 4"
 // also pinned (start --run (-C missing and -n)--> next step): flow_test.go "plans a dry run as for the empty directory it would create, and creates nothing"
 // also pinned (start --run (-C missing and -y or --force)--> next step): flow_test.go "creates it under -y or --force, says so, and installs there"
 // also pinned (scope --answer (Project is the home directory)--> scope): flow_test.go "asks again when Other directory or Project is the home directory, User ticked or not"
@@ -47,7 +47,7 @@ package cli_test
 // also pinned (review --Change versions--> version (a declared version)): flow_test.go "offers Change versions for a version the scope declares, its era preselected, and records the new answer"
 // also pinned (review --q--> cancelled (q asks first once two answers are held)): keys_internal_test.go "with two or more steps answered, q asks first: y quits; n, Enter and Esc go back to the screen as it was"
 // also pinned (scope --esc (first screen)--> scope; assistants --esc (first screen)--> assistants): keys_internal_test.go "on the first screen, Esc says q quits in the key help, not as an error, and stays"
-// also pinned (review --q--> cancelled): keys_internal_test.go "prints a quit as cancelled, nothing changed, and exits 0 as Ctrl+C does"
+// also pinned (review --q--> cancelled): keys_internal_test.go "prints a quit as cancelled, nothing changed, and exits 4 as Ctrl+C does"
 
 import (
 	"os"
@@ -139,11 +139,11 @@ var _ = Describe("install paths", func() {
 			[]string{cli.ReviewApply, cli.ReviewScope, cli.ReviewAssistants, cli.ReviewQuit}, nil),
 	)
 
-	DescribeTable("Ctrl+C at a step cancels the run: nothing is written and it exits 0",
+	DescribeTable("Ctrl+C at a step cancels the run: nothing is written and it exits 4",
 		func(p *scripted, calls []string, args ...string) {
 			fakeAssistant(tmp, "gemini", "0.63.0")
 			r := lolaP(p, append([]string{"install"}, args...)...)
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			for i := range calls { // the -C directory, which the tree is built before
 				calls[i] = strings.ReplaceAll(calls[i], "<fresh>", filepath.Join(proj, "fresh"))
 			}
@@ -181,7 +181,7 @@ var _ = Describe("install paths", func() {
 			p.modules = []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")}
 			p.review = []string{cli.ReviewQuit}
 			r := lolaP(p, "install", "-t", "claude-code")
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(p.calls).To(Equal([]string{"scope", "directory", "confirm:Create " + missing + "? It does not exist yet", "directory", "modules", "review"}))
 			Expect(p.dirSteps[1].Problem).To(Equal(missing + " does not exist"))
 			Expect(p.dirSteps[1].Value).To(Equal(missing), "the answer is offered again to edit")
@@ -443,7 +443,7 @@ var _ = Describe("install paths through the version question", func() {
 	It("install: version --ctrl+c--> cancelled", func() {
 		p := &scripted{versions: []func(cli.VersionStep) (int, error){aborted[cli.VersionStep, int]}}
 		r := lolaP(p, "install", "m", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 		Expect(p.calls).To(Equal([]string{"version:opencode"}))
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
@@ -554,7 +554,7 @@ var _ = Describe("install paths through the version question", func() {
 	It("install: start --target version flag--> next step", func() {
 		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}
 		r := lolaP(p, "install", "k", "--project", "-t", "opencode@1.0")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"components:project.yml › k", "review"}))
 		Expect(p.reviewSteps[0].Options).To(Equal([]string{cli.ReviewApply, cli.ReviewVersions, cli.ReviewComponents, cli.ReviewQuit}))
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())

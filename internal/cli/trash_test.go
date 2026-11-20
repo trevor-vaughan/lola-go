@@ -161,7 +161,7 @@ var _ = Describe("lola trash", func() {
 		b := trashRunOf(proj, at.Add(time.Hour), "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "lola tidy"), trashQuit}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "trash-pick"}), "no review of a restore that would fail part way")
 		Expect(p.trashPickSteps[1].Problem).To(Equal("trash runs " + b + " and " + a + " both hold " + filepath.Join(proj, ".claude/commands/ship.md") +
 			", which one restore cannot put back twice; untick one"))
@@ -273,7 +273,7 @@ var _ = Describe("lola trash", func() {
 		trashRunOf(proj, at.Add(time.Hour), "lola migrate", nil, ".claude/commands/lint.md")
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashQuit}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(r.out).To(BeEmpty())
 		Expect(p.calls).To(Equal([]string{"trash-pick"}))
@@ -298,7 +298,7 @@ var _ = Describe("lola trash", func() {
 		Expect(os.WriteFile(filepath.Join(t.Dir, "run.yaml"), []byte("command: [\n"), 0o600)).To(Succeed())
 		p = &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashQuit}}
 		r = lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.trashPickSteps[0].Options[1].Label).To(Equal("    " + filepath.Join(proj, ".mcp.json")))
 		Expect(strings.Count(r.err, "run.yaml")).To(Equal(1), r.err)
 	})
@@ -312,7 +312,7 @@ var _ = Describe("lola trash", func() {
 		By("Cancel at the review goes back to the picker, the ticks kept, and changes nothing")
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "ship.md"), trashQuit}, where: []int{-1}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring(flag.out), "the plan the flag form prints")
 		Expect(p.whereSteps[0]).To(Equal(cli.WhereStep{Title: "Restore 1 item from the trash?", Options: []string{"Restore"}, Nav: cli.Nav{Back: true, Answered: 1}}))
 		Expect(p.calls).To(Equal([]string{"trash-pick", "where", "trash-pick"}))
@@ -347,14 +347,14 @@ var _ = Describe("lola trash", func() {
 
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "ship.md"), trashQuit}, where: []int{-1}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring(ship+" exists, so the restore is refused"), "the review names the original in the way")
 		Expect(p.whereSteps[0].Options).To(Equal(force), "never a plain Restore, and --force is never implied")
 		Expect(read(ship)).To(Equal("new\n"))
 
 		p = &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "ship.md")}, where: []int{0}, confirm: []bool{false}}
 		r = lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "where", "confirm:Move 1 item in the way into a new trash run, then restore 1 item?"}),
 			"counted from the plan with --force")
 		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Back: true, Answered: 2}}))
@@ -374,7 +374,7 @@ var _ = Describe("lola trash", func() {
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashEmpty), trashTicks(cli.TrashEmpty, "lint.md"),
 			trashTicks(cli.TrashEmpty, "lola tidy")}, confirm: []bool{false}}
 		r := lolaP(p, "trash")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "trash-pick", "trash-pick", "confirm:Delete 1 trash run? This cannot be undone."}))
 		Expect(p.trashPickSteps[1].Problem).To(Equal("nothing ticked: tick files or runs, then pick what to do with them"))
 		Expect(p.trashPickSteps[2].Problem).To(Equal("Empty ticked runs deletes whole runs: tick a [whole run] row, not only files"))

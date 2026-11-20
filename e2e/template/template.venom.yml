@@ -39,7 +39,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/x2.out 2> /tmp/x2.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} refusal /tmp/x2.out /tmp/x2.err > /dev/null && python3 -c "

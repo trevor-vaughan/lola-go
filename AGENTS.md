@@ -97,7 +97,7 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   Questions: type `y`, `n` (`c` at the review), then `Enter`; `Enter` alone takes the capital letter's
   answer, and the review has none. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`,
   `tab`/`shift+tab` (fold highlight), `space` (open/close it; pages with none), `esc` (clears the
-  highlight, else closes; back in a question), `q`. `ctrl+c` exits 0 with `nothing changed`. After
+  highlight, else closes; back in a question), `q`. `ctrl+c` exits 4 with `nothing changed`. After
   `q` the viewer reprints its content to scrollback.
 
 ```bash

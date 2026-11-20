@@ -57,7 +57,7 @@ var _ = Describe("install scripts off a terminal", func() {
 		writeTree(mod, map[string]string{"commands/ship.md": "Ship $ARGUMENTS\n"})
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\npre_install: ci/check.sh\n", "ci/check.sh": "#!/bin/sh\nexit 0\n"})
 		r := lola("install", mod, "-C", proj, "-t", "claude-code", "--json")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(MatchRegexp(`^`+regexp.QuoteMeta(`{`+projectWriteContextJSON(proj)+`"error":"lola install needs your trust for the pre-install script ci/check.sh (sha256 `)+`[0-9a-f]{64}`+regexp.QuoteMeta(`) of this project (new), and there is no terminal to ask on",`+
 			`"hints":["review it: lola info -C `+proj+` `+mod+` --target claude-code --json",`+
 			`"lola has not shown you this script; see it with lola install `+mod+` --json --root `+proj+` --target claude-code --trust=scripts --at example=sha256:`)+
@@ -66,7 +66,7 @@ var _ = Describe("install scripts off a terminal", func() {
 			"the consent pins the version shown")
 
 		r = lola("install", mod, "-C", proj, "-t", "claude-code", "--json", "--trust=scripts")
-		Expect(r.code).To(Equal(1), "a refusal names the script, path and sha256, but does not show it: %s", r.err)
+		Expect(r.code).To(Equal(3), "a refusal names the script, path and sha256, but does not show it: %s", r.err)
 		r = lola("install", mod, "-C", proj, "-t", "claude-code", "--json", "--trust=scripts", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(`"body": "#!/bin/sh\nexit 0\n"`), "the dry run shows it in full")

@@ -190,8 +190,9 @@ recorded and nothing else is written.
 `LOLA_ACCESSIBLE=1` (or `TERM=dumb`) asks the same questions as numbered line prompts, for
 screen readers; each prompt's description (why it asks again, what the hosts you tick get) is
 printed before it, and the review's "Apply these changes?" has no default: type Apply's number. There,
-end of input at any prompt, runtime hook consent included, cancels the run (`✗ cancelled — nothing
-was changed`), and Ctrl+C cancels (exit 0).
+end of input at any prompt, runtime hook consent included, refuses the run with `error: input ended
+before the question was answered` (exit 3, nothing changed), and Ctrl+C cancels (`✗ cancelled — nothing
+was changed`, exit 4).
 
 In a picker, space ticks the option under the cursor (`[x]`; the rest show `[ ]`), Ctrl+A ticks
 every option shown and, when each is ticked, unticks them (in the module picker it ticks the
@@ -208,7 +209,7 @@ Every full-screen question (pickers, menus, text inputs, the install review) tak
 keys, named first in its key help: `esc back · q quit`.
 
 - `q` quits the command:
-  - lola prints `✗ cancelled — nothing was changed` and exits 0, as Ctrl+C does.
+  - lola prints `✗ cancelled — nothing was changed` and exits 4, as Ctrl+C does.
   - Once you have answered two or more steps of the run, it asks first: `Quit? your answers so
     far are dropped — nothing has been changed [y/N]`; `y` quits, and `n`, Enter or Esc return to
     the question as you left it.

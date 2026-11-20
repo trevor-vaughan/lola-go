@@ -96,7 +96,7 @@ var _ = Describe("lola info", func() {
 			"→ see its hooks and scripts in full: lola install kit --root " + proj + " --target claude-code --trust=hooks,runtime-hooks -n\n" +
 				"→ install it: lola install kit --root " + proj + " --target claude-code --trust=hooks,runtime-hooks\n"))
 		r = runHint(doc.Install[0].Command)
-		Expect(r.code).To(Equal(1), "info shows the hook's first lines, not all of it: %s", r.err)
+		Expect(r.code).To(Equal(3), "info shows the hook's first lines, not all of it: %s", r.err)
 		Expect(runHint(doc.Install[0].Command + " -n").code).To(Equal(0))
 		r = runHint(doc.Install[0].Command)
 		Expect(r.code).To(Equal(0), r.err)

@@ -52,7 +52,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} migrate"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - result.systemerr ShouldContainSubstring "lola migrate -y"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'python3 /e2e-common/snapshot.py /tmp/refused.json /work/proj /home/tester && cmp /tmp/before.json /tmp/refused.json'"
@@ -68,7 +68,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} migrate --json < /dev/null > /tmp/g1.out 2> /tmp/g1.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} python3 -c '

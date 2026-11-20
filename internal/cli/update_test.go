@@ -169,7 +169,7 @@ var _ = Describe("lola update", func() {
 		r := lola("install", served+"/example.git", "--ref", "main", "-t", "claude-code", "-C", teammate)
 		Expect(r.code).To(Equal(0), r.err) // moves the cache head for main
 		r = lola("update", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("~ example       re-pin from main\n"))
 		Expect(r.err).To(ContainSubstring("lola update would change .lola/project.yml; it needs your trust for:\n"))
 		Expect(r.err).NotTo(ContainSubstring("is unchanged"))
@@ -184,7 +184,7 @@ var _ = Describe("lola update", func() {
 	It("never takes --force as consent to a new version", func() {
 		push(map[string]string{"commands/example.md": "example v2\n"})
 		r := lola("update", "--fetch", "--force", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("error: lola update needs your trust"))
 		Expect(r.err).To(ContainSubstring("hint: then accept them: lola update -C " + proj + " --fetch --force --trust=entries"))
 		Expect(r.err).NotTo(ContainSubstring("hint: see them: lola sync"))
@@ -195,13 +195,13 @@ var _ = Describe("lola update", func() {
 	It("names lola update, and no flag of sync, in its trust diff, refused or dry", func() {
 		push(map[string]string{"commands/example.md": "example v2\n"})
 		r := lola("update", "--fetch", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("lola update would change .lola/project.yml; it needs your trust for:\n"))
 		Expect(r.err).To(ContainSubstring("~ example       re-pin from main (--fetch)\n"))
 		Expect(r.err).NotTo(ContainSubstring("~ other"), "other's fetch found nothing new: it needs no trust")
 		writeTree(filepath.Join(tmp, "config", "lola"), map[string]string{"config.yaml": "version: 1\ncache_fresh_for: never\n"})
 		r = lola("update", "-C", proj) // every head stale: fetched into the run's staging, then asked
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("~ example       re-pin from main\n"))
 		r = lola("update", "--fetch", "-n", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
@@ -248,14 +248,14 @@ var _ = Describe("lola update", func() {
 		Expect(r.out).To(ContainSubstring(gone), "the dry run's report heads them as the question does")
 
 		r = lola("update", "--fetch", "--trust", "-C", proj)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(r.err).To(ContainSubstring(gone))
 		Expect(hintLines(r.err)).To(ContainElement("then confirm them: lola update -C "+proj+" --fetch --trust=entries,profiles --at example="+
 			gitIn(work, "rev-parse", "HEAD")+" -y"), "the hint pins the version whose removals it lists")
 		Expect(read(".claude/commands/example.md")).To(Equal("example v1\n"), "nothing was written")
 
 		r = lola("update", "--fetch", "--trust", "-C", proj, "--json")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		var refused map[string]any
 		Expect(json.Unmarshal([]byte(r.err), &refused)).To(Succeed(), r.err)
 		Expect(refused["removals"]).To(ContainElement(HaveKeyWithValue("why", "not in the version this run installs")))
@@ -273,7 +273,7 @@ var _ = Describe("lola update", func() {
 		before := state()
 
 		r := lola("update", "--fetch", "-C", proj)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(r.err).To(ContainSubstring("error: lola update needs your trust for the pins it would write for example; " +
 			"and your confirmation to remove the files example's new version drops, and there is no terminal to ask on"))
 		Expect(r.err).To(ContainSubstring("re-pin from main (--fetch)\n"), "the new version was fetched, so the refusal shows it")
@@ -314,7 +314,7 @@ var _ = Describe("lola update", func() {
 		Expect(os.WriteFile(manifestPath, []byte(pulled), 0o644)).To(Succeed())
 
 		r := lola("update", "--fetch", "-C", proj)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(r.err).To(ContainSubstring(".claude/commands/example.md"), "example's dropped file is listed")
 		Expect(r.err).NotTo(ContainSubstring(".claude/commands/other.md"), "other's content was not fetched")
 		accept := ""
@@ -331,7 +331,7 @@ var _ = Describe("lola update", func() {
 
 		// Your own -y is not repeated either: it would confirm other's removals unlisted.
 		r = lola("update", "--fetch", "-y", "-C", proj)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(hintLines(r.err)).To(ContainElement("then accept them: lola update -C "+proj+" --fetch --trust=entries --at example="+gitIn(work, "rev-parse", "HEAD")), r.err)
 		Expect(r.err).To(ContainSubstring("-y waits until the next run lists"))
 
@@ -359,7 +359,7 @@ var _ = Describe("lola update", func() {
 		gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "example.git"), "main")
 		shown := gitIn(work, "rev-parse", "HEAD")
 		r := lola("update", "--fetch", "-C", proj)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		accept := ""
 		for _, h := range hintLines(r.err) {
 			if c, ok := strings.CutPrefix(h, "then accept them: "); ok {
@@ -388,7 +388,7 @@ var _ = Describe("lola update", func() {
 		gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "example.git"), "main")
 		shown := gitIn(work, "rev-parse", "HEAD")
 		r := lola("update", "--fetch", "-C", proj)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		accept := ""
 		for _, h := range hintLines(r.err) {
 			if c, ok := strings.CutPrefix(h, "then accept them: "); ok {
@@ -432,7 +432,7 @@ var _ = Describe("lola update", func() {
 		gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "example.git"), "main")
 
 		r = lola("update", "--fetch", "-C", proj)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		accept := ""
 		for _, h := range hintLines(r.err) {
 			if c, ok := strings.CutPrefix(h, "then accept them: "); ok {
@@ -444,7 +444,7 @@ var _ = Describe("lola update", func() {
 		Expect(accept).NotTo(HaveSuffix(" -y"), "other's removals are not listed yet")
 		before := state()
 		r = runHint(accept)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(r.err).To(ContainSubstring("needs your confirmation to remove the files example's and other's new version drops"))
 		Expect(r.err).To(ContainSubstring(".claude/commands/other.md"), "other's files are listed")
 		Expect(state()).To(Equal(before), "nothing written")
@@ -476,7 +476,7 @@ var _ = Describe("lola update", func() {
 		Expect(state()).To(Equal(before), "neither scope, nor the cache, is written")
 
 		r = lola("update", "--scope", "both", "-C", proj, "--fetch", "--trust=entries", "--at", "example="+e, "--at", "u="+uc)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(state()).To(Equal(before))
 		for _, h := range hintLines(r.err) {
 			if strings.Contains(h, "--user") {
@@ -495,7 +495,7 @@ var _ = Describe("lola update", func() {
 		Expect(os.WriteFile(filepath.Join(proj, ".claude", "commands", "new.md"), []byte("mine\n"), 0o644)).To(Succeed())
 		before := state()
 		r := lola("update", "-C", proj, "--fetch", "--trust=entries", "--at", "example="+h, "-y")
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(state()).To(Equal(before), "a conflict leaves the cache as it was")
 		force := ""
 		for _, l := range hintLines(r.err) {
@@ -529,7 +529,7 @@ var _ = Describe("lola update", func() {
 		gitIn(w, "push", "-q", otherBare, "main")
 		shown := mateUpdate()
 		r := lola("update", "-C", proj)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		accept := ""
 		for _, h := range hintLines(r.err) {
 			if c, ok := strings.CutPrefix(h, "then accept them: "); ok {
@@ -823,13 +823,13 @@ var _ = Describe("Update-removals: lola sync of a folder that dropped a componen
 		Expect(r.out).To(ContainSubstring(gone), "the dry run's report heads them as the question does")
 
 		r = lola("sync", "-C", proj, "--trust")
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(r.err).To(ContainSubstring(gone))
 		Expect(hintLines(r.err)).To(ContainElement(And(HavePrefix("then confirm them: lola sync -C "+proj+" --trust=entries,profiles --at m=sha256:"), HaveSuffix(" -y"))))
 		Expect(filepath.Join(proj, ".claude/commands/b.md")).To(BeAnExistingFile())
 
 		r = lola("sync", "-C", proj, "--trust", "--plain")
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(r.err).To(ContainSubstring("remove\tm\tclaude-code\t.claude/commands/b.md\tproject\n"), "--plain: rows with the scope, as install's refusal")
 		Expect(r.err).NotTo(ContainSubstring("To remove:"))
 
@@ -850,7 +850,7 @@ var _ = Describe("Update-removals: a refusal for trust names the files a new ver
 		Expect(os.Remove(filepath.Join(mod, "commands", "b.md"))).To(Succeed())
 
 		r := lola("sync", "-C", proj)
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(r.err).To(ContainSubstring("your confirmation to remove the files m's new version drops"))
 		hints := hintLines(r.err)
 		accept := ""
@@ -881,7 +881,7 @@ var _ = Describe("a folder module's new pre-install hook", func() {
 		GinkgoT().Chdir(proj)
 
 		r = lola("sync", "--trust=entries")
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(r.err).To(ContainSubstring("kit has a pre-install hook, and lola runs hooks only with your consent"))
 		review := ""
 		for _, h := range hintLines(r.err) {
@@ -925,7 +925,7 @@ var _ = Describe("lola install --at", func() {
 
 	It("pins in the hook's consent hint the version the refusal showed, so a folder edited after review is refused and its hook not run", func() {
 		r := lola("install", kit, "-C", proj, "-t", "claude-code")
-		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.code).To(Equal(3), r.out)
 		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent"))
 		consent := ""
 		for _, h := range hintLines(r.err) {
@@ -969,13 +969,13 @@ var _ = Describe("lola install --at", func() {
 			writeTree(kit, map[string]string{"setup.sh": "#!/bin/sh\ntouch " + marker + "\n"})
 			Expect(os.Chmod(filepath.Join(kit, "setup.sh"), 0o755)).To(Succeed())
 			r := lola("install", kit, "-C", proj, "-t", "claude-code")
-			Expect(r.code).To(Equal(1), r.out)
+			Expect(r.code).To(Equal(3), r.out)
 			pin = regexp.MustCompile(`--at kit=(sha256:[0-9a-f]{64})`).FindStringSubmatch(consentOf(r.err))[1]
 		})
 
 		It("the consent hint of an install that gave --at names the module once, with the pin, and runs the hook", func() {
 			r := lola("install", kit, "-C", proj, "-t", "claude-code", "--at", "kit="+pin)
-			Expect(r.code).To(Equal(1), r.out)
+			Expect(r.code).To(Equal(3), r.out)
 			consent := consentOf(r.err)
 			Expect(strings.Count(consent, "--at kit=")).To(Equal(1), consent)
 			Expect(consent).To(HaveSuffix("--at kit=" + pin))

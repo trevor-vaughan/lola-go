@@ -476,12 +476,12 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 
 	It("market --remove asks, refuses off a terminal without -y, and drops cache and registration", func() {
 		r := lola("market", "acme", "--remove")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(Equal("error: lola market --remove asks before it forgets a marketplace, and there is no terminal to ask on\n" +
 			"  hint: lola market acme --remove -y\n"))
 		sp := &scripted{confirm: []bool{false}}
 		r = lolaP(sp, "market", "acme", "--del")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(Equal("✗ cancelled — nothing was changed\n"))
 		Expect(sp.calls).To(Equal([]string{"confirm:Forget marketplace acme (" + url + ") and drop its cached catalog?"}))
 		r = lola("market", "acme", "--erase", "-n")
@@ -634,7 +634,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 				Expect(lola("market", "--add", url).code).To(Equal(0))
 			}
 			r := lola(args...)
-			Expect(r.code).To(Equal(1), strings.Join(args, " "))
+			Expect(r.code).To(BeElementOf(1, 3), strings.Join(args, " "))
 			// The one hint that may add -y approves exactly the --remove refused off a terminal.
 			ownY := slices.Contains(args, "--remove") && strings.Contains(r.err, "there is no terminal to ask on")
 			for _, asJSON := range []bool{false, true} {
@@ -981,14 +981,14 @@ var _ = Describe("lola market --ssh-host", func() {
 		abort := func(cli.SSHHostStep) ([]string, error) { return nil, cli.ErrAborted }
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){abort}}
 		r := lolaP(sp, "market", "priv", "--add", dir)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(Equal("✗ cancelled — nothing was changed\n"))
 		Expect(p.Markets).NotTo(BeAnExistingFile())
 
 		Expect(lola("market", "priv", "--add", dir).code).To(Equal(0))
 		sp = &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){abort}}
 		r = lolaP(sp, "market", "priv", "--update")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(Equal("✗ cancelled — no ssh host was allowed\n"))
 		Expect(stored()).NotTo(ContainSubstring("ssh_hosts"))
 	})

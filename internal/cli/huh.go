@@ -42,10 +42,13 @@ const addSource = "\x00add"
 // on stdin ends with the process, and nothing reads stdin after it, since the cancel ends the
 // command.
 type eofReader struct {
-	r       io.Reader
-	eof     bool
-	sig     chan os.Signal  // set while catch runs a form
-	pending chan readResult // the read of r in progress, nil when none
+	r   io.Reader
+	eof bool
+	// interrupted: the input ended because Ctrl+C was pressed, which cancels (ErrAborted); end of
+	// input alone is a refusal for want of an answer (errStdinEnded).
+	interrupted bool
+	sig         chan os.Signal  // set while catch runs a form
+	pending     chan readResult // the read of r in progress, nil when none
 }
 
 // readResult is one Read of an eofReader's input, done in a goroutine.
@@ -81,7 +84,7 @@ func (e *eofReader) Read(p []byte) (int, error) {
 		}
 		return copy(p, res.b), res.err
 	case <-e.sig:
-		e.eof = true
+		e.eof, e.interrupted = true, true
 		return 0, io.EOF
 	}
 }
@@ -99,8 +102,9 @@ func (e *eofReader) catch(run func() error) error {
 }
 
 // errInputEnded is a full-terminal form that stdin's end of input cut short. bubbletea treats
-// end of input as nothing more to read and goes on waiting, so lola ends the form itself.
-var errInputEnded = errors.New("input ended before the question was answered")
+// end of input as nothing more to read and goes on waiting, so lola ends the form itself. It is a
+// refusal that needs the user's answer: a terminal, or the flag the hint names.
+var errInputEnded = errs.NeedsAnswer(errors.New("input ended before the question was answered"))
 
 // errStdinEnded is errInputEnded with what to do about it: a form or a question that stdin's end
 // cut short refuses with it.
@@ -209,7 +213,7 @@ func (h *huhForms) theme() (huh.Theme, error) {
 	return huh.ThemeFunc(func(bool) *huh.Styles { return lolaTheme(dark) }), nil
 }
 
-// runIn runs one form in theme t. Ctrl+C (huh's ErrUserAborted) and end of input cancel the run.
+// runIn runs one form in theme t. Ctrl+C (huh's ErrUserAborted) cancels the run; end of input refuses it (errStdinEnded).
 //
 // huh v2.0.3's accessible number prompts return the last answer they rejected when input
 // ends, and Select and MultiSelect then index their options with it and panic. That panic, an
@@ -231,7 +235,7 @@ func (h *huhForms) runIn(t huh.Theme, nav Nav, fields ...huh.Field) (err error) 
 			if !h.accessible || !h.in.eof || !ok || !strings.Contains(re.Error(), "index out of range") {
 				panic(r)
 			}
-			err = ErrAborted
+			err = h.inputEnd()
 		}
 	}()
 	if h.accessible {
@@ -250,10 +254,21 @@ func (h *huhForms) runIn(t huh.Theme, nav Nav, fields ...huh.Field) (err error) 
 		return ErrBack
 	case h.stdinEnded && err != nil:
 		return errStdinEnded
-	case errors.Is(err, huh.ErrUserAborted) || h.in.eof:
+	case errors.Is(err, huh.ErrUserAborted):
 		return ErrAborted
+	case h.in.eof:
+		return h.inputEnd()
 	}
 	return err
+}
+
+// inputEnd is the error of a form or question whose input ended: a cancel for Ctrl+C, else the
+// refusal that needs the user's answer.
+func (h *huhForms) inputEnd() error {
+	if h.in.interrupted {
+		return ErrAborted
+	}
+	return errStdinEnded
 }
 
 // endStdin is what eofFile calls when stdin ends: it stops the form running.
@@ -909,8 +924,14 @@ func (h *huhForms) askLine(q Question) (rune, error) {
 	})
 	if err != nil {
 		if h.in.eof || errors.Is(err, io.EOF) {
-			fmt.Fprintln(h.out) // the prompt has no newline of its own; the cancel prints under it
-			return 0, ErrAborted
+			fmt.Fprintln(h.out) // the prompt has no newline of its own; the error prints under it
+			if h.in.interrupted {
+				return 0, ErrAborted
+			}
+			if q.Trust != 0 {
+				return 0, errs.WithHints(errInputEnded, hintTerminal, "or pass "+q.Trust.Arg()+" to consent without asking")
+			}
+			return 0, errStdinEnded
 		}
 		return 0, err
 	}

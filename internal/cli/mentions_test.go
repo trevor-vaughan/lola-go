@@ -103,7 +103,7 @@ var _ = Describe("mentions in lola install", func() {
 	It("labels the components that mention others on a staged module's page, and names what the picks leave out in the review by the source given, which the user may decline", func() {
 		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){pick("skill/golang-testing")}, review: []string{cli.ReviewQuit}}
 		r := lolaP(p, "install", mod, "--scope", "project", "-t", "claude-code", "-v")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("  → pack: skill/golang-testing mentions 2 components you did not pick: skill/golang-gopls, skill/golang-race" +
 			" → add them: lola install --project " + mod + " --with-mentions -t claude-code\n"))
 

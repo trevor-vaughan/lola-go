@@ -115,7 +115,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} update -C /work/proj"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - result.systemerr ShouldContainSubstring "re-pin from main"
           - result.systemerr ShouldNotContainSubstring "not fetched yet"
           - result.systemerr ShouldContainSubstring "~ commands/deploy.md"
@@ -268,7 +268,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/pick"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - "result.systemerr ShouldContainSubstring \"✗ pick: claude-code (not in the version this run installs)\""
           - "result.systemerr ShouldContainSubstring \"needs your confirmation to remove the files pick's new version drops, and there is no terminal to ask on\""
           - "result.systemerr ShouldContainSubstring \"hint: then confirm them: lola update -C /work/pick --fetch --trust=entries,profiles --at pick=\""
@@ -313,7 +313,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} update --fetch -C /work/drop --json > /tmp/u10.out 2> /tmp/u10.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} cat /tmp/u10.err"
         assertions:

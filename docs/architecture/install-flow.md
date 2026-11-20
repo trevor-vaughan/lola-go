@@ -235,9 +235,9 @@ In accessible mode it prints the summary before the full menu (`menu` with no ch
 and a blank line asks again); the review's yes/no questions elsewhere are `askLine` prompts.
 
 `Prompter` implementations: the huh adapter (inline forms on stderr; accessible line prompts under
-`LOLA_ACCESSIBLE=1` or `TERM=dumb`, with an `eofReader` that turns end of input into a cancel), the
+`LOLA_ACCESSIBLE=1` or `TERM=dumb`, with an `eofReader` that records end of input), the
 non-interactive one, and the specs' scripted one. In accessible mode every prompt, hook consent
-included, reads through the `eofReader`, so end of input is `ErrAborted`. Specs parse the equivalent
+included, reads through the `eofReader`, so end of input is `errStdinEnded` (a refusal, exit 3) and Ctrl+C is `ErrAborted`. Specs parse the equivalent
 commands back through the real command tree and compare the plans.
 
 The huh adapter draws every form in `lolaTheme` (`internal/cli/theme.go`): huh's Charm theme with

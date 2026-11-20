@@ -898,8 +898,8 @@ func (e *Engine) moveAcross(ctx context.Context, req MoveRequest, add SyncReques
 		if len(planned.Removals) > 0 && removesUnasked(req) {
 			yes = []string{"-y"}
 		}
-		return nil, errs.WithHints(fmt.Errorf("removing %s %s needs your trust (%s), and there is no terminal to ask on", strings.Join(shownAll(modules), ", "),
-			scopeWhere(src.sc), missing.Arg()), "then accept it: "+e.commandOf(remove.trusting(req.Options.Trust|missing), append(slices.Clone(req.Options.Display), yes...)...))
+		return nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("removing %s %s needs your trust (%s), and there is no terminal to ask on", strings.Join(shownAll(modules), ", "),
+			scopeWhere(src.sc), missing.Arg())), "then accept it: "+e.commandOf(remove.trusting(req.Options.Trust|missing), append(slices.Clone(req.Options.Display), yes...)...))
 	}
 	if asked := planned.Removals; len(asked) > 0 && !req.Options.Force {
 		if req.ConfirmRemovals == nil {
@@ -1384,8 +1384,8 @@ func (e *Engine) confirmReplace(req MoveRequest, t writeTo, module string) error
 		return nil
 	}
 	if req.Replace == nil {
-		return errs.WithHints(fmt.Errorf("%s lists %s already; lola needs to know whether to replace its entry, and there is no terminal to ask on",
-			t.label, shown(module)), e.flagRun(req.Scope, req.Options.Target, "profile", "", WhereChoice{Flags: []string{"--to", req.To, "-y"}}))
+		return errs.WithHints(errs.NeedsAnswer(fmt.Errorf("%s lists %s already; lola needs to know whether to replace its entry, and there is no terminal to ask on",
+			t.label, shown(module))), e.flagRun(req.Scope, req.Options.Target, "profile", "", WhereChoice{Flags: []string{"--to", req.To, "-y"}}))
 	}
 	ok, err := req.Replace(module, t.label)
 	if err == nil && !ok {

@@ -61,7 +61,7 @@ var _ = Describe("where an inherited edit goes", func() {
 	It("refuses under -y as it does off a terminal, with the same hints, and asks nothing", func() {
 		sp := &scripted{where: []int{1}}
 		r := lolaP(sp, "install", "kit", "--user", "--skip", "skill/b", "-y")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(sp.whereSteps).To(BeEmpty())
 		Expect(r.err).To(ContainSubstring("lola install needs to know whether to change it there or override it in profile go, and there is no terminal to ask on"))
 		Expect(r.err).To(Equal(lola("install", "kit", "--user", "--skip", "skill/b", "-y").err))

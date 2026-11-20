@@ -60,15 +60,15 @@ var _ = Describe("Execute after a signal", func() {
 		Expect(out).To(BeEmpty())
 	})
 
-	It("still exits 0 for a cancelled prompt: Ctrl+C at an accessible prompt is a SIGINT too", func() {
+	It("still exits 4 for a cancelled prompt: Ctrl+C at an accessible prompt is a SIGINT too", func() {
 		code, out := run(syscall.SIGINT, ErrAborted)
-		Expect(code).To(Equal(0))
+		Expect(code).To(Equal(4))
 		Expect(out).To(Equal("✗ cancelled — nothing was changed\n"))
 	})
 })
 
 // TestInterruptChild is no spec of its own: "accessible mode: Ctrl+C at a sync question cancels
-// with exit 0" runs this test binary again with LOLA_SPEC_CHILD naming the question to wait at,
+// with exit 4" runs this test binary again with LOLA_SPEC_CHILD naming the question to wait at,
 // so the interrupt it sends reaches a lola of its own rather than the spec runner, which takes
 // Ctrl+C as the user stopping the specs.
 func TestInterruptChild(t *testing.T) {

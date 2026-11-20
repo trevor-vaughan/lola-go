@@ -25,6 +25,9 @@ func (e *DeletesRefusedError) Error() string {
 	return fmt.Sprintf("lola %s needs your confirmation to remove files, and there is no terminal to ask on; nothing was written", e.verb)
 }
 
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer).
+func (e *DeletesRefusedError) Is(target error) bool { return target == errs.ErrNeedsAnswer }
+
 // droppedTarget is a target an install's -t leaves out of module, installed on it at the scope
 // whose root is root.
 type droppedTarget struct{ root, module, target string }

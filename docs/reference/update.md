@@ -130,8 +130,9 @@ reported as up to date: its `source-gone` warning says `<module>: source gone; n
 the folder, and hints restoring it or `lola uninstall <module>` (your scope flags kept). `update`
 exits `1`, as for a failed fetch, and does not print `already up to date`.
 
-Exit status is `0` on success, on a dry run and when you decline a prompt, and `1` on any error,
-a refusal included ([Output contract](output-contract.md)).
+Exit status is `0` on success and on a dry run, `3` when it refused for want of your answer (trust,
+consent or `-y`), `4` when you decline a prompt, and `1` on any other error ([Output
+contract](output-contract.md)).
 
 JSON: the shape of `lola sync`'s: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`,
 `removals`, `equivalent_commands` and the plan's `modules`, `steps`, `findings`, `notices` and

@@ -89,7 +89,7 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(r.out).NotTo(ContainSubstring("lola render"))
 
 		r = lola("cache", "rm", "example")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("will remove from your cache: example"))
 		Expect(r.err).NotTo(ContainSubstring("stop working"))
 		Expect(r.err).To(ContainSubstring("hint: lola cache rm example -y"))

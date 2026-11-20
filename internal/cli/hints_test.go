@@ -41,7 +41,7 @@ var _ = Describe("hints", func() {
 		func(args func(proj string) []string, hints func(proj string) []string) {
 			run := args(proj)
 			r := lola(run...)
-			Expect(r.code).To(Equal(1), r.err)
+			Expect(r.code).To(BeElementOf(1, 3), r.err)
 			Expect(r.out).To(BeEmpty())
 			var got []string
 			if slices.Contains(run, "--json") {

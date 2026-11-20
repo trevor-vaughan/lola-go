@@ -505,8 +505,8 @@ func (e *Engine) confirmEdited(ctx context.Context, spec InstallSpec, then []Sco
 			continue
 		}
 		if spec.ConfirmRemovals == nil {
-			err := fmt.Errorf("lola profile --edit needs your confirmation to remove %s %s, and there is no terminal to ask on; nothing was written",
-				strings.Join(removalNames(res.Removals), ", "), scopeWhere(si.Scope))
+			err := errs.NeedsAnswer(fmt.Errorf("lola profile --edit needs your confirmation to remove %s %s, and there is no terminal to ask on; nothing was written",
+				strings.Join(removalNames(res.Removals), ", "), scopeWhere(si.Scope)))
 			if t := spec.Options.Target; t.Rerun != nil {
 				return nil, errs.WithHints(err, "see what goes: "+t.Rerun(append(t.ownFlags(), "-n")...),
 					"confirm it: "+t.Rerun(append(t.ownFlags(), "-y")...))
@@ -1083,8 +1083,8 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 					return nil, e.withRetry(spec, err, fetched)
 				}
 				if planned.needsTrust { // the sync needs a trust the install cannot give: its run asks, or refuses with the diff
-					return nil, errs.WithHints(fmt.Errorf("rewriting %s for the version this install writes for needs your trust first; nothing was written",
-						andJoin(shownAll(names))), "see what for, and trust it: "+e.SyncCommand(sp.sc))
+					return nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("rewriting %s for the version this install writes for needs your trust first; nothing was written",
+						andJoin(shownAll(names)))), "see what for, and trust it: "+e.SyncCommand(sp.sc))
 				}
 				if opts.DryRun {
 					out.eraSynced(planned, sp.sc, spec.many())
@@ -1589,6 +1589,9 @@ type UntrustedTargetsError struct {
 
 func (e *UntrustedTargetsError) Error() string { return e.msg }
 
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer).
+func (e *UntrustedTargetsError) Is(target error) bool { return target == errs.ErrNeedsAnswer }
+
 // JSONFields carries, beside error and hints, the trust diff of what the hint trusts, if any.
 func (e *UntrustedTargetsError) JSONFields() map[string]any {
 	if e.Report == nil {
@@ -1606,6 +1609,9 @@ type notTrustedError struct{ msg string }
 
 func (e *notTrustedError) Error() string { return e.msg }
 func (e *notTrustedError) Unwrap() error { return ErrNotTrusted }
+
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer).
+func (e *notTrustedError) Is(target error) bool { return target == errs.ErrNeedsAnswer }
 
 // trustRecord is the trust record of a project scope, nil at user scope, whose files are the user's
 // own.
