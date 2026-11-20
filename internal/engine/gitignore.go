@@ -1,13 +1,18 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
@@ -110,19 +115,100 @@ func (e *Engine) refuseTrackedLedger(ctx context.Context, sc Scope, res *Result)
 	return nil
 }
 
+// untrackCommand is the git command, written for the working directory, that untracks operands,
+// paths relative to sc's project root (after a "--" when the caller adds one): with -C <root>
+// unless that is the working directory. ok is false when a root untrusted.Text would change makes
+// the command unprintable as it runs.
+func (e *Engine) untrackCommand(sc Scope, operands ...string) (cmd string, ok bool) {
+	untrack := append([]string{"git", "rm", "--cached"}, operands...)
+	if cwd, err := e.Getwd(); err != nil || canonicalRoot(cwd) != canonicalRoot(sc.ProjectDir) {
+		if untrusted.Text(sc.ProjectDir, untrusted.MaxName) != sc.ProjectDir {
+			return "", false
+		}
+		untrack = append([]string{"git", "-C", sc.ProjectDir, "rm", "--cached"}, operands...)
+	}
+	return errs.ShellJoin(untrack), true
+}
+
 // trackedLedger refuses the project scope sc, whose ledger git tracks, hinting the git command
-// that untracks it from the working directory: with -C <root> unless that is the project root.
-// A root untrusted.Text would change gets no hint: the command could not be printed as it runs.
+// that untracks it (untrackCommand).
 func (e *Engine) trackedLedger(sc Scope) error {
 	refusal := fmt.Errorf("%s is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a "+
 		"pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run %s",
 		projectLedger, e.SyncCommand(sc))
-	untrack := []string{"git", "rm", "--cached", projectLedger}
-	if cwd, err := e.Getwd(); err != nil || canonicalRoot(cwd) != canonicalRoot(sc.ProjectDir) {
-		if untrusted.Text(sc.ProjectDir, untrusted.MaxName) != sc.ProjectDir {
-			return refusal
-		}
-		untrack = []string{"git", "-C", sc.ProjectDir, "rm", "--cached", projectLedger}
+	cmd, ok := e.untrackCommand(sc, projectLedger)
+	if !ok {
+		return refusal
 	}
-	return errs.WithHints(refusal, errs.ShellJoin(untrack))
+	return errs.WithHints(refusal, cmd)
+}
+
+// machinePaths reports whether data, a rendered file, holds a path of this machine: root, the
+// project's absolute path, or home, the user's, at a path boundary (the byte after it is "/", a
+// quote, "\" or the end), so /home/u/proj2 is not /home/u/proj. An empty root or home, and a home
+// of "/", match nothing.
+func machinePaths(data []byte, root, home string) bool {
+	for _, p := range []string{root, home} {
+		if p == "" || p == "/" {
+			continue
+		}
+		rest := data
+		for {
+			i := bytes.Index(rest, []byte(p))
+			if i < 0 {
+				break
+			}
+			rest = rest[i+len(p):]
+			if len(rest) == 0 || strings.IndexByte(`/"\`, rest[0]) >= 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// machinePathNotices warns, for each JSON file the plan writes in project sc that git tracks and
+// whose rendered bytes hold a path of this machine, that a teammate's sync will refuse it. The
+// members the run wrote there are named. A file outside the project, or a project outside a git
+// work tree, adds none; git missing from PATH cannot track a file, so adds none either.
+func (e *Engine) machinePathNotices(ctx context.Context, sc Scope, p *plan.Plan) []Notice {
+	if sc.Kind != target.Project {
+		return nil
+	}
+	root := canonicalRoot(sc.ProjectDir)
+	var out []Notice
+	for _, f := range p.Files {
+		members := map[string][]string{} // module -> member names written to f
+		for _, s := range p.Steps {
+			if s.Target == f.Target && s.Path == f.Logical && s.Key != "" && s.Action != plan.ActionDelete && s.Action != plan.ActionForget {
+				members[s.Module] = append(members[s.Module], untrusted.Text(s.Name, untrusted.MaxName))
+			}
+		}
+		if f.Delete || f.Outside || len(members) == 0 || (!machinePaths(f.Data, root, e.Paths.Home) && !machinePaths(f.Data, sc.ProjectDir, "")) {
+			continue
+		}
+		rel, err := filepath.Rel(root, f.Abs)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		rel = filepath.ToSlash(rel)
+		tracked, err := gitTracked(ctx, root, rel)
+		if errors.Is(err, exec.ErrNotFound) || (err == nil && !tracked) {
+			continue
+		}
+		name := untrusted.Text(rel, untrusted.MaxName)
+		if err != nil {
+			out = append(out, Notice{Level: LevelWarn, Text: untrusted.CleanErr(err).Error()})
+			continue
+		}
+		for _, module := range slices.Sorted(maps.Keys(members)) {
+			n := Notice{Level: LevelWarn, Module: module, Text: fmt.Sprintf("%s is tracked by git and now holds paths of this machine (%s): "+
+				"a teammate's sync will refuse it as not written by lola; untrack it, then add it to .gitignore", name, strings.Join(members[module], ", "))}
+			if cmd, ok := e.untrackCommand(sc, "--", rel); ok {
+				n.Hints = []string{cmd}
+			}
+			out = append(out, n)
+		}
+	}
+	return out
 }

@@ -1751,6 +1751,7 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 	if !committed {
 		return errors.Join(err, sw.rollback())
 	}
+	res.Notices = append(res.Notices, e.machinePathNotices(ctx, sc, p)...)
 	errs := []error{err, sw.commit()}
 	for _, c := range pr.changes {
 		if p.Ledger.Modules[c.Name] == nil {
