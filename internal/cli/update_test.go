@@ -131,18 +131,35 @@ var _ = Describe("lola update", func() {
 		r := lola("update", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(".claude/commands/example.md")).To(Equal("example v1\n"), "the install just fetched main: its head is fresh")
-		Expect(r.out).To(Equal("Notices:\n→ 2 modules served from your cache (fetched within cache_fresh_for) → lola update -C " + proj + " --fetch\n" +
-			"✓ already up to date\n"))
+		Expect(r.out).To(Equal("✓ up to date with your cache (fetched just now)\n→ lola update -C " + proj + " --fetch\n"))
 		r = lola("update", "example", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(Equal("Notices:\n→ 1 module served from your cache (fetched within cache_fresh_for) → lola update -C " + proj + " example --fetch\n" +
-			"✓ example already up to date\n"))
+		Expect(r.out).To(Equal("✓ example up to date with your cache (fetched just now)\n→ lola update -C " + proj + " example --fetch\n"))
+		r = lola("update", "-n", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("✓ up to date with your cache (fetched just now)\n→ lola update -C " + proj + " --fetch -n\n"))
 		r = lola("update", "--json", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
-		Expect(doc["notices"]).To(ContainElement(map[string]any{"level": "info", "class": "safety",
-			"text": "2 modules served from your cache (fetched within cache_fresh_for) → lola update -C " + proj + " --fetch --json"}))
+		Expect(doc["cache_served"]).To(Equal(map[string]any{"modules": float64(2), "fetched": "just now",
+			"command": "lola update -C " + proj + " --fetch --json"}))
+	})
+
+	It("fetches for sync --update whatever the head's age, and never says it served from the cache", func() {
+		push(map[string]string{"commands/example.md": "example v2\n"})
+		r := lola("sync", "--update", "-n", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("lola sync would change .lola/project.yml; it needs your trust for:\n"))
+		Expect(r.out).To(ContainSubstring("~ example       re-pin from main (--update)\n"))
+		Expect(r.out).NotTo(ContainSubstring("your cache"))
+	})
+
+	It("says already up to date when --fetch checked the source and found nothing new", func() {
+		r := lola("update", "--fetch", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("✓ already up to date\n"))
+		Expect(r.out).NotTo(ContainSubstring("cache"))
 	})
 
 	It("still asks about a fresh head another run moved, without --trust refusing it", func() {
@@ -154,6 +171,9 @@ var _ = Describe("lola update", func() {
 		r = lola("update", "-C", proj)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("~ example       re-pin from main\n"))
+		Expect(r.err).To(ContainSubstring("lola update would change .lola/project.yml; it needs your trust for:\n"))
+		Expect(r.err).NotTo(ContainSubstring("is unchanged"))
+		Expect(r.err).To(MatchRegexp(`(?m)^ +commit [0-9a-f]{40}\n +→ [0-9a-f]{40}\n +digest sha256:[0-9a-f]{64}\n +→ sha256:[0-9a-f]{64}\n`))
 		Expect(r.err).To(ContainSubstring("error: lola update needs your trust"))
 		Expect(read(".claude/commands/example.md")).To(Equal("example v1\n"))
 		r = lola("update", "--trust", "-C", proj)
@@ -176,7 +196,7 @@ var _ = Describe("lola update", func() {
 		push(map[string]string{"commands/example.md": "example v2\n"})
 		r := lola("update", "--fetch", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring(".lola/project.yml is unchanged; lola update needs your trust for:\n"))
+		Expect(r.err).To(ContainSubstring("lola update would change .lola/project.yml; it needs your trust for:\n"))
 		Expect(r.err).To(ContainSubstring("~ example       re-pin from main (--fetch)\n"))
 		Expect(r.err).NotTo(ContainSubstring("~ other"), "other's fetch found nothing new: it needs no trust")
 		writeTree(filepath.Join(tmp, "config", "lola"), map[string]string{"config.yaml": "version: 1\ncache_fresh_for: never\n"})
@@ -185,7 +205,7 @@ var _ = Describe("lola update", func() {
 		Expect(r.err).To(ContainSubstring("~ example       re-pin from main\n"))
 		r = lola("update", "--fetch", "-n", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring(".lola/project.yml is unchanged; lola update needs your trust for:\n"))
+		Expect(r.out).To(ContainSubstring("lola update would change .lola/project.yml; it needs your trust for:\n"))
 		Expect(r.out).To(ContainSubstring("re-pin from main (--fetch)"))
 		Expect(r.out + r.err).NotTo(ContainSubstring("lola sync"))
 		Expect(r.out + r.err).NotTo(ContainSubstring("--update"))

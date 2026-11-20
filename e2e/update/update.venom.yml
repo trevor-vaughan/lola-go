@@ -56,8 +56,9 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} update -C /work/proj"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemout ShouldContainSubstring "already up to date"
-          - result.systemout ShouldContainSubstring "1 module served from your cache (fetched within cache_fresh_for)"
+          - result.systemout ShouldContainSubstring "up to date with your cache (fetched"
+          - result.systemout ShouldContainSubstring "update -C /work/proj --fetch"
+          - result.systemout ShouldNotContainSubstring "already up to date"
           - result.systemout ShouldNotContainSubstring "updated pack"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log | cmp - /tmp/u2.mid'"
@@ -137,7 +138,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "updated pack"
-          - result.systemout ShouldNotContainSubstring "served from your cache"
+          - result.systemout ShouldNotContainSubstring "up to date with your cache"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'test \"$(wc -l < /run/gitserve/requests.log)\" -gt \"$(cat /tmp/u4.before)\"'"
         assertions:

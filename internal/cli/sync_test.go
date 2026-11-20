@@ -950,7 +950,7 @@ var _ = Describe("lola sync", func() {
 		Expect(string(b)).To(MatchRegexp(`digest: sha256:[0-9a-f]{64}`), "the pin is written back")
 	})
 
-	It("refuses --update -y off a terminal without claiming project.yml changed", func() {
+	It("refuses --update -y off a terminal, naming the pins it would write to project.yml", func() {
 		writeZip := func(body string) {
 			GinkgoHelper()
 			f, err := os.Create(filepath.Join(proj, "mods", "arch.zip"))
@@ -975,7 +975,7 @@ var _ = Describe("lola sync", func() {
 		writeZip("Arch v2\n")
 		r = lola("sync", "--update", "-y", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HavePrefix(projectContext(proj) + ".lola/project.yml is unchanged; lola sync needs your trust for:\n" +
+		Expect(r.err).To(HavePrefix(projectContext(proj) + "lola sync would change .lola/project.yml; it needs your trust for:\n" +
 			"  ~ arch          re-pin from " + filepath.Join(proj, "mods", "arch.zip") + " (--update)\n"))
 		Expect(r.err).To(ContainSubstring("error: lola sync needs your trust for the pins it would write for arch, and there is no terminal to ask on; " +
 			"-y confirms removals only; accept them with --trust=entries\n" +
@@ -1259,7 +1259,7 @@ var _ = Describe("lola sync", func() {
 			HaveField("Label", HaveSuffix("1 hook changed"))))))
 	})
 
-	It("names the cause in the header: an --update re-pin leaves project.yml unchanged", func() {
+	It("names the cause in the header: an --update re-pin is a change lola sync would make to project.yml", func() {
 		archive := filepath.Join(proj, "mods", "arch.zip")
 		writeZip := func(body string) {
 			GinkgoHelper()
@@ -1279,7 +1279,7 @@ var _ = Describe("lola sync", func() {
 		writeZip("Arch, edited\n")
 		r = lola("sync", "--update", "-n", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring(".lola/project.yml is unchanged; lola sync needs your trust for:\n" +
+		Expect(r.out).To(ContainSubstring("lola sync would change .lola/project.yml; it needs your trust for:\n" +
 			"  ~ arch          re-pin from " + archive + " (--update)\n                  digest sha256:"))
 		Expect(r.out).NotTo(ContainSubstring("pins:"), "a dry run whose diff is on stdout shows the pins there")
 

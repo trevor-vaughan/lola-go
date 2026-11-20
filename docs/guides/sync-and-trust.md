@@ -249,8 +249,9 @@ An entry's [vars](templating.md#vars) are trusted with it: a vars-only edit is a
 The header names the cause: `has not been trusted on this machine (a fresh clone, or a moved
 project):` for a project with no record (its targets row reads `+ targets [claude-code]`),
 `changed since lola last wrote it or you last trusted it:` when the manifest changed, and
-`is unchanged; lola sync needs your trust for:` when only the pins sync would write or a folder's
-content need your trust; each such entry says why: `re-pin from v1 (--update)`,
+`lola sync would change .lola/project.yml; it needs your trust for:` when the run writes pins
+(`lola update` says `lola update would change …`), and `is unchanged; lola sync needs your trust
+for:` when only a folder's content needs your trust; each such entry says why: `re-pin from v1 (--update)`,
 `pin what v1 serves now`, `content changed since lola installed it`, or, as an addition, `not
 installed yet` for a folder you trusted that lola has not installed (after a No to the removals).
 

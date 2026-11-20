@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -353,13 +354,16 @@ type Pin struct {
 // the same answers off a terminal.
 type SyncResult struct {
 	*Result
-	Scope              string      `json:"scope"`
-	Root               string      `json:"root"`
-	Trust              TrustReport `json:"trust"`
-	Pins               []Pin       `json:"pins"`
-	Removals           []Removal   `json:"removals"`
-	InSync             bool        `json:"in_sync"`
-	EquivalentCommands []string    `json:"equivalent_commands"`
+	Scope    string      `json:"scope"`
+	Root     string      `json:"root"`
+	Trust    TrustReport `json:"trust"`
+	Pins     []Pin       `json:"pins"`
+	Removals []Removal   `json:"removals"`
+	InSync   bool        `json:"in_sync"`
+	// CacheServed is set when lola update resolved modules from a cache head fetched within
+	// cache_fresh_for, so it did not check their source; nil when it checked every one.
+	CacheServed        *CacheServed `json:"cache_served,omitempty"`
+	EquivalentCommands []string     `json:"equivalent_commands"`
 	// Rewrites are the modules' files the sync rewrites for another era of their target, after
 	// the version the scope declares changed.
 	Rewrites    []Rewrite `json:"rewrites"`
@@ -377,6 +381,38 @@ type SyncResult struct {
 	// *Activation is set by an activation (SyncRequest.Profiles) only, adding its profile and
 	// changes to the JSON document.
 	*Activation
+}
+
+// CacheServed is the modules lola update resolved from your cache without checking their source:
+// how many, how long ago the oldest of their heads was fetched (for people, "1 minute ago"), and
+// the run that fetches them now.
+type CacheServed struct {
+	Modules int    `json:"modules"`
+	Fetched string `json:"fetched"`
+	Command string `json:"command"`
+}
+
+// cacheServed is the cache-served part of a lola update over entries, nil when every entry was
+// fetched or staged; its Command is the caller's.
+func cacheServed(entries []*syncEntry, now time.Time) *CacheServed {
+	var out *CacheServed
+	var oldest time.Time
+	for _, se := range entries {
+		if !se.fresh || se.staged != nil {
+			continue
+		}
+		if out == nil {
+			out = &CacheServed{}
+		}
+		out.Modules++
+		if oldest.IsZero() || se.headFetched.Before(oldest) {
+			oldest = se.headFetched
+		}
+	}
+	if out != nil {
+		out.Fetched = age(now, oldest)
+	}
+	return out
 }
 
 // syncEntry is one desired entry of a sync: validated (targets), then resolved to a version. v is
@@ -416,6 +452,7 @@ type syncEntry struct {
 	pin           *Pin
 	follow        *marketPick // the catalog entry an --update follows, nil for none
 	fresh         bool        // lola update's cache head for its ref was fetched within cache_fresh_for: the run does not fetch the ref
+	headFetched   time.Time   // when that head was fetched, set with fresh
 	failed        bool        // lola update could not fetch it: it stays as installed
 	at            string      // the version --at says the run installs: a git commit, else a content digest
 	atFresh       string      // the dry run without --at that a refusal for another version than at hints
@@ -1030,7 +1067,6 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		return nil, err
 	}
 
-	served := 0 // the entries lola update resolved from a fresh cache head, without a fetch
 	for _, se := range entries {
 		if se.v.ContentDir == "" { // a covered folder at project scope was read above
 			// lola update leaves a module whose source it cannot fetch as installed and goes on; a
@@ -1059,9 +1095,6 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				Text: "source gone; not checked: its source folder " + untrusted.Text(se.spec.Location, untrusted.MaxName) + " does not exist, so the version installed was rendered",
 				Hint: "restore the folder, or remove the module: " + e.Command(sc, "uninstall", append([]string{se.ent.Name}, req.Display...)...)})
 		}
-		if se.fresh && se.staged == nil {
-			served++
-		}
 		if !se.sourceGone || !req.Installed { // lola update says it as a source-gone finding
 			res.Notices = append(res.Notices, se.notices...)
 		}
@@ -1082,15 +1115,11 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				"see what changed: "+e.commandOf(fresh, append([]string{"-n"}, req.Display...)...))
 		}
 	}
-	if served > 0 {
-		what := fmt.Sprintf("%d modules", served)
-		if served == 1 {
-			what = "1 module"
-		}
+	if cs := cacheServed(entries, e.Now()); cs != nil {
 		fetch := req
 		fetch.Refetch = true
-		res.Notices = append(res.Notices, Notice{Level: LevelInfo,
-			Text: what + " served from your cache (fetched within cache_fresh_for) → " + e.commandOf(fetch, req.again()...)})
+		cs.Command = e.commandOf(fetch, req.again()...)
+		res.CacheServed = cs
 	}
 	// The pins the sync writes are trust changes too: the question is about the manifest as it will
 	// be saved.
@@ -2061,8 +2090,29 @@ func pinReasons(rep *TrustReport, entries []*syncEntry, flag string) {
 		if fetched {
 			rep.Changes[k].Pin = se.pin
 		}
+		if se.update && fetched && se.pin != nil {
+			rep.Changes[k].Fields = withMoved(rep.Changes[k].Fields, "commit", se.ent.Commit, se.pin.Commit)
+			rep.Changes[k].Fields = withMoved(rep.Changes[k].Fields, "digest", se.ent.Digest, se.pin.Digest)
+		}
 	}
 	slices.SortStableFunc(rep.Changes, func(a, b TrustChange) int { return strings.Compare(a.Module, b.Module) })
+}
+
+// withMoved adds to fields the move of a re-pin's field from the value the manifest pins to the one
+// the run pins, unless the change already has the field or the pin does not move it; "" on a side
+// is a value that side lacks (nil), so a hash only added or dropped reads so.
+func withMoved(fields []trust.FieldChange, name, from, to string) []trust.FieldChange {
+	if from == to || slices.ContainsFunc(fields, func(f trust.FieldChange) bool { return f.Field == name }) {
+		return fields
+	}
+	f := trust.FieldChange{Field: name}
+	if from != "" {
+		f.From = from
+	}
+	if to != "" {
+		f.To = to
+	}
+	return append(fields, f)
 }
 
 // shownValue is a field value of a trust change with its strings through untrusted.Text.
@@ -2789,6 +2839,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 					return nil, nil, err
 				}
 				se.fresh = ok && fresh(head.Fetched, e.Now(), age) && (spec.Kind != source.KindGit || head.Commit != "")
+				se.headFetched = head.Fetched
 				// A fresh head that is the pin moves nothing: the entry is synced at its pin, with
 				// no re-pin and so no trust to ask for.
 				if se.fresh && ent.Digest != "" && head.Meta.Digest == ent.Digest && head.Commit == ent.Commit {

@@ -472,7 +472,7 @@ report. Its sections come in this order, each under a header and left out when e
 7. The outcome (`✓ installed kit`, `✓ already in sync`).
 
 A dry run of `lola install`, `lola sync` or `lola update` that would change nothing prints only
-its outcome: `→ already in sync` (`→ already up to date` for `lola update`), or for an install `→ kit already up to date (claude-code)`, as
+its outcome: `→ already in sync` (`→ already up to date` for `lola update` that checked every source, `✓ up to date with your cache (fetched …)` for one that served modules from it), or for an install `→ kit already up to date (claude-code)`, as
 the real run words it. A runtime hook waiting for your consent that you have not seen declined
 before, a warning or skip you have not seen, or a warning notice (a module from outside the project, other modules out of sync) is
 something to show: that dry run prints its full report. So, under `-v`, is any finding, notice or
