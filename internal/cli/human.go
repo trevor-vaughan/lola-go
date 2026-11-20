@@ -142,7 +142,7 @@ func stepLine(s style, st plan.Step) string {
 		line += " (" + st.Note + ")"
 	}
 	switch st.Action {
-	case plan.ActionDelete, plan.ActionForget:
+	case plan.ActionDelete, plan.ActionForget, plan.ActionKeep:
 		return s.info(line)
 	case plan.ActionAbsent:
 		return s.warn(line)

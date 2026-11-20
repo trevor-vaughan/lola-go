@@ -59,7 +59,14 @@ says `saved to profile rust; it is not on at user scope → lola profile --user 
 | `--profile <name>` | Remove the entry from this profile (`base` is the scope's base) instead of the layer the module comes from. |
 | `-y`, `--yes` | Do not ask for confirmation. |
 | `--force` | Also delete files edited since lola wrote them, without asking; what it replaces or deletes goes to a new trash run (`lola trash`). |
+| `--keep-edits` | Leave files (and JSON members) edited since lola wrote them as they are, and stop managing them; everything else is removed as usual. Cannot be combined with `--force`. Still asks like a plain uninstall. |
 | `-n`, `--dry-run` | Print the plan and write nothing. |
+
+With `--keep-edits` each kept file prints `→ kept <path>: hand-edited; lola no longer manages it, so
+installing the module again reports it as not written by lola` (`would keep` under `-n`), and a kept JSON
+member names its file and key. The files leave `lock.json`, so installing the module again reports each as an
+`unowned` conflict (`--force` then replaces it, into the trash). JSON: `kept`, an array (`[]` when none)
+of those paths, and a `keep` step for each in `steps`.
 
 Refusals:
 
@@ -86,7 +93,11 @@ Refusals:
 - Off a terminal without `-y`, when files would be removed: `lola uninstall needs confirmation,
   and there is no terminal to ask on`, hinting the run with `-y` (`lola uninstall my-module -y`).
 - A file edited since lola wrote it: `refusing to change anything: 1 conflict, which --force
-  overrides`, each file on its own line, hinting `lola uninstall my-module --force`.
+  overrides`, each file on its own line, hinting two runs: `lola uninstall my-module --keep-edits`
+  (leaves the edited files, your flags kept; `-y` only if you gave it, so off a terminal that run's own refusal hints it) and `lola uninstall my-module --force`
+  (deletes them).
+- `--keep-edits` with `--force`: `--keep-edits and --force cannot be combined; pick one`, hinting each
+  run without the other.
 
-JSON (`--json`, [Output contract](../usage.md#output-contract)): `modules`, `steps`, `findings`, `notices`, `edits`, `scripts` and `dry_run`; the refusal off a
+JSON (`--json`, [Output contract](../usage.md#output-contract)): `modules`, `steps`, `findings`, `notices`, `edits`, `scripts`, `kept` and `dry_run`; the refusal off a
 terminal carries the same keys beside `error` and `hints`.

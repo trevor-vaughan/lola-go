@@ -2672,7 +2672,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	}
 	res := newResult(opts.DryRun)
 	defer func() { markEvents(res.Findings) }() // what no scope's plan compared is new
-	res.PicksCleared = []PickCleared{}
+	res.PicksCleared, res.Kept = []PickCleared{}, []string{}
 	// The files an uninstall removes are the ledger's, which is this checkout's own only while
 	// git does not track it.
 	if err := e.refuseTrackedLedger(ctx, sc, res); err != nil {
@@ -2835,6 +2835,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	if err != nil {
 		return nil, err
 	}
+	e.noteKept(pr.plan.Steps, opts.DryRun, res)
 	var change manifest.Change
 	var base *writeTo // project.yml, when change edits it
 	files := map[string]*fileEdit{}
@@ -2915,6 +2916,28 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		}
 	}
 	return res, nil
+}
+
+// noteKept lists in res.Kept, and as a notice each, the files and members steps keep (plan.ActionKeep):
+// what an uninstall with KeepEdits left in place and forgot. A notice is worded for a dry run as what
+// would happen.
+func (e *Engine) noteKept(steps []plan.Step, dry bool, res *Result) {
+	for _, st := range steps {
+		if st.Action != plan.ActionKeep {
+			continue
+		}
+		dest := st.Path
+		if st.Key != "" {
+			dest += " " + st.Key
+		}
+		dest = untrusted.Text(dest, untrusted.MaxName) // a member key is the module author's
+		res.Kept = append(res.Kept, dest)
+		text := "kept %s: hand-edited; lola no longer manages it, so installing the module again reports it as not written by lola"
+		if dry {
+			text = "would keep %s: hand-edited; lola would no longer manage it, so installing the module again would report it as not written by lola"
+		}
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: fmt.Sprintf(text, dest)})
+	}
 }
 
 // picksToClear is the removal of the picks a project's uninstall leaves behind: of each module of

@@ -180,7 +180,7 @@ func (e *Engine) machinePathNotices(ctx context.Context, sc Scope, p *plan.Plan)
 	for _, f := range p.Files {
 		members := map[string][]string{} // module -> member names written to f
 		for _, s := range p.Steps {
-			if s.Target == f.Target && s.Path == f.Logical && s.Key != "" && s.Action != plan.ActionDelete && s.Action != plan.ActionForget {
+			if s.Target == f.Target && s.Path == f.Logical && s.Key != "" && s.Action != plan.ActionDelete && s.Action != plan.ActionForget && s.Action != plan.ActionKeep {
 				members[s.Module] = append(members[s.Module], untrusted.Text(s.Name, untrusted.MaxName))
 			}
 		}

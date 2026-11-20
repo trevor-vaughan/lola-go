@@ -92,6 +92,7 @@ const (
 	ActionDelete Action = "delete"
 	ActionForget Action = "forget"
 	ActionAbsent Action = "absent" // an owned non-string array member the user removed: kept owned, not rewritten
+	ActionKeep   Action = "keep"   // a hand-edited file or member an uninstall with KeepEdits leaves as it is and forgets
 )
 
 // KindDirectory is the Kind of a step that removes a directory the plan's deletions leave empty.

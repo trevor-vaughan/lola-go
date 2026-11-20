@@ -30,6 +30,11 @@ type Request struct {
 	// ForceRun is the command that repeats the run with --force, the hint of a refusal --force
 	// would override; "" gives that refusal no hint.
 	ForceRun string
+	// KeepEdits leaves a hand-edited file or member an owner's removal would delete in place and
+	// forgets it, instead of refusing; KeepRun is the command that repeats the run so, which a
+	// refusal of such an edit hints before ForceRun ("" for none).
+	KeepEdits bool
+	KeepRun   string
 	// Replace lists unowned destinations the plan overwrites instead of refusing (Replaceable).
 	Replace []Replaceable
 }
@@ -551,6 +556,10 @@ func (p *planner) drop(owner string, a ledger.Artifact) error {
 		step.Action, step.Note = ActionForget, "already gone"
 		p.steps = append(p.steps, step)
 		return nil
+	case cur != a.SHA256 && p.req.KeepEdits:
+		step.Action, step.Note = ActionKeep, "hand-edited"
+		p.steps = append(p.steps, step)
+		return nil
 	case cur != a.SHA256:
 		step.Forced = "hand-edited"
 		p.conflict(a, "hand-edited since lola wrote it; deleting it would lose your edits", true)
@@ -591,7 +600,11 @@ func (p *planner) conflictError() error {
 	if !ce.Overridable {
 		return ce
 	}
-	return errs.WithHints(ce, p.req.ForceRun)
+	var hints []string
+	if p.req.KeepRun != "" {
+		hints = append(hints, p.req.KeepRun)
+	}
+	return errs.WithHints(ce, append(hints, p.req.ForceRun)...)
 }
 
 func (p *planner) finish() (*Plan, error) {

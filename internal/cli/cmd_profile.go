@@ -147,6 +147,13 @@ func forceRun(cmd *cobra.Command, args []string) string {
 	return runWithout(cmd, args, append([]string{"force"}, consentFlags...)...) + " --force"
 }
 
+// keepRun is the user's run with --keep-edits: what an uninstall's refusal of a hand-edited file
+// hints beside forceRun (engine.Options.KeepRun). Unlike --force it does not answer the uninstall's
+// question, so it keeps -y only when the user gave it; the hinted run's own refusal adds it.
+func keepRun(cmd *cobra.Command, args []string) string {
+	return completeRun(cmd, args, "keep-edits", "force") + " --keep-edits"
+}
+
 // renderRun is forceRun as a real run, without -n: what renders a forceable skip, which a dry run
 // plans but does not write (engine.Options.RenderRun).
 func renderRun(cmd *cobra.Command, args []string) string {

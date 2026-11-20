@@ -131,6 +131,11 @@ type Options struct {
 	// ForceRun is the user's run with --force, which a refusal of conflicts --force overrides
 	// hints; "" for no hint.
 	ForceRun string
+	// KeepEdits is uninstall only: a hand-edited file or member stays as it is and leaves the ledger
+	// (Result.Kept) instead of refusing the uninstall; KeepRun is the user's run with --keep-edits,
+	// which that refusal hints before ForceRun, "" for no hint.
+	KeepEdits bool
+	KeepRun   string
 	// TargetRun is the user's run at scope sc with -t naming only the target given, which a
 	// refusal of two targets' destinations that are one real file hints once per target; nil for
 	// no hint.
@@ -412,6 +417,10 @@ type Result struct {
 	// PicksCleared is, for an uninstall, each module whose picks left selections.yaml with it, and
 	// under -n what would; [] when none, and nil, so absent from the JSON, for any other command.
 	PicksCleared []PickCleared `json:"picks_cleared,omitzero"`
+	// Kept is, for an uninstall with KeepEdits, each hand-edited file (a JSON member as its file and
+	// pointer) it left as it is and forgot, and under -n what it would; [] when none, and nil, so
+	// absent from the JSON, for any other command.
+	Kept []string `json:"kept,omitzero"`
 	// Trash is each trash run holding a copy of a file --force replaced or deleted, one per scope
 	// written (ForcedFiles); [] when none. TrashCredentials is each such copy that may hold
 	// credentials: the whole file of a JSON member --force wrote over or removed.
@@ -1640,7 +1649,7 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		}
 	}
 	req := plan.Request{Roots: map[string]string{}, Ledger: led, Changes: changes, Force: opts.Force,
-		ForceRun: opts.ForceRun, Replace: replace}
+		ForceRun: opts.ForceRun, KeepEdits: opts.KeepEdits, KeepRun: opts.KeepRun, Replace: replace}
 	for _, t := range e.Targets {
 		req.Roots[t.ID()] = t.Root(sc.Kind, sc.ProjectDir, e.Paths)
 	}

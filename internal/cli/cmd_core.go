@@ -218,7 +218,7 @@ func (a *app) installCmd() *cobra.Command {
 
 func (a *app) uninstallCmd() *cobra.Command {
 	var targets []string
-	var dry, yes, force bool
+	var dry, yes, force, keepEdits bool
 	var profileName string
 	g := argGuide{noun: "module", find: "lola list", usage: "lola uninstall <module>... [-t target] [-y]",
 		examples: []string{"lola uninstall my-module -y", "lola uninstall my-module -t claude-code", "lola uninstall my-module --dry-run"}}
@@ -233,6 +233,10 @@ func (a *app) uninstallCmd() *cobra.Command {
 		Args:              g.args(1),
 		ValidArgsFunction: a.completeInstalled,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if keepEdits && force {
+				return errs.WithHints(errors.New("--keep-edits and --force cannot be combined; pick one"),
+					"keep the edited files: "+runWithout(cmd, args, "force"), "delete them too: "+runWithout(cmd, args, "keep-edits"))
+			}
 			eng, err := a.engine()
 			if err != nil {
 				return err
@@ -255,7 +259,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 			sc := scs[0].Scope
 			// The preview's where-question is answered once and reused by the run (askWhere remembers it).
 			opts := engine.Options{Targets: targets, DryRun: true, Force: force, ForceRun: forceRun(cmd, args), Display: outputFlags(cmd),
-				Target: req, AskWhere: a.askWhere(a.prompter(cmd), nil), Retarget: func(module string, ts []string) string {
+				KeepEdits: keepEdits, KeepRun: keepRun(cmd, args), Target: req, AskWhere: a.askWhere(a.prompter(cmd), nil), Retarget: func(module string, ts []string) string {
 					run := runWithout(cmd, []string{module}, "target")
 					if len(ts) == 0 {
 						return run
@@ -294,6 +298,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	cmd.Flags().BoolVar(&force, "force", false, "also delete files edited since lola wrote them, without asking")
+	cmd.Flags().BoolVar(&keepEdits, "keep-edits", false, "leave files edited since lola wrote them as they are, and stop managing them")
 	cmd.Flags().BoolP("verbose", "v", false, "print the report in full: every fold open and every notice")
 	cmd.Flags().StringVar(&profileName, "profile", "", "remove the entry from this profile (base: the scope's base)")
 	_ = cmd.RegisterFlagCompletionFunc("profile", a.completeProfiles(true))

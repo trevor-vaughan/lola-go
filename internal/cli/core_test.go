@@ -857,7 +857,8 @@ var _ = Describe("core commands", func() {
 		force := "lola uninstall example --root " + proj + " --force"
 		Expect(r.err).To(Equal(projectContext(proj)+"error: refusing to change anything: 1 conflict, which --force overrides\n"+
 			"  claude-code: .claude/commands/ship.md: hand-edited since lola wrote it; deleting it would lose your edits\n"+
-			"  hint: "+force+"\n"), "the -y given to a safe uninstall answers no forced one")
+			"  hint: lola uninstall example --root "+proj+" --yes --keep-edits\n"+
+			"  hint: "+force+"\n"), "the -y given to a safe uninstall answers no forced one, and the keeping run keeps it")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 		r = lola(shellWords(force)[1:]...)
 		Expect(r.code).To(Equal(0), "--force answers the question, off a terminal too (user decision, 2026-10-22): "+r.err)
@@ -874,6 +875,7 @@ var _ = Describe("core commands", func() {
 		Expect(r.err).To(Equal(projectContext(proj) + "error: refusing to change anything: 2 conflicts, which --force overrides\n" +
 			"  claude-code: .claude/commands/ship.md: hand-edited since lola wrote it; deleting it would lose your edits\n" +
 			"  claude-code: .claude/skills/review/SKILL.md: hand-edited since lola wrote it; deleting it would lose your edits\n" +
+			"  hint: lola uninstall example --root " + proj + " --keep-edits\n" +
 			"  hint: " + force + "\n"))
 		r = lola(shellWords(force)[1:]...)
 		Expect(r.code).To(Equal(0), r.err)
@@ -881,6 +883,61 @@ var _ = Describe("core commands", func() {
 		for _, f := range []string{"commands/ship.md", "commands/land.md", "skills/review"} {
 			Expect(filepath.Join(proj, ".claude", f)).NotTo(BeAnExistingFile(), f)
 		}
+	})
+
+	It("uninstall --keep-edits leaves the hand-edited file, says so, and the refusal hints it beside --force", func() {
+		writeTree(mod, map[string]string{"commands/land.md": "Land\n"})
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine now"})
+		r := lola("uninstall", "example", "-C", proj, "-y")
+		Expect(r.code).To(Equal(1))
+		keep, force := "lola uninstall example --root "+proj+" --yes --keep-edits", "lola uninstall example --root "+proj+" --force"
+		Expect(r.err).To(HaveSuffix("  hint: " + keep + "\n  hint: " + force + "\n"))
+
+		r = lola(shellWords(keep)[1:]...)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("→ kept .claude/commands/ship.md: hand-edited; lola no longer manages it, so installing the module again reports it as not written by lola"))
+		b, err := os.ReadFile(filepath.Join(proj, ".claude/commands/ship.md"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(Equal("mine now"))
+		Expect(filepath.Join(proj, ".claude/commands/land.md")).NotTo(BeAnExistingFile())
+
+		r = lola("install", mod, "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(".claude/commands/ship.md"))
+	})
+
+	It("the --keep-edits hint adds no -y; the refusal it meets off a terminal hints one, and that run keeps the file", func() {
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine now"})
+		r := lola("uninstall", "example", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		keep := "lola uninstall example --root " + proj + " --keep-edits"
+		Expect(r.err).To(ContainSubstring("  hint: " + keep + "\n"))
+		r = lola(shellWords(keep)[1:]...)
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("lola uninstall needs confirmation"))
+		again := "lola uninstall example --keep-edits --root " + proj + " -y"
+		Expect(r.err).To(HaveSuffix("  hint: " + again + "\n"))
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
+		r = lola(shellWords(again)[1:]...)
+		Expect(r.code).To(Equal(0), r.err)
+		b, err := os.ReadFile(filepath.Join(proj, ".claude/commands/ship.md"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(Equal("mine now"))
+	})
+
+	It("uninstall --keep-edits --json names the kept files, and refuses --force beside it", func() {
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine now"})
+		r := lola("uninstall", "example", "-C", proj, "--keep-edits", "--force")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("--keep-edits and --force cannot be combined"))
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
+		r = lola("uninstall", "example", "-C", proj, "--keep-edits", "-y", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring(`"kept": [`))
+		Expect(r.out).To(ContainSubstring(`.claude/commands/ship.md`))
 	})
 
 	It("sync --force on a pulled project.yml still refuses for trust off a terminal", func() {
