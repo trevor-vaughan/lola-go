@@ -33,7 +33,7 @@ testcases:
   - name: X2 An entry's var override re-renders after trust
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'echo \"    vars: {team: platform}\" >> /work/proj/.lola/project.yml'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''echo "    vars: {team: platform}" >> /work/proj/.lola/project.yml'''
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -88,7 +88,7 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemoutjson.trust.recorded ShouldBeTrue
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'tail -q -n 1 /work/proj/.claude/commands/review.md /work/proj/.opencode/commands/review.md | paste -sd \" \"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''tail -q -n 1 /work/proj/.claude/commands/review.md /work/proj/.opencode/commands/review.md | paste -sd " "'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "Team platform on claude-code; model sonnet. Team platform on opencode; model none."
@@ -116,7 +116,7 @@ testcases:
           - result.systemoutjson.template.file ShouldEqual commands/c.md.liquid
           - result.systemoutjson.template.line ShouldEqual 2
           - result.systemoutjson.template.rendered ShouldBeFalse
-          - "result.systemoutjson.error ShouldEndWith \"end it with | json so the value stays one YAML value: {{ vars.x | json }}\""
+          - 'result.systemoutjson.error ShouldEndWith "end it with | json so the value stays one YAML value: {{ vars.x | json }}"'
           - result.systemoutjson.hints.hints0 ShouldEqual "lola check -C /work/proj /e2e/fixtures/bad --target claude-code --json"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/x3-after.json /work /home/tester && cmp /tmp/x3-before.json /tmp/x3-after.json'"

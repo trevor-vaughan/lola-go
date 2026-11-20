@@ -13,17 +13,17 @@ import (
 var _ = Describe("Recorded.Check", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
-	sha1 := strings.Repeat("a", 40)
+	commit := strings.Repeat("a", 40)
 	digest := "sha256:" + strings.Repeat("0", 64)
 
 	It("accepts the fields lola writes", func() {
 		for _, r := range []source.Recorded{
-			{Source: "https://example.com/a.git", Ref: "v1", Path: "sub/dir", Commit: sha1, Digest: digest},
+			{Source: "https://example.com/a.git", Ref: "v1", Path: "sub/dir", Commit: commit, Digest: digest},
 			{Source: "git@example.com:a/b.git", Commit: strings.Repeat("b", 64), Digest: digest},
 			{Source: "../modules/x"},
 			{Source: "https://example.com/x.tar.gz", Digest: digest},
-			{Source: "ssh://git@example.com/a/b.git", Commit: sha1, Digest: digest},
-			{Source: "https://example.com/a", Commit: sha1, Digest: digest},
+			{Source: "ssh://git@example.com/a/b.git", Commit: commit, Digest: digest},
+			{Source: "https://example.com/a", Commit: commit, Digest: digest},
 		} {
 			Expect(r.Check()).To(Succeed(), "%+v", r)
 		}
@@ -48,10 +48,10 @@ var _ = Describe("Recorded.Check", func() {
 		Entry("an absolute path", source.Recorded{Source: "../x", Path: "/etc"}, `path "/etc" must be a relative path inside the source`),
 		Entry("an abbreviated commit", source.Recorded{Source: "../x", Commit: "abc123"}, `commit "abc123" is not a full commit SHA`),
 		Entry("an upper-case commit", source.Recorded{Source: "../x", Commit: strings.Repeat("A", 40)}, "is not a full commit SHA"),
-		Entry("a commit on an archive URL", source.Recorded{Source: "https://example.com/x.tar.gz", Commit: sha1, Digest: digest}, "commit is recorded only for a git source"),
-		Entry("a commit on a local archive", source.Recorded{Source: "../x.zip", Commit: sha1, Digest: digest}, "commit is recorded only for a git source"),
-		Entry("a commit on a folder", source.Recorded{Source: "../x", Commit: sha1, Digest: digest}, "commit is recorded only for a git source"),
-		Entry("a commit on a file URL", source.Recorded{Source: "file:///srv/x", Commit: sha1, Digest: digest}, "commit is recorded only for a git source"),
+		Entry("a commit on an archive URL", source.Recorded{Source: "https://example.com/x.tar.gz", Commit: commit, Digest: digest}, "commit is recorded only for a git source"),
+		Entry("a commit on a local archive", source.Recorded{Source: "../x.zip", Commit: commit, Digest: digest}, "commit is recorded only for a git source"),
+		Entry("a commit on a folder", source.Recorded{Source: "../x", Commit: commit, Digest: digest}, "commit is recorded only for a git source"),
+		Entry("a commit on a file URL", source.Recorded{Source: "file:///srv/x", Commit: commit, Digest: digest}, "commit is recorded only for a git source"),
 		Entry("a digest without its algorithm", source.Recorded{Source: "../x", Digest: strings.Repeat("0", 64)}, "is not sha256: and 64 hex digits"),
 		Entry("a short digest", source.Recorded{Source: "../x", Digest: "sha256:abc"}, "is not sha256: and 64 hex digits"),
 		Entry("an upper-case digest", source.Recorded{Source: "../x", Digest: "sha256:" + strings.Repeat("A", 64)}, "is not sha256: and 64 hex digits"),

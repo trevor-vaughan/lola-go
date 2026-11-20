@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"slices"
 	"strconv"
@@ -388,10 +387,7 @@ func (e *uninstalledScopesError) Unwrap() error { return e.err }
 
 // JSONFields carries the finished scopes' results and the failed scope beside the fields of err's own document.
 func (e *uninstalledScopesError) JSONFields() map[string]any {
-	fields := map[string]any{}
-	if f, ok := errors.AsType[jsonFielder](e.err); ok {
-		maps.Copy(fields, f.JSONFields())
-	}
+	fields := jsonFields(e.err)
 	fields["scopes"], fields["failed_scope"] = e.done, destLabel(e.failed)
 	return fields
 }

@@ -121,7 +121,7 @@ testcases:
           - result.systemerr ShouldContainSubstring "~ commands/deploy.md"
           - 'result.systemerr ShouldContainSubstring "error: lola update needs your trust for the pins it would write for pack, and there is no terminal to ask on"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'test \"$(wc -l < /run/gitserve/requests.log)\" -gt \"$(cat /tmp/u4.before)\"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''test "$(wc -l < /run/gitserve/requests.log)" -gt "$(cat /tmp/u4.before)"'''
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -140,7 +140,7 @@ testcases:
           - result.systemout ShouldContainSubstring "updated pack"
           - result.systemout ShouldNotContainSubstring "up to date with your cache"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'test \"$(wc -l < /run/gitserve/requests.log)\" -gt \"$(cat /tmp/u4.before)\"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''test "$(wc -l < /run/gitserve/requests.log)" -gt "$(cat /tmp/u4.before)"'''
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -153,7 +153,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'rm \"$XDG_CONFIG_HOME/lola/config.yaml\"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''rm "$XDG_CONFIG_HOME/lola/config.yaml"'''
         assertions:
           - result.code ShouldEqual 0
 
@@ -229,10 +229,10 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "✓ installed pick (claude-code)"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'cat \"$XDG_CONFIG_HOME/lola/selections.yaml\"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''cat "$XDG_CONFIG_HOME/lola/selections.yaml"'''
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"only: [command/deploy]\""
+          - 'result.systemout ShouldContainSubstring "only: [command/deploy]"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} test ! -e /work/pick/.claude/commands/review.md"
         assertions:
@@ -246,7 +246,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/pick"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"pick adds command/lint, not installed (only: in selections.yaml projects[/work/pick]) → lola install -C /work/pick pick --unskip command/lint\""
+          - 'result.systemout ShouldContainSubstring "pick adds command/lint, not installed (only: in selections.yaml projects[/work/pick]) → lola install -C /work/pick pick --unskip command/lint"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} test ! -e /work/pick/.claude/commands/lint.md"
         assertions:
@@ -263,15 +263,15 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/pick -n"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✗ pick: claude-code (not in the version this run installs)\""
-          - "result.systemout ShouldContainSubstring \".claude/commands/deploy.md\""
+          - 'result.systemout ShouldContainSubstring "✗ pick: claude-code (not in the version this run installs)"'
+          - 'result.systemout ShouldContainSubstring ".claude/commands/deploy.md"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/pick"
         assertions:
           - result.code ShouldEqual 3
-          - "result.systemerr ShouldContainSubstring \"✗ pick: claude-code (not in the version this run installs)\""
-          - "result.systemerr ShouldContainSubstring \"needs your confirmation to remove the files pick's new version drops, and there is no terminal to ask on\""
-          - "result.systemerr ShouldContainSubstring \"hint: then confirm them: lola update -C /work/pick --fetch --trust=entries,profiles --at pick=\""
+          - 'result.systemerr ShouldContainSubstring "✗ pick: claude-code (not in the version this run installs)"'
+          - 'result.systemerr ShouldContainSubstring "needs your confirmation to remove the files pick''s new version drops, and there is no terminal to ask on"'
+          - 'result.systemerr ShouldContainSubstring "hint: then confirm them: lola update -C /work/pick --fetch --trust=entries,profiles --at pick="'
       - type: exec
         script: "{{.runtime}} exec {{.container}} test -f /work/pick/.claude/commands/deploy.md"
         assertions:
@@ -318,9 +318,9 @@ testcases:
         script: "{{.runtime}} exec {{.container}} cat /tmp/u10.err"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemoutjson.error ShouldEqual \"lola update needs your trust for the pins it would write for drop; and your confirmation to remove the files drop's new version drops, and there is no terminal to ask on\""
-          - "result.systemoutjson.hints.hints1 ShouldStartWith \"then accept them: lola update -C /work/drop --fetch --trust=entries --at drop=\""
-          - "result.systemoutjson.hints.hints1 ShouldEndWith \" --json -y\""
+          - 'result.systemoutjson.error ShouldEqual "lola update needs your trust for the pins it would write for drop; and your confirmation to remove the files drop''s new version drops, and there is no terminal to ask on"'
+          - 'result.systemoutjson.hints.hints1 ShouldStartWith "then accept them: lola update -C /work/drop --fetch --trust=entries --at drop="'
+          - 'result.systemoutjson.hints.hints1 ShouldEndWith " --json -y"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/u10-after.json /work/drop /home/tester/.cache/lola /home/tester/.local > /dev/null && {{.snapshot}} --compare /tmp/u10-before.json /tmp/u10-after.json'"
         assertions:

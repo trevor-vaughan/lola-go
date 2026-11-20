@@ -76,8 +76,8 @@ its scope ([Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-s
 Like `lola sync`, it refuses a project whose `.lola/lock.json` git tracks, since a committed one could
 turn profiles on.
 
-| Flag | What it does |
-|---|---|
+| Flag                         | What it does                |
+|------------------------------|-----------------------------|
 | `-t`, `--target <assistant>` | Only show these assistants. |
 
 The global flags apply too ([Using lola](../usage.md#commands)): `--project`, `--user`, `-C/--root <dir>`

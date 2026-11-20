@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -156,13 +155,8 @@ func SaveTargetVersions(path, home string, set map[string]string) error {
 // writeDoc encodes d and writes it atomically to path at mode 0600, or at the target of the
 // symbolic link path is; outcome says what a failed write means for the run.
 func writeDoc(path string, d *yaml.Node, outcome string) error {
-	var b bytes.Buffer
-	enc := yaml.NewEncoder(&b)
-	enc.SetIndent(2)
-	if err := enc.Encode(d); err != nil {
-		return err
-	}
-	if err := enc.Close(); err != nil {
+	b, err := yamldoc.Encode(d)
+	if err != nil {
 		return err
 	}
 	dst := path
@@ -176,7 +170,7 @@ func writeDoc(path string, d *yaml.Node, outcome string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 		return err
 	}
-	if err := fsx.WriteFileAtomic(dst, b.Bytes(), 0o600); err != nil {
+	if err := fsx.WriteFileAtomic(dst, b, 0o600); err != nil {
 		return errs.WithHints(fmt.Errorf("could not write %s: %w", untrusted.Text(dst, untrusted.MaxName), untrusted.CleanErr(err)),
 			"close any program that holds it open and check its directory's permissions, then rerun",
 			outcome)

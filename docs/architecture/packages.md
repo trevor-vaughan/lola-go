@@ -12,7 +12,7 @@ Maintainer notes on Packages. It is split out of [architecture](../architecture.
   project's repository key in `selections.yaml`:
   strict loading of untrusted, hand-edited YAML, selectors, effective exclusions, and locked
   node-preserving writes.
-- `yamldoc`: Reading a hand-edited YAML file as one untrusted document.
+- `yamldoc`: Reading a hand-edited YAML file as one untrusted document; `Encode` writes lola's YAML with a two-space indent.
   - `Read`: non-blocking open, regular files only, size cap, one document, no anchors,
     aliases or merge keys.
   - The node helpers `config` and `manifest` edit with.

@@ -13,10 +13,10 @@ scope ([Sync, pins and trust](../guides/sync-and-trust.md#sync-pins-and-trust)).
 asks (default No), then forgets them; a module left installed on no target lola knows is
 forgotten with them. It deletes and moves no file.
 
-| Flag | What it does |
-|---|---|
-| `-n`, `--dry-run` | List what it would forget and write nothing. |
-| `-y`, `--yes` | Do not ask for confirmation, and open no scope picker: name the scope with `--project`, `--user` or `--scope` (`lola repair --user -y`), else it is found as [Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope) describes. |
+| Flag              | What it does                                                                                                                                                                                                                                       |
+|-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-n`, `--dry-run` | List what it would forget and write nothing.                                                                                                                                                                                                       |
+| `-y`, `--yes`     | Do not ask for confirmation, and open no scope picker: name the scope with `--project`, `--user` or `--scope` (`lola repair --user -y`), else it is found as [Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope) describes. |
 
 It prints `will forget 2 entries in <root>/.lola/lock.json; files are not touched:` and one line
 per entry: `module kit: artifact "../outside.md" on target "claude-code"`, `module kit: target

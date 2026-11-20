@@ -5,7 +5,7 @@ Back to the [README](../../README.md).
 Maintainer notes on Marketplaces. It is split out of [architecture](../architecture.md).
 
 `lola market` adapts `internal/engine/market.go`; the catalogs themselves are read
-by the pure `market` package (see [Packages](#packages)), and every file and network access is
+by the pure `market` package (see [Packages](packages.md)), and every file and network access is
 the engine's.
 
 - **Storage**.

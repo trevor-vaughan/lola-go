@@ -13,10 +13,10 @@ any other argument names a cached module. Defaults to the current directory
 ones you keep mention, with the `lola install … --with-mentions` that adds them
 ([Mentions](../guides/choosing-what-to-install.md#mentions)).
 
-| Flag | What it does |
-|---|---|
+| Flag                         | What it does                                                                                                                                                                  |
+|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `-t`, `--target <assistant>` | Only check these assistants. `<id>@<version>` (`opencode@1.0`) checks for that version in place of the one the scope declares, read as [`lola install`](install.md) reads it. |
-| `--strict` | Exit with an error if any target would drop, change or skip part of a module. |
+| `--strict`                   | Exit with an error if any target would drop, change or skip part of a module.                                                                                                 |
 
 Refusals: an argument that is neither a source nor a cached module (`"nope" is neither a source nor a module in your cache;
 pass a module folder or another source, e.g. lola check ./my-module; sources are …`, hinting

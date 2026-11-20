@@ -27,8 +27,8 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} tidy -C /work/a -t claude-code --all -y"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✓ moved 1 item (11 B) to the trash: {{.state}}/lola/trash/\""
-          - "result.systemout ShouldContainSubstring \"claude-code  command/stray  .claude/commands/stray.md\""
+          - 'result.systemout ShouldContainSubstring "✓ moved 1 item (11 B) to the trash: {{.state}}/lola/trash/"'
+          - 'result.systemout ShouldContainSubstring "claude-code  command/stray  .claude/commands/stray.md"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} test -e /work/a/.claude/commands/stray.md"
         assertions:
@@ -52,8 +52,8 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} trash {{.run}}"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"  /work/a/.claude/commands/stray.md → {{.state}}/lola/trash/{{.run}}/\""
-          - "result.systemout ShouldContainSubstring \"→ restore them: lola trash {{.run}} --restore\""
+          - 'result.systemout ShouldContainSubstring "  /work/a/.claude/commands/stray.md → {{.state}}/lola/trash/{{.run}}/"'
+          - 'result.systemout ShouldContainSubstring "→ restore them: lola trash {{.run}} --restore"'
 
   - name: T3 A restore puts the file back with its content and removes the emptied run
     steps:
@@ -68,9 +68,9 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} trash {{.run}} --restore"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✓ restored 1 item from trash run {{.run}}\""
-          - "result.systemout ShouldContainSubstring \"    /work/a/.claude/commands/stray.md\""
-          - "result.systemout ShouldContainSubstring \"→ trash run {{.run}} is empty now, and was removed\""
+          - 'result.systemout ShouldContainSubstring "✓ restored 1 item from trash run {{.run}}"'
+          - 'result.systemout ShouldContainSubstring "    /work/a/.claude/commands/stray.md"'
+          - 'result.systemout ShouldContainSubstring "→ trash run {{.run}} is empty now, and was removed"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} cat /work/a/.claude/commands/stray.md"
         assertions:
@@ -88,8 +88,8 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} trash 20000101T000000Z --restore"
         assertions:
           - result.code ShouldEqual 1
-          - "result.systemerr ShouldContainSubstring \"there is no trash run 20000101T000000Z\""
-          - "result.systemerr ShouldContainSubstring \"hint: see the runs: lola trash\""
+          - 'result.systemerr ShouldContainSubstring "there is no trash run 20000101T000000Z"'
+          - 'result.systemerr ShouldContainSubstring "hint: see the runs: lola trash"'
 
   - name: K1 A pick made in one clone is saved under the repository's key
     steps:
@@ -97,15 +97,15 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install {{.url}} -C /work/a -t claude-code --skip skill/charlie"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"→ picks for kit saved in selections.yaml projects[git:127.0.0.1:8765/app#.]\""
-          - "result.systemout ShouldContainSubstring \"✓ installed kit (claude-code)\""
+          - 'result.systemout ShouldContainSubstring "→ picks for kit saved in selections.yaml projects[git:127.0.0.1:8765/app#.]"'
+          - 'result.systemout ShouldContainSubstring "✓ installed kit (claude-code)"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'grep -E \"^  git:|skip:\" {{.selections}}'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''grep -E "^  git:|skip:" {{.selections}}'''
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldEqual \"  git:127.0.0.1:8765/app#.:\n      skip: [skill/charlie]\""
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'ls /work/a/.claude/skills | paste -sd \" \"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''ls /work/a/.claude/skills | paste -sd " "'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "alpha bravo"
@@ -116,15 +116,15 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install {{.url}} -C /work/b -t claude-code"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"→ kit: skipped in selections.yaml: skill/charlie\""
-          - "result.systemout ShouldContainSubstring \"✓ installed kit (claude-code)\""
+          - 'result.systemout ShouldContainSubstring "→ kit: skipped in selections.yaml: skill/charlie"'
+          - 'result.systemout ShouldContainSubstring "✓ installed kit (claude-code)"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'ls /work/b/.claude/skills | paste -sd \" \"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''ls /work/b/.claude/skills | paste -sd " "'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "alpha bravo"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'grep -c \"/work\" {{.selections}}'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''grep -c "/work" {{.selections}}'''
         assertions:
           - result.code ShouldEqual 1
           - result.systemout ShouldEqual "0"
@@ -135,12 +135,12 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/b -t claude-code --skip skill/bravo"
         assertions:
           - result.code ShouldEqual 3
-          - "result.systemerr ShouldContainSubstring \"✗ kit: claude-code (dropped by your pick change)\""
-          - "result.systemerr ShouldContainSubstring \".claude/skills/bravo/SKILL.md\""
-          - "result.systemerr ShouldContainSubstring \"error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\""
-          - "result.systemerr ShouldContainSubstring \"hint: lola install kit --root /work/b --skip skill/bravo --target claude-code -y\""
+          - 'result.systemerr ShouldContainSubstring "✗ kit: claude-code (dropped by your pick change)"'
+          - 'result.systemerr ShouldContainSubstring ".claude/skills/bravo/SKILL.md"'
+          - 'result.systemerr ShouldContainSubstring "error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written"'
+          - 'result.systemerr ShouldContainSubstring "hint: lola install kit --root /work/b --skip skill/bravo --target claude-code -y"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'ls /work/b/.claude/skills | paste -sd \" \"; grep skip: {{.selections}}'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''ls /work/b/.claude/skills | paste -sd " "; grep skip: {{.selections}}'''
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldEqual \"alpha bravo\n      skip: [skill/charlie]\""
@@ -151,11 +151,11 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/b -t claude-code --skip skill/bravo -y -v"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"→ delete claude-code .claude/skills/bravo/SKILL.md\""
-          - "result.systemout ShouldContainSubstring \"→ kit: skipped in selections.yaml: skill/bravo, skill/charlie\""
-          - "result.systemout ShouldContainSubstring \"✓ installed kit (claude-code)\""
+          - 'result.systemout ShouldContainSubstring "→ delete claude-code .claude/skills/bravo/SKILL.md"'
+          - 'result.systemout ShouldContainSubstring "→ kit: skipped in selections.yaml: skill/bravo, skill/charlie"'
+          - 'result.systemout ShouldContainSubstring "✓ installed kit (claude-code)"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'ls /work/b/.claude/skills | paste -sd \" \"; ls /work/a/.claude/skills | paste -sd \" \"; grep skip: {{.selections}}'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''ls /work/b/.claude/skills | paste -sd " "; ls /work/a/.claude/skills | paste -sd " "; grep skip: {{.selections}}'''
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldEqual \"alpha\nalpha bravo\n      skip: [skill/charlie, skill/bravo]\""
@@ -166,15 +166,15 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} tidy -C /work/a -t claude-code command/stray -y"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✓ moved 1 item (11 B) to the trash: {{.state}}/lola/trash/\""
+          - 'result.systemout ShouldContainSubstring "✓ moved 1 item (11 B) to the trash: {{.state}}/lola/trash/"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} trash --empty"
         assertions:
           - result.code ShouldEqual 3
-          - "result.systemerr ShouldContainSubstring \"will delete from the trash:\""
-          - "result.systemerr ShouldContainSubstring \"lola tidy -C /work/a  11 B\""
-          - "result.systemerr ShouldContainSubstring \"error: lola trash needs confirmation, and there is no terminal to ask on\""
-          - "result.systemerr ShouldContainSubstring \"hint: lola trash --empty -y\""
+          - 'result.systemerr ShouldContainSubstring "will delete from the trash:"'
+          - 'result.systemerr ShouldContainSubstring "lola tidy -C /work/a  11 B"'
+          - 'result.systemerr ShouldContainSubstring "error: lola trash needs confirmation, and there is no terminal to ask on"'
+          - 'result.systemerr ShouldContainSubstring "hint: lola trash --empty -y"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} trash --json | python3 -c \"import json,sys; print(len(json.load(sys.stdin)[\\\"runs\\\"]))\"'"
         assertions:
@@ -187,7 +187,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} trash --empty -y"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"✓ deleted 1 trash run, freeing 11 B\""
+          - 'result.systemout ShouldEqual "✓ deleted 1 trash run, freeing 11 B"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} trash"
         assertions:
@@ -204,10 +204,10 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code"
         assertions:
           - result.code ShouldEqual 3
-          - "result.systemerr ShouldContainSubstring \"✗ kit: gemini-cli (target dropped by -t)\""
-          - "result.systemerr ShouldContainSubstring \".gemini/skills/alpha/SKILL.md\""
-          - "result.systemerr ShouldContainSubstring \"error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\""
-          - "result.systemerr ShouldContainSubstring \"hint: lola install kit --root /work/a --target claude-code -y\""
+          - 'result.systemerr ShouldContainSubstring "✗ kit: gemini-cli (target dropped by -t)"'
+          - 'result.systemerr ShouldContainSubstring ".gemini/skills/alpha/SKILL.md"'
+          - 'result.systemerr ShouldContainSubstring "error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written"'
+          - 'result.systemerr ShouldContainSubstring "hint: lola install kit --root /work/a --target claude-code -y"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} test -f /work/a/.gemini/skills/alpha/SKILL.md"
         assertions:
@@ -219,7 +219,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code -y -v"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"→ delete gemini-cli  .gemini/skills/alpha/SKILL.md\""
+          - 'result.systemout ShouldContainSubstring "→ delete gemini-cli  .gemini/skills/alpha/SKILL.md"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} test -e /work/a/.gemini/skills/alpha/SKILL.md"
         assertions:

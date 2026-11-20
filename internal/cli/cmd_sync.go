@@ -196,10 +196,7 @@ func (e *syncedScopesError) Unwrap() error { return e.err }
 // JSONFields carries the synced scopes beside the fields of err's own document, if any, and
 // trusted: what the synced scopes and the failed one recorded.
 func (e *syncedScopesError) JSONFields() map[string]any {
-	fields := map[string]any{}
-	if f, ok := errors.AsType[jsonFielder](e.err); ok {
-		maps.Copy(fields, f.JSONFields())
-	}
+	fields := jsonFields(e.err)
 	fields["scopes"], fields["trusted"] = e.done, written(e.done, e.err)
 	return fields
 }

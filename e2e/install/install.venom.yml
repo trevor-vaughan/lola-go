@@ -57,7 +57,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "✓ added my-module to project.yml (base)"
-          - "result.systemout ShouldContainSubstring \"▸ my-module: 2 changes (claude-code 2)\""
+          - 'result.systemout ShouldContainSubstring "▸ my-module: 2 changes (claude-code 2)"'
           - result.systemout ShouldContainSubstring "✓ installed my-module (claude-code)"
       - type: exec
         script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} {{.lola}} list"
@@ -65,15 +65,15 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "my-module  claude-code  ✓ ok"
       - type: exec
-        script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} sh -c 'echo \"Say hello twice.\" >> ../my-module/skills/hello/SKILL.md'"
+        script: '{{.runtime}} exec -w /work/qs/my-project {{.container}} sh -c ''echo "Say hello twice." >> ../my-module/skills/hello/SKILL.md'''
         assertions:
           - result.code ShouldEqual 0
       - type: exec
         script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} {{.lola}} install ../my-module"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemerr ShouldContainSubstring \"project /work/qs/my-project: project.yml\""
-          - "result.systemout ShouldContainSubstring \"▸ my-module: 1 change (claude-code 1)\""
+          - 'result.systemerr ShouldContainSubstring "project /work/qs/my-project: project.yml"'
+          - 'result.systemout ShouldContainSubstring "▸ my-module: 1 change (claude-code 1)"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} tail -n 1 /work/qs/my-project/.claude/skills/hello/SKILL.md"
         assertions:
@@ -97,9 +97,9 @@ testcases:
         assertions:
           - result.systemout ShouldStartWith "exit=0"
           - result.systemout ShouldContainSubstring "✓ created module authored in /work/authored (agent-plugins)"
-          - "result.systemout ShouldContainSubstring \"→ try it: lola install /work/authored --project -t claude-code\""
+          - 'result.systemout ShouldContainSubstring "→ try it: lola install /work/authored --project -t claude-code"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'find /work/authored -type f | sort | paste -sd \" \"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''find /work/authored -type f | sort | paste -sd " "'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "/work/authored/dev.getlola/commands/hello.md /work/authored/plugin.json /work/authored/skills/hello/SKILL.md"
@@ -122,7 +122,7 @@ testcases:
         script: "{{.runtime}} exec -w /work/i1-proj {{.i1_cache}} {{.container}} {{.hint}} /tmp/i1.json"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✓ installed authored (claude-code)\""
+          - 'result.systemout ShouldContainSubstring "✓ installed authored (claude-code)"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} test -f /work/i1-proj/.claude/skills/hello/SKILL.md"
         assertions:
@@ -138,12 +138,12 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} check /work/authored"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"→ claude-code: claude is not on PATH\""
-          - "result.systemout ShouldContainSubstring \"→ gemini-cli: gemini is not on PATH\""
-          - "result.systemout ShouldContainSubstring \"→ opencode: opencode is not on PATH\""
-          - "result.systemout ShouldContainSubstring \"✓ authored: claude-code renders everything\""
-          - "result.systemout ShouldContainSubstring \"→ authored: gemini-cli command hello: $ARGUMENTS becomes {{args}}\""
-          - "result.systemout ShouldContainSubstring \"✓ authored: opencode renders everything\""
+          - 'result.systemout ShouldContainSubstring "→ claude-code: claude is not on PATH"'
+          - 'result.systemout ShouldContainSubstring "→ gemini-cli: gemini is not on PATH"'
+          - 'result.systemout ShouldContainSubstring "→ opencode: opencode is not on PATH"'
+          - 'result.systemout ShouldContainSubstring "✓ authored: claude-code renders everything"'
+          - 'result.systemout ShouldContainSubstring "→ authored: gemini-cli command hello: $ARGUMENTS becomes {{args}}"'
+          - 'result.systemout ShouldContainSubstring "✓ authored: opencode renders everything"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} check /work/authored --json > /tmp/i2.json'"
         assertions:
@@ -168,23 +168,23 @@ testcases:
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/kit -C /work/proj --scope project -t claude-code -t gemini-cli -t opencode@2.0 -v > /tmp/i3.out && cat /tmp/i3.out'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/agents/critic.md\""
-          - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/commands/deploy.md\""
-          - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/rules/lola/kit/style.md\""
-          - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/skills/lint/SKILL.md\""
-          - "result.systemout ShouldContainSubstring \"✓ create claude-code .mcp.json /mcpServers/kit-tools\""
-          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/agents/critic.md\""
-          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/commands/deploy.toml\""
-          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/lola/kit/GEMINI.md\""
+          - 'result.systemout ShouldContainSubstring "✓ create claude-code .claude/agents/critic.md"'
+          - 'result.systemout ShouldContainSubstring "✓ create claude-code .claude/commands/deploy.md"'
+          - 'result.systemout ShouldContainSubstring "✓ create claude-code .claude/rules/lola/kit/style.md"'
+          - 'result.systemout ShouldContainSubstring "✓ create claude-code .claude/skills/lint/SKILL.md"'
+          - 'result.systemout ShouldContainSubstring "✓ create claude-code .mcp.json /mcpServers/kit-tools"'
+          - 'result.systemout ShouldContainSubstring "✓ create gemini-cli  .gemini/agents/critic.md"'
+          - 'result.systemout ShouldContainSubstring "✓ create gemini-cli  .gemini/commands/deploy.toml"'
+          - 'result.systemout ShouldContainSubstring "✓ create gemini-cli  .gemini/lola/kit/GEMINI.md"'
           - result.systemout ShouldContainSubstring "✓ create gemini-cli  .gemini/settings.json /context/includeDirectories"
-          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/settings.json /mcpServers/kit-tools\""
-          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/skills/lint/SKILL.md\""
-          - "result.systemout ShouldContainSubstring \"✓ create opencode    .opencode/agents/critic.md\""
-          - "result.systemout ShouldContainSubstring \"✓ create opencode    .opencode/commands/deploy.md\""
-          - "result.systemout ShouldContainSubstring \"✓ create opencode    .opencode/lola/kit/style.md\""
-          - "result.systemout ShouldContainSubstring \"✓ create opencode    .opencode/skills/lint/SKILL.md\""
+          - 'result.systemout ShouldContainSubstring "✓ create gemini-cli  .gemini/settings.json /mcpServers/kit-tools"'
+          - 'result.systemout ShouldContainSubstring "✓ create gemini-cli  .gemini/skills/lint/SKILL.md"'
+          - 'result.systemout ShouldContainSubstring "✓ create opencode    .opencode/agents/critic.md"'
+          - 'result.systemout ShouldContainSubstring "✓ create opencode    .opencode/commands/deploy.md"'
+          - 'result.systemout ShouldContainSubstring "✓ create opencode    .opencode/lola/kit/style.md"'
+          - 'result.systemout ShouldContainSubstring "✓ create opencode    .opencode/skills/lint/SKILL.md"'
           - result.systemout ShouldContainSubstring "✓ create opencode    opencode.json /instructions"
-          - "result.systemout ShouldContainSubstring \"✓ create opencode    opencode.json /mcp/kit-tools\""
+          - 'result.systemout ShouldContainSubstring "✓ create opencode    opencode.json /mcp/kit-tools"'
           - result.systemout ShouldNotContainSubstring "✓ update"
           - result.systemout ShouldContainSubstring "✓ installed kit (claude-code, gemini-cli, opencode)"
       - type: exec
@@ -227,7 +227,7 @@ testcases:
           '
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"['lola profile -C /work/i3-hint --move kit --to mine --switch']\""
+          - 'result.systemout ShouldEqual "[''lola profile -C /work/i3-hint --move kit --to mine --switch'']"'
       - type: exec
         script: "{{.runtime}} exec {{.i3_homes}} {{.container}} {{.hint}} /tmp/i3-hint.json"
         assertions:
@@ -256,7 +256,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/i4.out /tmp/i4.err"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemoutjson.error ShouldEqual \"lola install needs a scope: no .lola/ project was found in /work/empty or above it, and /home/tester/.config/lola/config.yaml sets no default_scope (default_scope: project, user or both)\""
+          - 'result.systemoutjson.error ShouldEqual "lola install needs a scope: no .lola/ project was found in /work/empty or above it, and /home/tester/.config/lola/config.yaml sets no default_scope (default_scope: project, user or both)"'
           - result.systemoutjson.hints.hints0 ShouldEqual "lola install /e2e/fixtures/kit --json --target claude-code --project"
           - result.systemoutjson.hints.hints1 ShouldEqual "lola install /e2e/fixtures/kit --json --target claude-code --user"
           - result.systemoutjson.hints.hints2 ShouldEqual "lola install /e2e/fixtures/kit --json --target claude-code --scope both"
@@ -313,7 +313,7 @@ testcases:
   - name: I6 An edited file is modified, and sync refuses to overwrite it, coached
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'echo \"My edit.\" >> /work/proj/.claude/commands/deploy.md'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''echo "My edit." >> /work/proj/.claude/commands/deploy.md'''
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -420,7 +420,7 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "ok the steps the refusal carried"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/proj && find . ! -type d | sort | paste -sd \" \"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''cd /work/proj && find . ! -type d | sort | paste -sd " "'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "./.lola/.gitignore ./.lola/lock.json ./.lola/project.yml"
@@ -455,8 +455,8 @@ testcases:
         script: "{{.runtime}} exec {{.container}} cat /work/proj/.lola/project.yml"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"ref: v1\""
-          - "result.systemout ShouldContainSubstring \"commit: {{.v1}}\""
+          - 'result.systemout ShouldContainSubstring "ref: v1"'
+          - 'result.systemout ShouldContainSubstring "commit: {{.v1}}"'
 
   - name: I11 An update on the branch shows once fetched, and sync moves to it after trust
     steps:
@@ -491,9 +491,9 @@ testcases:
           - result.systemoutjson.hints ShouldHaveLength 2
           - result.systemoutjson.trust.status ShouldEqual changed
           - result.systemoutjson.trust.changes.changes0.module ShouldEqual kit
-          - "result.systemoutjson.hints.hints0 ShouldEqual \"see them: lola sync -C /work/proj kit --update --json -n\""
-          - "result.systemoutjson.hints.hints1 ShouldStartWith \"then accept them: lola sync -C /work/proj kit --update --trust=entries --at kit=\""
-          - "result.systemoutjson.hints.hints1 ShouldEndWith \" --json -y\""
+          - 'result.systemoutjson.hints.hints0 ShouldEqual "see them: lola sync -C /work/proj kit --update --json -n"'
+          - 'result.systemoutjson.hints.hints1 ShouldStartWith "then accept them: lola sync -C /work/proj kit --update --trust=entries --at kit="'
+          - 'result.systemoutjson.hints.hints1 ShouldEndWith " --json -y"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/i11-before.json /work/proj /home/tester/.local/state"
         assertions:
@@ -532,7 +532,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldStartWith "Deploy with kit v2."
-          - "result.systemout ShouldEndWith \"commit: {{.v2}}\""
+          - 'result.systemout ShouldEndWith "commit: {{.v2}}"'
 
   - name: I12 Archives made by the system's zip and tar install
     steps:
@@ -658,7 +658,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} sh -c 'printf \"y\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} uninstall kit --user\" /dev/null'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"Uninstall kit? [y/N]\""
+          - 'result.systemout ShouldContainSubstring "Uninstall kit? [y/N]"'
           - result.systemout ShouldContainSubstring "✓ uninstalled kit (claude-code)"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'test -d /home/tester/.claude && find /home/tester/.claude -mindepth 1 && test ! -e /home/tester/.claude.json'"
@@ -682,7 +682,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} python3 -c 'import json; d = json.load(open(\"/tmp/i17.json\")); json.dump({\"hints\": [d[\"install\"][0][\"command\"]]}, open(\"/tmp/i17-hint.json\", \"w\")); print(d[\"install\"][0][\"command\"])'"
+        script: '{{.runtime}} exec {{.container}} python3 -c ''import json; d = json.load(open("/tmp/i17.json")); json.dump({"hints": [d["install"][0]["command"]]}, open("/tmp/i17-hint.json", "w")); print(d["install"][0]["command"])'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "lola install http://127.0.0.1:8765/kit.git --ref {{.v2}} --json --root /work/proj5 --scope project --target claude-code"
@@ -762,7 +762,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/ag/mod -C /work/proj20a --scope project -t claude-code,agents -y > /tmp/i20-a.out 2>&1; echo exit=$?; cat /tmp/i20-a.out; find /work/proj20a -name SKILL.md -not -path \"*/.lola/*\" | sort'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''{{.lola}} install /work/ag/mod -C /work/proj20a --scope project -t claude-code,agents -y > /tmp/i20-a.out 2>&1; echo exit=$?; cat /tmp/i20-a.out; find /work/proj20a -name SKILL.md -not -path "*/.lola/*" | sort'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldStartWith "exit=0"
@@ -770,7 +770,7 @@ testcases:
           - result.systemout ShouldContainSubstring "/work/proj20a/.agents/skills/hi/SKILL.md"
           - result.systemout ShouldContainSubstring "/work/proj20a/.claude/skills/hi/SKILL.md"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/ag/mod -C /work/proj20b --scope project -t gemini-cli,agents -y > /tmp/i20-b.out 2>&1; echo exit=$?; cat /tmp/i20-b.out; find /work/proj20b -name SKILL.md -not -path \"*/.lola/*\" | sort'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''{{.lola}} install /work/ag/mod -C /work/proj20b --scope project -t gemini-cli,agents -y > /tmp/i20-b.out 2>&1; echo exit=$?; cat /tmp/i20-b.out; find /work/proj20b -name SKILL.md -not -path "*/.lola/*" | sort'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldStartWith "exit=0"
@@ -784,7 +784,7 @@ testcases:
           - result.systemout ShouldStartWith "exit=0"
           - result.systemout ShouldContainSubstring "delivered through .agents/skills"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/ag/mod -C /work/proj20b --scope project -t gemini-cli -y -v > /tmp/i20-d.out 2>&1; echo exit=$?; cat /tmp/i20-d.out; find /work/proj20b -name SKILL.md -not -path \"*/.lola/*\" | sort'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''{{.lola}} install /work/ag/mod -C /work/proj20b --scope project -t gemini-cli -y -v > /tmp/i20-d.out 2>&1; echo exit=$?; cat /tmp/i20-d.out; find /work/proj20b -name SKILL.md -not -path "*/.lola/*" | sort'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldStartWith "exit=0"
@@ -806,19 +806,19 @@ testcases:
         script: "{{.runtime}} exec {{.i21_homes_yy}} {{.container}} sh -c 'mkdir -p /work/proj21yy && printf \"y\\ny\\n\" | LOLA_ACCESSIBLE=1 NO_COLOR=1 script -qec \"{{.lola}} install /work/hk/hka /work/hk/hkb -C /work/proj21yy --scope project -t claude-code\" /dev/null'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"Run hka's install hooks? [y/N]\""
-          - "result.systemout ShouldContainSubstring \"Run hkb's install hooks? [y/N]\""
-          - "result.systemout ShouldContainSubstring \"✓ hka post-install hook scripts/post.sh (sha256 7994abc1df97de49d97d53493603eb8c741442f99f8ed4fa8a42568c6da41720, claude-code): ran\""
-          - "result.systemout ShouldContainSubstring \"✓ hkb post-install hook scripts/post.sh (sha256 7c5aa35ffa2ed8c941908a1e97009ba3fbd0e8f84cbdb5c83bb4e4e973e54759, claude-code): ran\""
+          - 'result.systemout ShouldContainSubstring "Run hka''s install hooks? [y/N]"'
+          - 'result.systemout ShouldContainSubstring "Run hkb''s install hooks? [y/N]"'
+          - 'result.systemout ShouldContainSubstring "✓ hka post-install hook scripts/post.sh (sha256 7994abc1df97de49d97d53493603eb8c741442f99f8ed4fa8a42568c6da41720, claude-code): ran"'
+          - 'result.systemout ShouldContainSubstring "✓ hkb post-install hook scripts/post.sh (sha256 7c5aa35ffa2ed8c941908a1e97009ba3fbd0e8f84cbdb5c83bb4e4e973e54759, claude-code): ran"'
       - type: exec
         script: "{{.runtime}} exec {{.i21_homes_yn}} {{.container}} sh -c 'mkdir -p /work/proj21yn && printf \"y\\nn\\n\" | LOLA_ACCESSIBLE=1 NO_COLOR=1 script -qec \"{{.lola}} install /work/hk/hka /work/hk/hkb -C /work/proj21yn --scope project -t claude-code\" /dev/null'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✓ hka post-install hook scripts/post.sh (sha256 7994abc1df97de49d97d53493603eb8c741442f99f8ed4fa8a42568c6da41720, claude-code): ran\""
-          - "result.systemout ShouldContainSubstring \"⚠ hkb post-install hook scripts/post.sh (sha256 7c5aa35ffa2ed8c941908a1e97009ba3fbd0e8f84cbdb5c83bb4e4e973e54759, claude-code): declined\""
+          - 'result.systemout ShouldContainSubstring "✓ hka post-install hook scripts/post.sh (sha256 7994abc1df97de49d97d53493603eb8c741442f99f8ed4fa8a42568c6da41720, claude-code): ran"'
+          - 'result.systemout ShouldContainSubstring "⚠ hkb post-install hook scripts/post.sh (sha256 7c5aa35ffa2ed8c941908a1e97009ba3fbd0e8f84cbdb5c83bb4e4e973e54759, claude-code): declined"'
       - type: exec
         script: "{{.runtime}} exec {{.i21_homes_y}} {{.container}} sh -c 'rm -f /tmp/ran-hka /tmp/ran-hkb; mkdir -p /work/proj21y && printf \"y\\n\" | LOLA_ACCESSIBLE=1 NO_COLOR=1 script -qec \"{{.lola}} install /work/hk/hka /work/hk/hkb -C /work/proj21y --scope project -t claude-code\" /dev/null; test ! -e /work/proj21y/.claude && test ! -e /tmp/ran-hka && test ! -e /tmp/ran-hkb'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"Run hkb's install hooks? [y/N] \""
-          - "result.systemout ShouldContainSubstring \"error: input ended before the question was answered\""
+          - 'result.systemout ShouldContainSubstring "Run hkb''s install hooks? [y/N] "'
+          - 'result.systemout ShouldContainSubstring "error: input ended before the question was answered"'

@@ -71,10 +71,14 @@ printf -- '---\ndescription: gopls\n---\ngopls v2.0.\n' >"$src/commands/gopls.md
 git -C "$src" commit -q -am v2.0
 git -C "$src" tag v2.0
 publish gopls "$src"
-publish golang-lint "$(repo golang-lint "$fixtures/golang-lint")"
-publish team-kit "$(repo team-kit "$fixtures/team-kit")"
-publish profiles "$(repo profiles "$fixtures/profiles")"
-publish acme "$(repo acme "$fixtures/acme")"
+src="$(repo golang-lint "$fixtures/golang-lint")"
+publish golang-lint "$src"
+src="$(repo team-kit "$fixtures/team-kit")"
+publish team-kit "$src"
+src="$(repo profiles "$fixtures/profiles")"
+publish profiles "$src"
+src="$(repo acme "$fixtures/acme")"
+publish acme "$src"
 
 expect review-kit v1.4.0 "$1"
 expect cc-skills-golang main "$2"

@@ -87,6 +87,22 @@ func pin(ref, sha string) (string, string, *skip) {
 	return ref, sha, nil
 }
 
+// subPath maps a catalog's path to a manifest entry's: cleaned, inside the source, and "" for its
+// root; a path outside the source skips the entry.
+func subPath(sub string) (string, *skip) {
+	if sub == "" {
+		return "", nil
+	}
+	clean, err := CheckRelative(sub)
+	if err != nil {
+		return "", skipped("path outside the source", "path %s", err.Error())
+	}
+	if clean == "." {
+		return "", nil
+	}
+	return clean, nil
+}
+
 // checked applies every recorded-source and fetcher rule to e's mapped source of kind (source.Recorded.Check, then
 // source.Validate); a refusal skips the entry with its reason.
 func checked(e *Entry, kind source.Kind) *skip {
@@ -109,16 +125,9 @@ func mapGit(e *Entry, field, loc, ref, sha, sub string, ssh []string) *skip {
 	if !source.IsGitForm(loc) {
 		return skipped("unusable source", "%s is not a git repository URL", untrusted.Text(loc, untrusted.MaxName))
 	}
-	if sub != "" {
-		clean, err := CheckRelative(sub)
-		if err != nil {
-			return skipped("path outside the source", "path %s", err.Error())
-		}
-		if clean != "." {
-			sub = clean
-		} else {
-			sub = ""
-		}
+	sub, s := subPath(sub)
+	if s != nil {
+		return s
 	}
 	ref, commit, s := pin(ref, sha)
 	if s != nil {
@@ -248,16 +257,9 @@ func mapPython(e *Entry, repo, ref, sub string, ssh []string) *skip {
 	if ref != "" {
 		return skipped("unusable source", "ref %s is given for an archive, which has no branches, tags or commits", untrusted.Text(ref, untrusted.MaxName))
 	}
-	if sub != "" {
-		clean, err := CheckRelative(sub)
-		if err != nil {
-			return skipped("path outside the source", "path %s", err.Error())
-		}
-		if clean != "." {
-			sub = clean
-		} else {
-			sub = ""
-		}
+	sub, s := subPath(sub)
+	if s != nil {
+		return s
 	}
 	e.Source = manifest.Entry{Name: e.Name, Source: repo, Path: sub}
 	return checked(e, source.KindArchive)

@@ -17,7 +17,7 @@ if [[ "${1:-}" == advance ]]; then
   echo "main at v2"
   exit 0
 fi
-v1="$1" v2="$2"
+pins=("v1=$1" "v2=$2")
 
 src="$(mktemp -d)"
 cp -R /e2e/fixtures/kit/. "$src"
@@ -32,8 +32,8 @@ git -C "$src" reset -q --hard v1
 mkdir -p /srv/git
 git clone -q --bare "$src" "$repo"
 rm -rf "$src"
-for ref in v1 v2; do
-  want="${!ref}" got="$(git -C "$repo" rev-parse "$ref^{commit}")"
+for pin in "${pins[@]}"; do
+  ref="${pin%%=*}" want="${pin#*=}" got="$(git -C "$repo" rev-parse "$ref^{commit}")"
   if [[ "$got" != "$want" ]]; then
     echo "error: kit.git's $ref is $got, not $want" >&2
     exit 1

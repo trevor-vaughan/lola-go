@@ -15,16 +15,16 @@ trash (`$XDG_STATE_HOME/lola/trash/`, one directory per run; tidy never deletes)
 what would move and what is locked ([never moved, whatever the flags](../guides/tidying.md#tidying); `protected` in JSON), and why. Your keep-list,
 per scope in `keep.yaml`, names what tidy stops offering ([Tidying](../guides/tidying.md#tidying)).
 
-| Flag | What it does |
-|---|---|
-| `--all` | Move every item that is not locked. |
-| `-t`, `--target <assistant>` | Only tidy these assistants' directories (`claude-code`, `gemini-cli`, `opencode` or `agents`). |
-| `--include-tracked` | Also offer what git tracks. |
-| `--keep <selector>` | Add a `kind/name` selector to this scope's keep-list (repeatable). Alias: `--protect`. |
-| `--unkeep <selector>` | Remove a selector from this scope's keep-list, as written there (repeatable). Alias: `--unprotect`. |
-| `-y`, `--yes` | Do not ask for confirmation, and open no picker (not the scope picker either): the scope is the one found off a terminal (the `.lola/` project in the directory or above it, else `default_scope` in `config.yaml`), and a run without names or `--all` is refused as it is there. |
-| `--force` | Also move what git tracks, without asking; names or `--all` are still needed. |
-| `-n`, `--dry-run` | List what would move and what is locked, and change nothing. It ends with the run that applies it (no `-y` you did not give) and, when that run would be refused off a terminal, `off a terminal:` and the same run with `-y` (`--plain`: an `off_terminal` row). |
+| Flag                         | What it does                                                                                                                                                                                                                                                                       |
+|------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--all`                      | Move every item that is not locked.                                                                                                                                                                                                                                                |
+| `-t`, `--target <assistant>` | Only tidy these assistants' directories (`claude-code`, `gemini-cli`, `opencode` or `agents`).                                                                                                                                                                                     |
+| `--include-tracked`          | Also offer what git tracks.                                                                                                                                                                                                                                                        |
+| `--keep <selector>`          | Add a `kind/name` selector to this scope's keep-list (repeatable). Alias: `--protect`.                                                                                                                                                                                             |
+| `--unkeep <selector>`        | Remove a selector from this scope's keep-list, as written there (repeatable). Alias: `--unprotect`.                                                                                                                                                                                |
+| `-y`, `--yes`                | Do not ask for confirmation, and open no picker (not the scope picker either): the scope is the one found off a terminal (the `.lola/` project in the directory or above it, else `default_scope` in `config.yaml`), and a run without names or `--all` is refused as it is there. |
+| `--force`                    | Also move what git tracks, without asking; names or `--all` are still needed.                                                                                                                                                                                                      |
+| `-n`, `--dry-run`            | List what would move and what is locked, and change nothing. It ends with the run that applies it (no `-y` you did not give) and, when that run would be refused off a terminal, `off a terminal:` and the same run with `-y` (`--plain`: an `off_terminal` row).                  |
 
 The global flags apply too ([Using lola](../usage.md#commands)): `--project`, `--user`, `-C/--root <dir>`
 and `-s/--scope` pick the scope; `--json`, `--plain` and `--no-pager` pick the output.

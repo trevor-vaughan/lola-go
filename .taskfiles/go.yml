@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 vars:
   # OUT_DIR, not TEST_DIR: the test task exports TEST_DIR, which would be re-templated.
@@ -6,7 +6,7 @@ vars:
   MODE: '{{.MODE | default "human"}}'
   # Linters are built from source with the go on PATH, so they can read whatever Go the host has
   # (a prebuilt binary cannot load packages from a newer Go). Bump a version here to upgrade.
-  TOOLS_DIR: '{{.ROOT_DIR}}/.tools/bin'
+  TOOLS_DIR: "{{.ROOT_DIR}}/.tools/bin"
   GOLANGCI_LINT_VERSION: v2.15.0
   GOVULNCHECK_VERSION: v1.9.0
   DEADCODE_VERSION: v0.53.0
@@ -22,15 +22,15 @@ tasks:
 
   build:
     desc: Build bin/lola with the version stamped from git describe
-    dir: '{{.ROOT_DIR}}'
+    dir: "{{.ROOT_DIR}}"
     cmd: go build -trimpath -ldflags "-X github.com/trevor-vaughan/lola-go/internal/cli.version={{.VERSION}}" -o bin/lola ./cmd/lola
 
   test:
     desc: Run unit and CLI specs (MODE=human|llm); artifacts in .test-output/
-    dir: '{{.ROOT_DIR}}'
+    dir: "{{.ROOT_DIR}}"
     env:
-      MODE: '{{.MODE}}'
-      TEST_DIR: '{{.OUT_DIR}}'
+      MODE: "{{.MODE}}"
+      TEST_DIR: "{{.OUT_DIR}}"
       # Task-level, not file-level: Task applies an included Taskfile's top-level env to every
       # task, so release:bump would commit and tag as lola-test without the user's git config.
       GIT_CONFIG_GLOBAL: /dev/null
@@ -44,9 +44,9 @@ tasks:
   tools:
     desc: Build the pinned golangci-lint, govulncheck and deadcode into .tools/bin with the go on PATH
     # Not in ROOT_DIR: `go install pkg@version` must ignore this module's go.mod.
-    dir: '{{.TOOLS_DIR}}'
+    dir: "{{.TOOLS_DIR}}"
     env:
-      GOBIN: '{{.TOOLS_DIR}}'
+      GOBIN: "{{.TOOLS_DIR}}"
     cmds:
       - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
       - go install golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}
@@ -63,7 +63,7 @@ tasks:
   lint:
     desc: Run golangci-lint v2 (includes gofmt and unused) and deadcode (functions no main or test reaches)
     deps: [tools]
-    dir: '{{.ROOT_DIR}}'
+    dir: "{{.ROOT_DIR}}"
     cmds:
       - '"{{.TOOLS_DIR}}/golangci-lint" run ./...'
       # deadcode exits 0 when it finds dead code; fail on any report instead.
@@ -74,12 +74,12 @@ tasks:
   fmt:
     desc: Format all Go code
     deps: [tools]
-    dir: '{{.ROOT_DIR}}'
+    dir: "{{.ROOT_DIR}}"
     cmd: '"{{.TOOLS_DIR}}/golangci-lint" fmt ./...'
 
   cross:
     desc: Build and vet (tests included) for Windows and macOS
-    dir: '{{.ROOT_DIR}}'
+    dir: "{{.ROOT_DIR}}"
     cmds:
       - for: [windows, darwin]
         cmd: GOOS={{.ITEM}} go build ./... && GOOS={{.ITEM}} go vet ./...
@@ -87,10 +87,10 @@ tasks:
   vuln:
     desc: Scan dependencies and code with govulncheck
     deps: [tools]
-    dir: '{{.ROOT_DIR}}'
+    dir: "{{.ROOT_DIR}}"
     cmd: '"{{.TOOLS_DIR}}/govulncheck" ./...'
 
   flows:
     desc: Check every transition row of docs/architecture/tui-flows.md is pinned by a spec, and every spec name or pointer names a row
-    dir: '{{.ROOT_DIR}}'
+    dir: "{{.ROOT_DIR}}"
     cmd: go run ./scripts/tuiflows

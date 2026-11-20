@@ -219,6 +219,16 @@ type jsonFielder interface {
 	JSONFields() map[string]any
 }
 
+// jsonFields is a new map holding the keys err's --json document carries beyond error and hints:
+// those of the first jsonFielder in its chain, else none.
+func jsonFields(err error) map[string]any {
+	fields := map[string]any{}
+	if f, ok := errors.AsType[jsonFielder](err); ok {
+		maps.Copy(fields, f.JSONFields())
+	}
+	return fields
+}
+
 // writeError prints err per the output contract, its hints wrapped to width (hintLine).
 func writeError(w io.Writer, err error, asJSON bool, width int) {
 	hints := errs.Hints(err)
@@ -226,10 +236,7 @@ func writeError(w io.Writer, err error, asJSON bool, width int) {
 		hints = []string{}
 	}
 	if asJSON {
-		doc := map[string]any{}
-		if f, ok := errors.AsType[jsonFielder](err); ok {
-			maps.Copy(doc, f.JSONFields())
-		}
+		doc := jsonFields(err)
 		doc["error"], doc["hints"] = err.Error(), hints
 		if json.NewEncoder(w).Encode(doc) == nil {
 			return

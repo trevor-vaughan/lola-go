@@ -7,6 +7,11 @@ directive. Only `internal/templating` imports it (depguard).
 Removed from the release, since nothing compiled needs them: every `_test.go` file, every
 `testdata` directory and `cmd/`.
 
+Also changed: `go.mod` requires newer `golang.org/x` modules (net, mod, text, sys) than
+upstream's, to clear scanner advisories against the older versions. `go mod tidy` also raised the `go`
+directive (1.25.0 to 1.26.0), `golang.org/x/sync` and `golang.org/x/tools`, and made
+`testify` indirect.
+
 ## Patch: flush before a right-trimmed write (`render/trimwriter.go`)
 
 `trimWriter.Write` buffers each write and flushes the buffer before the next one, except when

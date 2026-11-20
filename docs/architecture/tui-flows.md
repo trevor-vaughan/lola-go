@@ -39,7 +39,7 @@ Each surface has a diagram, a table of its states, a transition table, its exits
 rules.
 
 - **States** are the screens, named as the tables use them, with the title the user sees. A title
-  is prefixed with `Step N of M — ` when the pass asks more than one field.
+  is prefixed with `Step N of M —` and a space when the pass asks more than one field.
 - **Transitions** read `| from | input | guard | to | effects |`: in state *from*, on *input*, when
   *guard* holds, the surface moves to *to* and does *effects*. `start` is the command line before any
   screen; *next step* is the first later step whose answer the run does not hold yet.
@@ -59,23 +59,23 @@ top in an `// also pinned (<row>; <row>): <file> "<spec>"` pointer.
 
 `task flows` checks both ways:
 a row no name matches, and a name that matches no row. It matches a row's *from*, *input* and *to*;
-the guard in a name may be shortened, a remark may follow *to* after `, ` or ` (`, and a pointer
-without `<surface>: ` takes the surface of its file's own specs.
+the guard in a name may be shortened, a remark may follow *to* after `,` and a space, or after a space and `(`, and a pointer
+without a `<surface>:` prefix takes the surface of its file's own specs.
 
 ### Inputs
 
-| input | what the user does |
-|---|---|
-| answer | submits the screen (Enter) with a valid answer |
-| empty submit | submits a list with nothing ticked |
-| `esc` | goes back a screen |
-| `q` | quits the run |
-| `ctrl+c` | cancels the run at once |
-| end of input | stdin ends before the screen is answered |
-| `Change …` | picks a step to ask again from the review (`c` at the review's question, then the "Change what?" menu; or the "Apply these changes?" menu) |
-| yes / no | answers a yes/no question (`y` / `n`) |
-| `Cancel` | picks a question's Cancel option, which reaches the flow as `ErrAborted` |
-| an option | picks that option of a question (`Lists modules`, `Edit profile …`) |
+| input        | what the user does                                                                                                                         |
+|--------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| answer       | submits the screen (Enter) with a valid answer                                                                                             |
+| empty submit | submits a list with nothing ticked                                                                                                         |
+| `esc`        | goes back a screen                                                                                                                         |
+| `q`          | quits the run                                                                                                                              |
+| `ctrl+c`     | cancels the run at once                                                                                                                    |
+| end of input | stdin ends before the screen is answered                                                                                                   |
+| `Change …`   | picks a step to ask again from the review (`c` at the review's question, then the "Change what?" menu; or the "Apply these changes?" menu) |
+| yes / no     | answers a yes/no question (`y` / `n`)                                                                                                      |
+| `Cancel`     | picks a question's Cancel option, which reaches the flow as `ErrAborted`                                                                   |
+| an option    | picks that option of a question (`Lists modules`, `Edit profile …`)                                                                        |
 
 The forms adapter (`internal/cli/huh.go`) turns keys into answers and errors; the flow only sees
 answers, `ErrBack` (Esc) and errors that are `ErrAborted` (Ctrl+C, a No that cancels,
@@ -88,18 +88,18 @@ pickers) refuses an empty submit in the form and stays; the flow never sees it.
 
 Guards are facts of the run that skip a screen or decide where an input leads.
 
-| guard | effect |
-|---|---|
-| `--scope`, `--user`, `--project`, `-C` | the scope picker is not asked |
-| module arguments | the module picker is not asked |
-| `-t` | the assistant picker is not asked; `-t <id>@<version>` also answers that assistant's version question |
-| a declared `target_versions` | that assistant's version question is not asked at that destination |
-| `--skip`, `--only`, `--unskip` | no component page is asked |
-| `--force` | no review menu and no version question (the installed version is taken): the other open steps are still asked, then the summary is printed and applied |
-| `-y` | no question but consent, and no review: a run off a terminal, so every picker takes that run's choice, or the run is refused as it is, with the same hints; a consent question (hooks, runtime hooks, a project script) is still asked on a terminal, since only `--trust` consents |
-| `-n` | the run ends in a dry run: the review is shown, Apply writes nothing |
-| `--json`, or no terminal | nothing is asked |
-| single option | an assistant taken as the only one installed (or the only target set up), and a module with one component and no exclusion, are not asked |
+| guard                                  | effect                                                                                                                                                                                                                                                                              |
+|----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--scope`, `--user`, `--project`, `-C` | the scope picker is not asked                                                                                                                                                                                                                                                       |
+| module arguments                       | the module picker is not asked                                                                                                                                                                                                                                                      |
+| `-t`                                   | the assistant picker is not asked; `-t <id>@<version>` also answers that assistant's version question                                                                                                                                                                               |
+| a declared `target_versions`           | that assistant's version question is not asked at that destination                                                                                                                                                                                                                  |
+| `--skip`, `--only`, `--unskip`         | no component page is asked                                                                                                                                                                                                                                                          |
+| `--force`                              | no review menu and no version question (the installed version is taken): the other open steps are still asked, then the summary is printed and applied                                                                                                                              |
+| `-y`                                   | no question but consent, and no review: a run off a terminal, so every picker takes that run's choice, or the run is refused as it is, with the same hints; a consent question (hooks, runtime hooks, a project script) is still asked on a terminal, since only `--trust` consents |
+| `-n`                                   | the run ends in a dry run: the review is shown, Apply writes nothing                                                                                                                                                                                                                |
+| `--json`, or no terminal               | nothing is asked                                                                                                                                                                                                                                                                    |
+| single option                          | an assistant taken as the only one installed (or the only target set up), and a module with one component and no exclusion, are not asked                                                                                                                                           |
 
 ### Shared keys
 
@@ -206,130 +206,130 @@ usual one).
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| -C confirm | `Create <dir>? It does not exist yet` | `-C` names a missing directory, on a terminal, without `-y`, `--force` or `-n` |
-| scope | `Install where?` (Project, Other directory…, User) | no scope flag |
-| directory | `Other directory` (a path input) | Other directory… is ticked |
-| create other | `Create <dir>? It does not exist yet` | the Other directory does not exist and is shown as it is |
-| modules | `Install which modules?` (plus a group per marketplace) | no module argument |
-| add source | `Source`, `Ref (optional)` | Add a source… is ticked |
-| assistants | `Install for which assistants?` | no `-t`, the manifest fixes none, and lola cannot take the only one |
-| version | `Write <id> files for which version?` (`Change versions — …` when asked again) | per destination and assistant with more than one era, unless `-t` or `target_versions` gives it, the scope's modules hold it, or `-y`/`--force` |
-| components | `<file> › <module>` (`— <destination>` when one of several) | per module with more than one component or an exclusion, unless `--skip`/`--only`/`--unskip`; one page per destination when their preselections differ |
-| no components | `Install <module> with no components?` (default No) | a page is submitted empty while it had a preselection |
-| review | `Review`: the summary, then `Apply these changes? [y/c/n]` under it or in the viewer (`[y/n]` with nothing to change; no default), or in accessible mode the menu `Apply these changes?` | the run reviews and the plan changes something |
+| state         | what the user sees                                                                                                                                                                       | asked when                                                                                                                                             |
+|---------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -C confirm    | `Create <dir>? It does not exist yet`                                                                                                                                                    | `-C` names a missing directory, on a terminal, without `-y`, `--force` or `-n`                                                                         |
+| scope         | `Install where?` (Project, Other directory…, User)                                                                                                                                       | no scope flag                                                                                                                                          |
+| directory     | `Other directory` (a path input)                                                                                                                                                         | Other directory… is ticked                                                                                                                             |
+| create other  | `Create <dir>? It does not exist yet`                                                                                                                                                    | the Other directory does not exist and is shown as it is                                                                                               |
+| modules       | `Install which modules?` (plus a group per marketplace)                                                                                                                                  | no module argument                                                                                                                                     |
+| add source    | `Source`, `Ref (optional)`                                                                                                                                                               | Add a source… is ticked                                                                                                                                |
+| assistants    | `Install for which assistants?`                                                                                                                                                          | no `-t`, the manifest fixes none, and lola cannot take the only one                                                                                    |
+| version       | `Write <id> files for which version?` (`Change versions — …` when asked again)                                                                                                           | per destination and assistant with more than one era, unless `-t` or `target_versions` gives it, the scope's modules hold it, or `-y`/`--force`        |
+| components    | `<file> › <module>` (`— <destination>` when one of several)                                                                                                                              | per module with more than one component or an exclusion, unless `--skip`/`--only`/`--unskip`; one page per destination when their preselections differ |
+| no components | `Install <module> with no components?` (default No)                                                                                                                                      | a page is submitted empty while it had a preselection                                                                                                  |
+| review        | `Review`: the summary, then `Apply these changes? [y/c/n]` under it or in the viewer (`[y/n]` with nothing to change; no default), or in accessible mode the menu `Apply these changes?` | the run reviews and the plan changes something                                                                                                         |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | no scope flag, on a terminal | scope | |
-| start | scope flag | `--scope`, `--user`, `--project` or `-C` | modules | context line printed; no Change scope entry |
-| start | module argument | no scope flag | scope | no module picker and no Change modules entry |
-| start | target flag | `-t`, no scope flag | scope | no assistant picker and no Change assistants entry; the review says "from -t" |
-| start | component flag | `--skip`, `--only` or `--unskip`, no scope flag | scope | no component page and no Change components entry |
-| start | target version flag | `-t <id>@<version>`, or `target_versions` declares it | next step | no version question; Change versions is still offered |
-| start | held version | the modules installed at the destination, but the run's, are written for one era of the assistant | next step | no version question and no Change versions for it; the review's line adds "this scope's modules are written for it"; a `-t` for another era is refused at the dry run unless `--force` |
-| start | run | `-C` missing, on a terminal, no `-y`/`--force`/`-n` | -C confirm | |
-| start | run | `-C` missing and `-y` or `--force` | next step | creates it, prints `created <dir>` |
-| start | run | `-C` missing and `-n` | next step | prints `would create <dir>`, plans for an empty directory, creates nothing |
-| start | run | every answer given, lola chose nothing | apply | no review |
-| start | run | the only assistant installed is taken | review | the review says "the only assistant found" |
-| start | run | `-y` or `--force` | next step | under `--force` the steps still open are asked (component pages included), but no version question and no review menu: the summary is printed on stderr and applied; under `-y` no step opens: each takes the choice a run off a terminal would, or the run is refused as that run is, and it is applied. Either still asks a consent question on a terminal, which only `--trust` answers |
-| start | run | `--json` or no terminal | apply | nothing is asked |
-| -C confirm | yes | | next step | creates the directory |
-| -C confirm | no | | cancelled | |
-| -C confirm | ctrl+c | | cancelled | |
-| scope | answer | Other not ticked | next step | context line; component picks at destinations no longer chosen are dropped and counted in the summary |
-| scope | answer | Project is the home directory | scope | problem "the project here is your home directory; tick User instead" |
-| scope | answer | Other ticked | directory | |
-| scope | esc | first screen | scope | key help "first step — q quits" |
-| scope | ctrl+c | | cancelled | |
-| directory | answer | an existing directory, not the project above, not home | next step | |
-| directory | answer | empty, not a directory, unreadable, the project above, or home | directory | problem says why; the answer is offered again |
-| directory | answer | missing, shown as it is | create other | |
-| directory | esc | | scope | Other directory… ticked |
-| directory | ctrl+c | | cancelled | |
-| create other | yes | | next step | creates it; removed again if the run installs nothing there |
-| create other | no | | directory | problem `<dir> does not exist`; the answer offered again |
-| create other | esc | | directory | as no |
-| modules | answer | | next step | picks of modules no longer picked are dropped and counted |
-| modules | answer | two picks are one module name | modules | problem "… are both the module …" |
-| modules | Add a source… | | add source | |
-| add source | answer | the source is added | modules | the source is in your cache now, its module ticked |
-| add source | answer | the add fails | modules | the error is printed; problem "could not add …" |
-| add source | empty submit | | modules | the picks as they were |
-| add source | `esc` | | modules | the picks as they were |
-| modules | esc | a scope picker was shown | scope | |
-| modules | ctrl+c | | cancelled | |
-| assistants | answer | | next step | |
-| assistants | esc | a scope or module picker was shown | modules | the last of them asks again |
-| assistants | esc | first screen | assistants | key help note |
-| assistants | ctrl+c | | cancelled | |
-| version | answer | another question is open | version | the next destination or assistant |
-| version | answer | the last question | next step | the era is recorded on Apply |
-| version | esc | a later question | version | the one before, its answer preselected |
-| version | esc | the first question, an assistant picker shown | assistants | |
-| version | esc | the first question, no assistant picker | modules | the last picker shown asks again |
-| version | esc | asked by Change versions | review | the answers it had are kept |
-| version | ctrl+c | | cancelled | |
-| components | answer | something ticked, or nothing was preselected | next step | the next page, or the review |
-| components | empty submit | the page had a preselection | no components | |
-| components | esc | a later page | components | the page before, as answered |
-| components | esc | the first page, after a version question | version | |
-| components | esc | the first page | assistants | the last picker shown asks again |
-| components | ctrl+c | | cancelled | |
-| components | ctrl+c | lola created the `-C` directory | cancelled | the directory is removed |
-| no components | yes | | next step | the module is installed with every component skipped |
-| no components | no | other modules are left | next step | the module is dropped from the run |
-| no components | no | it was the only module | cancelled | |
-| no components | esc | | components | the page again, nothing ticked |
-| no components | ctrl+c | | cancelled | |
-| answers | all answered | nothing would change | up to date | the review is not shown |
-| answers | dry-run refusal | the plan's dry run (or its preview) fails | refused | the flow exits; it does not return to a step |
-| review | apply | | done | |
-| review | esc | no component page | modules | the last picker shown asks again |
-| review | esc | a component page was asked | components | the last page, as answered |
-| review | Change scope | | scope | see re-entry |
-| review | Change modules | | modules | see re-entry |
-| review | Change assistants | | assistants | see re-entry |
-| review | Change versions | | version | see re-entry |
-| review | Change components | | components | see re-entry |
-| review | Change components twice | | components | each time from the last answer |
-| review | Change modules | re-adding a removed module | components | see re-entry |
-| review | quit | Quit, `n` or `ctrl+c`, each reaching the flow as `ErrAborted` | cancelled | |
-| review | q | | cancelled | |
-| change scope | esc | the scope picker, reopened by Change scope | review | every answer as it was |
-| change modules | esc | the module picker, reopened by Change modules | review | every answer as it was |
-| change assistants | esc | the assistant picker, reopened by Change assistants | review | every answer as it was |
-| change components | esc | the first page, reopened by Change components | review | every answer as it was; Esc on a later page goes to the page before |
+| from              | input                   | guard                                                                                             | to            | effects                                                                                                                                                                                                                                                                                                                                                                                    |
+|-------------------|-------------------------|---------------------------------------------------------------------------------------------------|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| start             | run                     | no scope flag, on a terminal                                                                      | scope         |                                                                                                                                                                                                                                                                                                                                                                                            |
+| start             | scope flag              | `--scope`, `--user`, `--project` or `-C`                                                          | modules       | context line printed; no Change scope entry                                                                                                                                                                                                                                                                                                                                                |
+| start             | module argument         | no scope flag                                                                                     | scope         | no module picker and no Change modules entry                                                                                                                                                                                                                                                                                                                                               |
+| start             | target flag             | `-t`, no scope flag                                                                               | scope         | no assistant picker and no Change assistants entry; the review says "from -t"                                                                                                                                                                                                                                                                                                              |
+| start             | component flag          | `--skip`, `--only` or `--unskip`, no scope flag                                                   | scope         | no component page and no Change components entry                                                                                                                                                                                                                                                                                                                                           |
+| start             | target version flag     | `-t <id>@<version>`, or `target_versions` declares it                                             | next step     | no version question; Change versions is still offered                                                                                                                                                                                                                                                                                                                                      |
+| start             | held version            | the modules installed at the destination, but the run's, are written for one era of the assistant | next step     | no version question and no Change versions for it; the review's line adds "this scope's modules are written for it"; a `-t` for another era is refused at the dry run unless `--force`                                                                                                                                                                                                     |
+| start             | run                     | `-C` missing, on a terminal, no `-y`/`--force`/`-n`                                               | -C confirm    |                                                                                                                                                                                                                                                                                                                                                                                            |
+| start             | run                     | `-C` missing and `-y` or `--force`                                                                | next step     | creates it, prints `created <dir>`                                                                                                                                                                                                                                                                                                                                                         |
+| start             | run                     | `-C` missing and `-n`                                                                             | next step     | prints `would create <dir>`, plans for an empty directory, creates nothing                                                                                                                                                                                                                                                                                                                 |
+| start             | run                     | every answer given, lola chose nothing                                                            | apply         | no review                                                                                                                                                                                                                                                                                                                                                                                  |
+| start             | run                     | the only assistant installed is taken                                                             | review        | the review says "the only assistant found"                                                                                                                                                                                                                                                                                                                                                 |
+| start             | run                     | `-y` or `--force`                                                                                 | next step     | under `--force` the steps still open are asked (component pages included), but no version question and no review menu: the summary is printed on stderr and applied; under `-y` no step opens: each takes the choice a run off a terminal would, or the run is refused as that run is, and it is applied. Either still asks a consent question on a terminal, which only `--trust` answers |
+| start             | run                     | `--json` or no terminal                                                                           | apply         | nothing is asked                                                                                                                                                                                                                                                                                                                                                                           |
+| -C confirm        | yes                     |                                                                                                   | next step     | creates the directory                                                                                                                                                                                                                                                                                                                                                                      |
+| -C confirm        | no                      |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| -C confirm        | ctrl+c                  |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| scope             | answer                  | Other not ticked                                                                                  | next step     | context line; component picks at destinations no longer chosen are dropped and counted in the summary                                                                                                                                                                                                                                                                                      |
+| scope             | answer                  | Project is the home directory                                                                     | scope         | problem "the project here is your home directory; tick User instead"                                                                                                                                                                                                                                                                                                                       |
+| scope             | answer                  | Other ticked                                                                                      | directory     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| scope             | esc                     | first screen                                                                                      | scope         | key help "first step — q quits"                                                                                                                                                                                                                                                                                                                                                            |
+| scope             | ctrl+c                  |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| directory         | answer                  | an existing directory, not the project above, not home                                            | next step     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| directory         | answer                  | empty, not a directory, unreadable, the project above, or home                                    | directory     | problem says why; the answer is offered again                                                                                                                                                                                                                                                                                                                                              |
+| directory         | answer                  | missing, shown as it is                                                                           | create other  |                                                                                                                                                                                                                                                                                                                                                                                            |
+| directory         | esc                     |                                                                                                   | scope         | Other directory… ticked                                                                                                                                                                                                                                                                                                                                                                    |
+| directory         | ctrl+c                  |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| create other      | yes                     |                                                                                                   | next step     | creates it; removed again if the run installs nothing there                                                                                                                                                                                                                                                                                                                                |
+| create other      | no                      |                                                                                                   | directory     | problem `<dir> does not exist`; the answer offered again                                                                                                                                                                                                                                                                                                                                   |
+| create other      | esc                     |                                                                                                   | directory     | as no                                                                                                                                                                                                                                                                                                                                                                                      |
+| modules           | answer                  |                                                                                                   | next step     | picks of modules no longer picked are dropped and counted                                                                                                                                                                                                                                                                                                                                  |
+| modules           | answer                  | two picks are one module name                                                                     | modules       | problem "… are both the module …"                                                                                                                                                                                                                                                                                                                                                          |
+| modules           | Add a source…           |                                                                                                   | add source    |                                                                                                                                                                                                                                                                                                                                                                                            |
+| add source        | answer                  | the source is added                                                                               | modules       | the source is in your cache now, its module ticked                                                                                                                                                                                                                                                                                                                                         |
+| add source        | answer                  | the add fails                                                                                     | modules       | the error is printed; problem "could not add …"                                                                                                                                                                                                                                                                                                                                            |
+| add source        | empty submit            |                                                                                                   | modules       | the picks as they were                                                                                                                                                                                                                                                                                                                                                                     |
+| add source        | `esc`                   |                                                                                                   | modules       | the picks as they were                                                                                                                                                                                                                                                                                                                                                                     |
+| modules           | esc                     | a scope picker was shown                                                                          | scope         |                                                                                                                                                                                                                                                                                                                                                                                            |
+| modules           | ctrl+c                  |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| assistants        | answer                  |                                                                                                   | next step     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| assistants        | esc                     | a scope or module picker was shown                                                                | modules       | the last of them asks again                                                                                                                                                                                                                                                                                                                                                                |
+| assistants        | esc                     | first screen                                                                                      | assistants    | key help note                                                                                                                                                                                                                                                                                                                                                                              |
+| assistants        | ctrl+c                  |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| version           | answer                  | another question is open                                                                          | version       | the next destination or assistant                                                                                                                                                                                                                                                                                                                                                          |
+| version           | answer                  | the last question                                                                                 | next step     | the era is recorded on Apply                                                                                                                                                                                                                                                                                                                                                               |
+| version           | esc                     | a later question                                                                                  | version       | the one before, its answer preselected                                                                                                                                                                                                                                                                                                                                                     |
+| version           | esc                     | the first question, an assistant picker shown                                                     | assistants    |                                                                                                                                                                                                                                                                                                                                                                                            |
+| version           | esc                     | the first question, no assistant picker                                                           | modules       | the last picker shown asks again                                                                                                                                                                                                                                                                                                                                                           |
+| version           | esc                     | asked by Change versions                                                                          | review        | the answers it had are kept                                                                                                                                                                                                                                                                                                                                                                |
+| version           | ctrl+c                  |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| components        | answer                  | something ticked, or nothing was preselected                                                      | next step     | the next page, or the review                                                                                                                                                                                                                                                                                                                                                               |
+| components        | empty submit            | the page had a preselection                                                                       | no components |                                                                                                                                                                                                                                                                                                                                                                                            |
+| components        | esc                     | a later page                                                                                      | components    | the page before, as answered                                                                                                                                                                                                                                                                                                                                                               |
+| components        | esc                     | the first page, after a version question                                                          | version       |                                                                                                                                                                                                                                                                                                                                                                                            |
+| components        | esc                     | the first page                                                                                    | assistants    | the last picker shown asks again                                                                                                                                                                                                                                                                                                                                                           |
+| components        | ctrl+c                  |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| components        | ctrl+c                  | lola created the `-C` directory                                                                   | cancelled     | the directory is removed                                                                                                                                                                                                                                                                                                                                                                   |
+| no components     | yes                     |                                                                                                   | next step     | the module is installed with every component skipped                                                                                                                                                                                                                                                                                                                                       |
+| no components     | no                      | other modules are left                                                                            | next step     | the module is dropped from the run                                                                                                                                                                                                                                                                                                                                                         |
+| no components     | no                      | it was the only module                                                                            | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| no components     | esc                     |                                                                                                   | components    | the page again, nothing ticked                                                                                                                                                                                                                                                                                                                                                             |
+| no components     | ctrl+c                  |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| answers           | all answered            | nothing would change                                                                              | up to date    | the review is not shown                                                                                                                                                                                                                                                                                                                                                                    |
+| answers           | dry-run refusal         | the plan's dry run (or its preview) fails                                                         | refused       | the flow exits; it does not return to a step                                                                                                                                                                                                                                                                                                                                               |
+| review            | apply                   |                                                                                                   | done          |                                                                                                                                                                                                                                                                                                                                                                                            |
+| review            | esc                     | no component page                                                                                 | modules       | the last picker shown asks again                                                                                                                                                                                                                                                                                                                                                           |
+| review            | esc                     | a component page was asked                                                                        | components    | the last page, as answered                                                                                                                                                                                                                                                                                                                                                                 |
+| review            | Change scope            |                                                                                                   | scope         | see re-entry                                                                                                                                                                                                                                                                                                                                                                               |
+| review            | Change modules          |                                                                                                   | modules       | see re-entry                                                                                                                                                                                                                                                                                                                                                                               |
+| review            | Change assistants       |                                                                                                   | assistants    | see re-entry                                                                                                                                                                                                                                                                                                                                                                               |
+| review            | Change versions         |                                                                                                   | version       | see re-entry                                                                                                                                                                                                                                                                                                                                                                               |
+| review            | Change components       |                                                                                                   | components    | see re-entry                                                                                                                                                                                                                                                                                                                                                                               |
+| review            | Change components twice |                                                                                                   | components    | each time from the last answer                                                                                                                                                                                                                                                                                                                                                             |
+| review            | Change modules          | re-adding a removed module                                                                        | components    | see re-entry                                                                                                                                                                                                                                                                                                                                                                               |
+| review            | quit                    | Quit, `n` or `ctrl+c`, each reaching the flow as `ErrAborted`                                     | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| review            | q                       |                                                                                                   | cancelled     |                                                                                                                                                                                                                                                                                                                                                                                            |
+| change scope      | esc                     | the scope picker, reopened by Change scope                                                        | review        | every answer as it was                                                                                                                                                                                                                                                                                                                                                                     |
+| change modules    | esc                     | the module picker, reopened by Change modules                                                     | review        | every answer as it was                                                                                                                                                                                                                                                                                                                                                                     |
+| change assistants | esc                     | the assistant picker, reopened by Change assistants                                               | review        | every answer as it was                                                                                                                                                                                                                                                                                                                                                                     |
+| change components | esc                     | the first page, reopened by Change components                                                     | review        | every answer as it was; Esc on a later page goes to the page before                                                                                                                                                                                                                                                                                                                        |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | Apply, or a run that does not review | the module files, the destination's `.lola/lock.json` (user scope: `$XDG_STATE_HOME/lola/lock.json`), the entry in `.lola/project.yml` (user scope: `default.yml`, or the profile the install writes) or the picks in `selections.yaml`, any `target_versions` recorded; what the run fetched is committed to the cache | `✓ installed <module> (<targets>)` for each module installed; a module only rewritten for the new version has its `<module>: rewrote … files` line instead; 0 |
-| up to date | the plan changes nothing | nothing | `✓ already up to date`; 0 |
-| cancelled | Ctrl+C, q, Quit, a No that cancels | nothing; what the run fetched is dropped; a directory lola created for the run is removed (`removed <dir> (lola created it; nothing was installed there)`); a source added with Add a source… stays in your cache | `✗ cancelled — nothing was changed`; 4 |
-| refused | an error after the answers, or before any screen | nothing; created directories removed as on cancel | `error: …` with `hint:` lines; 3 when it needs your answer, else 1 |
+| exit       | when                                             | on disk                                                                                                                                                                                                                                                                                                                 | output, exit code                                                                                                                                             |
+|------------|--------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| done       | Apply, or a run that does not review             | the module files, the destination's `.lola/lock.json` (user scope: `$XDG_STATE_HOME/lola/lock.json`), the entry in `.lola/project.yml` (user scope: `default.yml`, or the profile the install writes) or the picks in `selections.yaml`, any `target_versions` recorded; what the run fetched is committed to the cache | `✓ installed <module> (<targets>)` for each module installed; a module only rewritten for the new version has its `<module>: rewrote … files` line instead; 0 |
+| up to date | the plan changes nothing                         | nothing                                                                                                                                                                                                                                                                                                                 | `✓ already up to date`; 0                                                                                                                                     |
+| cancelled  | Ctrl+C, q, Quit, a No that cancels               | nothing; what the run fetched is dropped; a directory lola created for the run is removed (`removed <dir> (lola created it; nothing was installed there)`); a source added with Add a source… stays in your cache                                                                                                       | `✗ cancelled — nothing was changed`; 4                                                                                                                        |
+| refused    | an error after the answers, or before any screen | nothing; created directories removed as on cancel                                                                                                                                                                                                                                                                       | `error: …` with `hint:` lines; 3 when it needs your answer, else 1                                                                                            |
 
 Under `-n` the done exit writes nothing: it prints the plan and, after a review, the equivalent
 commands.
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| Change scope | the scope picker (its last answer preselected, the last Other directory offered), then the assistant picker where one is needed and the version questions, each preselected with its last answer | the modules, at the versions first listed; the component picks of the destinations still chosen | the picks of destinations no longer chosen (counted in the summary) |
-| Change modules | the module picker (its last answer preselected), then a page for each module added | the assistants and the versions, which the modules added are written for; the picks of modules still picked | the picks of modules removed (counted); a module re-added opens its page with its last page answer if it had one from Change components or Esc, else its default |
-| Change assistants | the assistant picker (its last answer preselected), then the version questions, as steps of the flow, each preselected | the scope, modules and component picks | the versions |
-| Esc on the first screen of a reopened step | nothing: the run goes back to the review | every answer as it was before the Change entry | nothing. Once the step is answered, Esc on a later screen goes back in flow order, and the reopened step's first screen is then a step like any other |
-| Change versions | every version question of a multi-era assistant the scope's modules do not hold, declared or given ones too, each preselected, unnumbered | everything else | nothing until answered: Esc on the first question restores the answers it had |
-| Change components | every component page, each from its last answer | everything else | the pages' answers (kept as preselection) |
-| Esc on a picker | the last picker before it whose answer is held, its answer preselected; that picker then resets as its Change entry does | as its Change entry keeps | as its Change entry drops |
-| Esc on a component page or the review | the last page held before it, as answered; with none, the last picker | every other page | that page's answer (kept as preselection) |
-| Esc on no components | its page, nothing ticked | everything | |
+| way back                                   | asks again                                                                                                                                                                                       | keeps                                                                                                       | drops                                                                                                                                                            |
+|--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Change scope                               | the scope picker (its last answer preselected, the last Other directory offered), then the assistant picker where one is needed and the version questions, each preselected with its last answer | the modules, at the versions first listed; the component picks of the destinations still chosen             | the picks of destinations no longer chosen (counted in the summary)                                                                                              |
+| Change modules                             | the module picker (its last answer preselected), then a page for each module added                                                                                                               | the assistants and the versions, which the modules added are written for; the picks of modules still picked | the picks of modules removed (counted); a module re-added opens its page with its last page answer if it had one from Change components or Esc, else its default |
+| Change assistants                          | the assistant picker (its last answer preselected), then the version questions, as steps of the flow, each preselected                                                                           | the scope, modules and component picks                                                                      | the versions                                                                                                                                                     |
+| Esc on the first screen of a reopened step | nothing: the run goes back to the review                                                                                                                                                         | every answer as it was before the Change entry                                                              | nothing. Once the step is answered, Esc on a later screen goes back in flow order, and the reopened step's first screen is then a step like any other            |
+| Change versions                            | every version question of a multi-era assistant the scope's modules do not hold, declared or given ones too, each preselected, unnumbered                                                        | everything else                                                                                             | nothing until answered: Esc on the first question restores the answers it had                                                                                    |
+| Change components                          | every component page, each from its last answer                                                                                                                                                  | everything else                                                                                             | the pages' answers (kept as preselection)                                                                                                                        |
+| Esc on a picker                            | the last picker before it whose answer is held, its answer preselected; that picker then resets as its Change entry does                                                                         | as its Change entry keeps                                                                                   | as its Change entry drops                                                                                                                                        |
+| Esc on a component page or the review      | the last page held before it, as answered; with none, the last picker                                                                                                                            | every other page                                                                                            | that page's answer (kept as preselection)                                                                                                                        |
+| Esc on no components                       | its page, nothing ticked                                                                                                                                                                         | everything                                                                                                  |                                                                                                                                                                  |
 
 ## Profile edit
 
@@ -438,124 +438,124 @@ profile opens go back to it.
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| which | `<m> names profile <p> (<path>) and a module.` (`Edit profile <p>` for each such profile, `Edit module <m> in <target>`, Cancel) | the first name is a profile here and reads as a module, on a terminal |
-| where | the write target's question, with Cancel: `<bundle> is a bundle. Which profile gets <m>?`, `<m> comes from <base> (base), loaded under every profile at <scope>.`, `<remote> is read-only.` | the profile edits go to is a bundle or a remote profile, or the module comes from the base |
-| new profile | `New profile <n>:` (Lists modules, Bundles profiles, Cancel) | bare `--edit` of a name no profile has |
-| modules | `<label> › modules`, the profile's modules ticked, one your cache lacks labelled `(in <label>; not in your cache)`; nothing ticked is an answer | bare `--edit` of a profile, or Lists modules (`new profile <n> › modules`, nothing ticked) |
-| assistants, version, components, no components | as [Install](#states) | as Install |
-| review | as Install; below the summary, `Remove <m> from <label>, as you unticked …` and its plan for each module unticked; for a new profile with nothing ticked, `would make profile <n> (<path>, empty)` | as Install, and a new profile with nothing ticked |
-| remove | the removal plan, then `Remove <m> from <label>?` | the page unticked modules, nothing else changes (so there is no review), and no `-y` or `--force` |
-| remove there | the removals, then `Remove these there too? No changes nothing` | the profile is on in a later scope too, whose sync would remove files; asked before anything is written in any scope, and not under `-n` or `--force` |
-| members | `<label> › members` (`new bundle <n> › members`), the members ticked, one that names no profile labelled `(names no profile here)`; nothing ticked is an answer | bare `--edit` of a bundle, or Bundles profiles |
-| trust | the trust diff, then `Trust these changes?` (all or nothing) | the bundle is a project's whose member list a pull changed, and `--trust` does not cover it |
-| apply removals | the removals, then `Remove these and apply? No applies nothing` | the bundle is on and its new members remove files, and no `-y` or `--force` |
+| state                                          | what the user sees                                                                                                                                                                                 | asked when                                                                                                                                            |
+|------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| which                                          | `<m> names profile <p> (<path>) and a module.` (`Edit profile <p>` for each such profile, `Edit module <m> in <target>`, Cancel)                                                                   | the first name is a profile here and reads as a module, on a terminal                                                                                 |
+| where                                          | the write target's question, with Cancel: `<bundle> is a bundle. Which profile gets <m>?`, `<m> comes from <base> (base), loaded under every profile at <scope>.`, `<remote> is read-only.`        | the profile edits go to is a bundle or a remote profile, or the module comes from the base                                                            |
+| new profile                                    | `New profile <n>:` (Lists modules, Bundles profiles, Cancel)                                                                                                                                       | bare `--edit` of a name no profile has                                                                                                                |
+| modules                                        | `<label> › modules`, the profile's modules ticked, one your cache lacks labelled `(in <label>; not in your cache)`; nothing ticked is an answer                                                    | bare `--edit` of a profile, or Lists modules (`new profile <n> › modules`, nothing ticked)                                                            |
+| assistants, version, components, no components | as [Install](#states)                                                                                                                                                                              | as Install                                                                                                                                            |
+| review                                         | as Install; below the summary, `Remove <m> from <label>, as you unticked …` and its plan for each module unticked; for a new profile with nothing ticked, `would make profile <n> (<path>, empty)` | as Install, and a new profile with nothing ticked                                                                                                     |
+| remove                                         | the removal plan, then `Remove <m> from <label>?`                                                                                                                                                  | the page unticked modules, nothing else changes (so there is no review), and no `-y` or `--force`                                                     |
+| remove there                                   | the removals, then `Remove these there too? No changes nothing`                                                                                                                                    | the profile is on in a later scope too, whose sync would remove files; asked before anything is written in any scope, and not under `-n` or `--force` |
+| members                                        | `<label> › members` (`new bundle <n> › members`), the members ticked, one that names no profile labelled `(names no profile here)`; nothing ticked is an answer                                    | bare `--edit` of a bundle, or Bundles profiles                                                                                                        |
+| trust                                          | the trust diff, then `Trust these changes?` (all or nothing)                                                                                                                                       | the bundle is a project's whose member list a pull changed, and `--trust` does not cover it                                                           |
+| apply removals                                 | the removals, then `Remove these and apply? No applies nothing`                                                                                                                                    | the bundle is on and its new members remove files, and no `-y` or `--force`                                                                           |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | module argument | | components | on a terminal, the install flow: no scope or module picker; the review offers no Change scope or Change modules |
-| start | module argument | a profile and a module | which | the first name is both |
-| start | module argument | the write target asks | where | |
-| start | module argument | a name no profile has | refused | without `--new`; hint: the run with `--new` |
-| start | new flag with modules | | components | `--new`, a name no profile has: the profile is made on Apply (`, new` in its write line) |
-| start | new flag | | created | `--new` and no module: no screen |
-| start | bundle flag | | apply removals | `--bundle <members>`: no members page; when nothing is removed, straight to done |
-| start | run | a profile | modules | no module |
-| start | run | a bundle | members | no module |
-| start | run | a name no profile has | new profile | no module |
-| start | pick flags | no module | refused | `--skip`, `--only`, `--unskip`, `--exact`, `--ref` or `--path` |
-| which | Edit profile | other module arguments | next step | they go into that profile; no review when lola chose nothing |
-| which | Edit profile | no other module | modules | that profile's page |
-| which | Edit module | | next step | the module goes into the profile edits go to |
-| which | Cancel or ctrl+c | | cancelled | |
-| which | esc | | which | first screen: key help note |
-| where | answer | | next step | the page is titled with the file the answer writes |
-| where | answer | a bundle on, then an inherited module | where | the inherited-edit question follows the member question, both before the page |
-| where | answer | a remote profile on | next step | |
-| where | Cancel or ctrl+c | | cancelled | |
-| where | esc | | where | first screen: key help note |
-| new profile | Lists modules | | modules | `new profile <n> › modules`, nothing ticked; the context line is printed once, before the question |
-| new profile | Bundles profiles | | members | `new bundle <n> › members`, nothing ticked |
-| new profile | Cancel or ctrl+c | | cancelled | |
-| new profile | esc | | new profile | first screen: key help note |
-| modules | answer | | next step | as [Install's](#transitions) modules answer |
-| modules | answer | nothing would change | up to date | no review |
-| modules | answer | only modules your cache lacks are kept | unchanged | the `lola cache add` that lets you pick them is hinted |
-| modules | answer | what is kept is unchanged, something unticked | remove | after the component pages |
-| modules | empty submit | a profile with modules | remove | the removal plan is printed |
-| modules | empty submit | `-y` or `--force` | done | the removal plan is printed, and nothing asked |
-| modules | empty submit | a new profile | review | `would make profile <n> (<path>, empty)`; no assistants, version or component step: there is nothing to install, so the review offers only Change modules |
-| modules | empty submit | a new profile, after Change modules | review | as above: the assistants and versions answered for the modules unticked are dropped |
-| modules | empty submit | a new profile, `-y` | created | the summary printed on stderr, nothing asked (`--force` alike) |
-| modules | esc | first screen | modules | key help note |
-| modules | esc | a new profile | new profile | Lists modules under the cursor |
-| modules | ctrl+c | | cancelled | |
-| components | esc | the first page, the module page shown | modules | its answer preselected |
-| components | esc | the first page, module arguments | components | first screen: key help note |
-| components | ctrl+c | | cancelled | |
-| no components | no | module arguments, other modules left | done | the module is dropped; with nothing lola chose left, there is no review, so this run cannot bring it back |
-| review | apply | | done | |
-| review | apply | modules unticked | done | they are removed from the profile, asking nothing more |
-| review | apply | modules unticked, the profile on in two scopes | remove there | asked before the install writes |
-| review | apply | a new profile, nothing ticked | created | |
-| review | apply | `-n` | done | nothing written |
-| review | esc | | components | the last page, as answered |
-| review | esc | a new profile, nothing ticked | modules | nothing ticked |
-| review | Change modules | | modules | its answer preselected |
-| review | Change modules | a new profile | modules | nothing ticked, as answered |
-| review | quit | | cancelled | |
-| change modules | esc | | review | the module page reopened by Change modules: every answer as it was |
-| change components | esc | | review | the first page reopened by Change components: every answer as it was |
-| remove | yes | | done | removed from the profile and applied |
-| remove | yes | the profile on in two scopes | remove there | nothing is written yet |
-| remove | no | | done | `kept <m> in <label>`; nothing written |
-| remove | esc | | modules | the page as answered |
-| remove | esc | a component page was asked | components | the last page, as answered |
-| remove | ctrl+c | | cancelled | |
-| remove there | yes | | done | that scope's sync after the write asks nothing more; a removal it did not show is still asked (`… No leaves that scope as it was`) |
-| remove there | no | | cancelled | nothing written in any scope |
-| remove there | ctrl+c | | cancelled | nothing written in any scope |
-| members | answer | | done | the bundle's members set, in order |
-| members | answer | removes modules of the bundle on | apply removals | |
-| members | answer | unchanged | done | `bundle <n> already lists …`; nothing written |
-| members | answer | a pulled member list | trust | |
-| members | answer | a new bundle | created | |
-| members | esc | first screen | members | key help note |
-| members | esc | a new bundle | new profile | Bundles profiles under the cursor |
-| members | ctrl+c | | cancelled | |
-| trust | accept | | done | what was shown is recorded as trusted; apply removals follows when the apply removes files |
-| trust | decline or ctrl+c | | cancelled | |
-| apply removals | yes | | done | |
-| apply removals | no | | cancelled | |
-| apply removals | esc | | members | after the members page: the page as answered |
-| apply removals | esc | after the trust question | members | the page as answered; the trust question was the edit's own, so Esc goes back past it |
-| apply removals | esc | bundle flag, after the trust question | apply removals | first screen: key help note |
-| apply removals | ctrl+c | | cancelled | |
+| from              | input                 | guard                                          | to             | effects                                                                                                                                                   |
+|-------------------|-----------------------|------------------------------------------------|----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| start             | module argument       |                                                | components     | on a terminal, the install flow: no scope or module picker; the review offers no Change scope or Change modules                                           |
+| start             | module argument       | a profile and a module                         | which          | the first name is both                                                                                                                                    |
+| start             | module argument       | the write target asks                          | where          |                                                                                                                                                           |
+| start             | module argument       | a name no profile has                          | refused        | without `--new`; hint: the run with `--new`                                                                                                               |
+| start             | new flag with modules |                                                | components     | `--new`, a name no profile has: the profile is made on Apply (`, new` in its write line)                                                                  |
+| start             | new flag              |                                                | created        | `--new` and no module: no screen                                                                                                                          |
+| start             | bundle flag           |                                                | apply removals | `--bundle <members>`: no members page; when nothing is removed, straight to done                                                                          |
+| start             | run                   | a profile                                      | modules        | no module                                                                                                                                                 |
+| start             | run                   | a bundle                                       | members        | no module                                                                                                                                                 |
+| start             | run                   | a name no profile has                          | new profile    | no module                                                                                                                                                 |
+| start             | pick flags            | no module                                      | refused        | `--skip`, `--only`, `--unskip`, `--exact`, `--ref` or `--path`                                                                                            |
+| which             | Edit profile          | other module arguments                         | next step      | they go into that profile; no review when lola chose nothing                                                                                              |
+| which             | Edit profile          | no other module                                | modules        | that profile's page                                                                                                                                       |
+| which             | Edit module           |                                                | next step      | the module goes into the profile edits go to                                                                                                              |
+| which             | Cancel or ctrl+c      |                                                | cancelled      |                                                                                                                                                           |
+| which             | esc                   |                                                | which          | first screen: key help note                                                                                                                               |
+| where             | answer                |                                                | next step      | the page is titled with the file the answer writes                                                                                                        |
+| where             | answer                | a bundle on, then an inherited module          | where          | the inherited-edit question follows the member question, both before the page                                                                             |
+| where             | answer                | a remote profile on                            | next step      |                                                                                                                                                           |
+| where             | Cancel or ctrl+c      |                                                | cancelled      |                                                                                                                                                           |
+| where             | esc                   |                                                | where          | first screen: key help note                                                                                                                               |
+| new profile       | Lists modules         |                                                | modules        | `new profile <n> › modules`, nothing ticked; the context line is printed once, before the question                                                        |
+| new profile       | Bundles profiles      |                                                | members        | `new bundle <n> › members`, nothing ticked                                                                                                                |
+| new profile       | Cancel or ctrl+c      |                                                | cancelled      |                                                                                                                                                           |
+| new profile       | esc                   |                                                | new profile    | first screen: key help note                                                                                                                               |
+| modules           | answer                |                                                | next step      | as [Install's](#transitions) modules answer                                                                                                               |
+| modules           | answer                | nothing would change                           | up to date     | no review                                                                                                                                                 |
+| modules           | answer                | only modules your cache lacks are kept         | unchanged      | the `lola cache add` that lets you pick them is hinted                                                                                                    |
+| modules           | answer                | what is kept is unchanged, something unticked  | remove         | after the component pages                                                                                                                                 |
+| modules           | empty submit          | a profile with modules                         | remove         | the removal plan is printed                                                                                                                               |
+| modules           | empty submit          | `-y` or `--force`                              | done           | the removal plan is printed, and nothing asked                                                                                                            |
+| modules           | empty submit          | a new profile                                  | review         | `would make profile <n> (<path>, empty)`; no assistants, version or component step: there is nothing to install, so the review offers only Change modules |
+| modules           | empty submit          | a new profile, after Change modules            | review         | as above: the assistants and versions answered for the modules unticked are dropped                                                                       |
+| modules           | empty submit          | a new profile, `-y`                            | created        | the summary printed on stderr, nothing asked (`--force` alike)                                                                                            |
+| modules           | esc                   | first screen                                   | modules        | key help note                                                                                                                                             |
+| modules           | esc                   | a new profile                                  | new profile    | Lists modules under the cursor                                                                                                                            |
+| modules           | ctrl+c                |                                                | cancelled      |                                                                                                                                                           |
+| components        | esc                   | the first page, the module page shown          | modules        | its answer preselected                                                                                                                                    |
+| components        | esc                   | the first page, module arguments               | components     | first screen: key help note                                                                                                                               |
+| components        | ctrl+c                |                                                | cancelled      |                                                                                                                                                           |
+| no components     | no                    | module arguments, other modules left           | done           | the module is dropped; with nothing lola chose left, there is no review, so this run cannot bring it back                                                 |
+| review            | apply                 |                                                | done           |                                                                                                                                                           |
+| review            | apply                 | modules unticked                               | done           | they are removed from the profile, asking nothing more                                                                                                    |
+| review            | apply                 | modules unticked, the profile on in two scopes | remove there   | asked before the install writes                                                                                                                           |
+| review            | apply                 | a new profile, nothing ticked                  | created        |                                                                                                                                                           |
+| review            | apply                 | `-n`                                           | done           | nothing written                                                                                                                                           |
+| review            | esc                   |                                                | components     | the last page, as answered                                                                                                                                |
+| review            | esc                   | a new profile, nothing ticked                  | modules        | nothing ticked                                                                                                                                            |
+| review            | Change modules        |                                                | modules        | its answer preselected                                                                                                                                    |
+| review            | Change modules        | a new profile                                  | modules        | nothing ticked, as answered                                                                                                                               |
+| review            | quit                  |                                                | cancelled      |                                                                                                                                                           |
+| change modules    | esc                   |                                                | review         | the module page reopened by Change modules: every answer as it was                                                                                        |
+| change components | esc                   |                                                | review         | the first page reopened by Change components: every answer as it was                                                                                      |
+| remove            | yes                   |                                                | done           | removed from the profile and applied                                                                                                                      |
+| remove            | yes                   | the profile on in two scopes                   | remove there   | nothing is written yet                                                                                                                                    |
+| remove            | no                    |                                                | done           | `kept <m> in <label>`; nothing written                                                                                                                    |
+| remove            | esc                   |                                                | modules        | the page as answered                                                                                                                                      |
+| remove            | esc                   | a component page was asked                     | components     | the last page, as answered                                                                                                                                |
+| remove            | ctrl+c                |                                                | cancelled      |                                                                                                                                                           |
+| remove there      | yes                   |                                                | done           | that scope's sync after the write asks nothing more; a removal it did not show is still asked (`… No leaves that scope as it was`)                        |
+| remove there      | no                    |                                                | cancelled      | nothing written in any scope                                                                                                                              |
+| remove there      | ctrl+c                |                                                | cancelled      | nothing written in any scope                                                                                                                              |
+| members           | answer                |                                                | done           | the bundle's members set, in order                                                                                                                        |
+| members           | answer                | removes modules of the bundle on               | apply removals |                                                                                                                                                           |
+| members           | answer                | unchanged                                      | done           | `bundle <n> already lists …`; nothing written                                                                                                             |
+| members           | answer                | a pulled member list                           | trust          |                                                                                                                                                           |
+| members           | answer                | a new bundle                                   | created        |                                                                                                                                                           |
+| members           | esc                   | first screen                                   | members        | key help note                                                                                                                                             |
+| members           | esc                   | a new bundle                                   | new profile    | Bundles profiles under the cursor                                                                                                                         |
+| members           | ctrl+c                |                                                | cancelled      |                                                                                                                                                           |
+| trust             | accept                |                                                | done           | what was shown is recorded as trusted; apply removals follows when the apply removes files                                                                |
+| trust             | decline or ctrl+c     |                                                | cancelled      |                                                                                                                                                           |
+| apply removals    | yes                   |                                                | done           |                                                                                                                                                           |
+| apply removals    | no                    |                                                | cancelled      |                                                                                                                                                           |
+| apply removals    | esc                   |                                                | members        | after the members page: the page as answered                                                                                                              |
+| apply removals    | esc                   | after the trust question                       | members        | the page as answered; the trust question was the edit's own, so Esc goes back past it                                                                     |
+| apply removals    | esc                   | bundle flag, after the trust question          | apply removals | first screen: key help note                                                                                                                               |
+| apply removals    | ctrl+c                |                                                | cancelled      |                                                                                                                                                           |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | Apply, a yes, or a run that does not review | the profile's file (or the base's, or `selections.yaml` for picks alone, as the where answer says), the files it installs or removes in each scope it is on, their `lock.json` | as Install's done, then `✓ removed <m> from <label>` and the uninstall for each module removed, and each later scope's sync under its name; a No at remove prints `kept <m> in <label>`; 0 |
-| created | `--new`, Apply on a new profile with nothing ticked, a new bundle's members | the new profile's file; nothing applied | `✓ new profile <n> (<path>, empty)` or `✓ new bundle <n> (<members>)`, and the `--switch` that turns it on; 0 |
-| unchanged | only modules your cache lacks are kept and nothing unticked | nothing | `→ <label> is unchanged…`, with the `lola cache add` to run; 0 |
-| up to date | the plan changes nothing | nothing | `✓ already up to date`; 0 |
-| cancelled | Ctrl+C, q, Quit, Cancel, a No that cancels | nothing | as Install's cancelled; 4 |
-| refused | an error before any screen or after the answers | nothing | `error: …` with `hint:` lines; 3 when it needs your answer, else 1 |
+| exit       | when                                                                        | on disk                                                                                                                                                                        | output, exit code                                                                                                                                                                          |
+|------------|-----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| done       | Apply, a yes, or a run that does not review                                 | the profile's file (or the base's, or `selections.yaml` for picks alone, as the where answer says), the files it installs or removes in each scope it is on, their `lock.json` | as Install's done, then `✓ removed <m> from <label>` and the uninstall for each module removed, and each later scope's sync under its name; a No at remove prints `kept <m> in <label>`; 0 |
+| created    | `--new`, Apply on a new profile with nothing ticked, a new bundle's members | the new profile's file; nothing applied                                                                                                                                        | `✓ new profile <n> (<path>, empty)` or `✓ new bundle <n> (<members>)`, and the `--switch` that turns it on; 0                                                                              |
+| unchanged  | only modules your cache lacks are kept and nothing unticked                 | nothing                                                                                                                                                                        | `→ <label> is unchanged…`, with the `lola cache add` to run; 0                                                                                                                             |
+| up to date | the plan changes nothing                                                    | nothing                                                                                                                                                                        | `✓ already up to date`; 0                                                                                                                                                                  |
+| cancelled  | Ctrl+C, q, Quit, Cancel, a No that cancels                                  | nothing                                                                                                                                                                        | as Install's cancelled; 4                                                                                                                                                                  |
+| refused    | an error before any screen or after the answers                             | nothing                                                                                                                                                                        | `error: …` with `hint:` lines; 3 when it needs your answer, else 1                                                                                                                         |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| Esc and Change entries of the install flow | as [Install's re-entry](#re-entry) | as Install | as Install |
-| Esc on remove | the last screen before it: the last component page held, else the module page, as answered | every answer | nothing |
-| Esc on a new profile's review | the module page, nothing ticked | the new profile's choice | nothing |
-| Esc on apply removals | the members page, ticked as answered | nothing is written yet | nothing |
-| Esc on a new profile's module page or a new bundle's members page | new profile, its last answer under the cursor | the context line, not printed again | the page's ticks |
-| Esc on which, where, new profile or a bundle's members page | nothing: a first screen stays | | |
+| way back                                                          | asks again                                                                                 | keeps                               | drops            |
+|-------------------------------------------------------------------|--------------------------------------------------------------------------------------------|-------------------------------------|------------------|
+| Esc and Change entries of the install flow                        | as [Install's re-entry](#re-entry)                                                         | as Install                          | as Install       |
+| Esc on remove                                                     | the last screen before it: the last component page held, else the module page, as answered | every answer                        | nothing          |
+| Esc on a new profile's review                                     | the module page, nothing ticked                                                            | the new profile's choice            | nothing          |
+| Esc on apply removals                                             | the members page, ticked as answered                                                       | nothing is written yet              | nothing          |
+| Esc on a new profile's module page or a new bundle's members page | new profile, its last answer under the cursor                                              | the context line, not printed again | the page's ticks |
+| Esc on which, where, new profile or a bundle's members page       | nothing: a first screen stays                                                              |                                     |                  |
 
 ## Scope picker
 
@@ -602,80 +602,80 @@ stateDiagram-v2
 Every screen also goes to `cancelled` on `ctrl+c` or `q`. The picker is the run's first screen for
 every command: Esc there stays, its key help saying `first step — q quits`.
 
-| command | question | several scopes may be ticked | a project at your home directory |
-|---|---|---|---|
-| `lola sync` | `Sync where?` | yes: the project, then user scope | refused |
-| `lola update` | `Update where?` | yes: the project, then user scope | refused |
-| `lola tidy` | `Tidy where?` | no | accepted |
-| `lola repair` | `Repair where?` | no | accepted |
-| `lola uninstall` | `Uninstall from where?` | no | accepted |
-| `lola profile --on` | `Turn it on where?` | no | refused |
-| `lola profile --off` | `Turn it off where?` | no | refused |
-| `lola profile --switch` | `Switch where?` | no | refused |
-| `lola profile --move` | `Move where?` | no | refused |
-| `lola profile --split` | `Split where?` | no | refused |
-| `lola profile --remove` | `Check which scope before removing it?` | no | refused |
+| command                 | question                                | several scopes may be ticked      | a project at your home directory |
+|-------------------------|-----------------------------------------|-----------------------------------|----------------------------------|
+| `lola sync`             | `Sync where?`                           | yes: the project, then user scope | refused                          |
+| `lola update`           | `Update where?`                         | yes: the project, then user scope | refused                          |
+| `lola tidy`             | `Tidy where?`                           | no                                | accepted                         |
+| `lola repair`           | `Repair where?`                         | no                                | accepted                         |
+| `lola uninstall`        | `Uninstall from where?`                 | no                                | accepted                         |
+| `lola profile --on`     | `Turn it on where?`                     | no                                | refused                          |
+| `lola profile --off`    | `Turn it off where?`                    | no                                | refused                          |
+| `lola profile --switch` | `Switch where?`                         | no                                | refused                          |
+| `lola profile --move`   | `Move where?`                           | no                                | refused                          |
+| `lola profile --split`  | `Split where?`                          | no                                | refused                          |
+| `lola profile --remove` | `Check which scope before removing it?` | no                                | refused                          |
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| scope | the command's question (Project (`<root>`) with its context, User (~) with its context, Other directory…), nothing ticked; `pick one` below it where one scope is taken | no `--scope`, `--user`, `--project` or `-C`, on a terminal |
-| directory | `Other directory` (a path input; `~` and `~/` are your home directory) | Other directory… is ticked |
+| state     | what the user sees                                                                                                                                                      | asked when                                                 |
+|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
+| scope     | the command's question (Project (`<root>`) with its context, User (~) with its context, Other directory…), nothing ticked; `pick one` below it where one scope is taken | no `--scope`, `--user`, `--project` or `-C`, on a terminal |
+| directory | `Other directory` (a path input; `~` and `~/` are your home directory)                                                                                                  | Other directory… is ticked                                 |
 
 Project is the project with `.lola/` found at or above the current directory, else the current
 directory, which is offered without a `.lola/`.
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | lola sync | scope | `Sync where?`; several may be ticked |
-| start | run | lola update | scope | `Update where?`; several may be ticked |
-| start | run | lola tidy | scope | `Tidy where?` |
-| start | run | lola repair | scope | `Repair where?` |
-| start | run | lola uninstall | scope | `Uninstall from where?` |
-| start | run | lola profile --on | scope | `Turn it on where?` |
-| start | run | lola profile --off | scope | `Turn it off where?` |
-| start | run | lola profile --switch | scope | `Switch where?` |
-| start | run | lola profile --move | scope | `Move where?` (with `--user` and `-C` together, no picker) |
-| start | run | lola profile --split | scope | `Split where?` |
-| start | run | lola profile --remove | scope | `Check which scope before removing it?` |
-| start | scope flag | | next step | `--project`, `--user`, `-C <dir>` or `--scope`: nothing asked |
-| start | run | -n or --force | scope | neither names a scope; `-y` opens no picker (below) |
-| start | run | --json | next step | nothing asked: the project found from here, else `default_scope`, else refused with the runs that name a scope |
-| scope | answer | | next step | the command runs at the scope ticked |
-| scope | answer | two ticked, one scope | scope | problem "pick one scope" |
-| scope | answer | two ticked, sync or update | next step | each scope in turn, the project first, stopping at the first that fails or is declined |
-| scope | answer | Project is the home directory, refused | scope | problem "the project here is your home directory; tick User instead", nothing ticked |
-| scope | answer | Project is the home directory, accepted | next step | repair and uninstall run at the project there |
-| scope | answer | Project has no .lola/ | refused | `lola sync`: `no project.yml in <dir>`, hinting `lola install --project <source>` |
-| scope | answer | Other ticked | directory | |
-| scope | esc | | scope | first screen: key help note |
-| scope | ctrl+c | | cancelled | |
-| directory | answer | | next step | an existing directory, not the project ticked above |
-| directory | answer | not a directory | directory | empty, missing, a file, or the project ticked above: the problem says why; nothing is created; the answer is offered again |
-| directory | answer | home, refused | directory | problem "that is your user scope (~); tick User instead" |
-| directory | answer | home, accepted | next step | tidy, repair and uninstall run there as a project |
-| directory | esc | | scope | the picker as ticked |
-| directory | esc | typed path | scope | the path typed is dropped: ticked again, Other directory asks with an empty input |
-| directory | ctrl+c | | cancelled | nothing runs, at any scope ticked |
+| from      | input      | guard                                   | to        | effects                                                                                                                    |
+|-----------|------------|-----------------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------|
+| start     | run        | lola sync                               | scope     | `Sync where?`; several may be ticked                                                                                       |
+| start     | run        | lola update                             | scope     | `Update where?`; several may be ticked                                                                                     |
+| start     | run        | lola tidy                               | scope     | `Tidy where?`                                                                                                              |
+| start     | run        | lola repair                             | scope     | `Repair where?`                                                                                                            |
+| start     | run        | lola uninstall                          | scope     | `Uninstall from where?`                                                                                                    |
+| start     | run        | lola profile --on                       | scope     | `Turn it on where?`                                                                                                        |
+| start     | run        | lola profile --off                      | scope     | `Turn it off where?`                                                                                                       |
+| start     | run        | lola profile --switch                   | scope     | `Switch where?`                                                                                                            |
+| start     | run        | lola profile --move                     | scope     | `Move where?` (with `--user` and `-C` together, no picker)                                                                 |
+| start     | run        | lola profile --split                    | scope     | `Split where?`                                                                                                             |
+| start     | run        | lola profile --remove                   | scope     | `Check which scope before removing it?`                                                                                    |
+| start     | scope flag |                                         | next step | `--project`, `--user`, `-C <dir>` or `--scope`: nothing asked                                                              |
+| start     | run        | -n or --force                           | scope     | neither names a scope; `-y` opens no picker (below)                                                                        |
+| start     | run        | --json                                  | next step | nothing asked: the project found from here, else `default_scope`, else refused with the runs that name a scope             |
+| scope     | answer     |                                         | next step | the command runs at the scope ticked                                                                                       |
+| scope     | answer     | two ticked, one scope                   | scope     | problem "pick one scope"                                                                                                   |
+| scope     | answer     | two ticked, sync or update              | next step | each scope in turn, the project first, stopping at the first that fails or is declined                                     |
+| scope     | answer     | Project is the home directory, refused  | scope     | problem "the project here is your home directory; tick User instead", nothing ticked                                       |
+| scope     | answer     | Project is the home directory, accepted | next step | repair and uninstall run at the project there                                                                              |
+| scope     | answer     | Project has no .lola/                   | refused   | `lola sync`: `no project.yml in <dir>`, hinting `lola install --project <source>`                                          |
+| scope     | answer     | Other ticked                            | directory |                                                                                                                            |
+| scope     | esc        |                                         | scope     | first screen: key help note                                                                                                |
+| scope     | ctrl+c     |                                         | cancelled |                                                                                                                            |
+| directory | answer     |                                         | next step | an existing directory, not the project ticked above                                                                        |
+| directory | answer     | not a directory                         | directory | empty, missing, a file, or the project ticked above: the problem says why; nothing is created; the answer is offered again |
+| directory | answer     | home, refused                           | directory | problem "that is your user scope (~); tick User instead"                                                                   |
+| directory | answer     | home, accepted                          | next step | tidy, repair and uninstall run there as a project                                                                          |
+| directory | esc        |                                         | scope     | the picker as ticked                                                                                                       |
+| directory | esc        | typed path                              | scope     | the path typed is dropped: ticked again, Other directory asks with an empty input                                          |
+| directory | ctrl+c     |                                         | cancelled | nothing runs, at any scope ticked                                                                                          |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| next step | an answer | what the command then writes at that scope | the command's own; its context line names the scope |
-| cancelled | Ctrl+C, q | nothing | the command's cancel message; 4 |
-| refused | the scope cannot be taken, or no scope can be resolved off a terminal | nothing | `error: …` with `hint:` lines; 1 |
+| exit      | when                                                                  | on disk                                    | output, exit code                                   |
+|-----------|-----------------------------------------------------------------------|--------------------------------------------|-----------------------------------------------------|
+| next step | an answer                                                             | what the command then writes at that scope | the command's own; its context line names the scope |
+| cancelled | Ctrl+C, q                                                             | nothing                                    | the command's cancel message; 4                     |
+| refused   | the scope cannot be taken, or no scope can be resolved off a terminal | nothing                                    | `error: …` with `hint:` lines; 1                    |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| Esc on directory | the picker | its ticks, Other directory… included | the path typed |
-| a problem | the same screen | the picker: nothing ticked; directory: the answer, when it is safe to show | |
-| Esc on the picker | nothing: a first screen stays | | |
+| way back          | asks again                    | keeps                                                                      | drops          |
+|-------------------|-------------------------------|----------------------------------------------------------------------------|----------------|
+| Esc on directory  | the picker                    | its ticks, Other directory… included                                       | the path typed |
+| a problem         | the same screen               | the picker: nothing ticked; directory: the answer, when it is safe to show |                |
+| Esc on the picker | nothing: a first screen stays |                                                                            |                |
 
 ## Trust question
 
@@ -748,63 +748,63 @@ Esc there stays.
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| trust | the trust diff, then `Trust these changes?` (`Trust all N changes` or `Trust this change`, Choose…, `Cancel (the project is not changed)`), the cursor on Cancel, or on the answer given before when asked again | a project's files changed since you last trusted them, in a kind `--trust` does not cover, on a terminal |
-| choose | one list per kind of change (`Added (n)`, …), nothing ticked, or the entries chosen before when asked again | Choose… is picked; not offered by an activation or `--move`, or when the top-level targets are the only change |
-| removals | the removals, then the command's removals question | the run removes files, without `-y` or `--force` |
-| receipt | `trusting, as --trust=<kinds> allows:` and what it covers, then `Proceed?` (default No) | `--trust` covers a change, on a terminal, without `-y` |
+| state    | what the user sees                                                                                                                                                                                               | asked when                                                                                                     |
+|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| trust    | the trust diff, then `Trust these changes?` (`Trust all N changes` or `Trust this change`, Choose…, `Cancel (the project is not changed)`), the cursor on Cancel, or on the answer given before when asked again | a project's files changed since you last trusted them, in a kind `--trust` does not cover, on a terminal       |
+| choose   | one list per kind of change (`Added (n)`, …), nothing ticked, or the entries chosen before when asked again                                                                                                      | Choose… is picked; not offered by an activation or `--move`, or when the top-level targets are the only change |
+| removals | the removals, then the command's removals question                                                                                                                                                               | the run removes files, without `-y` or `--force`                                                               |
+| receipt  | `trusting, as --trust=<kinds> allows:` and what it covers, then `Proceed?` (default No)                                                                                                                          | `--trust` covers a change, on a terminal, without `-y`                                                         |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | lola sync | trust | the trust diff on stderr first |
-| start | run | lola update | trust | a folder's changed content, or a new pin, is a change too |
-| start | run | an activation | trust | no Choose…: all or nothing |
-| start | run | -y | trust | `-y` never trusts; it answers the removals |
-| start | run | -n | done | asks nothing; prints the plan and the trust diff; writes nothing to the project, though it may cache the versions it would trust, at their pins |
-| start | run | no terminal | refused | the diff on stderr; the hints give the run with `--trust` |
-| start | run | only removals | removals | the trust is recorded already: the removals question is the first screen |
-| start | trust flag | | receipt | `--trust` covers every change: no trust question; the receipt follows the removals |
-| start | trust flag | -y | next step | the receipt is printed, not asked |
-| trust | Trust all | | next step | `→ trusting …` is echoed; the trust is recorded with the apply; after the apply, the same run off a terminal is printed |
-| trust | Trust all | removals follow | removals | |
-| trust | Trust all | --trust covers the rest | receipt | |
-| trust | Choose… | | choose | |
-| trust | Cancel or ctrl+c | | cancelled | nothing written, nothing recorded |
-| trust | esc | | trust | first screen: key help note |
-| choose | answer | | next step | the entries ticked are trusted; the rest are left as installed, with a warning naming them and the sync that asks again |
-| choose | empty submit | | choose | refused with the "nothing selected" note; Cancel is the way out |
-| choose | esc | first list | trust | the cursor on Choose…, the ticks kept |
-| choose | esc | a later list | choose | the list before |
-| choose | ctrl+c | | cancelled | |
-| removals | yes | | done | `→ removing <modules>` |
-| removals | no | | declined | nothing applied; the trust you gave is recorded, and the message says so: the next sync asks only the removals (and again about what lola records only once it writes it) |
-| removals | no | several scopes | declined | the scopes after it are not synced |
-| removals | no | an activation | declined | the message names the activation to run again |
-| removals | esc | after a trust answer | trust | `lola sync`, `update` and the activations: the trust question again, its answer under the cursor and Choose…'s ticks kept, `→ back to the trust question: the answer above no longer stands` printed; nothing is written until the removals are answered. `--move` and `--split` stay, as on a first screen |
-| removals | esc | first screen | removals | key help note |
-| removals | ctrl+c | | cancelled | |
-| receipt | yes | | done | |
-| receipt | no | | cancelled | nothing written in any scope |
+| from     | input            | guard                   | to        | effects                                                                                                                                                                                                                                                                                                     |
+|----------|------------------|-------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| start    | run              | lola sync               | trust     | the trust diff on stderr first                                                                                                                                                                                                                                                                              |
+| start    | run              | lola update             | trust     | a folder's changed content, or a new pin, is a change too                                                                                                                                                                                                                                                   |
+| start    | run              | an activation           | trust     | no Choose…: all or nothing                                                                                                                                                                                                                                                                                  |
+| start    | run              | -y                      | trust     | `-y` never trusts; it answers the removals                                                                                                                                                                                                                                                                  |
+| start    | run              | -n                      | done      | asks nothing; prints the plan and the trust diff; writes nothing to the project, though it may cache the versions it would trust, at their pins                                                                                                                                                             |
+| start    | run              | no terminal             | refused   | the diff on stderr; the hints give the run with `--trust`                                                                                                                                                                                                                                                   |
+| start    | run              | only removals           | removals  | the trust is recorded already: the removals question is the first screen                                                                                                                                                                                                                                    |
+| start    | trust flag       |                         | receipt   | `--trust` covers every change: no trust question; the receipt follows the removals                                                                                                                                                                                                                          |
+| start    | trust flag       | -y                      | next step | the receipt is printed, not asked                                                                                                                                                                                                                                                                           |
+| trust    | Trust all        |                         | next step | `→ trusting …` is echoed; the trust is recorded with the apply; after the apply, the same run off a terminal is printed                                                                                                                                                                                     |
+| trust    | Trust all        | removals follow         | removals  |                                                                                                                                                                                                                                                                                                             |
+| trust    | Trust all        | --trust covers the rest | receipt   |                                                                                                                                                                                                                                                                                                             |
+| trust    | Choose…          |                         | choose    |                                                                                                                                                                                                                                                                                                             |
+| trust    | Cancel or ctrl+c |                         | cancelled | nothing written, nothing recorded                                                                                                                                                                                                                                                                           |
+| trust    | esc              |                         | trust     | first screen: key help note                                                                                                                                                                                                                                                                                 |
+| choose   | answer           |                         | next step | the entries ticked are trusted; the rest are left as installed, with a warning naming them and the sync that asks again                                                                                                                                                                                     |
+| choose   | empty submit     |                         | choose    | refused with the "nothing selected" note; Cancel is the way out                                                                                                                                                                                                                                             |
+| choose   | esc              | first list              | trust     | the cursor on Choose…, the ticks kept                                                                                                                                                                                                                                                                       |
+| choose   | esc              | a later list            | choose    | the list before                                                                                                                                                                                                                                                                                             |
+| choose   | ctrl+c           |                         | cancelled |                                                                                                                                                                                                                                                                                                             |
+| removals | yes              |                         | done      | `→ removing <modules>`                                                                                                                                                                                                                                                                                      |
+| removals | no               |                         | declined  | nothing applied; the trust you gave is recorded, and the message says so: the next sync asks only the removals (and again about what lola records only once it writes it)                                                                                                                                   |
+| removals | no               | several scopes          | declined  | the scopes after it are not synced                                                                                                                                                                                                                                                                          |
+| removals | no               | an activation           | declined  | the message names the activation to run again                                                                                                                                                                                                                                                               |
+| removals | esc              | after a trust answer    | trust     | `lola sync`, `update` and the activations: the trust question again, its answer under the cursor and Choose…'s ticks kept, `→ back to the trust question: the answer above no longer stands` printed; nothing is written until the removals are answered. `--move` and `--split` stay, as on a first screen |
+| removals | esc              | first screen            | removals  | key help note                                                                                                                                                                                                                                                                                               |
+| removals | ctrl+c           |                         | cancelled |                                                                                                                                                                                                                                                                                                             |
+| receipt  | yes              |                         | done      |                                                                                                                                                                                                                                                                                                             |
+| receipt  | no               |                         | cancelled | nothing written in any scope                                                                                                                                                                                                                                                                                |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | the answers allow the apply, or `-n` | the files, `lock.json`, the pins written to the project's files, the trust record (`$XDG_STATE_HOME/lola/trust.json`); under `-n`, nothing in the project | the sync's output; after a trust answer, `→ the same off a terminal: <run>`; 0 |
-| declined | a No to the removals | the trust record only | `✗ removals declined; the project was not changed. The changes you trusted are recorded; …`; 4 |
-| cancelled | Cancel, a No at the receipt, Ctrl+C, q | nothing, and nothing is cached | `✗ cancelled — the project was not changed` (`user scope` for a user-scope run, or `nothing was changed`); 4 |
-| refused | no terminal to ask on, or a change a refusal guards | nothing | `error: …` with `hint:` lines; 3 |
+| exit      | when                                                | on disk                                                                                                                                                   | output, exit code                                                                                            |
+|-----------|-----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| done      | the answers allow the apply, or `-n`                | the files, `lock.json`, the pins written to the project's files, the trust record (`$XDG_STATE_HOME/lola/trust.json`); under `-n`, nothing in the project | the sync's output; after a trust answer, `→ the same off a terminal: <run>`; 0                               |
+| declined  | a No to the removals                                | the trust record only                                                                                                                                     | `✗ removals declined; the project was not changed. The changes you trusted are recorded; …`; 4               |
+| cancelled | Cancel, a No at the receipt, Ctrl+C, q              | nothing, and nothing is cached                                                                                                                            | `✗ cancelled — the project was not changed` (`user scope` for a user-scope run, or `nothing was changed`); 4 |
+| refused   | no terminal to ask on, or a change a refusal guards | nothing                                                                                                                                                   | `error: …` with `hint:` lines; 3                                                                             |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| Esc on the first list of choose | the trust question, the cursor on Choose… | the ticks | nothing |
-| Esc on the removals after a trust answer | the trust question, then the run's later questions | the answer under the cursor, Choose…'s ticks | what the answer planned: the run is planned again from the report as first asked |
-| Esc on the trust question, or on the removals question asked first | nothing: a first screen stays | | |
+| way back                                                           | asks again                                         | keeps                                        | drops                                                                            |
+|--------------------------------------------------------------------|----------------------------------------------------|----------------------------------------------|----------------------------------------------------------------------------------|
+| Esc on the first list of choose                                    | the trust question, the cursor on Choose…          | the ticks                                    | nothing                                                                          |
+| Esc on the removals after a trust answer                           | the trust question, then the run's later questions | the answer under the cursor, Choose…'s ticks | what the answer planned: the run is planned again from the report as first asked |
+| Esc on the trust question, or on the removals question asked first | nothing: a first screen stays                      |                                              |                                                                                  |
 
 ## Tidy
 
@@ -866,65 +866,65 @@ tidy's own: Esc there stays, also after the scope picker. `-y` opens no picker: 
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| scope | `Tidy where?` (see [Scope picker](#scope-picker)) | no `--scope`, `--user`, `--project` or `-C`, on a terminal |
-| move | `Move which to the trash?`: each candidate as `<assistant>  <kind>/<name>  <path>`, filterable, the locked items and their reasons above it; nothing ticked, or the last answer when asked again | something can move, on a terminal, without names, `--all`, `-n`, `--force`, `--keep` or `--unkeep` |
-| keep | `Add any of the rest to your keep-list?`: one escaped literal selector per name not ticked to move, with the assistants it keeps; nothing ticked, or the last answer when the closing question goes back to it | the move picker left a name unticked |
-| confirm | what moves, `keep <selector>` and `unkeep <selector>` lines, after the pickers the `Equivalent command:`, then `Move N items to the trash?`, `Keep M?` or `Stop keeping K?`, or two or three of them joined (default No) | something moves or the pickers keep something, without `-y` or `--force` |
+| state   | what the user sees                                                                                                                                                                                                       | asked when                                                                                         |
+|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| scope   | `Tidy where?` (see [Scope picker](#scope-picker))                                                                                                                                                                        | no `--scope`, `--user`, `--project` or `-C`, on a terminal                                         |
+| move    | `Move which to the trash?`: each candidate as `<assistant>  <kind>/<name>  <path>`, filterable, the locked items and their reasons above it; nothing ticked, or the last answer when asked again                         | something can move, on a terminal, without names, `--all`, `-n`, `--force`, `--keep` or `--unkeep` |
+| keep    | `Add any of the rest to your keep-list?`: one escaped literal selector per name not ticked to move, with the assistants it keeps; nothing ticked, or the last answer when the closing question goes back to it           | the move picker left a name unticked                                                               |
+| confirm | what moves, `keep <selector>` and `unkeep <selector>` lines, after the pickers the `Equivalent command:`, then `Move N items to the trash?`, `Keep M?` or `Stop keeping K?`, or two or three of them joined (default No) | something moves or the pickers keep something, without `-y` or `--force`                           |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | | scope | `Tidy where?`; one scope |
-| start | run | --json or no terminal | refused | without names or `--all`: `lola tidy needs names or --all when it cannot ask …`, hinting the run with `--all -y`; nothing moves |
-| start | scope flag | | move | |
-| start | scope flag | nothing to tidy | done | `nothing to tidy at <scope>`; nothing asked |
-| start | names | | confirm | first screen: Esc stays |
-| start | names | -y | done | moves what the names select; nothing asked |
-| start | names | --force | done | also what git tracks; nothing asked |
-| start | run | -y or --force, no names | refused | `--force needs names or --all: N items can move`, or the off-terminal refusal under `-y`; never the picker |
-| start | run | --all | confirm | first screen: Esc stays |
-| start | run | --scope both | refused | hints the run at each scope |
-| start | run | -n | dry run | lists what would move and what is locked; asks nothing |
-| start | run | --keep or --unkeep | done | edits `keep.yaml`, with no question on a terminal too; moves nothing |
-| move | answer | | keep | the rest offered; nothing is written yet |
-| move | answer | every name ticked | confirm | no keep picker |
-| move | empty submit | | keep | it then needs a pick |
-| move | esc | | move | first screen: key help note |
-| move | ctrl+c | | cancelled | |
-| keep | answer | | confirm | |
-| keep | empty submit | something moves | confirm | keeps nothing |
-| keep | empty submit | nothing moves | keep | refused with the "nothing selected" note; Esc or Ctrl+C is the way out |
-| keep | esc | | move | the move ticks kept; the keep ticks dropped |
-| keep | ctrl+c | | cancelled | |
-| confirm | yes | | done | moves into one new trash run; writes `keep.yaml` |
-| confirm | yes | a move fails | failed | what moved before it stays in the trash run; `keep.yaml` is written all the same |
-| confirm | no | | cancelled | nothing moved, nothing written |
-| confirm | esc | after the keep picker | keep | its ticks kept; the move ticks kept too |
-| confirm | esc | after the move picker only | move | its ticks kept |
-| confirm | esc | names | confirm | first screen (names or `--all`): key help note |
-| confirm | ctrl+c | | cancelled | |
+| from    | input        | guard                      | to        | effects                                                                                                                         |
+|---------|--------------|----------------------------|-----------|---------------------------------------------------------------------------------------------------------------------------------|
+| start   | run          |                            | scope     | `Tidy where?`; one scope                                                                                                        |
+| start   | run          | --json or no terminal      | refused   | without names or `--all`: `lola tidy needs names or --all when it cannot ask …`, hinting the run with `--all -y`; nothing moves |
+| start   | scope flag   |                            | move      |                                                                                                                                 |
+| start   | scope flag   | nothing to tidy            | done      | `nothing to tidy at <scope>`; nothing asked                                                                                     |
+| start   | names        |                            | confirm   | first screen: Esc stays                                                                                                         |
+| start   | names        | -y                         | done      | moves what the names select; nothing asked                                                                                      |
+| start   | names        | --force                    | done      | also what git tracks; nothing asked                                                                                             |
+| start   | run          | -y or --force, no names    | refused   | `--force needs names or --all: N items can move`, or the off-terminal refusal under `-y`; never the picker                      |
+| start   | run          | --all                      | confirm   | first screen: Esc stays                                                                                                         |
+| start   | run          | --scope both               | refused   | hints the run at each scope                                                                                                     |
+| start   | run          | -n                         | dry run   | lists what would move and what is locked; asks nothing                                                                          |
+| start   | run          | --keep or --unkeep         | done      | edits `keep.yaml`, with no question on a terminal too; moves nothing                                                            |
+| move    | answer       |                            | keep      | the rest offered; nothing is written yet                                                                                        |
+| move    | answer       | every name ticked          | confirm   | no keep picker                                                                                                                  |
+| move    | empty submit |                            | keep      | it then needs a pick                                                                                                            |
+| move    | esc          |                            | move      | first screen: key help note                                                                                                     |
+| move    | ctrl+c       |                            | cancelled |                                                                                                                                 |
+| keep    | answer       |                            | confirm   |                                                                                                                                 |
+| keep    | empty submit | something moves            | confirm   | keeps nothing                                                                                                                   |
+| keep    | empty submit | nothing moves              | keep      | refused with the "nothing selected" note; Esc or Ctrl+C is the way out                                                          |
+| keep    | esc          |                            | move      | the move ticks kept; the keep ticks dropped                                                                                     |
+| keep    | ctrl+c       |                            | cancelled |                                                                                                                                 |
+| confirm | yes          |                            | done      | moves into one new trash run; writes `keep.yaml`                                                                                |
+| confirm | yes          | a move fails               | failed    | what moved before it stays in the trash run; `keep.yaml` is written all the same                                                |
+| confirm | no           |                            | cancelled | nothing moved, nothing written                                                                                                  |
+| confirm | esc          | after the keep picker      | keep      | its ticks kept; the move ticks kept too                                                                                         |
+| confirm | esc          | after the move picker only | move      | its ticks kept                                                                                                                  |
+| confirm | esc          | names                      | confirm   | first screen (names or `--all`): key help note                                                                                  |
+| confirm | ctrl+c       |                            | cancelled |                                                                                                                                 |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | a yes, `-y`, `--force`, `--keep`/`--unkeep` alone, or nothing to tidy | one trash run under `$XDG_STATE_HOME/lola/trash/` holding what moved, with `manifest.txt`; the scope's entries in `$XDG_CONFIG_HOME/lola/keep.yaml` | `✓ moved N items (<size>) to the trash: <run>`, `keep-list: added …`; 0 |
-| dry run | `-n` | nothing | what would move and what is locked, and why; 0 |
-| failed | a move fails | what moved before it, in the trash run; `keep.yaml` as the run asked | `error: …`, the keep-list edits and `what moved is in <run>`; 1 |
-| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
-| refused | the run cannot be asked or done as given | nothing | `error: …` with `hint:` lines; 3 when it needs your answer, else 1 |
+| exit      | when                                                                  | on disk                                                                                                                                             | output, exit code                                                       |
+|-----------|-----------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------|
+| done      | a yes, `-y`, `--force`, `--keep`/`--unkeep` alone, or nothing to tidy | one trash run under `$XDG_STATE_HOME/lola/trash/` holding what moved, with `manifest.txt`; the scope's entries in `$XDG_CONFIG_HOME/lola/keep.yaml` | `✓ moved N items (<size>) to the trash: <run>`, `keep-list: added …`; 0 |
+| dry run   | `-n`                                                                  | nothing                                                                                                                                             | what would move and what is locked, and why; 0                          |
+| failed    | a move fails                                                          | what moved before it, in the trash run; `keep.yaml` as the run asked                                                                                | `error: …`, the keep-list edits and `what moved is in <run>`; 1         |
+| cancelled | No, Ctrl+C, q                                                         | nothing                                                                                                                                             | `✗ cancelled — nothing was changed`; 4                                  |
+| refused   | the run cannot be asked or done as given                              | nothing                                                                                                                                             | `error: …` with `hint:` lines; 3 when it needs your answer, else 1      |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| Esc on keep | the move picker | its ticks | the keep ticks |
-| Esc on confirm, after the keep picker | the keep picker, then the question | the move and keep ticks | |
-| Esc on confirm, after the move picker only | the move picker, then the keep picker if a name is left, then the question | the move ticks | |
-| Esc on move, or on confirm after names or `--all` | nothing: a first screen stays | | |
+| way back                                          | asks again                                                                 | keeps                   | drops          |
+|---------------------------------------------------|----------------------------------------------------------------------------|-------------------------|----------------|
+| Esc on keep                                       | the move picker                                                            | its ticks               | the keep ticks |
+| Esc on confirm, after the keep picker             | the keep picker, then the question                                         | the move and keep ticks |                |
+| Esc on confirm, after the move picker only        | the move picker, then the keep picker if a name is left, then the question | the move ticks          |                |
+| Esc on move, or on confirm after names or `--all` | nothing: a first screen stays                                              |                         |                |
 
 ## Trash
 
@@ -984,67 +984,67 @@ stays. Esc at any question after it goes back to the picker, never to the questi
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| pick | `Restore or empty which?`: each run, newest first, as a `[whole run]` row followed by its files, filterable, then `Do what with the ticked?` (Restore ticked, Empty ticked runs); nothing ticked and Restore ticked at first, the last ticks and action when asked again, with the problem that sends it back | bare `lola trash`, runs in the trash, on a terminal, without `--json` or `--plain` |
-| restore | each run's restore plan, then `Restore N from the trash?` (`Restore`, or `Restore with --force: first move what is there into a new trash run` when an original exists; then Cancel) | Restore ticked, and something ticked is still in the trash |
-| force | the plan with `--force`, then `Move N in the way into a new trash run, then restore M?` (default No) | Restore with --force |
-| empty | the plan (`will delete from the trash:`), then `Delete N trash runs? This cannot be undone.` (default No) | Empty ticked runs with a `[whole run]` row ticked; `lola trash --empty` without `-y`, on a terminal |
+| state   | what the user sees                                                                                                                                                                                                                                                                                            | asked when                                                                                          |
+|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| pick    | `Restore or empty which?`: each run, newest first, as a `[whole run]` row followed by its files, filterable, then `Do what with the ticked?` (Restore ticked, Empty ticked runs); nothing ticked and Restore ticked at first, the last ticks and action when asked again, with the problem that sends it back | bare `lola trash`, runs in the trash, on a terminal, without `--json` or `--plain`                  |
+| restore | each run's restore plan, then `Restore N from the trash?` (`Restore`, or `Restore with --force: first move what is there into a new trash run` when an original exists; then Cancel)                                                                                                                          | Restore ticked, and something ticked is still in the trash                                          |
+| force   | the plan with `--force`, then `Move N in the way into a new trash run, then restore M?` (default No)                                                                                                                                                                                                          | Restore with --force                                                                                |
+| empty   | the plan (`will delete from the trash:`), then `Delete N trash runs? This cannot be undone.` (default No)                                                                                                                                                                                                     | Empty ticked runs with a `[whole run]` row ticked; `lola trash --empty` without `-y`, on a terminal |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | runs in the trash, on a terminal | pick | |
-| start | run | the trash is empty | done | `✓ the trash is empty`; nothing asked |
-| start | run | --json, --plain or no terminal | done | the runs listed; nothing asked |
-| start | run | --restore | done | restores the run's entries, or the originals named; nothing asked |
-| start | run | --restore, an original in the way | refused | names it and hints the run with `--force` |
-| start | run | --empty | empty | first screen: Esc stays |
-| start | run | --empty -y | done | deletes the runs; nothing asked |
-| start | run | --empty -n | done | prints the plan; deletes nothing |
-| start | run | --empty, no terminal | refused | the plan, then the error hinting `-y` |
-| pick | Restore ticked | | restore | each run's plan printed first |
-| pick | Restore ticked | an original in the way | restore | the only restore offered is `Restore with --force: …`; `--force` is never implied |
-| pick | Restore ticked | two runs hold one original | pick | problem naming the path and both runs, `; untick one`; ticks and action kept; no plan shown |
-| pick | Restore ticked | nothing left to restore | done | `→ nothing to restore, so nothing changed`, after the plan says what is gone; the run ends rather than asking the picker again |
-| pick | Empty ticked runs | | empty | |
-| pick | Empty ticked runs | only files ticked | pick | problem `Empty ticked runs deletes whole runs: tick a [whole run] row, not only files`; ticks and action kept |
-| pick | empty submit | | pick | problem `nothing ticked: tick files or runs, then pick what to do with them`; the action kept |
-| pick | esc | | pick | first screen: key help note |
-| pick | ctrl+c | | cancelled | |
-| restore | Restore | | done | each run restored in turn; a run emptied is removed |
-| restore | Restore | several runs, one fails | failed | the runs restored before it stay restored: a restore of several runs is not atomic |
-| restore | Restore with --force | | force | the runs with an original in the way are planned again with `--force` |
-| restore | Cancel | | pick | the ticks and action kept |
-| restore | esc | | pick | the ticks and action kept |
-| restore | ctrl+c | | cancelled | the run ends; nothing restored |
-| force | yes | | done | what is in the way moves into a new trash run, then the restore |
-| force | no | | cancelled | nothing moved or restored |
-| force | esc | | pick | the ticks and action kept; not back to `Restore N from the trash?` |
-| force | ctrl+c | | cancelled | |
-| empty | yes | | done | the runs deleted |
-| empty | no | | cancelled | nothing deleted |
-| empty | esc | from the picker | pick | the ticks and action kept |
-| empty | esc | --empty | empty | first screen: key help note |
-| empty | ctrl+c | | cancelled | |
+| from    | input                | guard                             | to        | effects                                                                                                                        |
+|---------|----------------------|-----------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------|
+| start   | run                  | runs in the trash, on a terminal  | pick      |                                                                                                                                |
+| start   | run                  | the trash is empty                | done      | `✓ the trash is empty`; nothing asked                                                                                          |
+| start   | run                  | --json, --plain or no terminal    | done      | the runs listed; nothing asked                                                                                                 |
+| start   | run                  | --restore                         | done      | restores the run's entries, or the originals named; nothing asked                                                              |
+| start   | run                  | --restore, an original in the way | refused   | names it and hints the run with `--force`                                                                                      |
+| start   | run                  | --empty                           | empty     | first screen: Esc stays                                                                                                        |
+| start   | run                  | --empty -y                        | done      | deletes the runs; nothing asked                                                                                                |
+| start   | run                  | --empty -n                        | done      | prints the plan; deletes nothing                                                                                               |
+| start   | run                  | --empty, no terminal              | refused   | the plan, then the error hinting `-y`                                                                                          |
+| pick    | Restore ticked       |                                   | restore   | each run's plan printed first                                                                                                  |
+| pick    | Restore ticked       | an original in the way            | restore   | the only restore offered is `Restore with --force: …`; `--force` is never implied                                              |
+| pick    | Restore ticked       | two runs hold one original        | pick      | problem naming the path and both runs, `; untick one`; ticks and action kept; no plan shown                                    |
+| pick    | Restore ticked       | nothing left to restore           | done      | `→ nothing to restore, so nothing changed`, after the plan says what is gone; the run ends rather than asking the picker again |
+| pick    | Empty ticked runs    |                                   | empty     |                                                                                                                                |
+| pick    | Empty ticked runs    | only files ticked                 | pick      | problem `Empty ticked runs deletes whole runs: tick a [whole run] row, not only files`; ticks and action kept                  |
+| pick    | empty submit         |                                   | pick      | problem `nothing ticked: tick files or runs, then pick what to do with them`; the action kept                                  |
+| pick    | esc                  |                                   | pick      | first screen: key help note                                                                                                    |
+| pick    | ctrl+c               |                                   | cancelled |                                                                                                                                |
+| restore | Restore              |                                   | done      | each run restored in turn; a run emptied is removed                                                                            |
+| restore | Restore              | several runs, one fails           | failed    | the runs restored before it stay restored: a restore of several runs is not atomic                                             |
+| restore | Restore with --force |                                   | force     | the runs with an original in the way are planned again with `--force`                                                          |
+| restore | Cancel               |                                   | pick      | the ticks and action kept                                                                                                      |
+| restore | esc                  |                                   | pick      | the ticks and action kept                                                                                                      |
+| restore | ctrl+c               |                                   | cancelled | the run ends; nothing restored                                                                                                 |
+| force   | yes                  |                                   | done      | what is in the way moves into a new trash run, then the restore                                                                |
+| force   | no                   |                                   | cancelled | nothing moved or restored                                                                                                      |
+| force   | esc                  |                                   | pick      | the ticks and action kept; not back to `Restore N from the trash?`                                                             |
+| force   | ctrl+c               |                                   | cancelled |                                                                                                                                |
+| empty   | yes                  |                                   | done      | the runs deleted                                                                                                               |
+| empty   | no                   |                                   | cancelled | nothing deleted                                                                                                                |
+| empty   | esc                  | from the picker                   | pick      | the ticks and action kept                                                                                                      |
+| empty   | esc                  | --empty                           | empty     | first screen: key help note                                                                                                    |
+| empty   | ctrl+c               |                                   | cancelled |                                                                                                                                |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | an answer that restores or deletes, a run that asks nothing, or nothing left to restore | restored files back at their originals, a run emptied by its restore removed; what `--force` moved, in a new trash run; deleted runs gone from `$XDG_STATE_HOME/lola/trash/` | `✓ restored N items from trash run <run>`, `✓ deleted N trash runs, freeing <size>`, the listing, or `→ nothing to restore, so nothing changed`; 0 |
-| failed | a run's restore fails | the runs restored before it, restored; that run and the runs after it, as they were | the results so far, then `error: …`; 1 |
-| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
-| refused | a restore over what is there, or `--empty` with no terminal to ask on | nothing | `error: …` with `hint:` lines; 3 |
+| exit      | when                                                                                    | on disk                                                                                                                                                                      | output, exit code                                                                                                                                  |
+|-----------|-----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| done      | an answer that restores or deletes, a run that asks nothing, or nothing left to restore | restored files back at their originals, a run emptied by its restore removed; what `--force` moved, in a new trash run; deleted runs gone from `$XDG_STATE_HOME/lola/trash/` | `✓ restored N items from trash run <run>`, `✓ deleted N trash runs, freeing <size>`, the listing, or `→ nothing to restore, so nothing changed`; 0 |
+| failed    | a run's restore fails                                                                   | the runs restored before it, restored; that run and the runs after it, as they were                                                                                          | the results so far, then `error: …`; 1                                                                                                             |
+| cancelled | No, Ctrl+C, q                                                                           | nothing                                                                                                                                                                      | `✗ cancelled — nothing was changed`; 4                                                                                                             |
+| refused   | a restore over what is there, or `--empty` with no terminal to ask on                   | nothing                                                                                                                                                                      | `error: …` with `hint:` lines; 3                                                                                                                   |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| a problem | the picker, saying why | the ticks and the action | |
-| Cancel on restore; Esc on restore, force or empty after the picker | the picker | the ticks and the action | the plans: each is made again from the next answer |
-| Esc on the picker, or on empty after `--empty` | nothing: a first screen stays | | |
+| way back                                                           | asks again                    | keeps                    | drops                                              |
+|--------------------------------------------------------------------|-------------------------------|--------------------------|----------------------------------------------------|
+| a problem                                                          | the picker, saying why        | the ticks and the action |                                                    |
+| Cancel on restore; Esc on restore, force or empty after the picker | the picker                    | the ticks and the action | the plans: each is made again from the next answer |
+| Esc on the picker, or on empty after `--empty`                     | nothing: a first screen stays |                          |                                                    |
 
 ## Cache clean
 
@@ -1088,39 +1088,39 @@ The question also goes to `cancelled` on `ctrl+c` or `q`. It is a first screen: 
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
+| state   | what the user sees                                                                                                                                                                                     | asked when                                                                    |
+|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
 | confirm | the plan: `will remove from your cache:`, each item with its reason and size, the total, and what is kept and why, then `Remove these from your cache?` under it, inline or in the viewer (default No) | something to remove, without `-y` or `-n`, on a terminal, also under `--json` |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | something to remove, on a terminal | confirm | the plan on stderr first |
-| start | run | nothing to remove | done | `✓ nothing to clean`; nothing asked; the clean still runs, dating each cached version that has no last-used date in its `index.yml` |
-| start | run | --json, on a terminal | confirm | the plan and the question on stderr; the result as one JSON document on stdout |
-| start | run | no terminal | refused | the plan, then the error hinting `-y`; under `--json`, one JSON line carrying the plan |
-| start | run | -y | done | nothing asked |
-| start | run | -n | done | the plan; nothing removed or dated |
-| confirm | yes | | done | |
-| confirm | yes | an item changed since the plan | done | that item is kept, `(changed)` |
-| confirm | no | | cancelled | |
-| confirm | esc | | confirm | first screen: key help note |
-| confirm | ctrl+c | | cancelled | |
+| from    | input  | guard                              | to        | effects                                                                                                                             |
+|---------|--------|------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------|
+| start   | run    | something to remove, on a terminal | confirm   | the plan on stderr first                                                                                                            |
+| start   | run    | nothing to remove                  | done      | `✓ nothing to clean`; nothing asked; the clean still runs, dating each cached version that has no last-used date in its `index.yml` |
+| start   | run    | --json, on a terminal              | confirm   | the plan and the question on stderr; the result as one JSON document on stdout                                                      |
+| start   | run    | no terminal                        | refused   | the plan, then the error hinting `-y`; under `--json`, one JSON line carrying the plan                                              |
+| start   | run    | -y                                 | done      | nothing asked                                                                                                                       |
+| start   | run    | -n                                 | done      | the plan; nothing removed or dated                                                                                                  |
+| confirm | yes    |                                    | done      |                                                                                                                                     |
+| confirm | yes    | an item changed since the plan     | done      | that item is kept, `(changed)`                                                                                                      |
+| confirm | no     |                                    | cancelled |                                                                                                                                     |
+| confirm | esc    |                                    | confirm   | first screen: key help note                                                                                                         |
+| confirm | ctrl+c |                                    | cancelled |                                                                                                                                     |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | a yes, `-y`, `-n`, or nothing to remove | the items removed from `$XDG_CACHE_HOME/lola/`; each module's `index.yml` updated; under `-n`, nothing | each item removed and kept, the bytes freed, or `✓ nothing to clean`; 0 |
-| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
-| refused | no terminal to ask on | nothing | `error: …` with `hint:` lines; 3 |
+| exit      | when                                    | on disk                                                                                                | output, exit code                                                       |
+|-----------|-----------------------------------------|--------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------|
+| done      | a yes, `-y`, `-n`, or nothing to remove | the items removed from `$XDG_CACHE_HOME/lola/`; each module's `index.yml` updated; under `-n`, nothing | each item removed and kept, the bytes freed, or `✓ nothing to clean`; 0 |
+| cancelled | No, Ctrl+C, q                           | nothing                                                                                                | `✗ cancelled — nothing was changed`; 4                                  |
+| refused   | no terminal to ask on                   | nothing                                                                                                | `error: …` with `hint:` lines; 3                                        |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| Esc on the question | nothing: a first screen stays | | |
+| way back            | asks again                    | keeps | drops |
+|---------------------|-------------------------------|-------|-------|
+| Esc on the question | nothing: a first screen stays |       |       |
 
 ## Init
 
@@ -1167,40 +1167,40 @@ The question also goes to `cancelled` on `ctrl+c` or `q`. It is a first screen: 
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
+| state   | what the user sees                                                                                                                                               | asked when                                                   |
+|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------|
 | confirm | the plan: `will create module <name> in <path> (<format>):` and each file, then `Create module <name> in <path>?` under it, inline or in the viewer (default No) | no directory and no `-y`, on a terminal, also under `--json` |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | | confirm | the plan on stderr first |
-| start | dir | | done | scaffolds the directory given; nothing asked, on a terminal too |
-| start | run | -y | done | scaffolds the current directory; nothing asked |
-| start | run | --json, on a terminal | confirm | the plan and the question on stderr; the result as one JSON document on stdout |
-| start | run | no terminal | refused | the plan, then the error hinting the run with `-y`; under `--json`, one JSON line carrying the plan |
-| start | run | an invalid name | refused | nothing asked, no plan shown |
-| confirm | yes | | done | writes the files |
-| confirm | yes | a write fails | failed | the files written before it stay: a partial scaffold |
-| confirm | no | | cancelled | nothing written |
-| confirm | esc | | confirm | first screen: key help note |
-| confirm | ctrl+c | | cancelled | |
+| from    | input  | guard                 | to        | effects                                                                                             |
+|---------|--------|-----------------------|-----------|-----------------------------------------------------------------------------------------------------|
+| start   | run    |                       | confirm   | the plan on stderr first                                                                            |
+| start   | dir    |                       | done      | scaffolds the directory given; nothing asked, on a terminal too                                     |
+| start   | run    | -y                    | done      | scaffolds the current directory; nothing asked                                                      |
+| start   | run    | --json, on a terminal | confirm   | the plan and the question on stderr; the result as one JSON document on stdout                      |
+| start   | run    | no terminal           | refused   | the plan, then the error hinting the run with `-y`; under `--json`, one JSON line carrying the plan |
+| start   | run    | an invalid name       | refused   | nothing asked, no plan shown                                                                        |
+| confirm | yes    |                       | done      | writes the files                                                                                    |
+| confirm | yes    | a write fails         | failed    | the files written before it stay: a partial scaffold                                                |
+| confirm | no     |                       | cancelled | nothing written                                                                                     |
+| confirm | esc    |                       | confirm   | first screen: key help note                                                                         |
+| confirm | ctrl+c |                       | cancelled |                                                                                                     |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | a yes, a directory, or `-y` | the module's files in the directory | `✓ created module <name> in <dir> (<format>)`, its files and `→ try it: lola install …`; 0 |
-| failed | a write fails | the files written before it | `error: …`; 1 |
-| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
-| refused | no terminal to ask on or an invalid name | nothing | `error: …` with `hint:` lines; 3 |
+| exit      | when                                     | on disk                             | output, exit code                                                                          |
+|-----------|------------------------------------------|-------------------------------------|--------------------------------------------------------------------------------------------|
+| done      | a yes, a directory, or `-y`              | the module's files in the directory | `✓ created module <name> in <dir> (<format>)`, its files and `→ try it: lola install …`; 0 |
+| failed    | a write fails                            | the files written before it         | `error: …`; 1                                                                              |
+| cancelled | No, Ctrl+C, q                            | nothing                             | `✗ cancelled — nothing was changed`; 4                                                     |
+| refused   | no terminal to ask on or an invalid name | nothing                             | `error: …` with `hint:` lines; 3                                                           |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| Esc on the confirm | nothing: a first screen stays | | |
+| way back           | asks again                    | keeps | drops |
+|--------------------|-------------------------------|-------|-------|
+| Esc on the confirm | nothing: a first screen stays |       |       |
 
 ## Market add
 
@@ -1251,50 +1251,50 @@ Esc there stays; so is the ssh question when the run asked no name.
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| name | the problem note when the last answer was refused, then `Name the marketplace`, saying why the name it has will not do (`<name> is already a marketplace, from <source>`, or `the catalog names itself <x>, which cannot name a marketplace`); pre-filled with the first free name (`<name>-2`) or the catalog's slug at first, the refused answer as typed, or the name given when the ssh question goes back to it | after the fetch, when the name typed or the catalog's is another source's marketplace, or the catalog's own name cannot name one; on a terminal, without `-n` or `--json` |
-| ssh | `Allow ssh to which hosts?` for the marketplace: each host the catalog names that you have not allowed, with how many entries it admits, filterable, nothing ticked | after the fetch and the name, when the catalog names such a host; on a terminal, without `-n` or `--json` |
+| state | what the user sees                                                                                                                                                                                                                                                                                                                                                                                                   | asked when                                                                                                                                                                |
+|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| name  | the problem note when the last answer was refused, then `Name the marketplace`, saying why the name it has will not do (`<name> is already a marketplace, from <source>`, or `the catalog names itself <x>, which cannot name a marketplace`); pre-filled with the first free name (`<name>-2`) or the catalog's slug at first, the refused answer as typed, or the name given when the ssh question goes back to it | after the fetch, when the name typed or the catalog's is another source's marketplace, or the catalog's own name cannot name one; on a terminal, without `-n` or `--json` |
+| ssh   | `Allow ssh to which hosts?` for the marketplace: each host the catalog names that you have not allowed, with how many entries it admits, filterable, nothing ticked                                                                                                                                                                                                                                                  | after the fetch and the name, when the catalog names such a host; on a terminal, without `-n` or `--json`                                                                 |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | | done | fetches the catalog and registers it; nothing asked |
-| start | run | the name is another source's | name | pre-filled with the first free name |
-| start | run | the catalog's own name cannot name a marketplace | name | pre-filled with its slug |
-| start | run | the name is this marketplace already | refused | `<name> is already this marketplace`, hinting its `--update`; nothing asked |
-| start | run | ssh hosts not allowed | ssh | |
-| start | run | --ssh-host | ssh | the hosts given are allowed; the picker offers only the others, and is not asked when none is left |
-| start | run | no terminal or --json, a taken name | refused | the hint is the `--add` of the first free name, with the catalog file found |
-| start | run | no terminal or --json, ssh hosts | done | their entries are skipped; a notice gives the `--update` that allows them |
-| start | run | -n | done | `→ would add marketplace …`; asks nothing and writes nothing; a taken name is refused as off a terminal |
-| name | answer | | ssh | the hosts offered for the name given |
-| name | answer | no ssh host to ask | done | registers under the name: `→ the catalog calls itself <x>; it is your marketplace <name>` |
-| name | answer | refused | name | the note says why (an invalid name, or another marketplace's); the answer kept as typed |
-| name | esc | | name | first screen: key help note |
-| name | ctrl+c | | cancelled | |
-| ssh | answer | | done | allows the hosts ticked: `→ allowed ssh hosts: …`, and their entries are listed |
-| ssh | empty submit | | done | allows no host: their entries stay skipped, with the `--update` notice |
-| ssh | esc | after the name question | name | pre-filled with the name given; then this question again, for the name answered |
-| ssh | esc | first screen | ssh | key help note |
-| ssh | ctrl+c | | cancelled | the name answered is not registered |
+| from  | input        | guard                                            | to        | effects                                                                                                 |
+|-------|--------------|--------------------------------------------------|-----------|---------------------------------------------------------------------------------------------------------|
+| start | run          |                                                  | done      | fetches the catalog and registers it; nothing asked                                                     |
+| start | run          | the name is another source's                     | name      | pre-filled with the first free name                                                                     |
+| start | run          | the catalog's own name cannot name a marketplace | name      | pre-filled with its slug                                                                                |
+| start | run          | the name is this marketplace already             | refused   | `<name> is already this marketplace`, hinting its `--update`; nothing asked                             |
+| start | run          | ssh hosts not allowed                            | ssh       |                                                                                                         |
+| start | run          | --ssh-host                                       | ssh       | the hosts given are allowed; the picker offers only the others, and is not asked when none is left      |
+| start | run          | no terminal or --json, a taken name              | refused   | the hint is the `--add` of the first free name, with the catalog file found                             |
+| start | run          | no terminal or --json, ssh hosts                 | done      | their entries are skipped; a notice gives the `--update` that allows them                               |
+| start | run          | -n                                               | done      | `→ would add marketplace …`; asks nothing and writes nothing; a taken name is refused as off a terminal |
+| name  | answer       |                                                  | ssh       | the hosts offered for the name given                                                                    |
+| name  | answer       | no ssh host to ask                               | done      | registers under the name: `→ the catalog calls itself <x>; it is your marketplace <name>`               |
+| name  | answer       | refused                                          | name      | the note says why (an invalid name, or another marketplace's); the answer kept as typed                 |
+| name  | esc          |                                                  | name      | first screen: key help note                                                                             |
+| name  | ctrl+c       |                                                  | cancelled |                                                                                                         |
+| ssh   | answer       |                                                  | done      | allows the hosts ticked: `→ allowed ssh hosts: …`, and their entries are listed                         |
+| ssh   | empty submit |                                                  | done      | allows no host: their entries stay skipped, with the `--update` notice                                  |
+| ssh   | esc          | after the name question                          | name      | pre-filled with the name given; then this question again, for the name answered                         |
+| ssh   | esc          | first screen                                     | ssh       | key help note                                                                                           |
+| ssh   | ctrl+c       |                                                  | cancelled | the name answered is not registered                                                                     |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | an answer that registers, a run that asks nothing, or `-n` | the registration (name, source, ref, the catalog file, `ssh_hosts`) in `$XDG_CONFIG_HOME/lola/markets.yaml`, the catalog in `$XDG_CACHE_HOME/lola/markets/<name>/`; under `-n`, nothing | `✓ marketplace <name>: N entries (<format>) from <source>` and its notices; 0 |
-| cancelled | Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 4 |
-| refused | the name is this marketplace, or will not do and cannot be asked | nothing | `error: …` with `hint:` lines; 3 when it needs your answer, else 1 |
+| exit      | when                                                             | on disk                                                                                                                                                                                 | output, exit code                                                             |
+|-----------|------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
+| done      | an answer that registers, a run that asks nothing, or `-n`       | the registration (name, source, ref, the catalog file, `ssh_hosts`) in `$XDG_CONFIG_HOME/lola/markets.yaml`, the catalog in `$XDG_CACHE_HOME/lola/markets/<name>/`; under `-n`, nothing | `✓ marketplace <name>: N entries (<format>) from <source>` and its notices; 0 |
+| cancelled | Ctrl+C, q                                                        | nothing                                                                                                                                                                                 | `✗ cancelled — nothing was changed`; 4                                        |
+| refused   | the name is this marketplace, or will not do and cannot be asked | nothing                                                                                                                                                                                 | `error: …` with `hint:` lines; 3 when it needs your answer, else 1            |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| a refused name | the name question, saying why | the answer as typed | |
-| Esc on ssh after the name question | the name question, then ssh for the name answered | the name given | the hosts ticked |
-| Esc on the name question, or on ssh with no name asked | nothing: a first screen stays | | |
+| way back                                               | asks again                                        | keeps               | drops            |
+|--------------------------------------------------------|---------------------------------------------------|---------------------|------------------|
+| a refused name                                         | the name question, saying why                     | the answer as typed |                  |
+| Esc on ssh after the name question                     | the name question, then ssh for the name answered | the name given      | the hosts ticked |
+| Esc on the name question, or on ssh with no name asked | nothing: a first screen stays                     |                     |                  |
 
 ## Migrate
 
@@ -1367,71 +1367,71 @@ mapping question was asked.
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| root | `<old> not found on this machine — new root (empty skips):`, `N project path(s) of the Python lola start with it`, pre-filled with your home, or the last answer when asked again | a root that missing project paths and local sources share, which `--map-root` does not map; on a terminal, without `-y` or `--json`, and under `-n` and `--force` too |
-| targets | `<old> is not installed here — install its module(s) for:` (`… has no lola target …`), `choosing none leaves them as they are`: the assistants on your PATH, every one ticked, or the last answer when asked again | an assistant the records name that this machine lacks, which `--map-target` does not map, with one on your PATH; after the roots, on the same terms |
-| confirm | the plan, then `Migrate?` under it, inline or in the viewer (default No) | something to migrate, without `-y`, `--force` or `-n`, on a terminal, also under `--json` |
-| consent | the [consent questions](#hook-and-script-consent) of what it installs | a hook or script without your consent, after a yes |
-| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question)) | `--trust` covers something, after a yes, without `-y` |
+| state   | what the user sees                                                                                                                                                                                                 | asked when                                                                                                                                                            |
+|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| root    | `<old> not found on this machine — new root (empty skips):`, `N project path(s) of the Python lola start with it`, pre-filled with your home, or the last answer when asked again                                  | a root that missing project paths and local sources share, which `--map-root` does not map; on a terminal, without `-y` or `--json`, and under `-n` and `--force` too |
+| targets | `<old> is not installed here — install its module(s) for:` (`… has no lola target …`), `choosing none leaves them as they are`: the assistants on your PATH, every one ticked, or the last answer when asked again | an assistant the records name that this machine lacks, which `--map-target` does not map, with one on your PATH; after the roots, on the same terms                   |
+| confirm | the plan, then `Migrate?` under it, inline or in the viewer (default No)                                                                                                                                           | something to migrate, without `-y`, `--force` or `-n`, on a terminal, also under `--json`                                                                             |
+| consent | the [consent questions](#hook-and-script-consent) of what it installs                                                                                                                                              | a hook or script without your consent, after a yes                                                                                                                    |
+| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question))                                                                                                                                     | `--trust` covers something, after a yes, without `-y`                                                                                                                 |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | | confirm | the plan on stderr first; the sources are fetched into the cache, where a No leaves them |
-| start | run | a missing root | root | |
-| start | run | a missing assistant, one on your PATH | targets | |
-| start | run | a missing assistant, none on your PATH | confirm | not asked: its records are left, `… is not installed here` |
-| start | run | --map-root or --map-target | confirm | what they map is not asked |
-| start | run | -n | dry run | the mapping questions are asked, then the plan is printed; nothing written |
-| start | run | -y | done | asks nothing but consent |
-| start | run | --force | root | the mapping questions are asked; `Migrate?` is not |
-| start | run | --json, on a terminal | confirm | no mapping question; the plan and the question on stderr; the result as one JSON document on stdout |
-| start | run | no terminal | refused | the plan, then the error hinting `-y` |
-| start | run | nothing to migrate | done | `nothing more to migrate …` and what is left, and why; nothing asked |
-| root | answer | | next step | the root's records are looked for below the answer |
-| root | empty submit | | next step | that root's records are left |
-| root | esc | after another root | root | the one before, as answered |
-| root | esc | first screen | root | key help note |
-| root | ctrl+c | | cancelled | |
-| targets | answer | | next step | the records are installed for the assistants ticked |
-| targets | empty submit | | next step | the records are left as they are |
-| targets | esc | after another assistant | targets | the one before, as answered |
-| targets | esc | the first, after a root question | root | the last root, as answered; the assistants are worked out again after it |
-| targets | esc | first screen | targets | key help note |
-| targets | ctrl+c | | cancelled | |
-| confirm | yes | | done | migrates each destination |
-| confirm | yes | a hook or script without your consent | consent | asked as it installs |
-| confirm | yes | --trust | receipt | |
-| confirm | yes | a destination fails | failed | the other destinations are migrated |
-| confirm | no | | cancelled | |
-| confirm | esc | after an assistant question | targets | the last one, as answered; every answer kept, the plan made again |
-| confirm | esc | after root questions only | root | the last one, as answered; the plan made again |
-| confirm | esc | no mapping question | confirm | first screen: key help note |
-| confirm | ctrl+c | | cancelled | |
-| consent | yes | | done | |
-| consent | no | a pre-install hook | failed | that destination is not migrated; the hint is the run with `--trust=hooks` |
+| from    | input        | guard                                  | to        | effects                                                                                             |
+|---------|--------------|----------------------------------------|-----------|-----------------------------------------------------------------------------------------------------|
+| start   | run          |                                        | confirm   | the plan on stderr first; the sources are fetched into the cache, where a No leaves them            |
+| start   | run          | a missing root                         | root      |                                                                                                     |
+| start   | run          | a missing assistant, one on your PATH  | targets   |                                                                                                     |
+| start   | run          | a missing assistant, none on your PATH | confirm   | not asked: its records are left, `… is not installed here`                                          |
+| start   | run          | --map-root or --map-target             | confirm   | what they map is not asked                                                                          |
+| start   | run          | -n                                     | dry run   | the mapping questions are asked, then the plan is printed; nothing written                          |
+| start   | run          | -y                                     | done      | asks nothing but consent                                                                            |
+| start   | run          | --force                                | root      | the mapping questions are asked; `Migrate?` is not                                                  |
+| start   | run          | --json, on a terminal                  | confirm   | no mapping question; the plan and the question on stderr; the result as one JSON document on stdout |
+| start   | run          | no terminal                            | refused   | the plan, then the error hinting `-y`                                                               |
+| start   | run          | nothing to migrate                     | done      | `nothing more to migrate …` and what is left, and why; nothing asked                                |
+| root    | answer       |                                        | next step | the root's records are looked for below the answer                                                  |
+| root    | empty submit |                                        | next step | that root's records are left                                                                        |
+| root    | esc          | after another root                     | root      | the one before, as answered                                                                         |
+| root    | esc          | first screen                           | root      | key help note                                                                                       |
+| root    | ctrl+c       |                                        | cancelled |                                                                                                     |
+| targets | answer       |                                        | next step | the records are installed for the assistants ticked                                                 |
+| targets | empty submit |                                        | next step | the records are left as they are                                                                    |
+| targets | esc          | after another assistant                | targets   | the one before, as answered                                                                         |
+| targets | esc          | the first, after a root question       | root      | the last root, as answered; the assistants are worked out again after it                            |
+| targets | esc          | first screen                           | targets   | key help note                                                                                       |
+| targets | ctrl+c       |                                        | cancelled |                                                                                                     |
+| confirm | yes          |                                        | done      | migrates each destination                                                                           |
+| confirm | yes          | a hook or script without your consent  | consent   | asked as it installs                                                                                |
+| confirm | yes          | --trust                                | receipt   |                                                                                                     |
+| confirm | yes          | a destination fails                    | failed    | the other destinations are migrated                                                                 |
+| confirm | no           |                                        | cancelled |                                                                                                     |
+| confirm | esc          | after an assistant question            | targets   | the last one, as answered; every answer kept, the plan made again                                   |
+| confirm | esc          | after root questions only              | root      | the last one, as answered; the plan made again                                                      |
+| confirm | esc          | no mapping question                    | confirm   | first screen: key help note                                                                         |
+| confirm | ctrl+c       |                                        | cancelled |                                                                                                     |
+| consent | yes          |                                        | done      |                                                                                                     |
+| consent | no           | a pre-install hook                     | failed    | that destination is not migrated; the hint is the run with `--trust=hooks`                          |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | a yes, `-y`, `--force`, or nothing to migrate | each destination's modules installed with lola; the Python lola's files copied or moved into a trash run; its home moved to the trash when nothing is left in it; its marketplaces registered | the report; 0 |
-| dry run | `-n` | nothing but the sources in the cache | the plan; 0 |
-| failed | a destination fails | the other destinations, migrated | the report, then `error: …`; 1 |
-| cancelled | No, Ctrl+C, q | nothing but the sources in the cache | `✗ cancelled — nothing was changed`; 4 |
-| refused | no terminal to ask on | nothing | `error: …` with `hint:` lines; 3 |
+| exit      | when                                          | on disk                                                                                                                                                                                       | output, exit code                      |
+|-----------|-----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| done      | a yes, `-y`, `--force`, or nothing to migrate | each destination's modules installed with lola; the Python lola's files copied or moved into a trash run; its home moved to the trash when nothing is left in it; its marketplaces registered | the report; 0                          |
+| dry run   | `-n`                                          | nothing but the sources in the cache                                                                                                                                                          | the plan; 0                            |
+| failed    | a destination fails                           | the other destinations, migrated                                                                                                                                                              | the report, then `error: …`; 1         |
+| cancelled | No, Ctrl+C, q                                 | nothing but the sources in the cache                                                                                                                                                          | `✗ cancelled — nothing was changed`; 4 |
+| refused   | no terminal to ask on                         | nothing                                                                                                                                                                                       | `error: …` with `hint:` lines; 3       |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| Esc on a root after another | the root before, then the ones after it | every answer | |
-| Esc on the first assistant question after a root | the last root, then the assistants worked out again | every answer | |
-| Esc on an assistant question after another | the one before | every answer | |
-| Esc on `Migrate?` after mapping questions | the last mapping question, then `Migrate?` | every answer | the plan: made again from the answers |
-| Esc on the first mapping question, or on `Migrate?` with none | nothing: a first screen stays | | |
+| way back                                                      | asks again                                          | keeps        | drops                                 |
+|---------------------------------------------------------------|-----------------------------------------------------|--------------|---------------------------------------|
+| Esc on a root after another                                   | the root before, then the ones after it             | every answer |                                       |
+| Esc on the first assistant question after a root              | the last root, then the assistants worked out again | every answer |                                       |
+| Esc on an assistant question after another                    | the one before                                      | every answer |                                       |
+| Esc on `Migrate?` after mapping questions                     | the last mapping question, then `Migrate?`          | every answer | the plan: made again from the answers |
+| Esc on the first mapping question, or on `Migrate?` with none | nothing: a first screen stays                       |              |                                       |
 
 ## Hook and script consent
 
@@ -1500,64 +1500,64 @@ else the receipt when `--trust` covers something, else the run's writes.
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| hooks | `<m> has install hooks. They run as you, unconfined:`, each `<event>: <script> (sha256 <digest>)` and its body in full (`| …`), then `Run <m>'s install hooks?` under it (default No) | a module the run installs has hooks without a consent recorded for their digest, on a terminal, without `--json`, `-n` or a `--trust` covering hooks that lola has shown you (or `--unseen`) |
-| runtime | `<m> has Claude Code hooks:` (`… and agent MCP servers:`), each with what it runs or where it connects, or, when the install review of the run listed every one, the one line `<m>'s Claude Code hooks are the hooks listed in the review above. …`; then `Install <m>'s Claude Code hooks?` (`… and agent MCP servers?`) (default No) | a module's Claude Code hooks without a consent recorded for their digest at that settings file, on the same terms, unless you answered No to them, as they are, before |
-| script | `The project at <root> has a <event> script. It runs as you, unconfined, for every module lola installs there:`, `<path> (sha256 <digest>)` and its body in full (`| …`), then `Run this project's <event> script?` (default No) | the project's pre-install or post-install script without a consent recorded for its digest, when the run installs a copy for it to wrap, on the same terms |
-| later | the same listing, then `Trust this project's pre-install script for later runs?` (default No) | `lola sync` with nothing to install, the project's pre-install script without consent |
-| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question)) | `--trust` covers something, on a terminal, without `-y`, that the review answered Apply did not list (Apply confirms what it listed) |
+| state   | what the user sees                                                                                                                                                                                                                                                                                                                     | asked when                                                                                                                                                                                   |
+|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| hooks   | `<m> has install hooks. They run as you, unconfined:`, each `<event>: <script> (sha256 <digest>)` and its body in full (each line prefixed with four spaces, `\|` and a space), then `Run <m>'s install hooks?` under it (default No)                                                                                                  | a module the run installs has hooks without a consent recorded for their digest, on a terminal, without `--json`, `-n` or a `--trust` covering hooks that lola has shown you (or `--unseen`) |
+| runtime | `<m> has Claude Code hooks:` (`… and agent MCP servers:`), each with what it runs or where it connects, or, when the install review of the run listed every one, the one line `<m>'s Claude Code hooks are the hooks listed in the review above. …`; then `Install <m>'s Claude Code hooks?` (`… and agent MCP servers?`) (default No) | a module's Claude Code hooks without a consent recorded for their digest at that settings file, on the same terms, unless you answered No to them, as they are, before                       |
+| script  | `The project at <root> has a <event> script. It runs as you, unconfined, for every module lola installs there:`, `<path> (sha256 <digest>)` and its body in full (each line prefixed with four spaces, `\|` and a space), then `Run this project's <event> script?` (default No)                                                       | the project's pre-install or post-install script without a consent recorded for its digest, when the run installs a copy for it to wrap, on the same terms                                   |
+| later   | the same listing, then `Trust this project's pre-install script for later runs?` (default No)                                                                                                                                                                                                                                          | `lola sync` with nothing to install, the project's pre-install script without consent                                                                                                        |
+| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question))                                                                                                                                                                                                                                                         | `--trust` covers something, on a terminal, without `-y`, that the review answered Apply did not list (Apply confirms what it listed)                                                         |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | hooks without your consent, on a terminal | hooks | the hooks listed as the question's text |
-| start | run | Claude Code hooks without your consent, on a terminal | runtime | |
-| start | run | a project script without your consent, on a terminal | script | its path and sha256, not its body |
-| start | run | lola sync, nothing to install | later | a pre-install script with no copy to wrap is asked about for later runs |
-| start | run | consent recorded | done | the consent recorded for the same digest answers; nothing asked |
-| start | run | -y or --force | hooks | neither answers consent |
-| start | run | --trust | receipt | the kinds it names are not asked about what lola has shown you (or anything, with `--unseen`); each item is listed on the receipt |
-| start | run | -n | done | asks nothing and records nothing; the hooks and scripts are listed as would-run |
-| start | run | --json or no terminal, a pre-install hook or script | refused | hints `lola info` of the version and the run with `--trust=<kind>` |
-| start | run | --json or no terminal, post-install only | done | declined and pending in lock.json, with the sync that runs it |
-| hooks | yes | | next step | the hooks run with the install; the consent recorded |
-| hooks | no | a pre-install hook | refused | nothing written |
-| hooks | no | post-install hooks only | done | installed without them: `hooks_pending` in lock.json, and `<m>: post-install hook skipped without your consent; review and run it: lola sync … <m>` |
-| hooks | ctrl+c | | cancelled | nothing written |
-| hooks | esc | | hooks | `first step — q quits` |
-| hooks | q | | cancelled | a quit; nothing written |
-| runtime | yes | | next step | the hooks written to the assistant's settings; the consent recorded |
-| runtime | no | | next step | the rest installed without the Claude Code hooks; no run asks about them again until they change, and the report folds them as `declined earlier` with the run that consents to them |
-| runtime | ctrl+c | | cancelled | nothing written |
-| runtime | esc | | runtime | `first step — q quits` |
-| runtime | q | | cancelled | a quit; nothing written |
-| script | yes | | next step | the script runs around each module's install; the consent recorded |
-| script | no | pre-install | refused | nothing written |
-| script | no | post-install | done | installed without it: `scripts_pending` in lock.json, and a warning naming the sync that runs it |
-| script | ctrl+c | | cancelled | nothing written |
-| script | esc | | script | `first step — q quits` |
-| script | q | | cancelled | a quit; nothing written |
-| later | yes | | done | the consent recorded; nothing runs |
-| later | no | | refused | names the script; nothing recorded |
-| later | ctrl+c | | cancelled | nothing recorded |
-| later | esc | | later | `first step — q quits` |
-| later | q | | cancelled | a quit; nothing written |
+| from    | input  | guard                                                 | to        | effects                                                                                                                                                                              |
+|---------|--------|-------------------------------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| start   | run    | hooks without your consent, on a terminal             | hooks     | the hooks listed as the question's text                                                                                                                                              |
+| start   | run    | Claude Code hooks without your consent, on a terminal | runtime   |                                                                                                                                                                                      |
+| start   | run    | a project script without your consent, on a terminal  | script    | its path and sha256, not its body                                                                                                                                                    |
+| start   | run    | lola sync, nothing to install                         | later     | a pre-install script with no copy to wrap is asked about for later runs                                                                                                              |
+| start   | run    | consent recorded                                      | done      | the consent recorded for the same digest answers; nothing asked                                                                                                                      |
+| start   | run    | -y or --force                                         | hooks     | neither answers consent                                                                                                                                                              |
+| start   | run    | --trust                                               | receipt   | the kinds it names are not asked about what lola has shown you (or anything, with `--unseen`); each item is listed on the receipt                                                    |
+| start   | run    | -n                                                    | done      | asks nothing and records nothing; the hooks and scripts are listed as would-run                                                                                                      |
+| start   | run    | --json or no terminal, a pre-install hook or script   | refused   | hints `lola info` of the version and the run with `--trust=<kind>`                                                                                                                   |
+| start   | run    | --json or no terminal, post-install only              | done      | declined and pending in lock.json, with the sync that runs it                                                                                                                        |
+| hooks   | yes    |                                                       | next step | the hooks run with the install; the consent recorded                                                                                                                                 |
+| hooks   | no     | a pre-install hook                                    | refused   | nothing written                                                                                                                                                                      |
+| hooks   | no     | post-install hooks only                               | done      | installed without them: `hooks_pending` in lock.json, and `<m>: post-install hook skipped without your consent; review and run it: lola sync … <m>`                                  |
+| hooks   | ctrl+c |                                                       | cancelled | nothing written                                                                                                                                                                      |
+| hooks   | esc    |                                                       | hooks     | `first step — q quits`                                                                                                                                                               |
+| hooks   | q      |                                                       | cancelled | a quit; nothing written                                                                                                                                                              |
+| runtime | yes    |                                                       | next step | the hooks written to the assistant's settings; the consent recorded                                                                                                                  |
+| runtime | no     |                                                       | next step | the rest installed without the Claude Code hooks; no run asks about them again until they change, and the report folds them as `declined earlier` with the run that consents to them |
+| runtime | ctrl+c |                                                       | cancelled | nothing written                                                                                                                                                                      |
+| runtime | esc    |                                                       | runtime   | `first step — q quits`                                                                                                                                                               |
+| runtime | q      |                                                       | cancelled | a quit; nothing written                                                                                                                                                              |
+| script  | yes    |                                                       | next step | the script runs around each module's install; the consent recorded                                                                                                                   |
+| script  | no     | pre-install                                           | refused   | nothing written                                                                                                                                                                      |
+| script  | no     | post-install                                          | done      | installed without it: `scripts_pending` in lock.json, and a warning naming the sync that runs it                                                                                     |
+| script  | ctrl+c |                                                       | cancelled | nothing written                                                                                                                                                                      |
+| script  | esc    |                                                       | script    | `first step — q quits`                                                                                                                                                               |
+| script  | q      |                                                       | cancelled | a quit; nothing written                                                                                                                                                              |
+| later   | yes    |                                                       | done      | the consent recorded; nothing runs                                                                                                                                                   |
+| later   | no     |                                                       | refused   | names the script; nothing recorded                                                                                                                                                   |
+| later   | ctrl+c |                                                       | cancelled | nothing recorded                                                                                                                                                                     |
+| later   | esc    |                                                       | later     | `first step — q quits`                                                                                                                                                               |
+| later   | q      |                                                       | cancelled | a quit; nothing written                                                                                                                                                              |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| done | the run's answers allow its writes | the run's writes; a consent for each yes in `$XDG_STATE_HOME/lola/consent.json`; a declined post-install hook or script pending in lock.json (`hooks_pending`, `scripts_pending`); declined Claude Code hooks not installed | the run's output, with a warning naming the sync that asks again; 0 |
-| refused | a No to a pre-install hook or script, or one that cannot be asked | nothing | `error: <m> has a pre-install hook, and lola runs hooks only with your consent` (or the script's), with `hint:` lines; 4 for a No, 3 when it cannot be asked |
-| cancelled | Ctrl+C, or a No at the receipt | nothing | `✗ cancelled — nothing was changed`; 4 |
+| exit      | when                                                              | on disk                                                                                                                                                                                                                     | output, exit code                                                                                                                                            |
+|-----------|-------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| done      | the run's answers allow its writes                                | the run's writes; a consent for each yes in `$XDG_STATE_HOME/lola/consent.json`; a declined post-install hook or script pending in lock.json (`hooks_pending`, `scripts_pending`); declined Claude Code hooks not installed | the run's output, with a warning naming the sync that asks again; 0                                                                                          |
+| refused   | a No to a pre-install hook or script, or one that cannot be asked | nothing                                                                                                                                                                                                                     | `error: <m> has a pre-install hook, and lola runs hooks only with your consent` (or the script's), with `hint:` lines; 4 for a No, 3 when it cannot be asked |
+| cancelled | Ctrl+C, or a No at the receipt                                    | nothing                                                                                                                                                                                                                     | `✗ cancelled — nothing was changed`; 4                                                                                                                       |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| any consent question | nothing: no consent question goes back | | |
+| way back             | asks again                             | keeps | drops |
+|----------------------|----------------------------------------|-------|-------|
+| any consent question | nothing: no consent question goes back |       |       |
 
 ## Viewer and pager
 
@@ -1641,100 +1641,100 @@ opens or closes the highlighted one; `space` with none highlighted pages. The ke
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| printed | the text as it is, on stdout (a plan on stderr, before its question) | a `start` row says so |
-| pager | the user's `$LOLA_PAGER`, its stdin the text, uncapped; `LESS=FRX` unless `LESS` is set | `$LOLA_PAGER` is set and is not `cat` |
-| viewer | the text wrapped to the width on the alternate screen, a report's folds closed (`▸ summary`) until opened; under it a bold rule across the width, `━━ lines 41–80 of 312 · ↓ 232 more ━━` (`· end` once the last line shows), then the key line `q quit · ↑↓ space b  scroll · g G  top/end · /  search`, wrapped to two rows when one does not hold it, and the second cut from the right on a narrow terminal (j/k, PgUp/PgDn and Home/End work too); before a picker, `q  continue to: <title>` in place of `q quit` | the text is taller than the terminal |
-| search | the key line `/<term>█  enter search · esc cancel` while the term is typed; once searched, `/<term> 2 of 7` (or `no match`) and `n N  next/prev` before the keys, the current match in reverse video | `/` in the viewer or a review |
-| quit | the prompt line's note `Quit? your answers so far are dropped — nothing has been changed [y/N]` | `q` at a question with two or more answers held |
-| inline | the text printed on stderr, then the prompt line `Uninstall mymod? [y/N] █` under it (`[y/N]` bold, nothing in color); a hint or note after the field on the same line; `· esc back` at its end with a screen before | a question whose text and prompt line fit the terminal, or the viewer bypassed |
-| prompt | the text in the viewer on stderr, then the rule line, the prompt line (wrapped, never cut) and the key line `⏎ alone = no · q quit · ↑↓ space b  scroll · g G  top/end · /  search` (`⏎ alone` only with a default) | a question whose text and prompt line do not fit |
+| state   | what the user sees                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | asked when                                                                     |
+|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------|
+| printed | the text as it is, on stdout (a plan on stderr, before its question)                                                                                                                                                                                                                                                                                                                                                                                                                                                    | a `start` row says so                                                          |
+| pager   | the user's `$LOLA_PAGER`, its stdin the text, uncapped; `LESS=FRX` unless `LESS` is set                                                                                                                                                                                                                                                                                                                                                                                                                                 | `$LOLA_PAGER` is set and is not `cat`                                          |
+| viewer  | the text wrapped to the width on the alternate screen, a report's folds closed (`▸ summary`) until opened; under it a bold rule across the width, `━━ lines 41–80 of 312 · ↓ 232 more ━━` (`· end` once the last line shows), then the key line `q quit · ↑↓ space b  scroll · g G  top/end · /  search`, wrapped to two rows when one does not hold it, and the second cut from the right on a narrow terminal (j/k, PgUp/PgDn and Home/End work too); before a picker, `q  continue to: <title>` in place of `q quit` | the text is taller than the terminal                                           |
+| search  | the key line `/<term>█  enter search · esc cancel` while the term is typed; once searched, `/<term> 2 of 7` (or `no match`) and `n N  next/prev` before the keys, the current match in reverse video                                                                                                                                                                                                                                                                                                                    | `/` in the viewer or a review                                                  |
+| quit    | the prompt line's note `Quit? your answers so far are dropped — nothing has been changed [y/N]`                                                                                                                                                                                                                                                                                                                                                                                                                         | `q` at a question with two or more answers held                                |
+| inline  | the text printed on stderr, then the prompt line `Uninstall mymod? [y/N] █` under it (`[y/N]` bold, nothing in color); a hint or note after the field on the same line; `· esc back` at its end with a screen before                                                                                                                                                                                                                                                                                                    | a question whose text and prompt line fit the terminal, or the viewer bypassed |
+| prompt  | the text in the viewer on stderr, then the rule line, the prompt line (wrapped, never cut) and the key line `⏎ alone = no · q quit · ↑↓ space b  scroll · g G  top/end · /  search` (`⏎ alone` only with a default)                                                                                                                                                                                                                                                                                                     | a question whose text and prompt line do not fit                               |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | run | --json or --plain | printed | |
-| start | run | stdout or stderr not a terminal | printed | |
-| start | run | accessible mode | printed | |
-| start | run | --no-pager or NO_PAGER | printed | `NO_PAGER` set to anything but empty |
-| start | run | pager: false | printed | `pager: false` in the user's `config.yaml` wins over a `$LOLA_PAGER` set too; a project's never counts |
-| start | run | config.yaml unreadable | printed | `⚠ <why>; printing without the viewer` and its hints on stderr |
-| start | run | LOLA_PAGER set | pager | at any length; split on whitespace and run without a shell; `$PAGER` is never read |
-| start | run | LOLA_PAGER=cat | printed | |
-| start | run | taller than the terminal | viewer | |
-| start | run | fits, or the height unknown | printed | |
-| start | ask | fits, or the viewer bypassed | inline | the text printed first; a question with no text never opens the viewer |
-| start | ask | taller than the terminal with its prompt | prompt | the prompt line counted at its widest, its longest note included |
-| start | ask | LOLA_PAGER set | pager | the text paged; once the pager exits, the question asked inline |
-| pager | exits | | done | lola ignores Ctrl+C while it runs, as git does; the question, if one follows, is asked next |
-| pager | fails | | printed | not found, found in the current directory, or exits non-zero: `⚠ <why>; showing it here`, and the text printed capped |
-| viewer | scroll | | viewer | the rule line's position follows |
-| viewer | resize | | viewer | the text wrapped again, the top line kept in range; with a search, the first match at or below the top line is the current one |
-| viewer | / | | search | |
-| viewer | n or N | | viewer | the next or the previous match, wrapping at the ends; nothing without a search |
-| viewer | q | | done | the text printed; a question that follows is asked next |
-| viewer | esc | no fold highlighted | done | as `q`; the key line names only `q` |
-| viewer | tab or shift+tab | | viewer | the next or previous fold's summary in reverse video, scrolled into view, wrapping at the ends; nothing without a fold |
-| viewer | space | a fold highlighted | viewer | the fold opens (`▾`, its detail under it) or closes (`▸`); the text wrapped again, the top line kept |
-| viewer | esc | a fold highlighted | viewer | the highlight cleared |
-| viewer | ctrl+c | nothing asked after | done | the text printed; exit 0 |
-| viewer | ctrl+c | a question follows | cancelled | the text printed; the question is not asked |
-| viewer | y, c or n | | viewer | nothing |
-| search | answer | a term | viewer | Enter: the first line at or below the top holding it (a term in lowercase matches any case) |
-| search | answer | an empty term | viewer | the search cleared |
-| search | esc | | viewer | the typing dropped |
-| search | q | | search | typed as text, as every key but Enter, Esc, Backspace and Ctrl+C |
-| search | ctrl+c | a question follows | cancelled | as the viewer's `ctrl+c` |
-| search | enter or esc | a question asked | prompt | as in the viewer; the field as it was, the prompt line under the rule again |
-| inline | an answer letter | | inline | the field holds it, in lowercase, replacing one typed before |
-| inline | other key | | inline | the hint `answer y or n (Enter means no)` after the field (`answer y, c or n` with no default) |
-| inline | backspace | | inline | the field cleared |
-| inline | enter | a letter typed, or a default | answered | the line stays, the answer echoed: `Uninstall mymod? [y/N] y` |
-| inline | enter | nothing typed, no default | inline | the hint |
-| inline | esc | a screen before | back | |
-| inline | esc | no screen before | inline | `first step — q quits` after the field (`no step to go back to — q quits` with answers held) |
-| inline | q | fewer than two answers | cancelled | a quit |
-| inline | q | two or more answers | quit | |
-| inline | ctrl+c | | cancelled | the prompt line left with its field empty |
-| inline | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y`; 3 |
-| prompt | scroll | | prompt | the rule line's position follows; Enter never scrolls |
-| prompt | an answer letter | | prompt | the field holds it |
-| prompt | enter | a letter typed, or a default | answered | the text and the answered prompt line printed to stderr |
-| prompt | enter | nothing typed, no default | prompt | the hint |
-| prompt | / | | search | the search returns to the prompt |
-| prompt | ctrl+n or ctrl+p | | prompt | the next or the previous match: `n` is an answer here |
-| prompt | esc | a screen before | back | |
-| prompt | esc | no screen before | prompt | as inline |
-| prompt | q | fewer than two answers | cancelled | a quit |
-| prompt | q | two or more answers | quit | |
-| prompt | ctrl+c | | cancelled | the prompt line left with its field empty |
-| prompt | end of input | | refused | the text and the unanswered prompt line printed to stderr, then the error |
-| prompt | resize | | prompt | the text wrapped again; the prompt line wraps, the key line wraps to two rows, the second cut from the right |
-| prompt | tab or shift+tab | | prompt | as in the viewer |
-| prompt | space | a fold highlighted | prompt | as in the viewer |
-| quit | n, enter or esc | inline | inline | where it was |
-| quit | n, enter or esc | in the viewer | prompt | where it was |
-| quit | y | | cancelled | a quit |
-| quit | ctrl+c | | cancelled | |
+| from   | input            | guard                                    | to        | effects                                                                                                                        |
+|--------|------------------|------------------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------|
+| start  | run              | --json or --plain                        | printed   |                                                                                                                                |
+| start  | run              | stdout or stderr not a terminal          | printed   |                                                                                                                                |
+| start  | run              | accessible mode                          | printed   |                                                                                                                                |
+| start  | run              | --no-pager or NO_PAGER                   | printed   | `NO_PAGER` set to anything but empty                                                                                           |
+| start  | run              | pager: false                             | printed   | `pager: false` in the user's `config.yaml` wins over a `$LOLA_PAGER` set too; a project's never counts                         |
+| start  | run              | config.yaml unreadable                   | printed   | `⚠ <why>; printing without the viewer` and its hints on stderr                                                                 |
+| start  | run              | LOLA_PAGER set                           | pager     | at any length; split on whitespace and run without a shell; `$PAGER` is never read                                             |
+| start  | run              | LOLA_PAGER=cat                           | printed   |                                                                                                                                |
+| start  | run              | taller than the terminal                 | viewer    |                                                                                                                                |
+| start  | run              | fits, or the height unknown              | printed   |                                                                                                                                |
+| start  | ask              | fits, or the viewer bypassed             | inline    | the text printed first; a question with no text never opens the viewer                                                         |
+| start  | ask              | taller than the terminal with its prompt | prompt    | the prompt line counted at its widest, its longest note included                                                               |
+| start  | ask              | LOLA_PAGER set                           | pager     | the text paged; once the pager exits, the question asked inline                                                                |
+| pager  | exits            |                                          | done      | lola ignores Ctrl+C while it runs, as git does; the question, if one follows, is asked next                                    |
+| pager  | fails            |                                          | printed   | not found, found in the current directory, or exits non-zero: `⚠ <why>; showing it here`, and the text printed capped          |
+| viewer | scroll           |                                          | viewer    | the rule line's position follows                                                                                               |
+| viewer | resize           |                                          | viewer    | the text wrapped again, the top line kept in range; with a search, the first match at or below the top line is the current one |
+| viewer | /                |                                          | search    |                                                                                                                                |
+| viewer | n or N           |                                          | viewer    | the next or the previous match, wrapping at the ends; nothing without a search                                                 |
+| viewer | q                |                                          | done      | the text printed; a question that follows is asked next                                                                        |
+| viewer | esc              | no fold highlighted                      | done      | as `q`; the key line names only `q`                                                                                            |
+| viewer | tab or shift+tab |                                          | viewer    | the next or previous fold's summary in reverse video, scrolled into view, wrapping at the ends; nothing without a fold         |
+| viewer | space            | a fold highlighted                       | viewer    | the fold opens (`▾`, its detail under it) or closes (`▸`); the text wrapped again, the top line kept                           |
+| viewer | esc              | a fold highlighted                       | viewer    | the highlight cleared                                                                                                          |
+| viewer | ctrl+c           | nothing asked after                      | done      | the text printed; exit 0                                                                                                       |
+| viewer | ctrl+c           | a question follows                       | cancelled | the text printed; the question is not asked                                                                                    |
+| viewer | y, c or n        |                                          | viewer    | nothing                                                                                                                        |
+| search | answer           | a term                                   | viewer    | Enter: the first line at or below the top holding it (a term in lowercase matches any case)                                    |
+| search | answer           | an empty term                            | viewer    | the search cleared                                                                                                             |
+| search | esc              |                                          | viewer    | the typing dropped                                                                                                             |
+| search | q                |                                          | search    | typed as text, as every key but Enter, Esc, Backspace and Ctrl+C                                                               |
+| search | ctrl+c           | a question follows                       | cancelled | as the viewer's `ctrl+c`                                                                                                       |
+| search | enter or esc     | a question asked                         | prompt    | as in the viewer; the field as it was, the prompt line under the rule again                                                    |
+| inline | an answer letter |                                          | inline    | the field holds it, in lowercase, replacing one typed before                                                                   |
+| inline | other key        |                                          | inline    | the hint `answer y or n (Enter means no)` after the field (`answer y, c or n` with no default)                                 |
+| inline | backspace        |                                          | inline    | the field cleared                                                                                                              |
+| inline | enter            | a letter typed, or a default             | answered  | the line stays, the answer echoed: `Uninstall mymod? [y/N] y`                                                                  |
+| inline | enter            | nothing typed, no default                | inline    | the hint                                                                                                                       |
+| inline | esc              | a screen before                          | back      |                                                                                                                                |
+| inline | esc              | no screen before                         | inline    | `first step — q quits` after the field (`no step to go back to — q quits` with answers held)                                   |
+| inline | q                | fewer than two answers                   | cancelled | a quit                                                                                                                         |
+| inline | q                | two or more answers                      | quit      |                                                                                                                                |
+| inline | ctrl+c           |                                          | cancelled | the prompt line left with its field empty                                                                                      |
+| inline | end of input     |                                          | refused   | `error: input ended before the question was answered`, hinting a terminal or `-y`; 3                                           |
+| prompt | scroll           |                                          | prompt    | the rule line's position follows; Enter never scrolls                                                                          |
+| prompt | an answer letter |                                          | prompt    | the field holds it                                                                                                             |
+| prompt | enter            | a letter typed, or a default             | answered  | the text and the answered prompt line printed to stderr                                                                        |
+| prompt | enter            | nothing typed, no default                | prompt    | the hint                                                                                                                       |
+| prompt | /                |                                          | search    | the search returns to the prompt                                                                                               |
+| prompt | ctrl+n or ctrl+p |                                          | prompt    | the next or the previous match: `n` is an answer here                                                                          |
+| prompt | esc              | a screen before                          | back      |                                                                                                                                |
+| prompt | esc              | no screen before                         | prompt    | as inline                                                                                                                      |
+| prompt | q                | fewer than two answers                   | cancelled | a quit                                                                                                                         |
+| prompt | q                | two or more answers                      | quit      |                                                                                                                                |
+| prompt | ctrl+c           |                                          | cancelled | the prompt line left with its field empty                                                                                      |
+| prompt | end of input     |                                          | refused   | the text and the unanswered prompt line printed to stderr, then the error                                                      |
+| prompt | resize           |                                          | prompt    | the text wrapped again; the prompt line wraps, the key line wraps to two rows, the second cut from the right                   |
+| prompt | tab or shift+tab |                                          | prompt    | as in the viewer                                                                                                               |
+| prompt | space            | a fold highlighted                       | prompt    | as in the viewer                                                                                                               |
+| quit   | n, enter or esc  | inline                                   | inline    | where it was                                                                                                                   |
+| quit   | n, enter or esc  | in the viewer                            | prompt    | where it was                                                                                                                   |
+| quit   | y                |                                          | cancelled | a quit                                                                                                                         |
+| quit   | ctrl+c           |                                          | cancelled |                                                                                                                                |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| printed | a `start` row prints, or the pager failed | nothing | the text; the command goes on |
-| done | the viewer closed, or the pager exited | nothing | the text in the scrollback; the command goes on, a question that follows asked next |
-| back | Esc at a question with a screen before | nothing | the flow's screen before (see [Install](#install) and [Profile edit](#profile-edit)) |
+| exit      | when                                                           | on disk | output, exit code                                                                            |
+|-----------|----------------------------------------------------------------|---------|----------------------------------------------------------------------------------------------|
+| printed   | a `start` row prints, or the pager failed                      | nothing | the text; the command goes on                                                                |
+| done      | the viewer closed, or the pager exited                         | nothing | the text in the scrollback; the command goes on, a question that follows asked next          |
+| back      | Esc at a question with a screen before                         | nothing | the flow's screen before (see [Install](#install) and [Profile edit](#profile-edit))         |
 | cancelled | Ctrl+C at a question or in a viewer a question follows, a quit | nothing | `✗ cancelled — nothing was changed` (or the command's own wording, see [Inputs](#inputs)); 4 |
-| answered | a letter or the default answered on Enter | nothing | the line with the answer stays; the command goes on with it |
-| refused | stdin ended at a question | nothing | the prompt line with its field empty, then the error, with `hint:` lines; 3 |
+| answered  | a letter or the default answered on Enter                      | nothing | the line with the answer stays; the command goes on with it                                  |
+| refused   | stdin ended at a question                                      | nothing | the prompt line with its field empty, then the error, with `hint:` lines; 3                  |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| `n`, Enter or Esc at the quit question | the question | its place and its search | |
+| way back                               | asks again   | keeps                    | drops |
+|----------------------------------------|--------------|--------------------------|-------|
+| `n`, Enter or Esc at the quit question | the question | its place and its search |       |
 
 ## Accessible mode
 
@@ -1800,82 +1800,82 @@ Enter alone; *invalid* is any other line a prompt refuses.
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| pick | the title, `Select up to N options.`, the options numbered (`[x]` before the ticked ones), and `Enter a number between 0 and N:` | a picker (huh's MultiSelect) |
-| choose | the title, the options numbered, and `Enter a number between 1 and N:` | a menu or a question with options (huh's Select) |
-| line | the title as the prompt | a text question (huh's Input) |
-| yesno | the question's text, then `<question> [y/N] ` | a yes or no question (`Ask`) |
+| state  | what the user sees                                                                                                               | asked when                                       |
+|--------|----------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
+| pick   | the title, `Select up to N options.`, the options numbered (`[x]` before the ticked ones), and `Enter a number between 0 and N:` | a picker (huh's MultiSelect)                     |
+| choose | the title, the options numbered, and `Enter a number between 1 and N:`                                                           | a menu or a question with options (huh's Select) |
+| line   | the title as the prompt                                                                                                          | a text question (huh's Input)                    |
+| yesno  | the question's text, then `<question> [y/N]` and a space                                                                         | a yes or no question (`Ask`)                     |
 
 Each `Prompter` method (`internal/cli/prompter.go`) as a line prompt:
 
-| method | prompt | accepts | a blank line | `0` with nothing ticked | as the full screen |
-|---|---|---|---|---|---|
-| `Scope` | pick, `pick one` in a note when it takes one; Other directory… then asks `OtherDirectory` | numbers, `0` | invalid | refused | yes |
-| `OtherDirectory` | line, the last path pre-filled; why it asks again and what it takes in notes before it | any text | the pre-filled path, or an empty answer | | yes, but a path pre-filled cannot be emptied |
-| `Modules` | pick; one pick per list, in turn, with marketplaces; `What next?`, a choose, on an empty cache; Add a source… then asks `Source` and `Ref (optional)`, lines, each with what it takes in a note | numbers, `0`; text | invalid; an empty source or ref | refused, or every list asked again with marketplaces; an answer with `None` | yes |
-| `MarketEntry` | choose | a number | the first entry | | yes |
-| `Assistants` | pick, the scopes it is for in a note | numbers, `0` | invalid | refused | yes |
-| `Version` | a note (the title, the scope, the version note), then choose titled `Type a number (Enter = 2, <why>)`, then the label taken (`→ >=2.0`) | a number | the preselected version; invalid with none preselected | | yes |
-| `Components` | one pick per kind, in turn, a disabled kind as a note | numbers, `0` | invalid | an answer, which asks `Install <module> with no components?` when every list is empty | yes |
-| `Review` | the summary printed, then choose: Apply, the Change entries, Quit, with what Ctrl+C does in a note | a number | invalid: Apply needs its number | | no viewer: this menu takes its place; Quit cancels |
-| `Trust` | choose; Choose… then one pick per kind, in turn | a number; numbers, `0` | invalid: trust, or Cancel, needs its number, whatever the full screen's cursor would be on | refused on the last list | yes |
-| `Ask` | yesno | y, n, yes, no, either case | the default (No) | | yes |
-| `Where` | choose, Cancel last | a number | the option preselected | | yes |
-| `Profiles` | pick, the source in a note | numbers, `0` | invalid | an answer | yes |
-| `Members` | pick, how members order in a note | numbers, `0` | invalid | an answer | yes |
-| `MarketName` | line, a free name pre-filled; why it asks again, then why the name will not do, in notes | any text | the pre-filled name | | yes |
-| `SSHHosts` | pick, what a host ticked gets (your ssh keys and agent) in a note | numbers, `0` | invalid | an answer: no host | yes |
-| `TidyPick` | pick, the locked items in a note | numbers, `0` | invalid | an answer | yes |
-| `TidyKeep` | pick, what a keep-list does in a note | numbers, `0` | invalid | refused when nothing moves, else an answer | yes |
-| `TrashPick` | pick, what a whole-run row takes in a note; then choose `Do what with the ticked?` | numbers, `0`; a number | invalid; Restore ticked | an answer | yes |
-| `MigrateRoot` | line, the suggestion in its title, nothing pre-filled, the paths it moves in a note | an absolute path | skips the root | | yes |
-| `MigrateTargets` | pick, every assistant ticked, what none does in a note | numbers, `0` | invalid | an answer: skips them | yes |
-| `Background` | choose (Dark, Light), what the answer does in a note | a number | Dark | | yes |
+| method           | prompt                                                                                                                                                                                          | accepts                    | a blank line                                                                               | `0` with nothing ticked                                                               | as the full screen                                 |
+|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------|--------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|----------------------------------------------------|
+| `Scope`          | pick, `pick one` in a note when it takes one; Other directory… then asks `OtherDirectory`                                                                                                       | numbers, `0`               | invalid                                                                                    | refused                                                                               | yes                                                |
+| `OtherDirectory` | line, the last path pre-filled; why it asks again and what it takes in notes before it                                                                                                          | any text                   | the pre-filled path, or an empty answer                                                    |                                                                                       | yes, but a path pre-filled cannot be emptied       |
+| `Modules`        | pick; one pick per list, in turn, with marketplaces; `What next?`, a choose, on an empty cache; Add a source… then asks `Source` and `Ref (optional)`, lines, each with what it takes in a note | numbers, `0`; text         | invalid; an empty source or ref                                                            | refused, or every list asked again with marketplaces; an answer with `None`           | yes                                                |
+| `MarketEntry`    | choose                                                                                                                                                                                          | a number                   | the first entry                                                                            |                                                                                       | yes                                                |
+| `Assistants`     | pick, the scopes it is for in a note                                                                                                                                                            | numbers, `0`               | invalid                                                                                    | refused                                                                               | yes                                                |
+| `Version`        | a note (the title, the scope, the version note), then choose titled `Type a number (Enter = 2, <why>)`, then the label taken (`→ >=2.0`)                                                        | a number                   | the preselected version; invalid with none preselected                                     |                                                                                       | yes                                                |
+| `Components`     | one pick per kind, in turn, a disabled kind as a note                                                                                                                                           | numbers, `0`               | invalid                                                                                    | an answer, which asks `Install <module> with no components?` when every list is empty | yes                                                |
+| `Review`         | the summary printed, then choose: Apply, the Change entries, Quit, with what Ctrl+C does in a note                                                                                              | a number                   | invalid: Apply needs its number                                                            |                                                                                       | no viewer: this menu takes its place; Quit cancels |
+| `Trust`          | choose; Choose… then one pick per kind, in turn                                                                                                                                                 | a number; numbers, `0`     | invalid: trust, or Cancel, needs its number, whatever the full screen's cursor would be on | refused on the last list                                                              | yes                                                |
+| `Ask`            | yesno                                                                                                                                                                                           | y, n, yes, no, either case | the default (No)                                                                           |                                                                                       | yes                                                |
+| `Where`          | choose, Cancel last                                                                                                                                                                             | a number                   | the option preselected                                                                     |                                                                                       | yes                                                |
+| `Profiles`       | pick, the source in a note                                                                                                                                                                      | numbers, `0`               | invalid                                                                                    | an answer                                                                             | yes                                                |
+| `Members`        | pick, how members order in a note                                                                                                                                                               | numbers, `0`               | invalid                                                                                    | an answer                                                                             | yes                                                |
+| `MarketName`     | line, a free name pre-filled; why it asks again, then why the name will not do, in notes                                                                                                        | any text                   | the pre-filled name                                                                        |                                                                                       | yes                                                |
+| `SSHHosts`       | pick, what a host ticked gets (your ssh keys and agent) in a note                                                                                                                               | numbers, `0`               | invalid                                                                                    | an answer: no host                                                                    | yes                                                |
+| `TidyPick`       | pick, the locked items in a note                                                                                                                                                                | numbers, `0`               | invalid                                                                                    | an answer                                                                             | yes                                                |
+| `TidyKeep`       | pick, what a keep-list does in a note                                                                                                                                                           | numbers, `0`               | invalid                                                                                    | refused when nothing moves, else an answer                                            | yes                                                |
+| `TrashPick`      | pick, what a whole-run row takes in a note; then choose `Do what with the ticked?`                                                                                                              | numbers, `0`; a number     | invalid; Restore ticked                                                                    | an answer                                                                             | yes                                                |
+| `MigrateRoot`    | line, the suggestion in its title, nothing pre-filled, the paths it moves in a note                                                                                                             | an absolute path           | skips the root                                                                             |                                                                                       | yes                                                |
+| `MigrateTargets` | pick, every assistant ticked, what none does in a note                                                                                                                                          | numbers, `0`               | invalid                                                                                    | an answer: skips them                                                                 | yes                                                |
+| `Background`     | choose (Dark, Light), what the answer does in a note                                                                                                                                            | a number                   | Dark                                                                                       |                                                                                       | yes                                                |
 
 "As the full screen" means the same states, in the same order, with the same exits, but for what no
 line prompt has: Esc, `q` and the viewer.
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| pick | a number | | pick | toggles that option; the list is printed again |
-| pick | empty submit | a pick needed | pick | `0` with nothing ticked: `nothing selected — type an option's number to select it, 0 confirms, ctrl+c quits` |
-| pick | empty submit | none is an answer | next | |
-| pick | answer | | next | `0` with something ticked |
-| pick | a blank line | | pick | `Invalid: must be a number between 0 and N` |
-| pick | q | | pick | invalid, as any word is |
-| pick | esc | | pick | invalid: nothing goes back |
-| pick | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y` |
-| choose | answer | | next | |
-| choose | a blank line | a default | next | the default taken |
-| choose | a blank line | no default | choose | `Invalid: must be a number between 1 and N`; the review's menu and the trust question have none, so Apply and trust need their number |
-| choose | invalid | | choose | the same message |
-| choose | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y` |
-| line | answer | | next | |
-| line | a blank line | a value pre-filled | next | the pre-filled value |
-| line | a blank line | nothing pre-filled | next | an empty answer |
-| line | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y` |
-| yesno | y or n | | next | |
-| yesno | a blank line | | next | the default, No |
-| yesno | invalid | | yesno | `answer y or n (Enter means no)` |
-| yesno | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y` |
-| choose | ctrl+c | | cancelled | as at any prompt |
+| from   | input        | guard              | to        | effects                                                                                                                               |
+|--------|--------------|--------------------|-----------|---------------------------------------------------------------------------------------------------------------------------------------|
+| pick   | a number     |                    | pick      | toggles that option; the list is printed again                                                                                        |
+| pick   | empty submit | a pick needed      | pick      | `0` with nothing ticked: `nothing selected — type an option's number to select it, 0 confirms, ctrl+c quits`                          |
+| pick   | empty submit | none is an answer  | next      |                                                                                                                                       |
+| pick   | answer       |                    | next      | `0` with something ticked                                                                                                             |
+| pick   | a blank line |                    | pick      | `Invalid: must be a number between 0 and N`                                                                                           |
+| pick   | q            |                    | pick      | invalid, as any word is                                                                                                               |
+| pick   | esc          |                    | pick      | invalid: nothing goes back                                                                                                            |
+| pick   | end of input |                    | refused   | `error: input ended before the question was answered`, hinting a terminal or `-y`                                                     |
+| choose | answer       |                    | next      |                                                                                                                                       |
+| choose | a blank line | a default          | next      | the default taken                                                                                                                     |
+| choose | a blank line | no default         | choose    | `Invalid: must be a number between 1 and N`; the review's menu and the trust question have none, so Apply and trust need their number |
+| choose | invalid      |                    | choose    | the same message                                                                                                                      |
+| choose | end of input |                    | refused   | `error: input ended before the question was answered`, hinting a terminal or `-y`                                                     |
+| line   | answer       |                    | next      |                                                                                                                                       |
+| line   | a blank line | a value pre-filled | next      | the pre-filled value                                                                                                                  |
+| line   | a blank line | nothing pre-filled | next      | an empty answer                                                                                                                       |
+| line   | end of input |                    | refused   | `error: input ended before the question was answered`, hinting a terminal or `-y`                                                     |
+| yesno  | y or n       |                    | next      |                                                                                                                                       |
+| yesno  | a blank line |                    | next      | the default, No                                                                                                                       |
+| yesno  | invalid      |                    | yesno     | `answer y or n (Enter means no)`                                                                                                      |
+| yesno  | end of input |                    | refused   | `error: input ended before the question was answered`, hinting a terminal or `-y`                                                     |
+| choose | ctrl+c       |                    | cancelled | as at any prompt                                                                                                                      |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
-| next | an answer | as the flow does | the flow's next screen |
-| cancelled | Ctrl+C, Quit, a No that cancels | nothing | `✗ cancelled — nothing was changed` (or the command's own wording); 4 |
-| refused | end of input | nothing | `error: input ended before the question was answered`, with `hint:` lines; 3 |
+| exit      | when                            | on disk          | output, exit code                                                            |
+|-----------|---------------------------------|------------------|------------------------------------------------------------------------------|
+| next      | an answer                       | as the flow does | the flow's next screen                                                       |
+| cancelled | Ctrl+C, Quit, a No that cancels | nothing          | `✗ cancelled — nothing was changed` (or the command's own wording); 4        |
+| refused   | end of input                    | nothing          | `error: input ended before the question was answered`, with `hint:` lines; 3 |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| none | nothing: no line prompt goes back; the review's Change entries ask a step again, as on the full screen | | |
+| way back | asks again                                                                                             | keeps | drops |
+|----------|--------------------------------------------------------------------------------------------------------|-------|-------|
+| none     | nothing: no line prompt goes back; the review's Change entries ask a step again, as on the full screen |       |       |
 
 ## Form keys
 
@@ -1940,62 +1940,62 @@ in: keys read with the Esc or `q` that ended a form are dropped.
 
 ### States
 
-| state | what the user sees | asked when |
-|---|---|---|
-| screen | the field, its key help led by `esc back · q quit` (no `esc back` with nothing before, `ctrl+c quits` in a text input) | a form |
-| theme | `Is your terminal background dark or light?` (Dark, Light), `lola picks its colors for it and saves your answer in config.yaml`, drawn without lola's colors | before a run's first full-screen form, on a terminal, when config.yaml has no `theme:`, the terminal does not say its background, and accessible mode is off |
-| filter | the filter line with the term being typed; the list cut to the options holding it | `/` on a filterable picker |
-| filtered | the list cut to the term, `esc clear filter` in the key help | the term set |
-| quit | `Quit? your answers so far are dropped — nothing has been changed [y/N]` in the key help's place | `q` with two or more answers held |
+| state    | what the user sees                                                                                                                                           | asked when                                                                                                                                                   |
+|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| screen   | the field, its key help led by `esc back · q quit` (no `esc back` with nothing before, `ctrl+c quits` in a text input)                                       | a form                                                                                                                                                       |
+| theme    | `Is your terminal background dark or light?` (Dark, Light), `lola picks its colors for it and saves your answer in config.yaml`, drawn without lola's colors | before a run's first full-screen form, on a terminal, when config.yaml has no `theme:`, the terminal does not say its background, and accessible mode is off |
+| filter   | the filter line with the term being typed; the list cut to the options holding it                                                                            | `/` on a filterable picker                                                                                                                                   |
+| filtered | the list cut to the term, `esc clear filter` in the key help                                                                                                 | the term set                                                                                                                                                 |
+| quit     | `Quit? your answers so far are dropped — nothing has been changed [y/N]` in the key help's place                                                             | `q` with two or more answers held                                                                                                                            |
 
 ### Transitions
 
-| from | input | guard | to | effects |
-|---|---|---|---|---|
-| start | a form | in color, the background unknown | theme | before the form |
-| theme | answer | | screen | `theme: dark` or `theme: light` saved in config.yaml: `→ saved theme: <theme> in <path>` |
-| theme | answer | the save fails | screen | `⚠ could not save theme: …; set theme: <theme> in <path>`; the answer holds for this run |
-| theme | esc | | theme | first screen: key help note |
-| theme | end of input | | refused | the hint says how to skip the question: `set theme: dark or theme: light in <path>`; nothing saved |
-| theme | ctrl+c | | cancelled | nothing saved |
-| screen | answer | | next | Enter |
-| screen | q | fewer than two answers | cancelled | a quit; the answers held are `Nav.Answered` plus the form's fields before |
-| screen | q | two or more answers | quit | |
-| screen | esc | a field before it | screen | the field before, as Shift+Tab |
-| screen | esc | its first field, a screen before | back | |
-| screen | esc | nothing before | screen | the key help says `first step — q quits` until the next key, in place of any note before it (an empty submit's `nothing selected …`) |
-| screen | esc | nothing before, answers held | screen | the key help says `no step to go back to — q quits` |
-| screen | ctrl+c | | cancelled | at once, never asking; no quit |
-| screen | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y`; 3 |
-| quit | y | | cancelled | a quit |
-| quit | n, enter or esc | | screen | as it was |
-| quit | ctrl+c | | cancelled | |
-| input | q | | input | typed as text |
-| picker | x | | picker | toggles the option under the cursor (space too) |
-| picker | ctrl+a | any other picker | picker | ticks every option shown; with each ticked, unticks them |
-| picker | ctrl+a | a module picker | picker | ticks every module shown, never `Add a source…` |
-| picker | ctrl+a | a module picker, every module shown ticked | picker | unticks every option shown |
-| picker | ctrl+a | a module picker above marketplace lists | picker | ticks the cached modules shown, never `Add a source…` |
-| picker | empty submit | a pick needed | picker | `nothing selected — space selects, enter confirms, ctrl+c quits` in the key help's place, until the next toggle |
-| picker | empty submit | none is an answer | next | |
-| picker | / | | filter | |
-| filter | q | | filter | typed as text |
-| filter | enter or esc | | filtered | the term kept |
-| filter | ctrl+a | a module picker | filter | ticks the modules shown, never `Add a source…` |
-| filtered | esc | | picker | the filter cleared |
-| filtered | q | | cancelled | a quit (fewer than two answers), as on any screen |
+| from     | input           | guard                                      | to        | effects                                                                                                                              |
+|----------|-----------------|--------------------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------|
+| start    | a form          | in color, the background unknown           | theme     | before the form                                                                                                                      |
+| theme    | answer          |                                            | screen    | `theme: dark` or `theme: light` saved in config.yaml: `→ saved theme: <theme> in <path>`                                             |
+| theme    | answer          | the save fails                             | screen    | `⚠ could not save theme: …; set theme: <theme> in <path>`; the answer holds for this run                                             |
+| theme    | esc             |                                            | theme     | first screen: key help note                                                                                                          |
+| theme    | end of input    |                                            | refused   | the hint says how to skip the question: `set theme: dark or theme: light in <path>`; nothing saved                                   |
+| theme    | ctrl+c          |                                            | cancelled | nothing saved                                                                                                                        |
+| screen   | answer          |                                            | next      | Enter                                                                                                                                |
+| screen   | q               | fewer than two answers                     | cancelled | a quit; the answers held are `Nav.Answered` plus the form's fields before                                                            |
+| screen   | q               | two or more answers                        | quit      |                                                                                                                                      |
+| screen   | esc             | a field before it                          | screen    | the field before, as Shift+Tab                                                                                                       |
+| screen   | esc             | its first field, a screen before           | back      |                                                                                                                                      |
+| screen   | esc             | nothing before                             | screen    | the key help says `first step — q quits` until the next key, in place of any note before it (an empty submit's `nothing selected …`) |
+| screen   | esc             | nothing before, answers held               | screen    | the key help says `no step to go back to — q quits`                                                                                  |
+| screen   | ctrl+c          |                                            | cancelled | at once, never asking; no quit                                                                                                       |
+| screen   | end of input    |                                            | refused   | `error: input ended before the question was answered`, hinting a terminal or `-y`; 3                                                 |
+| quit     | y               |                                            | cancelled | a quit                                                                                                                               |
+| quit     | n, enter or esc |                                            | screen    | as it was                                                                                                                            |
+| quit     | ctrl+c          |                                            | cancelled |                                                                                                                                      |
+| input    | q               |                                            | input     | typed as text                                                                                                                        |
+| picker   | x               |                                            | picker    | toggles the option under the cursor (space too)                                                                                      |
+| picker   | ctrl+a          | any other picker                           | picker    | ticks every option shown; with each ticked, unticks them                                                                             |
+| picker   | ctrl+a          | a module picker                            | picker    | ticks every module shown, never `Add a source…`                                                                                      |
+| picker   | ctrl+a          | a module picker, every module shown ticked | picker    | unticks every option shown                                                                                                           |
+| picker   | ctrl+a          | a module picker above marketplace lists    | picker    | ticks the cached modules shown, never `Add a source…`                                                                                |
+| picker   | empty submit    | a pick needed                              | picker    | `nothing selected — space selects, enter confirms, ctrl+c quits` in the key help's place, until the next toggle                      |
+| picker   | empty submit    | none is an answer                          | next      |                                                                                                                                      |
+| picker   | /               |                                            | filter    |                                                                                                                                      |
+| filter   | q               |                                            | filter    | typed as text                                                                                                                        |
+| filter   | enter or esc    |                                            | filtered  | the term kept                                                                                                                        |
+| filter   | ctrl+a          | a module picker                            | filter    | ticks the modules shown, never `Add a source…`                                                                                       |
+| filtered | esc             |                                            | picker    | the filter cleared                                                                                                                   |
+| filtered | q               |                                            | cancelled | a quit (fewer than two answers), as on any screen                                                                                    |
 
 ### Exits
 
-| exit | when | on disk | output, exit code |
-|---|---|---|---|
+| exit       | when                             | on disk          | output, exit code                                                                                                                                                                                                                         |
+|------------|----------------------------------|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | next, back | an answer, an Esc that goes back | as the flow does | the ended full-screen form is erased, on a submit, a back, a quit and a cancel alike, so only the flow's next screen shows; not erased: a form stopped by end of input (refused), and accessible mode's line prompts, which stay as typed |
-| cancelled | Ctrl+C, a quit | nothing | the full-screen form erased (but for the exceptions above), then `✗ cancelled — nothing was changed` (or the command's own wording); 4 |
-| refused | stdin ends | nothing | the error, with `hint:` lines; 3 |
+| cancelled  | Ctrl+C, a quit                   | nothing          | the full-screen form erased (but for the exceptions above), then `✗ cancelled — nothing was changed` (or the command's own wording); 4                                                                                                    |
+| refused    | stdin ends                       | nothing          | the error, with `hint:` lines; 3                                                                                                                                                                                                          |
 
 ### Re-entry
 
-| way back | asks again | keeps | drops |
-|---|---|---|---|
-| `n`, Enter or Esc at the quit question | the screen | its ticks, cursor and filter | |
-| Esc to the field before | that field | every field's answer | |
+| way back                               | asks again | keeps                        | drops |
+|----------------------------------------|------------|------------------------------|-------|
+| `n`, Enter or Esc at the quit question | the screen | its ticks, cursor and filter |       |
+| Esc to the field before                | that field | every field's answer         |       |

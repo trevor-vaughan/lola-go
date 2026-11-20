@@ -49,11 +49,11 @@ pre:  config.yaml → project.yml → --pre-install → the module's pre-install
 post: the module's post-install hook → --post-install → project.yml → config.yaml
 ```
 
-| Source | Where | Trust |
-|---|---|---|
-| yours | `pre_install:` and `post_install:` in `config.yaml`: an absolute path or `~/…` | none |
+| Source        | Where                                                                                                                                                                                                       | Trust                                                                                                    |
+|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| yours         | `pre_install:` and `post_install:` in `config.yaml`: an absolute path or `~/…`                                                                                                                              | none                                                                                                     |
 | the project's | top-level `pre_install:` and `post_install:` in `.lola/project.yml`, relative to the project, in plain text and without a `..` component; it must be a regular file inside the project, not a symbolic link | `scripts` (a [`--trust=` kind](install-trust-kinds.md)), per project, event and the digest of the script |
-| this run's | `install --pre-install <path>` and `--post-install <path>` | none |
+| this run's    | `install --pre-install <path>` and `--post-install <path>`                                                                                                                                                  | none                                                                                                     |
 
 Each runs as a hook does, but from its absolute path, with the module copy as its working
 directory, the hook environment (`LOLA_MODULE_NAME`, `LOLA_MODULE_PATH`, `LOLA_PROJECT_PATH`,

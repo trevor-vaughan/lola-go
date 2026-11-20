@@ -203,7 +203,7 @@ var _ = Describe("typed --trust", func() {
 
 	It("profile --update without a scope flag refuses --trust=entries, naming the scope flags", func() {
 		writeTree(p.RemoteProfiles, map[string]string{"go/profile.yml": "version: 1\nmodules: []\n",
-			"go/source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`})
+			"go/source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`}) // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
 		r := lola("profile", "go", "--update", "--trust=entries,hooks")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: --trust=entries trusts a project's changes, which lola profile --update answers only in a scope a flag names\n" +
@@ -475,7 +475,7 @@ var _ = Describe("typed --trust", func() {
 	It("profile --update without a scope flag applies profiles trust only", func() {
 		pull("plain")
 		writeTree(p.RemoteProfiles, map[string]string{"go/profile.yml": "version: 1\nmodules: []\n",
-			"go/source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`})
+			"go/source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`}) // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
 		GinkgoT().Chdir(proj)
 		r := lola("profile", "go", "--update", "--trust=all")
 		Expect(r.code).To(Equal(1))

@@ -15,7 +15,10 @@ git clone -q --bare /work/tools-src /srv/git/tools.git
 git init -q /work/market-src && cp -r "$fx/market/." /work/market-src/
 git -C /work/market-src add -A && git -C /work/market-src commit -qm market
 git clone -q --bare /work/market-src /srv/git/market.git
-for _ in $(seq 50); do python3 -c 'import socket; socket.create_connection(("127.0.0.1", 8765))' 2>/dev/null && break; sleep 0.1; done
+for _ in $(seq 50); do
+  python3 -c 'import socket; socket.create_connection(("127.0.0.1", 8765))' 2>/dev/null && break
+  sleep 0.1
+done
 (cd "$fx" && zip -qr /work/kit.zip kit)
 lola mod add "$fx/review"
 lola mod add http://127.0.0.1:8765/tools.git

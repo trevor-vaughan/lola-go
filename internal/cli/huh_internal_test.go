@@ -1002,12 +1002,12 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 
 		By("labels the width would cut alike stay whole, since huh ticks every option with the label under the cursor")
 		narrow := (&huhForms{width: 40}).tidyOptions([]TidyOption{{ID: "0", Label: "claude-code  skill/a-very-long-name-one  .claude/skills/a-very-long-name-one/"},
-			{ID: "1", Label: "claude-code  skill/a-very-long-name-two  .claude/skills/a-very-long-name-two/"}, {ID: "2", Label: "claude-code  skill/b  .claude/skills/b/"}})
+			{ID: "1", Label: "claude-code  skill/a-very-long-name-two  .claude/skills/a-very-long-name-two/"}, {ID: "2", Label: "claude-code  skill/b  .claude/skills/b/"}}, nil)
 		Expect([]string{narrow[0].Key, narrow[1].Key}).To(Equal([]string{
 			"claude-code  skill/a-very-long-name-one  .claude/skills/a-very-long-name-one/",
 			"claude-code  skill/a-very-long-name-two  .claude/skills/a-very-long-name-two/"}))
 		Expect(narrow[2].Key).To(Equal("claude-code  skill/b  .claude/s…"), "a label no other shares is cut")
-		same := (&huhForms{}).tidyOptions([]TidyOption{{ID: "0", Label: "x  skill/a  p"}, {ID: "1", Label: "x  skill/a  p"}, {ID: "2", Label: "y"}})
+		same := (&huhForms{}).tidyOptions([]TidyOption{{ID: "0", Label: "x  skill/a  p"}, {ID: "1", Label: "x  skill/a  p"}, {ID: "2", Label: "y"}}, nil)
 		Expect([]string{same[0].Key, same[1].Key, same[2].Key}).To(Equal([]string{"x  skill/a  p [1]", "x  skill/a  p [2]", "y"}),
 			"labels equal in full gain a suffix, so no two options share one")
 	})

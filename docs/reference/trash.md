@@ -58,14 +58,14 @@ the picker says what each key does. Nothing is written before lola shows the pla
 
 Off a terminal, bare `lola trash` lists the runs as above.
 
-| Flag | What it does |
-|---|---|
-| `--restore` | Move the run's entries back, or only the originals you name (a relative path is taken from the working directory), making the directories they were in. Aliases: `--undo`, `--recover`. |
-| `--force` | With `--restore`: first move what is at an original's path into a new trash run, whose command is `lola trash <run> --restore --force`. Nothing is deleted. |
-| `--empty` | Delete the named runs, or every run. It asks first; off a terminal it needs `-y`. Aliases: `--purge`, `--clear`. |
-| `--older-than <age>` | With `--empty`: only the runs older than `<n>d` or `<n>w` (weeks of 7 days). A run whose time lola cannot tell, or a run you named that is newer, is kept, with a notice. |
-| `-n`, `--dry-run` | With either action: print the plan and change nothing. |
-| `-y`, `--yes` | With `--empty`: do not ask for confirmation. |
+| Flag                 | What it does                                                                                                                                                                            |
+|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--restore`          | Move the run's entries back, or only the originals you name (a relative path is taken from the working directory), making the directories they were in. Aliases: `--undo`, `--recover`. |
+| `--force`            | With `--restore`: first move what is at an original's path into a new trash run, whose command is `lola trash <run> --restore --force`. Nothing is deleted.                             |
+| `--empty`            | Delete the named runs, or every run. It asks first; off a terminal it needs `-y`. Aliases: `--purge`, `--clear`.                                                                        |
+| `--older-than <age>` | With `--empty`: only the runs older than `<n>d` or `<n>w` (weeks of 7 days). A run whose time lola cannot tell, or a run you named that is newer, is kept, with a notice.               |
+| `-n`, `--dry-run`    | With either action: print the plan and change nothing.                                                                                                                                  |
+| `-y`, `--yes`        | With `--empty`: do not ask for confirmation.                                                                                                                                            |
 
 The global flags apply too ([Using lola](../usage.md#commands)): `--json` and `--plain` pick the output,
 `--no-pager` prints without lola's viewer.

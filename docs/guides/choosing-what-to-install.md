@@ -247,12 +247,12 @@ input cancels.
 
 The scope flags are global: every command takes them.
 
-| Flag | Scope |
-|---|---|
+| Flag                                                      | Scope                             |
+|-----------------------------------------------------------|-----------------------------------|
 | `-s`, `--scope project\|user\|both` (also `project,user`) | that; `-C <dir>` sets the project |
-| `--project` | project (`--scope project`) |
-| `--user` | user (`--scope user`) |
-| `-C, --root <dir>` | the project at `<dir>` |
+| `--project`                                               | project (`--scope project`)       |
+| `--user`                                                  | user (`--scope user`)             |
+| `-C, --root <dir>`                                        | the project at `<dir>`            |
 
 `--user` and `--project` must agree with `--scope`, and `--user` cannot take `-C`. `--project`
 and `--scope project` without `-C` use the nearest parent with a `.lola/`, else the current
@@ -263,13 +263,13 @@ with `--on`, `--off`, `--switch` or `--remove`) never pick a scope silently. lol
 top to bottom and takes the first row that applies, so on a terminal the picker asks even inside
 a `.lola/` project:
 
-| You give | Scope |
-|---|---|
-| a scope flag | that scope |
-| a terminal | the scope picker (Project, User, Other directory…), with nothing preselected; the Project and User rows end with the scope's context (`Project (<root>) — profile go over project.yml`, `User (~) — profile go over default`), the Project row naming `project.yml` even before `.lola/` exists, since that is the base the run would use |
-| no flag, off a terminal, in or below a directory with `.lola/` | that project (`install` prints its context line on stderr: `project <path>: project.yml`) |
-| `default_scope` in `config.yaml` | that scope |
-| none of these | an error naming the command and the `config.yaml` that sets no `default_scope`, with your run plus `--project`, plus `--user` (and plus `--scope both` for `install` and `sync`) as hints, each keeping the source, `--ref`, `--path` and every other flag |
+| You give                                                       | Scope                                                                                                                                                                                                                                                                                                                                     |
+|----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| a scope flag                                                   | that scope                                                                                                                                                                                                                                                                                                                                |
+| a terminal                                                     | the scope picker (Project, User, Other directory…), with nothing preselected; the Project and User rows end with the scope's context (`Project (<root>) — profile go over project.yml`, `User (~) — profile go over default`), the Project row naming `project.yml` even before `.lola/` exists, since that is the base the run would use |
+| no flag, off a terminal, in or below a directory with `.lola/` | that project (`install` prints its context line on stderr: `project <path>: project.yml`)                                                                                                                                                                                                                                                 |
+| `default_scope` in `config.yaml`                               | that scope                                                                                                                                                                                                                                                                                                                                |
+| none of these                                                  | an error naming the command and the `config.yaml` that sets no `default_scope`, with your run plus `--project`, plus `--user` (and plus `--scope both` for `install` and `sync`) as hints, each keeping the source, `--ref`, `--path` and every other flag                                                                                |
 
 `install` and `sync` take both scopes (`--scope both`, both ticked, or `default_scope: both`):
 `install` plans them together, and `sync` syncs the project, then user scope, stopping at the
@@ -323,14 +323,14 @@ A pick change that deletes installed files (a `--skip`, or an `--only` that leav
 confirmed as `lola uninstall` is: asked on a terminal; off one it refuses, printing the files and
 hinting the same command with `-y`. `-n` (`--dry-run`) writes nothing; `--force` answers without asking.
 
-| Flag | Effect |
-|---|---|
-| `--skip <selector>` | Do not install the matching components; saved as a skip in the profile entry the install writes, or for a `project.yml` module in `selections.yaml` (and a matching include in that section is removed). |
-| `--only <selector>` | For each module with a match, skip every component that does not match and unskip those that do. Saved as skips of the components that exist now, so components a later version adds are installed. An `only:` list already in the section stays. Warns when a wider include in the section keeps a non-matching component installed. |
-| `--exact` | With `--only`: save the selectors as the section's `only:` list (replacing one there) instead of skips, and remove the section's skips that name a match, so a component both skipped and listed is installed. Components a later version adds are then not installed; `install`, `sync` and `update` name them (see below). Refused without `--only`. |
-| `--unskip <selector>` | Install skipped components again: removes the matching skips, and where a global skip or an `only:` list still leaves one out, adds an include. With `--global` (where includes are refused) it adds the component's `kind/name` to the global `only:` list when there is one, and warns when a scope section still skips the item. |
-| `--global` | Save the above in the global section instead of the scope's. |
-| `--with-mentions` | Also install the components your picks mention by name, one hop, saved as `--unskip` saves them ([Mentions](#mentions)). |
+| Flag                  | Effect                                                                                                                                                                                                                                                                                                                                                 |
+|-----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--skip <selector>`   | Do not install the matching components; saved as a skip in the profile entry the install writes, or for a `project.yml` module in `selections.yaml` (and a matching include in that section is removed).                                                                                                                                               |
+| `--only <selector>`   | For each module with a match, skip every component that does not match and unskip those that do. Saved as skips of the components that exist now, so components a later version adds are installed. An `only:` list already in the section stays. Warns when a wider include in the section keeps a non-matching component installed.                  |
+| `--exact`             | With `--only`: save the selectors as the section's `only:` list (replacing one there) instead of skips, and remove the section's skips that name a match, so a component both skipped and listed is installed. Components a later version adds are then not installed; `install`, `sync` and `update` name them (see below). Refused without `--only`. |
+| `--unskip <selector>` | Install skipped components again: removes the matching skips, and where a global skip or an `only:` list still leaves one out, adds an include. With `--global` (where includes are refused) it adds the component's `kind/name` to the global `only:` list when there is one, and warns when a scope section still skips the item.                    |
+| `--global`            | Save the above in the global section instead of the scope's.                                                                                                                                                                                                                                                                                           |
+| `--with-mentions`     | Also install the components your picks mention by name, one hop, saved as `--unskip` saves them ([Mentions](#mentions)).                                                                                                                                                                                                                               |
 
 A selector is `kind/name` or `module:kind/name`, where `kind` is `skill`, `command`, `agent`,
 `mcp` or `rule` and `name` may be a glob (`review-*`). A bare selector applies to every module
@@ -360,7 +360,9 @@ hooks are installed for the whole module; picks do not narrow them`. There is no
 A saved selector that names a component the module no longer has warns once per run, naming the
 section that holds it, with the command that removes it (`--unskip` of that selector):
 
-    selections.yaml projects[/p]: cc-skills-golang has no component agent/planner → lola install -C /p cc-skills-golang --unskip agent/planner
+```
+selections.yaml projects[/p]: cc-skills-golang has no component agent/planner → lola install -C /p cc-skills-golang --unskip agent/planner
+```
 
 ```sh
 lola install review-kit --scope project --skip skill/slow-lint --skip 'mcp/internal-*'
@@ -373,8 +375,10 @@ lola install cc-skills-golang --scope project --only 'skill/golang-test*' --only
 When a version adds components that an `only:` list leaves out, `install`, `sync` and `update`
 say so once per module, with the command that adds them where the module comes from:
 
-    → cc-skills-golang adds skill/golang-x, not installed (only: in selections.yaml projects[/p]) → lola install -C /p cc-skills-golang --unskip skill/golang-x
-    → cc-skills-golang adds skill/golang-x, not installed (only: in profile go-review) → lola profile --user go-review --edit cc-skills-golang --unskip skill/golang-x
+```
+→ cc-skills-golang adds skill/golang-x, not installed (only: in selections.yaml projects[/p]) → lola install -C /p cc-skills-golang --unskip skill/golang-x
+→ cc-skills-golang adds skill/golang-x, not installed (only: in profile go-review) → lola profile --user go-review --edit cc-skills-golang --unskip skill/golang-x
+```
 
 At most five are named, then `and N more`. Nothing is named when no `only:` list is in force,
 while rules are off (a new rule is not named), or when the version you had installed is no
@@ -449,7 +453,9 @@ dependency, and a component is installed for one only when you ask.
     in its line of notices for the module, whose `lola check` names it, as `-v` and `--json` do,
     once per module:
 
-        → cc-skills-golang: skill/golang-testing mentions 3 components you did not pick: skill/golang-gopls, skill/golang-lint, skill/golang-race → add them: lola install --project cc-skills-golang --with-mentions
+    ```
+    → cc-skills-golang: skill/golang-testing mentions 3 components you did not pick: skill/golang-gopls, skill/golang-lint, skill/golang-race → add them: lola install --project cc-skills-golang --with-mentions
+    ```
 
   - The command keeps your `-t`, `--rules` or `--no-rules`, `-n` and output flags.
   - A rule is not named while rules are off, and a component this run's `--skip` flag kept out is

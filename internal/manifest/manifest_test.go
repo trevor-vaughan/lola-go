@@ -55,7 +55,7 @@ var _ = Describe("manifest", func() {
 	})
 
 	Describe("Edit", func() {
-		sha1 := strings.Repeat("a", 40)
+		commit := strings.Repeat("a", 40)
 		digest := "sha256:" + strings.Repeat("0", 64)
 		write := func(content string) {
 			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
@@ -82,7 +82,7 @@ modules:
 		It("changes only the fields of the entries it sets, keeping comments and order", func() {
 			write(commented)
 			out := edit(manifest.Change{Set: []manifest.Entry{
-				{Name: "zeta", Source: "https://example.com/zeta.git", Ref: "v1", Commit: sha1, Digest: digest},
+				{Name: "zeta", Source: "https://example.com/zeta.git", Ref: "v1", Commit: commit, Digest: digest},
 				{Name: "alpha", Source: "tools/alpha"},
 			}})
 			Expect(out).To(Equal(`# the team's modules
@@ -93,7 +93,7 @@ modules:
   - name: zeta
     source: https://example.com/zeta.git
     ref: v1 # what --update follows
-    commit: ` + sha1 + `
+    commit: ` + commit + `
     digest: ` + digest + `
   - name: alpha
     source: tools/alpha # a folder
@@ -218,9 +218,9 @@ modules:
 			m, err := manifest.Load(path)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(m.Modules[0].Market).To(Equal(&manifest.MarketRef{Name: "acme", Source: "https://example.com/plugins.git"}))
-			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "https://example.com/kit.git", Commit: sha1, Digest: digest,
+			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "https://example.com/kit.git", Commit: commit, Digest: digest,
 				Targets: []string{"claude-code"}, Market: &manifest.MarketRef{Name: "acme", Source: "/home/me/acme"}}}})
-			Expect(out).To(HaveSuffix("  - name: kit\n    source: https://example.com/kit.git\n    commit: " + sha1 + "\n    digest: " + digest +
+			Expect(out).To(HaveSuffix("  - name: kit\n    source: https://example.com/kit.git\n    commit: " + commit + "\n    digest: " + digest +
 				"\n    targets: [claude-code]\n    market:\n      name: acme\n      source: /home/me/acme\n"))
 			Expect(edit(manifest.Change{Set: []manifest.Entry{{Name: "formatter", Source: "https://example.com/monorepo.git", Path: "tools/formatter"}}})).
 				NotTo(ContainSubstring("market"), "an entry set without market loses it")
@@ -238,10 +238,10 @@ modules:
 		})
 
 		It("reads and writes the components an entry selects, and refuses a selection lola could not apply", func() {
-			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "sheets", Source: "https://example.com/skills.git", Commit: sha1, Digest: digest,
+			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "sheets", Source: "https://example.com/skills.git", Commit: commit, Digest: digest,
 				Components: &source.Components{Skills: []string{"skills/xlsx", "skills/docx"}, Agents: []string{"agents/a.md"}}}}})
 			Expect(out).To(HaveSuffix("  - name: sheets\n    source: https://example.com/skills.git\n    components:\n      skills: [skills/xlsx, skills/docx]\n" +
-				"      agents: [agents/a.md]\n    commit: " + sha1 + "\n    digest: " + digest + "\n"))
+				"      agents: [agents/a.md]\n    commit: " + commit + "\n    digest: " + digest + "\n"))
 			write(out)
 			m, err := manifest.Load(path)
 			Expect(err).NotTo(HaveOccurred())
@@ -524,7 +524,7 @@ modules:
 	})
 
 	Describe("entry fields", func() {
-		sha1 := strings.Repeat("a", 40)
+		commit := strings.Repeat("a", 40)
 		digest := "sha256:" + strings.Repeat("0", 64)
 		write := func(content string) {
 			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
@@ -535,14 +535,14 @@ modules:
 		}
 
 		It("loads pins and saves them back", func() {
-			write(entry("    source: https://example.com/kit.git\n    ref: v1\n    commit: " + sha1 + "\n    digest: " + digest + "\n"))
+			write(entry("    source: https://example.com/kit.git\n    ref: v1\n    commit: " + commit + "\n    digest: " + digest + "\n"))
 			m, err := manifest.Load(path)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(m.Find("kit")).To(And(HaveField("Commit", sha1), HaveField("Digest", digest)))
+			Expect(m.Find("kit")).To(And(HaveField("Commit", commit), HaveField("Digest", digest)))
 		})
 
 		It("loads a full-SHA ref in capitals pinned to that commit", func() {
-			write(entry("    source: https://example.com/kit.git\n    ref: " + strings.ToUpper(sha1) + "\n    commit: " + sha1 + "\n    digest: " + digest + "\n"))
+			write(entry("    source: https://example.com/kit.git\n    ref: " + strings.ToUpper(commit) + "\n    commit: " + commit + "\n    digest: " + digest + "\n"))
 			_, err := manifest.Load(path)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -569,12 +569,12 @@ modules:
 				`module kit: path "../x" must be a relative path inside the source`),
 			Entry("a short commit", entry("    source: https://example.com/kit.git\n    commit: abc\n    digest: "+digest+"\n"),
 				"module kit: commit"),
-			Entry("a commit without a digest", entry("    source: https://example.com/kit.git\n    commit: "+sha1+"\n"),
+			Entry("a commit without a digest", entry("    source: https://example.com/kit.git\n    commit: "+commit+"\n"),
 				"module kit: commit without digest"),
 			Entry("a commit that is not the full-SHA ref", entry("    source: https://example.com/kit.git\n    ref: "+strings.Repeat("b", 40)+
-				"\n    commit: "+sha1+"\n    digest: "+digest+"\n"), "module kit: commit must equal ref"),
+				"\n    commit: "+commit+"\n    digest: "+digest+"\n"), "module kit: commit must equal ref"),
 			Entry("a commit that is not the full-SHA ref in capitals", entry("    source: https://example.com/kit.git\n    ref: "+strings.Repeat("B", 40)+
-				"\n    commit: "+sha1+"\n    digest: "+digest+"\n"), "module kit: commit must equal ref"),
+				"\n    commit: "+commit+"\n    digest: "+digest+"\n"), "module kit: commit must equal ref"),
 			Entry("a pinned folder", entry("    source: tools/kit\n    digest: "+digest+"\n"),
 				"module kit: tools/kit is a folder, and folders are never pinned"),
 			Entry("a name used twice", "version: 1\nmodules:\n  - name: kit\n    source: a/kit\n  - name: kit\n    source: b/kit\n",

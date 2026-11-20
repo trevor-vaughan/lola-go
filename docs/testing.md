@@ -7,12 +7,12 @@ untested on purpose. Two layers check the code. Ginkgo specs run in-process on e
 `task check`; the end-to-end suites run the release-built binary in a container, before each
 release ([release.md](release.md)) and whenever you change what they cover.
 
-| Command | Runs |
-|---|---|
-| `task test` | Every Ginkgo spec; `MODE=llm` prints only failures. |
+| Command      | Runs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `task test`  | Every Ginkgo spec; `MODE=llm` prints only failures.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `task check` | `lint`, `test`, `cross` (build and vet, tests included, for Windows and macOS), `vuln` (`govulncheck`) and `flows`: the gate every commit passes. `lint` runs golangci-lint (its default `unused` included) and `deadcode -test`, which fails on any function neither `main` nor a test reaches; `lint` and `vuln` use golangci-lint, deadcode and govulncheck built from source at the versions pinned in `.taskfiles/go.yml` (`go:tools`, into `.tools/bin`), rebuilt whenever a pin or the Go on PATH changes. |
-| `task flows` | `scripts/tuiflows`: every transition row of [TUI flows](architecture/tui-flows.md) is named by a spec or an `also pinned` pointer, and every such name matches a row ([Reading this page](architecture/tui-flows.md#reading-this-page)). A lint, not a spec. |
-| `task e2e` | Every end-to-end suite; `task e2e -- <suite>...` runs those named. Not part of `task check`. |
+| `task flows` | `scripts/tuiflows`: every transition row of [TUI flows](architecture/tui-flows.md) is named by a spec or an `also pinned` pointer, and every such name matches a row ([Reading this page](architecture/tui-flows.md#reading-this-page)). A lint, not a spec.                                                                                                                                                                                                                                                      |
+| `task e2e`   | Every end-to-end suite; `task e2e -- <suite>...` runs those named. Not part of `task check`.                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 Artifacts go to `.test-output/` (`TEST_DIR` overrides it); the suites write theirs to
 `.test-output/e2e-<suite>/`.
@@ -76,16 +76,16 @@ the binary on the host), podman or docker, [venom](https://github.com/ovh/venom)
 the first time, to build the image; without a container runtime they print `skipped: the e2e suites
 need podman or docker, and neither is on PATH` and exit 0.
 
-| Suite | What it follows |
-|---|---|
-| `install` | One module from each kind of source through the commands a user runs, the README quickstart first. |
-| `template` | A templated module rendered for two assistants and compared byte for byte. |
-| `team` | A project a teammate clones: sync, trust, project, user and remote profiles. |
-| `market` | Marketplaces, search and `@market/module` installs. |
-| `migrate` | `lola migrate` against the real Python lola. |
-| `tidy` | `lola tidy` with the trash on another file system. |
-| `profile-first` | Scenarios S1–S8: base and profile, edits and overrides, moves, a teammate's home, bundles, the listing, and a new machine given only `~/.config/lola`. |
-| `picks` | A profile's picks: `--edit --only` and `--exact`, `lola profile <name>` and `lola info` showing them, the re-pick hints run as printed, and a new upstream component an `only:` list leaves out. |
+| Suite           | What it follows                                                                                                                                                                                  |
+|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `install`       | One module from each kind of source through the commands a user runs, the README quickstart first.                                                                                               |
+| `template`      | A templated module rendered for two assistants and compared byte for byte.                                                                                                                       |
+| `team`          | A project a teammate clones: sync, trust, project, user and remote profiles.                                                                                                                     |
+| `market`        | Marketplaces, search and `@market/module` installs.                                                                                                                                              |
+| `migrate`       | `lola migrate` against the real Python lola.                                                                                                                                                     |
+| `tidy`          | `lola tidy` with the trash on another file system.                                                                                                                                               |
+| `profile-first` | Scenarios S1–S8: base and profile, edits and overrides, moves, a teammate's home, bundles, the listing, and a new machine given only `~/.config/lola`.                                           |
+| `picks`         | A profile's picks: `--edit --only` and `--exact`, `lola profile <name>` and `lola info` showing them, the re-pick hints run as printed, and a new upstream component an `only:` list leaves out. |
 
 ### The runner
 
@@ -99,7 +99,7 @@ from upstream at a full-SHA commit, its packages and build backend installed fro
 `e2e/image/requirements.txt` with `--require-hashes`. It builds by `run` and `commit`, because
 buildah cannot mount a build context where overlay mounts nest (`e2e/image/build-image.sh`).
 
-Every pin is in `e2e/image/pins.env`, where `BASE_IMAGE` is derived from `BASE_DIGEST` and cannot
+Every pin is in `e2e/image/pins.sh`, where `BASE_IMAGE` is derived from `BASE_DIGEST` and cannot
 be overridden; the image is named after the commit, a hash of the Python lola's repository, the
 digest and a hash of the recipe, so a change to any of them rebuilds it. The build container
 alone has the network and the default capabilities. Ctrl+C during the build removes the builder
@@ -311,13 +311,13 @@ their hints are run with `hint.py`, so a broken hint fails the case.
 **The reason rule.** An end-to-end case checks only what an in-process spec cannot. Its comment in
 the suite file states which of these reasons it has (`Reason G, W`):
 
-| Reason | The case needs |
-|---|---|
-| **B** | a process-level property of the release-built binary: its exit status, the split between its two streams, or the process ending |
-| **P** | a real pseudo-terminal |
-| **G** | real git over HTTP or HTTPS from a server process, or git's own view of a work tree |
-| **F** | real file systems and tools: tmpfs, cross-device moves, archives made by the system's `zip` and `tar`, root without capabilities |
-| **W** | a workflow whose state crosses runs |
+| Reason | The case needs                                                                                                                   |
+|--------|----------------------------------------------------------------------------------------------------------------------------------|
+| **B**  | a process-level property of the release-built binary: its exit status, the split between its two streams, or the process ending  |
+| **P**  | a real pseudo-terminal                                                                                                           |
+| **G**  | real git over HTTP or HTTPS from a server process, or git's own view of a work tree                                              |
+| **F**  | real file systems and tools: tmpfs, cross-device moves, archives made by the system's `zip` and `tar`, root without capabilities |
+| **W**  | a workflow whose state crosses runs                                                                                              |
 
 A case whose only claim is a CLI behaviour a Ginkgo spec already pins is not added.
 

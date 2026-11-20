@@ -15,10 +15,10 @@ directory, so it first lists the files it would write and asks `Create module <n
 unknown format, an existing module or file, a link) come before the question. Writing a module
 is described in [Module layout](../guides/authoring-modules.md#module-layout).
 
-| Flag | What it does |
-|---|---|
+| Flag                | What it does                                                |
+|---------------------|-------------------------------------------------------------|
 | `--format <format>` | The module format: `agent-plugins` (the default) or `lola`. |
-| `-y`, `--yes` | Do not ask for confirmation. |
+| `-y`, `--yes`       | Do not ask for confirmation.                                |
 
 Refusals:
 

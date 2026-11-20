@@ -75,7 +75,7 @@ var _ = Describe("lola info", func() {
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 	})
 
-	It("info shows each hook's sha256 and first lines cleaned, and runtime hooks and MCP servers as the assistant would run them", func() {
+	It("info shows each hook's sha256 and first lines cleaned, and runtime hooks and MCP servers as the assistant would run them", func() { // DevSkim: ignore DS197836 - prose naming sha256 and runtime hooks, not a hash of low-entropy data
 		writeTree(kit, map[string]string{"setup.sh": "#!/bin/sh\necho \x1b[2Jcleared\n"})
 		r := lola("info", kit, "-C", proj, "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)

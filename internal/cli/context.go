@@ -3,9 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"maps"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -170,10 +168,7 @@ func (e *contextError) Unwrap() error { return e.error }
 
 // JSONFields carries the contexts beside the fields of the error's own document, if any.
 func (e *contextError) JSONFields() map[string]any {
-	fields := map[string]any{}
-	if f, ok := errors.AsType[jsonFielder](e.error); ok {
-		maps.Copy(fields, f.JSONFields())
-	}
+	fields := jsonFields(e.error)
 	fields["context"] = e.contexts
 	return fields
 }

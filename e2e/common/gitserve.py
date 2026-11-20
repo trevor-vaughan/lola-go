@@ -1,9 +1,11 @@
+# ruff: noqa: INP001  # standalone script run by path in the e2e image, not a package
 """Serve the bare repositories under a directory over smart HTTP on loopback, through
-git http-backend, so the Python lola and lola-go both fetch a real git source (lola-go
-accepts plain http only on loopback). Every request appends "<METHOD> <path>" to
-/run/gitserve/requests.log (a tmpfs the runner mounts), so a case asserts that a step made no
-request by comparing the file's line count before and after it. With --tls it serves HTTPS
-with the given certificate and key instead (the test CA of e2e/common/tls.sh).
+git http-backend, so the Python lola and lola-go both fetch a real git source
+(lola-go accepts plain http only on loopback). Every request appends
+"<METHOD> <path>" to /run/gitserve/requests.log (a tmpfs the runner mounts), so a
+case asserts that a step made no request by comparing the file's line count before
+and after it. With --tls it serves HTTPS with the given certificate and key instead
+(the test CA of e2e/common/tls.sh).
 
 usage: gitserve.py <root> <port> [--tls <cert> <key>]"""
 import http.server
@@ -12,31 +14,51 @@ import ssl
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
-if len(sys.argv) not in (3, 6) or len(sys.argv) == 6 and sys.argv[3] != "--tls":
-    sys.exit("usage: gitserve.py <root> <port> [--tls <cert> <key>]")
+ARGC_PLAIN = 3  # gitserve.py <root> <port>
+ARGC_TLS = 6  # gitserve.py <root> <port> --tls <cert> <key>
+USAGE = "usage: gitserve.py <root> <port> [--tls <cert> <key>]"
+
+if len(sys.argv) not in (ARGC_PLAIN, ARGC_TLS) or (
+    len(sys.argv) == ARGC_TLS and sys.argv[3] != "--tls"
+):
+    sys.exit(USAGE)
 ROOT = sys.argv[1]
 PORT = int(sys.argv[2])
-LOG = "/run/gitserve/requests.log"
+LOG = Path("/run/gitserve/requests.log")
 LOG_LOCK = threading.Lock()
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def _cgi(self):
         path, _, query = self.path.partition("?")
-        with LOG_LOCK, open(LOG, "a", encoding="utf-8") as log:
+        with LOG_LOCK, LOG.open("a", encoding="utf-8") as log:
             log.write(f"{self.command} {path}\n")
         body = b""
         if self.command == "POST":
             body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
         env = {
-            "PATH": os.environ["PATH"], "GIT_PROJECT_ROOT": ROOT, "GIT_HTTP_EXPORT_ALL": "1",
-            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
-            "REQUEST_METHOD": self.command, "PATH_INFO": path, "QUERY_STRING": query,
-            "CONTENT_TYPE": self.headers.get("Content-Type", ""), "CONTENT_LENGTH": str(len(body)),
-            "GIT_PROTOCOL": self.headers.get("Git-Protocol", ""), "REMOTE_ADDR": "127.0.0.1",
+            "PATH": os.environ["PATH"],
+            "GIT_PROJECT_ROOT": ROOT,
+            "GIT_HTTP_EXPORT_ALL": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "REQUEST_METHOD": self.command,
+            "PATH_INFO": path,
+            "QUERY_STRING": query,
+            "CONTENT_TYPE": self.headers.get("Content-Type", ""),
+            "CONTENT_LENGTH": str(len(body)),
+            "GIT_PROTOCOL": self.headers.get("Git-Protocol", ""),
+            "REMOTE_ADDR": "127.0.0.1",
         }
-        out = subprocess.run(["git", "http-backend"], input=body, env=env, capture_output=True, check=False).stdout
+        out = subprocess.run(
+            ["git", "http-backend"],
+            input=body,
+            env=env,
+            capture_output=True,
+            check=False,
+        ).stdout
         head, _, payload = out.partition(b"\r\n\r\n")
         status, headers = 200, []
         for line in head.decode().split("\r\n"):
@@ -52,15 +74,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    do_GET = do_POST = _cgi
+    do_GET = do_POST = _cgi  # noqa: N815  # http.server dispatches to do_<METHOD> by name
 
     def log_message(self, *args):
         pass
 
 
 server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-if len(sys.argv) == 6:
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+if len(sys.argv) == ARGC_TLS:
+    # DevSkim DS440072: PROTOCOL_TLS_SERVER negotiates the highest version both ends
+    # support (Python 3.10+ floors it at TLS 1.2); it pins no old protocol.
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)  # DevSkim: ignore DS440072
     context.load_cert_chain(sys.argv[4], sys.argv[5])
     server.socket = context.wrap_socket(server.socket, server_side=True)
 server.serve_forever()

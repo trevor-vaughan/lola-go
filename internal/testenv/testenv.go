@@ -177,7 +177,7 @@ func ServeGitTLS(root string, seen func(*http.Request)) string {
 		t.Fatalf("testenv: %v", err)
 	}
 	srv := httptest.NewUnstartedServer(gitBackend(root, seen))
-	srv.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS12}
+	srv.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS12} // DevSkim: ignore DS112852 - a minimum-version floor (TLS 1.3 still negotiates) on a test server
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 	_, port, _ := strings.Cut(strings.TrimPrefix(srv.URL, "https://"), ":")

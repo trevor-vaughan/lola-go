@@ -162,18 +162,25 @@ func unseenHints(run, what, it string, again bool) []string {
 		"or add --unseen to consent without seeing " + it + ": " + run + " --unseen"}
 }
 
-// unseenInstead is hints, a refusal's for want of consent (consentHints), with the hint naming the
-// run that consents replaced by unseenHints of that run (again as there), for an item lola has not
-// shown: that run alone would be refused for it. Hints that name no such run are kept as they are.
-func unseenInstead(hints []string, what, it string, again bool) []string {
+// cutConsentRun is a copy of hints, a refusal's for want of consent (consentHints), without the
+// hint naming the run that consents, and that run; "" when no hint names one.
+func cutConsentRun(hints []string) ([]string, string) {
 	run := ""
-	hints = slices.DeleteFunc(slices.Clone(hints), func(h string) bool {
+	kept := slices.DeleteFunc(slices.Clone(hints), func(h string) bool {
 		if r, ok := strings.CutPrefix(h, consentHintPrefix); ok {
 			run = r
 			return true
 		}
 		return false
 	})
+	return kept, run
+}
+
+// unseenInstead is hints, a refusal's for want of consent (consentHints), with the hint naming the
+// run that consents replaced by unseenHints of that run (again as there), for an item lola has not
+// shown: that run alone would be refused for it. Hints that name no such run are kept as they are.
+func unseenInstead(hints []string, what, it string, again bool) []string {
+	hints, run := cutConsentRun(hints)
 	if run == "" { // no run consents to it: there is nothing to see it before
 		return hints
 	}
@@ -185,14 +192,7 @@ func unseenInstead(hints []string, what, it string, again bool) []string {
 // cannot show (why, a Body* constant), unseen: inspect file, then that run with --unseen. Hints
 // that name no such run are kept as they are.
 func withheldInstead(hints []string, what, why, file string) []string {
-	run := ""
-	hints = slices.DeleteFunc(slices.Clone(hints), func(h string) bool {
-		if r, ok := strings.CutPrefix(h, consentHintPrefix); ok {
-			run = r
-			return true
-		}
-		return false
-	})
+	hints, run := cutConsentRun(hints)
 	if run == "" {
 		return hints
 	}

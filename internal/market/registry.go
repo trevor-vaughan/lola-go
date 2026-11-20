@@ -164,7 +164,7 @@ func AddRegistration(b []byte, r Registration) ([]byte, error) {
 		m.Content = append(m.Content, yamldoc.Str("ssh_hosts"), hostsNode(r.SSHHosts))
 	}
 	seq.Content = append(seq.Content, m)
-	return encode(d)
+	return yamldoc.Encode(d)
 }
 
 // hostsNode is the YAML list of hosts, normalized.
@@ -203,7 +203,7 @@ func SetSSHHosts(b []byte, name string, hosts []string) ([]byte, error) {
 		if len(hosts) > 0 {
 			m.Content = append(m.Content, yamldoc.Str("ssh_hosts"), hostsNode(hosts))
 		}
-		return encode(d)
+		return yamldoc.Encode(d)
 	}
 	return nil, fmt.Errorf("marketplace %s is not in markets.yaml", name)
 }
@@ -226,25 +226,11 @@ func RemoveRegistration(b []byte, name string) (_ []byte, found bool, _ error) {
 	for i, m := range seq.Content {
 		if n := yamldoc.Value(m, "name"); n != nil && n.Value == name {
 			seq.Content = append(seq.Content[:i], seq.Content[i+1:]...)
-			out, err := encode(d)
+			out, err := yamldoc.Encode(d)
 			return out, true, err
 		}
 	}
 	return b, false, nil
-}
-
-// encode writes the document d with lola's two-space indent.
-func encode(d *yaml.Node) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	if err := enc.Encode(d); err != nil {
-		return nil, err
-	}
-	if err := enc.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }
 
 // PinVersion is the source.json schema version this binary reads and writes.

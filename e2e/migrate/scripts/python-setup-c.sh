@@ -17,6 +17,6 @@ mv /home/olduser/.lola /home/c/.lola
 mv /home/olduser/proj /home/c/proj
 mv /home/olduser/src /home/c/src
 rm -rf /home/olduser
-printf '#!/bin/sh\necho 1.0.0\n' > /home/c/bin/opencode
+printf '#!/bin/sh\necho 1.0.0\n' >/home/c/bin/opencode
 chmod 755 /home/c/bin/opencode
 echo "python lola installed"

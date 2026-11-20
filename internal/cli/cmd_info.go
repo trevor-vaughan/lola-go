@@ -33,7 +33,7 @@ func (a *app) infoCmd() *cobra.Command {
 			"runtime hook, MCP server or script.\n" +
 			"\n" +
 			"It shows the module's identity and contents; what would run code (install hooks with their\n" +
-			"sha256, runtime hooks, MCP servers, native executables); and what installing it here would do:\n" +
+			"sha256, runtime hooks, MCP servers, native executables); and what installing it here would do:\n" + // DevSkim: ignore DS197836 - prose naming sha256 and runtime hooks, not a hash of low-entropy data
 			"the plan, the consent it needs and the --trust kinds still needed. Its last line is the install\n" +
 			"of exactly the version shown.\n" +
 			"\n" +

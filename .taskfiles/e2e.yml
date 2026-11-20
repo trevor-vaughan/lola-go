@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 # The container-driven e2e suites (e2e/<suite>/), run by scripts/e2e.sh: `task e2e` (the root
 # alias for `e2e:run`) runs all of them, `task e2e -- <suite>...` some. They need podman (or
@@ -19,10 +19,10 @@ tasks:
 
   run:
     desc: Run the container suites against the built binary (MODE=human|llm; -- <suite>... for some); artifacts in .test-output/e2e-<suite>/
-    dir: '{{.ROOT_DIR}}'
+    dir: "{{.ROOT_DIR}}"
     env:
-      MODE: '{{.MODE}}'
-      TEST_DIR: '{{.OUT_DIR}}'
+      MODE: "{{.MODE}}"
+      TEST_DIR: "{{.OUT_DIR}}"
       # Task-level, not file-level: Task applies an included Taskfile's top-level env to every
       # task, so release:bump would commit and tag as lola-test without the user's git config.
       GIT_CONFIG_GLOBAL: /dev/null

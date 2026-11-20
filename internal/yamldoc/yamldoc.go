@@ -144,6 +144,17 @@ func Decode(b []byte) (*yaml.Node, error) {
 	return &d, nil
 }
 
+// Encode is d as lola writes a YAML file: a two-space indent.
+func Encode(d *yaml.Node) ([]byte, error) {
+	var b bytes.Buffer
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := errors.Join(enc.Encode(d), enc.Close()); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
 // duplicate returns the second key node of the first mapping under n that holds a key twice.
 func duplicate(n *yaml.Node) *yaml.Node {
 	if n.Kind == yaml.MappingNode {

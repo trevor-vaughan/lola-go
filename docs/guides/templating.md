@@ -65,19 +65,19 @@ Review the change{% if target == "opencode" %} and say which files you read{% en
     json so the value stays one YAML value: {{ vars.intro | json }}`).
   - Every line break YAML reads counts: line feed, carriage return, U+0085, U+2028 and U+2029,
     in any string the value prints, a list's items and a map's keys included.
-  - A `{{ }}` without `| json` that is a line's whole value (after `key: ` or `- `, with nothing
+  - A `{{ }}` without `| json` that is a line's whole value (after `key:` or `-` and a space, with nothing
     but spaces after it) or its whole key (`{{ k }}: v`) must also write text YAML reads back as
     the same text, or YAML would silently change it:
     - `model: {{ attrs.model }}` works for `sonnet`, `opus-4`, `claude 3`, `path/x` or `a-b`.
-    - It is refused for text holding ` #` (YAML drops the rest as a comment) or `: `; starting
-      with `[`, `{`, `*`, `&`, `!`, `|`, `>`, `%`, `@`, `` ` ``, `- ` or `? `; with spaces at
+    - It is refused for text holding `#` after a space (YAML drops the rest as a comment) or a colon followed by a space; starting
+      with `[`, `{`, `*`, `&`, `!`, `|`, `>`, `%`, `@`, `` ` ``, `-` or `?` followed by a space; with spaces at
       either end; empty; or that YAML reads as a number, true or false, null or a date (`123`,
       `0x1F`, `true`, `null`, `~`, `2024-01-01`) (`agents/a.md.liquid:2: in frontmatter, YAML
       would read "sonnet #fast" as a comment after "sonnet"; end that {{ }} with | json`).
     - Ending that `{{ }}` with `| json` writes a quoted string, which YAML reads back exactly.
     - A number or a boolean value is written with its own type and is not checked.
   - A value composed around a `{{ }}` (`v{{ vars.ver }}`, `"{{ vars.d }}"` in your own quotes,
-    `Review {{ vars.d }}`) is yours to shape and is not checked: such a value holding ` #` is
+    `Review {{ vars.d }}`) is yours to shape and is not checked: such a value holding `#` after a space is
     still cut short there by YAML, so build the whole value inside one `{{ … | json }}`
     (`description: {{ "Review " | append: vars.d | json }}`).
   - The check is a data-correctness aid and covers only a `{{ }}` that is the whole value or key

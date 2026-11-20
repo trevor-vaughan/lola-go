@@ -22,7 +22,7 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "fixture ready"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'test \"$(stat -c %d {{.proj}})\" != \"$(stat -c %d {{.state}})\" && echo two file systems'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''test "$(stat -c %d {{.proj}})" != "$(stat -c %d {{.state}})" && echo two file systems'''
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "two file systems"

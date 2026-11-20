@@ -924,7 +924,7 @@ var _ = Describe("typed trust", func() {
 			pull("kit")
 			dir := filepath.Join(p.RemoteProfiles, "go")
 			writeTree(dir, map[string]string{"profile.yml": "version: 1\nmodules: []\n",
-				"source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`})
+				"source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`}) // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
 			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Names: []string{"go"}, CannotAsk: true, Trust: engine.TrustAll,
 				Rerun: []string{engine.TrustAll.Arg()}})
 			Expect(err).To(MatchError(ContainSubstring("project " + proj + " has changes you have not trusted (kit and project.yml's targets), which its sync asks about, and no flag named it")))
@@ -943,7 +943,7 @@ var _ = Describe("typed trust", func() {
 			Expect(os.WriteFile(filepath.Join(proj, ".lola", "lock.json"), []byte("{not json"), 0o644)).To(Succeed())
 			dir := filepath.Join(p.RemoteProfiles, "go")
 			writeTree(dir, map[string]string{"profile.yml": "version: 1\nmodules: []\n",
-				"source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`})
+				"source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`}) // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
 			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Names: []string{"go"}, Consent: func([]engine.RemoteProfile) (bool, error) { return true, nil },
 				Rerun: []string{flag, "--plain"}, Flags: []string{"-y"}})
 			Expect(err).To(HaveOccurred())
