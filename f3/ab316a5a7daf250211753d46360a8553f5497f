@@ -1,0 +1,25 @@
+docs/architecture/lola-tidy.md
+  s_6f225ac7a3eb2f::t_4590f118ee7a8f 93
+docs/architecture/templates.md
+  s_6f225ac7a3eb2f::t_14e3880dd5d27d 51,54
+docs/architecture/tui-flows.md
+  s_6f225ac7a3eb2f::t_078afa7aa1f27b 62,1505,1507
+docs/reference/output-contract.md
+  s_6f225ac7a3eb2f::t_cb09d160420084 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f3ab316a5a7daf250211753d46360a8553f5497f",
+  "prompts": {},
+  "sessions": {
+    "s_6f225ac7a3eb2f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae28ab37e381f5348",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
