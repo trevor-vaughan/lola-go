@@ -89,6 +89,13 @@ func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res 
 			apply.All = true // on a terminal the run without names runs the picker
 		}
 		res.Hints = append(res.Hints, tidyHints(e.tidyRerun(apply))...)
+		if hasSelection(apply) && !apply.Yes && !apply.Force {
+			apply.Yes = true // the run that moves them off a terminal, where nothing can ask
+			if off := e.tidyRerun(apply); off != "" {
+				res.OffTerminal = off
+				res.EquivalentCommands = []string{off}
+			}
+		}
 		return chosen, choice, nil
 	}
 	if req.Force || req.Yes {

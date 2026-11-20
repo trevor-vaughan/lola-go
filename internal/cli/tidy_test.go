@@ -393,6 +393,49 @@ var _ = Describe("lola tidy", func() {
 		Expect(doc["moved"]).To(HaveLen(1), "the hint, pasted, is the run it names")
 	})
 
+	It("-n also prints the -y run that works off a terminal, in human, --plain and --json output", func() {
+		writeTree(proj, map[string]string{".claude/skills/a/SKILL.md": "x\n", ".claude/skills/b/SKILL.md": "x\n", ".claude/commands/c.md": "x\n"})
+		off := "lola tidy -C " + proj + " --all -y"
+		r := lola("tidy", "-n", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("→ lola tidy -C " + proj + " --all\n"))
+		Expect(r.out).To(ContainSubstring("→ off a terminal: " + off + "\n"))
+		Expect(strings.Index(r.out, "→ lola tidy")).To(BeNumerically("<", strings.Index(r.out, "off a terminal")))
+
+		r = lola("tidy", "-n", "-C", proj, "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("off_terminal\t" + off + " --plain\n"))
+
+		r = lola("tidy", "-n", "-C", proj, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var doc map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
+		Expect(doc["hints"]).To(Equal([]any{"lola tidy -C " + proj + " --all --json"}), "the main hint never adds -y")
+		Expect(doc["equivalent_commands"]).To(Equal([]any{off + " --json"}))
+
+		r = lola(shellWords(off)[1:]...)
+		Expect(r.code).To(Equal(0), "the off-terminal line, pasted, is not refused: "+r.err)
+		Expect(filepath.Join(proj, ".claude", "skills", "a")).NotTo(BeADirectory())
+		Expect(filepath.Join(proj, ".claude", "commands", "c.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("-n prints no off-terminal line when nothing would move, or the run already has -y, --force or only edits the keep-list", func() {
+		r := lola("tidy", "-n", "-C", proj, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var doc map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
+		Expect(doc["equivalent_commands"]).To(Equal([]any{}), "an empty list, never null")
+		r = lola("tidy", "-n", "-C", proj)
+		Expect(r.out).NotTo(ContainSubstring("off a terminal"))
+
+		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n"})
+		for _, args := range [][]string{{"-y"}, {"--force", "--all"}, {"--keep", "skill/old"}} {
+			r = lola(append([]string{"tidy", "-n", "-C", proj}, args...)...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).NotTo(ContainSubstring("off a terminal"), strings.Join(args, " "))
+		}
+	})
+
 	It("asks the review on a terminal when names are given, and declining moves nothing", func() {
 		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n", ".claude/commands/tmp.md": "x\n"})
 		p := &scripted{confirm: []bool{false}}
