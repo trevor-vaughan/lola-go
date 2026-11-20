@@ -1,0 +1,38 @@
+scripts/install-git-cliff.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 12-14,32
+scripts/e2e.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 141-142,156,186-187,217-223
+  s_aea7c8dedfd847::t_1f93ee9223bc0f 49-52,73-76,101
+e2e/install/scripts/setup.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 20,35-36
+e2e/profile-first/scripts/setup.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 74-81
+e2e/team/scripts/setup.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 59-64,74-77
+e2e/common/tls.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 18-19
+.editorconfig
+  s_aea7c8dedfd847::t_5e90408f32ed1a 1-6
+scripts/release-bump.sh
+  s_aea7c8dedfd847::t_4b806073b1453c 34-35,78,80,82
+e2e/migrate/scripts/python-setup-c.sh
+  s_aea7c8dedfd847::t_ad125bc0c927aa 20
+e2e/migrate/scripts/python-setup.sh
+  s_aea7c8dedfd847::t_9c768689461a46 18-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "6cae47b1cba9f3672e901bd7b9ab1e78a18f23fe",
+  "prompts": {},
+  "sessions": {
+    "s_aea7c8dedfd847": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e41f7643-e890-4cae-a076-3aca8c461aa1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
