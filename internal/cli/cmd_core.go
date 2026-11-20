@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"slices"
 	"strconv"
@@ -320,6 +321,9 @@ func (a *app) uninstallCmd() *cobra.Command {
 			results := make([]*engine.Result, 0, len(scs))
 			for _, c := range scs {
 				res, names, err := uninstallIn(c.Scope, len(scs) > 1)
+				if err != nil && len(results) > 0 {
+					return &uninstalledScopesError{err: err, done: results, failed: c.Scope, finished: choiceScopes(scs[:len(results)])}
+				}
 				if err != nil {
 					return err
 				}
@@ -361,6 +365,35 @@ func (a *app) uninstallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&profileName, "profile", "", "remove the entry from this profile (base: the scope's base)")
 	_ = cmd.RegisterFlagCompletionFunc("profile", a.completeProfiles(true))
 	return cmd
+}
+
+// uninstalledScopesError is an uninstall --all over several scopes (--scope both) that stopped at
+// err in failed after the scopes in finished were uninstalled: the message says so, since err speaks
+// of the failed scope alone, and their results stay in the --json error document.
+type uninstalledScopesError struct {
+	err      error
+	done     []*engine.Result
+	failed   engine.Scope
+	finished []engine.Scope
+}
+
+func (e *uninstalledScopesError) Error() string {
+	var names []string
+	for _, sc := range e.finished {
+		names = append(names, destLabel(sc))
+	}
+	return fmt.Sprintf("%s was left as it was; %s was uninstalled: %s", destLabel(e.failed), strings.Join(names, ", "), e.err)
+}
+func (e *uninstalledScopesError) Unwrap() error { return e.err }
+
+// JSONFields carries the finished scopes' results and the failed scope beside the fields of err's own document.
+func (e *uninstalledScopesError) JSONFields() map[string]any {
+	fields := map[string]any{}
+	if f, ok := errors.AsType[jsonFielder](e.err); ok {
+		maps.Copy(fields, f.JSONFields())
+	}
+	fields["scopes"], fields["failed_scope"] = e.done, destLabel(e.failed)
+	return fields
 }
 
 func (a *app) listCmd() *cobra.Command {

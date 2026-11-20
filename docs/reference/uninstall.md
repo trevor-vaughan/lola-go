@@ -104,5 +104,6 @@ Refusals:
 - `--keep-edits` with `--force`: `--keep-edits and --force cannot be combined; pick one`, hinting each
   run without the other.
 
-JSON (`--json`, [Output contract](../usage.md#output-contract)): with `--all` over two scopes, one document, `scopes`, an array of the per-scope results below; otherwise `modules`, `steps`, `findings`, `notices`, `edits`, `scripts`, `kept` and `dry_run`; the refusal off a
-terminal carries the same keys beside `error` and `hints`.
+JSON (`--json`, [Output contract](../usage.md#output-contract)): with `--all` over two scopes, one document, `scopes`, an array of the per-scope results below; otherwise `modules`, `steps`, `findings`, `notices`, `edits`, `scripts`, `kept`, `trash`, `trash_credentials`, `picks_cleared` and `dry_run`; the refusal off a
+terminal carries the same keys beside `error` and `hints`. When `--all` over two scopes stops at the second, the error
+document holds the finished scope's result in `scopes` and the failed scope's name in `failed_scope`; the message names both, and the exit status is the refusal's.

@@ -125,6 +125,37 @@ var _ = Describe("uninstall --all", func() {
 		}
 	})
 
+	Describe("--scope both, the user scope refusing after the project scope was uninstalled", func() {
+		var projCmd string
+		BeforeEach(func() {
+			Expect(lola("install", filepath.Join(tmp, "mods", "a"), "-C", proj).code).To(Equal(0))
+			projCmd = filepath.Join(proj, ".claude", "commands", "a.md")
+			writeTree(p.Home, map[string]string{".claude/commands/a.md": "mine now"})
+		})
+
+		It("names the scope that was left and the one that was uninstalled, off a terminal", func() {
+			r := lola("uninstall", "--all", "--scope", "both", "-C", proj, "-y")
+			Expect(r.code).To(Equal(3), r.err)
+			Expect(r.err).To(ContainSubstring("error: user was left as it was; project (" + proj + ") was uninstalled: refusing to change anything"))
+			Expect(projCmd).NotTo(BeAnExistingFile())
+			Expect(command("a")).To(BeARegularFile())
+		})
+
+		It("holds the finished scope and the failed one in the --json error document", func() {
+			r := lola("uninstall", "--all", "--scope", "both", "-C", proj, "-y", "--json")
+			Expect(r.code).To(Equal(3), r.err)
+			var doc struct {
+				Error       string            `json:"error"`
+				FailedScope string            `json:"failed_scope"`
+				Scopes      []json.RawMessage `json:"scopes"`
+			}
+			Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
+			Expect(doc.FailedScope).To(Equal("user"))
+			Expect(doc.Scopes).To(HaveLen(1))
+			Expect(doc.Error).To(ContainSubstring("user was left as it was"))
+		})
+	})
+
 	It("refuses names beside --all, removing nothing, and hints both ways out", func() {
 		r := lola("uninstall", "--all", "a", "--user", "-y")
 		Expect(r.code).To(Equal(1))
