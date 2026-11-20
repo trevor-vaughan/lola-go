@@ -1,0 +1,30 @@
+third_party/liquid/PATCHES.md
+  s_aea7c8dedfd847::t_08c3974d9a2904 10-12
+third_party/liquid/go.mod
+  s_aea7c8dedfd847::t_de6380d1775315 3,7,182,207-211
+e2e/image/requirements.txt
+  s_aea7c8dedfd847::t_d01273de9e2073 104-105
+go.mod
+  s_aea7c8dedfd847::t_5f8b9215579f57 22
+  s_aea7c8dedfd847::t_de6380d1775315 23,52-56
+go.sum
+  s_aea7c8dedfd847::t_d683e202ebb5bd 127-142
+third_party/liquid/go.sum
+  s_aea7c8dedfd847::t_a8178773d08219 688-689,728-729,751-752,803-804,821-822,876-877
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "73ce2102a922760a66692fa3dc0da763f6bc93b2",
+  "prompts": {},
+  "sessions": {
+    "s_aea7c8dedfd847": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e41f7643-e890-4cae-a076-3aca8c461aa1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
