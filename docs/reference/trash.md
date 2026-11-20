@@ -9,7 +9,8 @@ lola trash [<run>...] --empty [--older-than <age>] [-n] [-y]
 ```
 
 `lola tidy`, `lola migrate` and `lola profile --remove` move what they take out of place into the
-trash (`$XDG_STATE_HOME/lola/trash/`), one run per command. Each run holds `manifest.txt`, one
+trash (`$XDG_STATE_HOME/lola/trash/`), one run per command; `install`, `sync`, `update` and
+`uninstall` with `--force` copy each file they replace or delete there first, one run per scope. Each run holds `manifest.txt`, one
 `original<TAB>trash path` line per entry, and `run.yaml`: the command that made it, its scope
 (`user` or `project`), project (`root` in `--plain` and JSON; empty at user scope) and time, and the copies that may hold credentials. lola deletes what a run holds
 only when you run `lola trash --empty`; a restore that empties a run removes the run.
@@ -79,7 +80,8 @@ When an entry is back but lola cannot make a credential copy in it private, the 
 counts it and warns `restored <path>, but cannot make <path> private (mode 0600): …`.
 
 `lola tidy` keeps a copy of a whole config file (`.mcp.json`, a settings file) when it removes an
-MCP server from it, and the file itself stays. Restoring that copy with `--force` replaces the
+MCP server from it, and the file itself stays; so does a `--force` run that writes over or removes
+an entry in one that lola did not write or you edited. Restoring that copy with `--force` replaces the
 whole file, so every change made since goes with it, MCP servers lola installed later included
 (`lola sync` puts those back).
 

@@ -58,7 +58,7 @@ says `saved to profile rust; it is not on at user scope → lola profile --user 
 | `-t`, `--target <assistant>` | Only uninstall from these assistants, of those it is installed on; the entry keeps the others, and writes `targets:` only when they differ from its file's. With `--profile` naming a layer the module does not come from (a lower layer, or a profile that is off), it narrows that entry's targets and removes no files. |
 | `--profile <name>` | Remove the entry from this profile (`base` is the scope's base) instead of the layer the module comes from. |
 | `-y`, `--yes` | Do not ask for confirmation. |
-| `--force` | Also delete files edited since lola wrote them, without asking. |
+| `--force` | Also delete files edited since lola wrote them, without asking; what it replaces or deletes goes to a new trash run (`lola trash`). |
 | `-n`, `--dry-run` | Print the plan and write nothing. |
 
 Refusals:

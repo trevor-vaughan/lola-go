@@ -185,6 +185,7 @@ func printReport(w io.Writer, s style, rep report) {
 	}
 	if !rep.NoticesOnly {
 		printOutcome(w, s, rep)
+		printTrash(w, s, r)
 		if rep.InSync == "" && rep.CacheServed != nil {
 			c := rep.CacheServed
 			fmt.Fprintln(w, s.ok(fmt.Sprintf("%d %s %s", c.Modules, map[bool]string{true: "module", false: "modules"}[c.Modules == 1], cacheServedText(c))))
@@ -689,6 +690,30 @@ func printOutcome(w io.Writer, s style, rep report) {
 	}
 }
 
+// printTrash says where the files --force replaced or deleted went: per trash run "→ N files
+// --force replaced or deleted are in the trash: <run>", then tidy's warning for each file copied
+// that may hold credentials; under --plain a trash row per run (trash, run).
+func printTrash(w io.Writer, s style, r *engine.Result) {
+	for _, run := range r.Trash {
+		if s.plain {
+			fmt.Fprintf(w, "trash\t%s\n", untrusted.Text(run, untrusted.MaxName))
+			continue
+		}
+		n, verb := r.TrashedFiles(run), "are"
+		if n == 1 {
+			verb = "is"
+		}
+		fmt.Fprintln(w, s.info(fmt.Sprintf("%s --force replaced or deleted %s in the trash: %s", counted(n, "file"), verb,
+			untrusted.Text(run, untrusted.MaxName))))
+	}
+	if s.plain {
+		return
+	}
+	for _, c := range r.TrashedCredentialFiles() {
+		fmt.Fprintln(w, s.warn("the trash run holds a copy of "+untrusted.Text(c, untrusted.MaxName)+", which may contain credentials"))
+	}
+}
+
 // cacheServedText is what a run served from your cache says of those modules, after their count.
 func cacheServedText(c *engine.CacheServed) string {
 	return "up to date with your cache (fetched " + c.Fetched + ")"
@@ -751,6 +776,7 @@ func printPlainReport(w io.Writer, s style, rep report) {
 	printScripts(w, s, r.Scripts)
 	printPins(w, s, rep.Pins, rep.Update)
 	printRemovals(w, s, append(slices.Clone(rep.Removals), engine.DeclinedRemovals(r)...))
+	printTrash(w, s, r)
 	printNotices(w, s, r)
 	if c := rep.CacheServed; c != nil {
 		fmt.Fprintf(w, "cache\t%d\t%s\t%s\n", c.Modules, c.Fetched, c.Command)

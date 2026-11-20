@@ -483,6 +483,28 @@ var _ = Describe("Migrate", func() {
 			Entry("a link within the directory, whose copy holds the file", "real", ".claude/skills/review/real", ".claude/skills/review/real/checks.md"),
 		)
 
+		It("with --force, copies each file it replaces once, into its own run", func() {
+			writeTree(proj, map[string]string{".claude/skills/review/SKILL.md": "python skill\n", ".claude/skills/review/real/checks.md": "python checks\n",
+				".claude/agents/critic.md": "my own critic\n"})
+			Expect(os.Symlink("real", filepath.Join(proj, ".claude/skills/review/ref"))).To(Succeed())
+			h.install(rec{"module": "review", "assistant": "claude-code", "project_path": proj, "skills": []string{"review"}})
+			res, err := run(migrate.Options{Options: engine.Options{Force: true}})
+			Expect(err).NotTo(HaveOccurred())
+			runs, err := os.ReadDir(e.Paths.Trash)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(runs).To(HaveLen(1))
+			Expect(filepath.Join(e.Paths.Trash, runs[0].Name())).To(Equal(res.Trash))
+			var originals []string
+			for line := range strings.SplitSeq(strings.TrimSuffix(read(filepath.Join(res.Trash, "manifest.txt")), "\n"), "\n") {
+				originals = append(originals, strings.Split(line, "\t")[0])
+			}
+			Expect(originals).To(ConsistOf(filepath.Join(proj, ".claude/skills/review"), filepath.Join(proj, ".claude/agents/critic.md"), h.dir),
+				"the file behind the link is held by the directory's copy")
+			Expect(res.Destinations[0].Replaced).To(ContainElement(migrate.Moved{Path: filepath.Join(proj, ".claude/agents/critic.md"),
+				Kind: migrate.KindAgent, Trash: filepath.Join(trashOf(res), ".claude/agents/critic.md")}))
+			Expect(read(filepath.Join(trashOf(res), ".claude/agents/critic.md"))).To(Equal("my own critic\n"))
+		})
+
 		DescribeTable("owns the file a link within a replaced directory leads to: it neither unlinks it nor keeps it as edited",
 			func(checks string, links map[string]string, opts migrate.Options) {
 				writeTree(proj, map[string]string{".claude/skills/review/real/checks.md": checks})

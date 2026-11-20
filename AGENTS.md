@@ -46,7 +46,8 @@ Guidance for coding agents working on lola (Go).
   `style`. Author-chosen text reaches output only through `untrusted.Text` or `untrusted.CleanErr`,
   except JSON `steps[].path`, `steps[].member` and `steps[].value`, which carry what lola wrote,
   `lola tidy`'s JSON `path` and `trash`, which carry paths lola wrote, moved or found in its
-  destinations, `lola cache clean`'s JSON `path`, which carries a path in its cache as it is on disk
+  destinations, JSON `trash` and `trash_credentials` of `install`, `sync`, `update` and `uninstall`,
+  which carry trash paths lola wrote, `lola cache clean`'s JSON `path`, which carries a path in its cache as it is on disk
   unless it holds control or format characters, which are replaced, and `lola init`'s JSON `path`,
   the directory lola writes to, raw but for JSON's escaping of control characters, and JSON `body`
   of an install hook or project script, its text raw (valid UTF-8 with no NUL, at most 64 KiB, else

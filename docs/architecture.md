@@ -570,7 +570,7 @@ the preview and the confirmed run, so the run installs what the preview showed.
 - The decisions per recorded path (owned → kept; guarded → kept, unless `--force` writes it; written by the plan → replaced; else moved, or kept with `--keep-python`), refusing an install that would swap out a `.lola/modules/<m>` neither the ledger nor a migrated record accounts for, or that git tracks (read with `--literal-pathspecs`) or is a symbolic link, unless `--force` backs it up
 - A consent pass, an `InstallAll` whose `BeforeWrite` stops it, so every hook question is answered before anything is written
 - Then, per destination, the real `InstallAll` with `BeforeWrite` deciding again under the scope lock and copying into the trash:
-  - the replaced paths and every file a `--force` step writes over (where it really is, past the symbolic links on its way; a directory copied in the same pass that holds it is its backup),
+  - the replaced paths, then, from the install's own `commit` (through `Options.Trash`, migrate's run), every file a `--force` step writes over (below),
   - the moves (each checked against the ledger after the install), and
   - the leftover files of replaced directories (unlinked when they match the backup, read through `os.Root`, keeping a link lola-go writes through; listed as kept instead with `--keep-python`).
 
@@ -587,6 +587,18 @@ directories then empty; what remains was created or changed after the copy and c
 `*trash.ChangedError` with the trash path.
 
 `CopyBytes` writes given bytes, never reading the original, as a new 0600 file.
+
+Every `--force` run that writes (install, sync, update, uninstall, and the profile commands
+through them) copies what it displaces before it writes: `Engine.commit` calls `trashForced`
+after the pre-install hooks, just before the pins write and `plan.Apply` (a failure rolls the
+module copies back). `ForcedFiles` lists the steps whose `Forced` is `unowned` or `hand-edited`,
+other than an adopt, absent or forget, whose file exists, where it really is (through `Via`, past
+the symbolic links in its parents). Each is copied into `Options.Trash` when the caller keeps a
+run (`lola migrate`), else into a run the scope opens and closes (removed when empty); a JSON
+member's whole file is copied and marked a credential copy. `Trash.Holds` says where a copy the
+run already made holds a path (the same file, or a copied directory above it, compared past the
+links in their parents), so nothing is copied twice. The result's `trash` and
+`trash_credentials` name the runs and the credential copies.
 Migrate reports such a partial move with the trash path of the part moved (the Python home's
 `reason` says `moved in part`); that branch has no spec, as no fixture can time a change between the
 copy and the removal ([testing.md](testing.md#untested-by-design)).

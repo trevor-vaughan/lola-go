@@ -36,7 +36,7 @@ rules](../usage.md#safety-rules).
 | `--update` | Fetch the refs again and re-pin the modules of the run. |
 | `--at <module>=<version>` | Install the module only at this version: a git module's commit (any case), or a folder's or archive's `sha256:<digest>` (the digest the diff prints). Repeatable; given twice alike it counts once; a module the run does not include is refused (with `--scope both`, only one no scope includes). A run given it applies only the versions it names: one its source no longer serves, and any other module whose version would change, are refused before anything is written. A refusal's hint adds one for each new version it showed (a pin it would write, a folder whose content changed), so the run it hints answers only what was listed. |
 | `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |
-| `--force` | Overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals; never answers a consent question. |
+| `--force` | Overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals; never answers a consent question; what it replaces or deletes goes to a new trash run (`lola trash`). |
 | `-n`, `--dry-run` | Print the plan and the trust diff, ask nothing and write nothing. |
 
 Refusals:

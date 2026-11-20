@@ -587,12 +587,14 @@ func (r *runner) preview(d *Destination, res *engine.InstallResult, led *ledger.
 	for _, dc := range decisions {
 		dr.report(dc, "")
 	}
-	fsteps, err := r.forcedSteps(d, res)
-	if err != nil {
-		return nil, err
-	}
-	for _, f := range fsteps {
-		dr.Replaced = append(dr.Replaced, f.moved())
+	if res != nil {
+		forced, err := r.e.ForcedFiles(d.Scope, res.Steps)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range forced {
+			dr.Replaced = append(dr.Replaced, Moved{Path: f.Path, Key: f.Step.Key, Kind: f.Step.Kind})
+		}
 	}
 	return dr, nil
 }
@@ -681,7 +683,10 @@ func (r *runner) migrate(d *Destination, dr *DestResult) error {
 		if err != nil {
 			return err
 		}
-		var fsteps []forced
+		// The install copies what --force writes over into this run, after BeforeWrite's backups:
+		// a file one of them holds is not copied again.
+		spec.Options.Trash = r.trash
+		var forced []engine.ForcedFile
 		spec.BeforeWrite = func(res *engine.InstallResult) error {
 			// InstallAll holds the scope lock here: decide against the ledger as it is under it,
 			// not as it was read before.
@@ -692,10 +697,10 @@ func (r *runner) migrate(d *Destination, dr *DestResult) error {
 			if decisions, derr = r.decide(d, res, locked, nil); derr != nil {
 				return derr
 			}
-			if fsteps, derr = r.forcedSteps(d, res); derr != nil {
+			if forced, derr = r.e.ForcedFiles(d.Scope, res.Steps); derr != nil {
 				return derr
 			}
-			return r.backup(d, decisions, fsteps)
+			return r.backup(d, decisions)
 		}
 		res, err := r.e.InstallAll(r.ctx, spec)
 		if te, ok := errors.AsType[*engine.TrustedError](err); ok {
@@ -706,8 +711,9 @@ func (r *runner) migrate(d *Destination, dr *DestResult) error {
 		}
 		r.written = addTrusted(r.written, res.Trusted)
 		dr.addInstall(res)
-		for _, f := range fsteps {
-			dr.Replaced = append(dr.Replaced, f.moved())
+		for _, f := range forced {
+			to, _ := r.trash.Holds(f.File) // "" for one gone before the install copied it
+			dr.Replaced = append(dr.Replaced, Moved{Path: f.Path, Key: f.Step.Key, Kind: f.Step.Kind, Trash: to})
 		}
 	} else if decisions, err = r.decide(d, nil, led, nil); err != nil {
 		return err
@@ -751,27 +757,14 @@ func summarize(p *Plan, rep *Result) Summary {
 }
 
 // backup copies into the trash every path the install replaces: a file, a whole directory, the
-// settings file of an MCP entry (once), a module copy the install swaps out, and every file a
-// step --force writes over. A forced step's file is backed up where it really is, past the
-// symbolic links on its way; when a directory copied here already holds it, that copy is its
-// backup.
-func (r *runner) backup(d *Destination, decisions []decision, fsteps []forced) error {
+// settings file of an MCP entry (once) and a module copy the install swaps out. Each file a step
+// --force writes over the install copies itself, into the same run (engine.Options.Trash), unless
+// a copy made here holds it.
+func (r *runner) backup(d *Destination, decisions []decision) error {
 	done := map[string]string{}
-	dirs := map[string]string{} // the directories copied, by their resolved path
 	failed := func(path string, err error) error {
 		return errs.WithHints(fmt.Errorf("backing up %s: %w", untrusted.Text(path, untrusted.MaxName), untrusted.CleanErr(err)),
 			"nothing was installed at this destination; fix the problem and rerun lola migrate")
-	}
-	copyOnce := func(path string) (string, error) {
-		if to, ok := done[path]; ok {
-			return to, nil
-		}
-		to, err := r.trash.Copy(d.ID, d.Root, path)
-		if err != nil {
-			return "", failed(path, err)
-		}
-		done[path] = to
-		return to, nil
 	}
 	for i := range decisions {
 		dc := &decisions[i]
@@ -782,91 +775,20 @@ func (r *runner) backup(d *Destination, decisions []decision, fsteps []forced) e
 		if dc.rec.Key != "" {
 			path = filepath.Join(dc.rec.Root, filepath.FromSlash(dc.rec.Rel))
 		}
-		var err error
-		if dc.backup, err = copyOnce(path); err != nil {
-			return err
+		if to, ok := done[path]; ok {
+			dc.backup = to
+		} else {
+			var err error
+			if dc.backup, err = r.trash.Copy(d.ID, d.Root, path); err != nil {
+				return failed(path, err)
+			}
+			done[path] = dc.backup
 		}
 		if dc.rec.Key != "" {
 			r.trash.MarkCredential(dc.backup) // a settings file holding an MCP entry
 		}
-		if dc.rec.Dir {
-			real, err := filepath.EvalSymlinks(path)
-			if err != nil {
-				return failed(path, err)
-			}
-			dirs[real] = dc.backup
-		}
-	}
-	for i := range fsteps {
-		f := &fsteps[i]
-		real, err := filepath.EvalSymlinks(filepath.Dir(f.file))
-		if err != nil {
-			return failed(f.file, err)
-		}
-		real = filepath.Join(real, filepath.Base(f.file))
-		if f.backup = copiedWith(dirs, real); f.backup == "" {
-			if f.backup, err = copyOnce(real); err != nil {
-				return err
-			}
-		}
-		if f.step.Key != "" {
-			r.trash.MarkCredential(f.backup) // a JSON member's file: settings or MCP servers
-		}
 	}
 	return nil
-}
-
-// copiedWith is where the copy of a directory in dirs (resolved path → trash path) that holds
-// file, a resolved path below it, keeps it, or "".
-func copiedWith(dirs map[string]string, file string) string {
-	for dir, to := range dirs {
-		if rel, err := filepath.Rel(dir, file); err == nil && dir != file && within(dir, file) {
-			return filepath.Join(to, rel)
-		}
-	}
-	return ""
-}
-
-// forced is a step --force writes over a conflict (plan.Step.Forced): file is what it changes
-// on disk, through the step's Via when that leaves the destination, and path its logical path.
-type forced struct {
-	step       plan.Step
-	path, file string
-	backup     string // trash path of its backup, once copied
-}
-
-// moved is f as reported: replaced, with its backup.
-func (f forced) moved() Moved {
-	return Moved{Path: f.path, Key: f.step.Key, Kind: f.step.Kind, Trash: f.backup}
-}
-
-// forcedSteps lists the steps of res (nil when nothing is installed) that --force writes over
-// a conflict and whose file exists: what the Python lola or the user had there is backed up
-// before the install writes and reported replaced. Adopting or leaving a member absent writes
-// nothing over it.
-func (r *runner) forcedSteps(d *Destination, res *engine.InstallResult) ([]forced, error) {
-	if res == nil {
-		return nil, nil
-	}
-	var out []forced
-	for _, s := range res.Steps {
-		if s.Forced == "" || s.Action == plan.ActionAdopt || s.Action == plan.ActionAbsent || s.Action == plan.ActionForget {
-			continue
-		}
-		f := forced{step: s, path: filepath.Join(root(r.e, d.Scope, s.Target), filepath.FromSlash(s.Path))}
-		f.file = f.path
-		if s.Via != "" {
-			f.file = s.Via
-		}
-		switch _, err := os.Lstat(f.file); {
-		case errors.Is(err, fs.ErrNotExist):
-			continue
-		case err != nil:
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, nil
 }
 
 // cleanup finishes one decision after the install: a replaced directory loses the files
@@ -1152,7 +1074,7 @@ func tracked(ctx context.Context, p string) string {
 // decide works out every recorded path's fate at d, given the install's computed result (nil
 // when nothing is installed) and the ledger before it: owned paths and guarded ones
 // stay, except that a guarded path the install writes with --force is left to its forced
-// steps (forcedSteps), which are backed up and reported; paths the install writes are
+// steps (engine.ForcedFiles), which the install backs up and which are reported; paths the install writes are
 // replaced; the rest move, unless --keep-python. MCP
 // entries the install does not write stay, as not migrated, and hold the module copies and
 // the Python home they reference. dr, when set, gets those entries.

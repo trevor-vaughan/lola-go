@@ -36,6 +36,9 @@ type Trash struct {
 	rec         RunRecord
 	now         time.Time
 	credentials []string
+	// copies is each copy Copy made, by its original's path with the links in its parents resolved
+	// (resolvedPath): what Holds looks up.
+	copies []copied
 	// rename is os.Rename; specs replace it to simulate a move across file systems.
 	rename func(oldpath, newpath string) error
 	// copyTree is copyFrom; specs replace it to change the original after the copy.
@@ -583,7 +586,52 @@ func (t *Trash) Copy(dest, base, orig string) (string, error) {
 	if err := syncTree(t.Dir, to); err != nil {
 		return "", copyFailed(orig, err)
 	}
+	// What the copy holds is noted only once it is made; an original whose parents no longer
+	// resolve is not noted, and a later copy of a path below it is made on its own.
+	if real, err := resolvedPath(orig); err == nil {
+		fi, err := os.Lstat(to)
+		t.copies = append(t.copies, copied{orig: real, to: to, dir: err == nil && fi.IsDir()})
+	}
 	return to, nil
+}
+
+// copied is one copy Copy made: orig, its original's path as resolvedPath gives it, and to, its
+// trash path; dir says the original was a directory, whose copy holds everything below it.
+type copied struct {
+	orig, to string
+	dir      bool
+}
+
+// Holds reports where a copy this run made holds orig: its own copy, or its place in the copy of a
+// directory above it. Paths compare with the symbolic links in their parents resolved, so a path
+// reached through a link is held by the copy of where it really is; a copied link holds nothing
+// below it.
+func (t *Trash) Holds(orig string) (string, bool) {
+	real, err := resolvedPath(orig)
+	if err != nil {
+		return "", false
+	}
+	for _, c := range t.copies {
+		switch {
+		case real == c.orig:
+			return c.to, true
+		case c.dir && within(c.orig, real):
+			rel, err := filepath.Rel(c.orig, real)
+			if err == nil {
+				return filepath.Join(c.to, rel), true
+			}
+		}
+	}
+	return "", false
+}
+
+// resolvedPath is p with the symbolic links in its parent directories resolved, p's own name kept.
+func resolvedPath(p string) (string, error) {
+	dir, err := filepath.EvalSymlinks(filepath.Dir(p))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, filepath.Base(p)), nil
 }
 
 // copyFailed names the path a failed copy or move was for, with the cause stripped of the

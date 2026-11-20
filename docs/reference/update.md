@@ -81,7 +81,7 @@ run confirms that run's removals, listed or not. In CI, pass `--trust` with the 
 | `-y`, `--yes` | Open no scope picker (the scope is the one found off a terminal, or the run is refused as it is there), and confirm removing the files a new version no longer ships; it never trusts a change. |
 | `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask, as `lola sync --trust` does (bare: `entries,profiles`); it never bypasses a refusal ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
 | `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines. Refused without one of those kinds in `--trust`; `--force` never implies it. |
-| `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be; never answers a consent question. |
+| `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be; never answers a consent question; what it replaces or deletes goes to a new trash run (`lola trash`). |
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
 | `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |
 | `-n`, `--dry-run` | Print the plan and the trust diff, ask nothing and write nothing. At project scope nothing is written; at user scope a dry run may still publish what it fetched into your cache. |

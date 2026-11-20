@@ -226,6 +226,7 @@ func (out *InstallResult) eraSynced(res *SyncResult, sc Scope, many bool) {
 	out.Modules, out.Steps, out.Findings = append(out.Modules, res.Modules...), append(out.Steps, res.Steps...), append(out.Findings, res.Findings...)
 	out.EraNotices = append(out.EraNotices, inScope(res.Notices, sc, many)...)
 	out.Scripts, out.Trusted = append(out.Scripts, res.Scripts...), append(out.Trusted, res.Trusted...)
+	out.addTrash(res.Result)
 }
 
 // TargetVersion is a version an install records for a target at a scope: the version, the one the
@@ -555,6 +556,7 @@ func (e *Engine) syncEdited(ctx context.Context, spec InstallSpec, si ScopeInsta
 	out.Modules, out.Steps = append(out.Modules, res.Modules...), append(out.Steps, res.Steps...)
 	out.Findings, out.Notices = append(out.Findings, res.Findings...), append(out.Notices, inScope(res.Notices, si.Scope, true)...)
 	out.Scripts, out.Trusted = append(out.Scripts, res.Scripts...), append(out.Trusted, res.Trusted...)
+	out.addTrash(res.Result)
 	out.Scopes = append(out.Scopes, ScopeResult{Scope: si.Scope.Kind.String(), Root: root(si.Scope), ScopeSource: si.Source})
 	return nil
 }

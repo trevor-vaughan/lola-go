@@ -39,6 +39,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/templating"
+	"github.com/trevor-vaughan/lola-go/internal/trash"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -145,6 +146,9 @@ type Options struct {
 	// uninstall's profile edits are written, before anything is (a dry run asks too, so a caller
 	// can ask before an earlier write); a No is ErrDeclined. --force asks nothing.
 	ConfirmThen func(Scope, []Removal) (bool, error)
+	// Trash, when set, is the caller's trash run (lola migrate's): the files --force replaces or
+	// deletes are copied into it, and it is left open. nil opens a run per scope written.
+	Trash *trash.Trash
 	// named is the modules the run's command line named (an install's), whose conflicts with
 	// another installed module's destinations hint that module's uninstall.
 	named []string
@@ -408,6 +412,15 @@ type Result struct {
 	// PicksCleared is, for an uninstall, each module whose picks left selections.yaml with it, and
 	// under -n what would; [] when none, and nil, so absent from the JSON, for any other command.
 	PicksCleared []PickCleared `json:"picks_cleared,omitzero"`
+	// Trash is each trash run holding a copy of a file --force replaced or deleted, one per scope
+	// written (ForcedFiles); [] when none. TrashCredentials is each such copy that may hold
+	// credentials: the whole file of a JSON member --force wrote over or removed.
+	Trash            []string `json:"trash"`
+	TrashCredentials []string `json:"trash_credentials"`
+	// trashed counts, by run in Trash, the files copied into it; trashedCredentials is the file of
+	// each credential copy, relative to its scope's root when below it (TrashedCredentialFiles).
+	trashed            map[string]int
+	trashedCredentials []string
 	// grants are the consent.json records Trusted's items give, written after the receipt; needs is
 	// the kinds of trust the run met an item of that would be refused without it.
 	grants []grant
@@ -455,7 +468,8 @@ type PickCleared struct {
 }
 
 func newResult(dry bool) *Result {
-	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, Edits: []Edit{}, Scripts: []ScriptRun{}, DryRun: dry}
+	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, Edits: []Edit{}, Scripts: []ScriptRun{}, Trash: []string{},
+		TrashCredentials: []string{}, DryRun: dry}
 }
 
 // InstallRequest is one install argument with its --ref and --path.
@@ -1708,6 +1722,11 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 		return err
 	}
 	if err := e.runHooks(ctx, sc, pr.jobs, pr.scripts.run, PreInstall, opts, res); err != nil {
+		return errors.Join(err, sw.rollback())
+	}
+	// What --force replaces or deletes is copied into the trash just before the apply, as the
+	// pre-install hooks left it; pins.lock is not held while it copies.
+	if err := e.trashForced(sc, p.Steps, opts, res); err != nil {
 		return errors.Join(err, sw.rollback())
 	}
 	// At user scope the apply writes pins.yaml too, last, under pins.lock, which is held only until

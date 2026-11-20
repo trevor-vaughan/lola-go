@@ -169,7 +169,8 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     `repair` and a bare `init` without `-y`) prints only that line, which adds the plan it would
     have asked about; its hint is the run with `-y`:
     - for `uninstall` and `migrate`, the keys their `-n --json` prints (`modules`, `steps`,
-      `findings`, `notices`, `edits`, `scripts`, `picks_cleared` and `dry_run` for `uninstall`);
+      `findings`, `notices`, `edits`, `scripts`, `trash`, `trash_credentials`, `picks_cleared` and
+      `dry_run` for `uninstall`);
     - for `cache rm`, `would_remove`, the names;
     - for `init`, the keys its `-y --json` prints (`name`, `path`, `format`, `files`);
     - for `cache clean`, the keys its `-n --json` prints (`removed`, `kept`, `bytes_freed`,
@@ -190,6 +191,14 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - A script larger than 64 KiB, or not UTF-8 text, or holding a NUL, has `body` `""` and
     `withheld` `too_large` or `not_text`: output never shows it, so only `--unseen` consents to
     it.
+- The results of `install`, `uninstall`, `update` and `sync` (and so of `profile --on`, `--off`
+  and `--switch`) carry `trash`: each trash run, by path, holding a copy of a file `--force`
+  replaced or deleted, one per scope written (`[]` when none, and always under `-n`), and
+  `trash_credentials`: each copy in those runs that may hold credentials, the whole file of a JSON
+  member `--force` wrote over or removed (`[]` when none). Human output prints `→ N files
+  --force replaced or deleted are in the trash: <run>` (`1 file … is`) per run and warns `the trash
+  run holds a copy of <file>, which may contain credentials` for each credential copy; `--plain`
+  prints a `trash` row per run (`trash`, run).
 - A runtime hook in a run's JSON carries `declined_earlier: true` when it was declined, as it is,
   by an earlier run, so this one did not ask about it; it is absent otherwise.
 - Output that prints an install hook, project script or runtime hook in full (human output of what

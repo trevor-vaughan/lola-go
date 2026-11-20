@@ -614,6 +614,12 @@ binary. Each step below was run against a throwaway `HOME`.
     hint is your run with `--force` added, keeping its other flags but `-y` and `--trust`; for
     `lola sync` and `lola update` it completes your own run, so it keeps the `--trust`, `--at`
     and `-y` you gave, and runs as printed.
+  - What `--force` replaces or deletes (an unowned or hand-edited file, or the whole file holding a
+    JSON member it writes over or removes) is first copied into a new trash run, one per scope,
+    and the run says `→ 1 file --force replaced or deleted is in the trash: <run>`; `lola trash <run>
+    --restore --force` brings it back ([`lola trash`](reference/trash.md)). A copied settings or
+    MCP file may hold credentials: the run warns `the trash run holds a copy of .mcp.json, which
+    may contain credentials`. `-n` copies nothing.
   - `--force` also answers the destructive question itself (`install`'s review and the files a
     pick change deletes, `sync`'s and `update`'s removals, `uninstall`, `lola profile --remove`,
     `--on`, `--off`, `--switch` and `--edit`, `lola migrate`, `lola tidy`), on a terminal
