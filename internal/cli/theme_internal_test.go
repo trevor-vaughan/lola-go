@@ -268,7 +268,7 @@ var _ = Describe("the pickers' background", func() {
 
 	It("cancels when the question is cancelled, and saves nothing", func() {
 		_, err := background(noAnswer, accessible(&errb))
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 		Expect(cfg).NotTo(BeAnExistingFile())
 	})
 

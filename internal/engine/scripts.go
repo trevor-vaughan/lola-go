@@ -572,9 +572,19 @@ func (s installScript) grant() grant {
 // scriptConsentError refuses a project's pre-install script without trust. Its hints review the
 // version the run installs and trust the script; a retry without trust would refuse again, so
 // withRetry adds none.
-type scriptConsentError struct{ msg string }
+type scriptConsentError struct {
+	msg string
+	// declined: the user was asked and said no (ErrConsentDeclined), not a refusal for want of an answer.
+	declined bool
+}
 
 func (e *scriptConsentError) Error() string { return e.msg }
+
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer), or, when the
+// user declined the question, as a decline (ErrConsentDeclined).
+func (e *scriptConsentError) Is(target error) bool {
+	return target == errs.ErrNeedsAnswer && !e.declined || target == ErrConsentDeclined && e.declined
+}
 
 // refuseScript is the refusal of s, a project's pre-install script the run has no trust for: its
 // hints are those of a refusal of the first job's copy (consentHints), lola info of whose version
@@ -595,6 +605,7 @@ func (e *Engine) refuseScript(sc Scope, s installScript, jobs []*hookJob, copies
 	// Refused though --trust covers it: lola had not shown it, which the hints say; the refusal
 	// names it but does not show it, so it records nothing.
 	unseen := opts.Trust.Covers(TrustScripts) && !held
+	declined := false
 	msg := fmt.Sprintf("%s needs your trust for the %s script %s (sha256 %s) of this project (%s), ", run, s.event, s.shown, s.sha256, change)
 	switch {
 	case unseen:
@@ -603,6 +614,7 @@ func (e *Engine) refuseScript(sc Scope, s installScript, jobs []*hookJob, copies
 		msg += "and there is no terminal to ask on"
 	default:
 		msg += "and you declined it"
+		declined = true
 	}
 	// lola info of any module the run installs lists the script: the first it wraps, else the first
 	// the run plans.
@@ -626,7 +638,7 @@ func (e *Engine) refuseScript(sc Scope, s installScript, jobs []*hookJob, copies
 	case !held:
 		hints = unseenInstead(hints, "this script", "it", unseen)
 	}
-	return errs.WithHints(&scriptConsentError{msg: msg}, hints...)
+	return errs.WithHints(&scriptConsentError{msg: msg, declined: declined}, hints...)
 }
 
 // runScripts runs every script of scripts for event around j, once per target: a pre-install

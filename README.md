@@ -3,7 +3,7 @@
 lola is a package manager for AI-assistant context: skills, slash commands, subagents, MCP
 servers and always-on rules. You install a module once; lola renders it into each
 assistant's native layout and records exactly what it wrote, so it can render again or
-uninstall cleanly, without touching anything it did not write.
+uninstall cleanly: it removes only what it wrote, and the directories that leaves empty.
 
 Already using [LobsterTrap/lola](https://github.com/LobsterTrap/lola)? `lola migrate` installs
 what it installed and moves its files to a trash you can restore from with `lola trash`
@@ -156,18 +156,21 @@ Run these in the `lola-go` checkout after `task build`. They make `my-project` a
    lola list
    ```
 
-   `install` renders into `.claude/` and records `.lola/project.yml`. The output of both
+   `install` renders into `.claude/` and records `.lola/project.yml`. A run's report folds the
+   per-file lines into one `▸` line per module; add `-v` to list the files. The output of both
    (the path in the context line is wherever you made `my-project`):
 
    ```text
    project /tmp/tmp.7PXo8mZbW4/my-project: project.yml
-   ✓ added my-module to project.yml (base)
-     ✓ create claude-code .claude/commands/hello.md
-     ✓ create claude-code .claude/skills/hello/SKILL.md
+   Notices:
    ⚠ my-module comes from ../my-module, outside the project: a teammate's sync will refuse it; share a module through a git repository or an https:// archive
    → keep it to yourself: lola profile --project --move my-module --to mine --switch
    → meant for every project? move it from this project into your user base: lola profile --user --move my-module --to base
+   Files:
+   ✓ added my-module to project.yml (base)
+   ▸ my-module: 2 changes (claude-code 2)
    ✓ installed my-module (claude-code)
+   → ▸ lines are folded; -v prints them in full
 
    project /tmp/tmp.7PXo8mZbW4/my-project: project.yml
    user scope: default
@@ -175,6 +178,10 @@ Run these in the `lola-go` checkout after `task build`. They make `my-project` a
    project  my-module  claude-code  ✓ ok    on     ../my-module
    nothing installed at user scope (try: lola install --user <source>)
    ```
+
+   On a terminal, lola first asks once whether your background is dark or light, then shows the
+   install review (`Apply these changes? [y/c/n]`); `-y` answers the review. The block above is
+   what a script sees.
 
 4. Edit the module and install it again, which renders the edited skill into `.claude/`:
 

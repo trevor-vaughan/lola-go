@@ -31,7 +31,7 @@ var _ = Describe("lola repair", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(projectContext(proj) + "error: " + lp + `: module kit: target "bogus" is not a target lola knows` + "\n  hint: " + restoreHint("bogus") + "\n  hint: lola repair -C " + proj + "\n"))
 		r = lola(shellWords("lola repair -C " + proj)[1:]...)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.out).To(BeEmpty())
 		Expect(r.err).To(Equal(projectContext(proj) + "will forget 2 entries in " + lp + "; files are not touched:\n" + listed +
 			"error: lola repair needs confirmation, and there is no terminal to ask on\n" +

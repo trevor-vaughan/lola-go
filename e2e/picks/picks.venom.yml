@@ -120,7 +120,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - "result.systemerr ShouldEqual \"user scope: profile go over default\""
-          - "result.systemout ShouldEqual \"→ kit: skipped in profile go: skill/charlie\n→ kit: not in only: (profile go): skill/bravo\n→ kit: 1 notice (module 1) — lola check --user kit\n✓ kit already up to date (claude-code)\""
+          - "result.systemout ShouldEqual \"Notices:\n→ kit: 1 notice (module 1) — lola check --user kit\nFiles:\n→ kit: skipped in profile go: skill/charlie\n→ kit: not in only: (profile go): skill/bravo\n✓ kit already up to date (claude-code)\""
       # The line's lola check names the mention, with the install that adds it.
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} check --user kit"
@@ -153,7 +153,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} sh -c 'python3 -c \"import json; t = [n[\\\"text\\\"] for n in json.load(open(\\\"/tmp/p5.json\\\"))[\\\"notices\\\"] if \\\" adds \\\" in n[\\\"text\\\"]][0]; print(json.dumps({\\\"hints\\\": [t.split(\\\" → \\\")[-1]]}))\" > /tmp/p5.hint && {{.hint}} /tmp/p5.hint'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"✓ changed kit in profile go  ({{.go}})  only: 2 skills\n  ✓ create claude-code .claude/skills/delta/SKILL.md\n→ kit: skipped in profile go: skill/charlie\n→ kit: not in only: (profile go): skill/bravo\n→ kit: 1 notice (module 1) — lola check --user kit\n✓ installed kit (claude-code)\""
+          - "result.systemout ShouldEqual \"Notices:\n→ kit: 1 notice (module 1) — lola check --user kit\nFiles:\n✓ changed kit in profile go  ({{.go}})  only: 2 skills\n▸ kit: 1 change (claude-code 1)\n→ kit: skipped in profile go: skill/charlie\n→ kit: not in only: (profile go): skill/bravo\n✓ installed kit (claude-code)\n→ ▸ lines are folded; -v prints them in full\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'grep -E \"only:|skip:\" {{.go}}'"
         assertions:
@@ -176,12 +176,12 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} profile default --edit kit --skip skill/alpha --user -t claude-code -y"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"✓ added kit to default (base)  (/home/tester/.config/lola/profiles/default.yml, new)\n⚠ kit: profile go's entry wins; this change to default (base) applies when it is off\""
+          - "result.systemout ShouldEqual \"Notices:\n⚠ kit: profile go's entry wins; this change to default (base) applies when it is off\nFiles:\n✓ added kit to default (base)  (/home/tester/.config/lola/profiles/default.yml, new)\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} sync --user"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"⚠ kit: profile go overrides default (base); kit's picks from default (base) are dropped: the entry from profile go sets its own\n✓ already in sync\""
+          - "result.systemout ShouldEqual \"Notices:\n⚠ kit: profile go overrides default (base); kit's picks from default (base) are dropped: the entry from profile go sets its own\n✓ already in sync\""
 
   - name: "P7 A profile go2 whose only: list is charlie installs just charlie when switched on, and switching back restores go's picks"
     steps:

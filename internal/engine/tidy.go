@@ -111,12 +111,16 @@ type TidyResult struct {
 	TrashCredentials []string   `json:"trash_credentials"`
 	Notices          []Notice   `json:"notices"`
 	Hints            []string   `json:"hints"`
+	// EquivalentCommands is, in a dry run that would move items, the run that moves them off a
+	// terminal (OffTerminal: the hint's command with -y); [] otherwise, as SyncResult's.
+	EquivalentCommands []string `json:"equivalent_commands"`
+	OffTerminal        string   `json:"-"`
 }
 
 func newTidyResult(req TidyRequest) *TidyResult {
 	res := &TidyResult{Scope: req.Scope.Kind.String(), DryRun: req.Dry, Targets: []string{}, Candidates: []TidyUnit{}, Moved: []TidyUnit{},
 		Protected: []TidyUnit{}, Skipped: []TidyUnit{}, KeepAdded: []string{}, KeepRemoved: []string{}, TrashCredentials: []string{},
-		Notices: []Notice{}, Hints: []string{}}
+		Notices: []Notice{}, Hints: []string{}, EquivalentCommands: []string{}}
 	if req.Scope.Kind == target.Project {
 		res.Root = req.Scope.ProjectDir
 	}

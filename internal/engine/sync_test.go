@@ -430,8 +430,8 @@ var _ = Describe("Sync", func() {
 
 			// --update of an entry the user installed, pinned and cached: the record covers its source
 			// and ref, so the run fetches the ref into its staging first. Unmoved, it needs no trust; a
-			// moved tag is refused naming the entry it would re-pin, with its new pin and no field
-			// changes, and leaves the cache as it was.
+			// moved tag is refused naming the entry it would re-pin, with its new pin and the commit and
+			// digest it moves from, and leaves the cache as it was.
 			pull(manifest.Change{Remove: []string{"example"}})
 			install(sc, engine.InstallRequest{Arg: url, Ref: "v1"})
 			Expect(covered()).To(BeTrue())
@@ -451,7 +451,8 @@ var _ = Describe("Sync", func() {
 				"then accept them: lola sync --project --update --trust=entries --at example=" + moved + " -y"}))
 			refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 			Expect(ok).To(BeTrue())
-			Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "example"), HaveField("Fields", BeEmpty()),
+			Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "example"),
+				HaveField("Fields", ConsistOf(HaveField("Field", "commit"), HaveField("Field", "digest"))),
 				HaveField("Reason", "re-pin from v1 (--update)"), HaveField("Pin", HaveField("Commit", moved)))))
 			Expect(refusal.Report.ManifestChanged).To(BeFalse())
 			Expect(state()).To(Equal(before), "nothing installed, cached or recorded")

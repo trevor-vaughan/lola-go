@@ -201,7 +201,7 @@ func (e *Engine) ask(ask func(WhereQuestion) (WhereChoice, error), q WhereQuesti
 	for _, c := range q.Choices {
 		hints = append(hints, e.flagRun(q.Scope, req, verb, q.Module, c))
 	}
-	return WhereChoice{}, errs.WithHints(errors.New(refused), hints...)
+	return WhereChoice{}, errs.WithHints(errs.NeedsAnswer(errors.New(refused)), hints...)
 }
 
 // flagRun is the run again with c's flag form: its Flags, --override, or req's Flag (--profile

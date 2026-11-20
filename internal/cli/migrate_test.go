@@ -92,7 +92,7 @@ var _ = Describe("lola migrate", func() {
 
 	It("needs -y off a terminal, printing the plan and writing nothing", func() {
 		r := lola("migrate")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("lola migrate needs confirmation, and there is no terminal to ask on"))
 		Expect(r.err).To(ContainSubstring("hint: lola migrate -y"))
 		Expect(r.err).To(ContainSubstring("install review (claude-code)"))
@@ -123,7 +123,7 @@ var _ = Describe("lola migrate", func() {
 			writeTree(src, map[string]string{"lola.yml": "name: review\nhooks: {pre-install: pre.sh}\n", "pre.sh": "#!/bin/sh\ntouch '" + mark + "'\n"})
 			Expect(os.Chmod(filepath.Join(src, "pre.sh"), 0o755)).To(Succeed())
 			r := lola(append([]string{"migrate", "--trust=hooks"}, display...)...)
-			Expect(r.code).To(Equal(1))
+			Expect(r.code).To(Equal(3))
 			Expect(r.err).To(ContainSubstring("needs confirmation"))
 			Expect(r.err).To(ContainSubstring("touch "), "the plan holds the body")
 			r = lola("migrate", "--trust=hooks", "-y")
@@ -148,7 +148,7 @@ var _ = Describe("lola migrate", func() {
 		writeTree(src, map[string]string{"lola.yml": "name: review\nhooks: {pre-install: pre.sh}\n", "pre.sh": "#!/bin/sh\ntouch '" + mark + "'\n"})
 		Expect(os.Chmod(filepath.Join(src, "pre.sh"), 0o755)).To(Succeed())
 		r := lola("migrate", "--force")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("review has a pre-install hook, and lola runs hooks only with your consent"))
 		Expect(r.err).To(ContainSubstring("  hint: lola has not shown you this hook; see it with lola migrate --force --trust=hooks -n, then consent to it: lola migrate --force --trust=hooks\n"))
 		Expect(r.err).NotTo(ContainSubstring("needs confirmation"), "--force answered Migrate?")
@@ -258,7 +258,7 @@ var _ = Describe("lola migrate", func() {
 		It("goes back from an assistant question to the root question on Esc, the root answered pre-filled", func() {
 			p := &scripted{roots: []string{"", filepath.Join(tmp, "home")}, mapTargets: [][]string{{goBack}, {"opencode"}}, confirm: []bool{false}}
 			r := lolaP(p, "migrate")
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice", "migrate-targets:claude-code", "migrate-root:/Users/alice",
 				"migrate-targets:claude-code", "confirm:Migrate?"}))
 			Expect(p.rootSteps[0].Nav).To(Equal(cli.Nav{}), "the first question has no screen before it")
@@ -516,7 +516,7 @@ var _ = Describe("lola migrate", func() {
 		writeTree(src, map[string]string{"agents/critic.md": "---\ndescription: critic\n---\nC.\n"})
 		writeTree(proj, map[string]string{".claude/agents/critic.md": "the user's own\n"})
 		r := lola("migrate", "-y")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring(".claude/agents/critic.md: exists and was not written by lola"))
 		Expect(r.err).To(HaveSuffix("  hint: lola migrate --force\n"), "no -y: --force answers Migrate? too")
 		Expect(trash()).NotTo(BeADirectory())

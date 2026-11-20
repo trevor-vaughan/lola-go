@@ -235,14 +235,19 @@ const (
 )
 
 // Steps numbers a step's fields across one pass of the install flow: its first
-// field is step At of Of. The zero value, which every command but install asks with, numbers
-// nothing.
+// field is step At of Of. An Of of 0 with an At is a total not yet known: the title leaves it out
+// until it is exact, so a total shown never grows. The zero value, which every command but install
+// asks with, numbers nothing.
 type Steps struct{ At, Of int }
 
-// title is the title of the step's i-th field: "Step n of m — t", or t when nothing is numbered.
+// title is the title of the step's i-th field: "Step n of m — t", "Step n — t" while the total is
+// not known, or t when nothing is numbered.
 func (s Steps) title(i int, t string) string {
-	if s.Of < 2 {
+	switch {
+	case s.At == 0 || s.Of == 1:
 		return t
+	case s.Of == 0:
+		return fmt.Sprintf("Step %d — %s", s.At+i, t)
 	}
 	return fmt.Sprintf("Step %d of %d — %s", s.At+i, s.Of, t)
 }

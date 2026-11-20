@@ -470,7 +470,7 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		Expect(errors.Is(err, ErrBack)).To(BeFalse())
 	})
 
-	It("prints a quit as cancelled, nothing changed, and exits 0 as Ctrl+C does", func() {
+	It("prints a quit as cancelled, nothing changed, and exits 4 as Ctrl+C does", func() {
 		tmp := testenv.Isolate()
 		GinkgoT().Chdir(tmp)
 		h := onTerminal("q")
@@ -480,14 +480,14 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		root.SetOut(&stdout)
 		root.SetErr(&stderr)
 		root.SetArgs([]string{"install", "--scope", "user", "-t", "claude-code"})
-		Expect(Execute(root)).To(Equal(0))
+		Expect(Execute(root)).To(Equal(4))
 		Expect(stderr.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 
 		cmd := &cobra.Command{Use: "x", SilenceErrors: true, SilenceUsage: true, RunE: func(*cobra.Command, []string) error { return &quitError{color: true} }}
 		cmd.SetErr(&stderr)
 		cmd.SetArgs([]string{})
 		stderr.Reset()
-		Expect(Execute(cmd)).To(Equal(0))
+		Expect(Execute(cmd)).To(Equal(4))
 		Expect(stderr.String()).To(Equal("\x1b[31m✗ cancelled — nothing was changed\x1b[0m\n"), "in color, as style paints it")
 	})
 })

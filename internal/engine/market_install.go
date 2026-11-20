@@ -199,7 +199,7 @@ func (e *Engine) prepareEntry(ctx context.Context, p *marketPick, spec source.Sp
 	}
 	name := p.entry.Name
 	st, err := e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: name, Name: name, Source: spec.Location, Type: string(spec.Kind),
-		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), Components: spec.Components})
+		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Committed: f.Committed, Executables: f.Executables, Now: e.Now(), Components: spec.Components})
 	if other, ok := errors.AsType[*store.OtherNameError](err); ok {
 		err = renamedEntry(p, other.Declared, spec, commit)
 	}

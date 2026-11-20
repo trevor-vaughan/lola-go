@@ -81,7 +81,7 @@ run confirms that run's removals, listed or not. In CI, pass `--trust` with the 
 | `-y`, `--yes` | Open no scope picker (the scope is the one found off a terminal, or the run is refused as it is there), and confirm removing the files a new version no longer ships; it never trusts a change. |
 | `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask, as `lola sync --trust` does (bare: `entries,profiles`); it never bypasses a refusal ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
 | `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines. Refused without one of those kinds in `--trust`; `--force` never implies it. |
-| `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be; never answers a consent question. |
+| `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be; never answers a consent question; what it replaces or deletes goes to a new trash run (`lola trash`). |
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
 | `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |
 | `-n`, `--dry-run` | Print the plan and the trust diff, ask nothing and write nothing. At project scope nothing is written; at user scope a dry run may still publish what it fetched into your cache. |
@@ -92,17 +92,28 @@ scope they run in: `--project` for the project found from where you are); `--sco
 project, then user scope, and stops at the first that fails or is declined.
 
 Output says `updated <module>` for each module it moved or re-rendered, `already up to date` when
-nothing changed, and `<module>: <from> → <to>` for each pin that moved. Two info notices say what
-it did not fetch or install:
+nothing changed and every source was checked, and `<module>: <from> → <to>` for each pin that moved.
+A run that served modules from a fresh head without checking their source says so instead, under
+`-n` too:
 
-- `N modules served from your cache (fetched within cache_fresh_for) → lola update … --fetch`,
-  when any ref was served from a fresh head instead of fetched; the command is your run with
-  `--fetch`. A `--fetch` run has none.
+```text
+✓ up to date with your cache (fetched 1 hour ago)
+→ lola update --project --fetch
+```
+
+The age is that of the oldest head it served; the command is your run with `--fetch`, which checks
+the source. A run that also moved modules prints the line after its outcome, led by the count
+(`1 module up to date with your cache …`). `--json` has it as `cache_served` (`modules`, `fetched`,
+`command`) and `--plain` as a `cache` row of the same four values; a `--fetch` run has none. A
+trust refusal (or `-n`) names the file the run would change, `lola update would change
+.lola/project.yml; it needs your trust for:`, and shows each re-pin's commit and digest from → to.
+An info notice says what it did not install:
+
 - `N modules are listed but not installed: <names> → lola sync <names>`, for the entries a layer
   lists that are not installed, which `update` never installs; `lola sync <names>` installs them.
   A module installed but no longer listed has its `not-in-manifest` warning instead.
 
-The commands in both notices keep your scope and output flags, and `-n` for a dry run.
+The command in that notice, and the `--fetch` one above, keep your scope and output flags, and `-n` for a dry run.
 
 Refusals: a named module that is not installed in the scope, hinting `lola sync <name>` when
 `project.yml` lists it and `lola install <name>`; a hand-edited file: `refusing to change
@@ -119,8 +130,9 @@ reported as up to date: its `source-gone` warning says `<module>: source gone; n
 the folder, and hints restoring it or `lola uninstall <module>` (your scope flags kept). `update`
 exits `1`, as for a failed fetch, and does not print `already up to date`.
 
-Exit status is `0` on success, on a dry run and when you decline a prompt, and `1` on any error,
-a refusal included ([Output contract](output-contract.md)).
+Exit status is `0` on success and on a dry run, `3` when it refused for want of your answer (trust,
+consent or `-y`), `4` when you decline a prompt, and `1` on any other error ([Output
+contract](output-contract.md)).
 
 JSON: the shape of `lola sync`'s: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`,
 `removals`, `equivalent_commands` and the plan's `modules`, `steps`, `findings`, `notices` and

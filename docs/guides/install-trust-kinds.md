@@ -23,8 +23,9 @@ kinds there, and `--trust=<kinds>` when a bare `--trust` grants none there.
 argument right after a bare `--trust` that names kinds (in any case, or a list such as `hooks,scripts`; after `--` it
 is a name), hinting your run with `--trust=` the kinds you wrote, never the ones a bare `--trust`
 would add. `--trust=entries,profiles` written out is those two kinds, so `profile --add` refuses
-it. Bare `--trust` is `entries,profiles`, the kinds that run no code; `all` is every kind the
-command takes.
+it. Bare `--trust` is `entries,profiles`: lola runs no code for them, but accepting entries is also
+your consent to the MCP servers they list, which your assistant launches. The trust diff prints
+each server's command first. `all` is every kind the command takes.
 
 ## What lola has shown you
 

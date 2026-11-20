@@ -72,7 +72,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} tidy -C {{.proj}} -t claude-code -t gemini-cli"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - 'result.systemerr ShouldContainSubstring "lola tidy needs names or --all when it cannot ask (off a terminal or with --json): 5 items can move"'
           - 'result.systemerr ShouldContainSubstring "hint: lola tidy -C {{.proj}} --all -t claude-code -t gemini-cli -y"'
       - type: exec

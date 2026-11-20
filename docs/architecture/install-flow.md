@@ -221,10 +221,12 @@ which asks nothing and writes nothing, and prints its findings (`printFindings`)
 
 Each pass of the flow numbers the steps it asks, `Steps{At, Of}`: `done` counts the fields asked so
 far, and `remaining` forecasts the rest, exactly once what decides a step is known
-(`componentPages`, shared with `ensureComponents`, and `ComponentPage.lists`), one field per step
-before.
+(`componentPages`, shared with `ensureComponents`, and `ComponentPage.lists`). Before that it has
+no upper bound for the module and component lists (or for the version questions while the scopes or
+assistants are open), so `steps` gives `Of` 0 and the header omits the total: a total shown never
+grows.
 
-The huh adapter titles each list `Step n of m — <title>` and says `enter: next` under each but a form's
+The huh adapter titles each list `Step n of m — <title>` (`Step n — <title>` while `Of` is 0) and says `enter: next` under each but a form's
 last. It asks the review through `Prompter.Ask` (`huhForms.Review`): `Apply these changes? [y/c/n]`
 with no default, under the summary or with it in the viewer by `app.ask`'s fit rule. `y` applies, `n`
 and Ctrl+C cancel, `q` quits, Esc goes back a step, and `c` opens the Change menu (`menu`), whose last
@@ -235,9 +237,9 @@ In accessible mode it prints the summary before the full menu (`menu` with no ch
 and a blank line asks again); the review's yes/no questions elsewhere are `askLine` prompts.
 
 `Prompter` implementations: the huh adapter (inline forms on stderr; accessible line prompts under
-`LOLA_ACCESSIBLE=1` or `TERM=dumb`, with an `eofReader` that turns end of input into a cancel), the
+`LOLA_ACCESSIBLE=1` or `TERM=dumb`, with an `eofReader` that records end of input), the
 non-interactive one, and the specs' scripted one. In accessible mode every prompt, hook consent
-included, reads through the `eofReader`, so end of input is `ErrAborted`. Specs parse the equivalent
+included, reads through the `eofReader`, so end of input is `errStdinEnded` (a refusal, exit 3) and Ctrl+C is `ErrAborted`. Specs parse the equivalent
 commands back through the real command tree and compare the plans.
 
 The huh adapter draws every form in `lolaTheme` (`internal/cli/theme.go`): huh's Charm theme with

@@ -26,6 +26,25 @@ func WithHints(err error, hints ...string) error {
 	return &Error{Err: err, Hints: hints}
 }
 
+// ErrNeedsAnswer marks a refusal that changed nothing because the run needs something only the
+// user can give: trust, consent, -y, or --force over a conflict. The CLI exits 3 on it.
+var ErrNeedsAnswer = errors.New("needs the user's answer")
+
+type needsAnswer struct{ err error }
+
+func (e *needsAnswer) Error() string        { return e.err.Error() }
+func (e *needsAnswer) Unwrap() error        { return e.err }
+func (e *needsAnswer) Is(target error) bool { return target == ErrNeedsAnswer }
+
+// NeedsAnswer marks err as a refusal that needs the user's answer: errors.Is(w, ErrNeedsAnswer)
+// holds, and the message, errors.As and hints of err are unchanged. A nil err stays nil.
+func NeedsAnswer(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &needsAnswer{err: err}
+}
+
 // Hints returns every hint on err's wrap chain, outermost first.
 func Hints(err error) []string {
 	var out []string

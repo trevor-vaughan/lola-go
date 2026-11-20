@@ -590,6 +590,45 @@ var _ = Describe("Engine", func() {
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 	})
 
+	It("uninstall with KeepEdits leaves hand-edited files, forgets them and names them, then install reports them unowned", func() {
+		_, err := install(engine.Options{Targets: []string{"claude-code"}}, src)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine now"})
+		keep := "lola uninstall example -C " + proj + " --keep-edits"
+		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{ForceRun: keep + " --force", KeepRun: keep})
+		Expect(errs.Hints(err)).To(Equal([]string{keep, keep + " --force"}))
+
+		res, err := e.Uninstall(ctx, sc, []string{"example"}, engine.Options{KeepEdits: true, DryRun: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Kept).To(Equal([]string{".claude/commands/ship.md"}))
+		Expect(read(".claude/commands/ship.md")).To(Equal("mine now"), "a dry run touches nothing")
+
+		res, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{KeepEdits: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Kept).To(Equal([]string{".claude/commands/ship.md"}))
+		Expect(res.Notices).To(ContainElement(HaveField("Text",
+			"kept .claude/commands/ship.md: hand-edited; lola no longer manages it, so installing the module again reports it as not written by lola")))
+		Expect(res.Trash).To(BeEmpty(), "a kept file is not copied anywhere")
+		Expect(read(".claude/commands/ship.md")).To(Equal("mine now"))
+		Expect(filepath.Join(proj, ".claude/skills/review/SKILL.md")).NotTo(BeAnExistingFile(), "the unedited files go")
+		led, err := ledger.Load(filepath.Join(proj, ".lola", "lock.json"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(led.Modules).NotTo(HaveKey("example"))
+
+		_, err = install(engine.Options{Targets: []string{"claude-code"}}, src)
+		Expect(err).To(MatchError(ContainSubstring(".claude/commands/ship.md")))
+		Expect(read(".claude/commands/ship.md")).To(Equal("mine now"))
+	})
+
+	It("uninstall without KeepEdits reports no kept files, as [] in JSON", func() {
+		_, err := install(engine.Options{Targets: []string{"claude-code"}}, src)
+		Expect(err).NotTo(HaveOccurred())
+		res, err := e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Kept).NotTo(BeNil())
+		Expect(res.Kept).To(BeEmpty())
+	})
+
 	It("uninstall and render leave no orphans", func() {
 		Expect(os.WriteFile(filepath.Join(proj, "CLAUDE.md"), []byte("# Mine\n"), 0o644)).To(Succeed())
 		_, err := install(claude, src)

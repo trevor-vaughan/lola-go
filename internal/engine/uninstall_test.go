@@ -123,6 +123,41 @@ var _ = Describe("uninstall from the layer that provides a module", func() {
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: []\n")))
 	})
 
+	Describe("UninstallAllNames", func() {
+		It("names every module lola list shows: the base's and the profile on's, once each", func() {
+			a, b, c := mod("a"), mod("b"), mod("c")
+			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + a + "}\n  - {name: b, source: " + b + "}\n",
+				"go.yml": "version: 1\nmodules:\n  - {name: c, source: " + c + "}\n  - {name: a, source: " + a + ", rules: false}\n"})
+			on("user:go")
+			names, err := e.UninstallAllNames(ctx, user, engine.TargetRequest{}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(names).To(Equal([]string{"a", "b", "c"}))
+		})
+
+		It("with a profile, names that profile's entries only, the base's included under base", func() {
+			a, b, c := mod("a"), mod("b"), mod("c")
+			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + a + "}\n  - {name: b, source: " + b + "}\n",
+				"go.yml":   "version: 1\nmodules:\n  - {name: c, source: " + c + "}\n",
+				"rust.yml": "version: 1\nmodules:\n  - {name: b, source: " + b + "}\n"})
+			on("user:go")
+			names, err := e.UninstallAllNames(ctx, user, engine.TargetRequest{Profile: "go"}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(names).To(Equal([]string{"c"}))
+			names, err = e.UninstallAllNames(ctx, user, engine.TargetRequest{Profile: "base"}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(names).To(Equal([]string{"a", "b"}))
+			names, err = e.UninstallAllNames(ctx, user, engine.TargetRequest{Profile: "rust"}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(names).To(Equal([]string{"b"}), "a profile that is not on lists its file's entries")
+		})
+
+		It("is empty, not nil, when nothing is installed", func() {
+			names, err := e.UninstallAllNames(ctx, user, engine.TargetRequest{}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(names).To(Equal([]string{}))
+		})
+	})
+
 	It("-t edits the targets of the entry in the layer that provides it", func() {
 		a := mod("a")
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code, opencode]\nmodules:\n  - {name: a, source: " + a + "}\n"})

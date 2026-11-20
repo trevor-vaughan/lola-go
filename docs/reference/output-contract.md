@@ -169,7 +169,8 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     `repair` and a bare `init` without `-y`) prints only that line, which adds the plan it would
     have asked about; its hint is the run with `-y`:
     - for `uninstall` and `migrate`, the keys their `-n --json` prints (`modules`, `steps`,
-      `findings`, `notices`, `edits`, `scripts`, `picks_cleared` and `dry_run` for `uninstall`);
+      `findings`, `notices`, `edits`, `scripts`, `trash`, `trash_credentials`, `picks_cleared` and
+      `dry_run` for `uninstall`);
     - for `cache rm`, `would_remove`, the names;
     - for `init`, the keys its `-y --json` prints (`name`, `path`, `format`, `files`);
     - for `cache clean`, the keys its `-n --json` prints (`removed`, `kept`, `bytes_freed`,
@@ -190,6 +191,14 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - A script larger than 64 KiB, or not UTF-8 text, or holding a NUL, has `body` `""` and
     `withheld` `too_large` or `not_text`: output never shows it, so only `--unseen` consents to
     it.
+- The results of `install`, `uninstall`, `update` and `sync` (and so of `profile --on`, `--off`
+  and `--switch`) carry `trash`: each trash run, by path, holding a copy of a file `--force`
+  replaced or deleted, one per scope written (`[]` when none, and always under `-n`), and
+  `trash_credentials`: each copy in those runs that may hold credentials, the whole file of a JSON
+  member `--force` wrote over or removed (`[]` when none). Human output prints `→ N files
+  --force replaced or deleted are in the trash: <run>` (`1 file … is`) per run and warns `the trash
+  run holds a copy of <file>, which may contain credentials` for each credential copy; `--plain`
+  prints a `trash` row per run (`trash`, run).
 - A runtime hook in a run's JSON carries `declined_earlier: true` when it was declined, as it is,
   by an earlier run, so this one did not ask about it; it is absent otherwise.
 - Output that prints an install hook, project script or runtime hook in full (human output of what
@@ -207,8 +216,25 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   the run's `--trust` covered, `{kind, item, change}` with `change` `new` or `changed`, `[]` when
   none; under `-n`, what it would cover ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)).
 - Exit status:
-  - `0` on success or when you decline a prompt (Ctrl+C included, in accessible mode too).
-  - `1` on any error, which includes a module whose fetch `lola update` could not make.
+
+  | Code | Meaning |
+  |---|---|
+  | `0` | success, or nothing to do |
+  | `1` | an error, which includes a module whose fetch `lola update` could not make |
+  | `2` | unused, kept for usage errors |
+  | `3` | lola changed nothing because the run needs something only you can give: `--trust` kinds, consent, `-y`, or `--force` over a conflict, or you gave none, such as end of input; rerunning with the hint's flags proceeds |
+  | `4` | you declined or cancelled (a `n` answer, `q` in a picker or form, Ctrl+C in a form or question) |
+  | `128+n` | killed by signal `n`, unchanged |
+
+  - A conflict `--force` cannot override (a file another module owns: uninstall that module first)
+    is an error: `1`. A No you typed at a hook or script consent question prints the refusal and
+    exits `4`; with no terminal to ask on, it is `3`.
+  - With several scopes, a refusal in a later scope can follow an earlier scope that was applied; the
+    output says which. So can the refusal of `lola profile --update`'s sync, which follows the profiles
+    it already wrote.
+  - The refusal's text, hints and `--json` document are the same as for any error; only the code
+    differs, so a script tells "answer needed" (`3`) from a failure (`1`).
+  - `q` in the `lola help` viewer only closes it: exit `0`.
   - Ctrl+C (SIGINT) or SIGTERM elsewhere stops the fetch, download or hook the command is waiting
     on, or its writes before they start, removes its temporary files, and lola then dies of the
     signal, so your shell reports `130` or `143` and a script running lola stops too.
@@ -269,7 +295,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     - Type the answer's letter and press Enter; Enter alone takes the capital letter's answer
       (`[y/N]`: no), and the review (`[y/c/n]`) has none.
     - Esc goes back where there is a step before, `q` quits, Ctrl+C cancels (`✗ cancelled — nothing
-      was changed`, exit 0).
+      was changed`, exit 4).
     - With `$LOLA_PAGER` set, the text goes to your pager first and the question is asked after
       it.
   - The trust diff `sync` asks about and the trash's restore plan open the same way before their
@@ -312,7 +338,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
 - `list --json` and `check --json` carry `skipped` per module.
   - `list --json` rows carry `scope` (`project` or `user`) and `from` (the
     [layer](../guides/profiles.md#profiles) the module comes from: `project.yml`, `profile:default`,
-    `profile:user:<name>`); `list --plain` rows carry the two just before their last field, `ref`.
+    `profile:user:<name>`); `list --plain` rows carry the two just before `ref`, which a final `update-available` (or `-`) follows.
   - `list --json` has `notices` (`[]` when none), as `--plain` has `notice` rows.
 - `sync --json`:
   - Top level: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, `rewrites`,

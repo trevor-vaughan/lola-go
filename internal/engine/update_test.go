@@ -544,12 +544,18 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		install(sc, engine.InstallRequest{Arg: url, Ref: "main"}, engine.InstallRequest{Arg: otherURL, Ref: "main"})
 		res, err := sync(engine.SyncRequest{Installed: true, Update: true, Display: []string{"--json"}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
-			Text: "2 modules served from your cache (fetched within cache_fresh_for) → lola update --project --fetch --json"}))
+		Expect(res.CacheServed).To(Equal(&engine.CacheServed{Modules: 2, Fetched: "just now", Command: "lola update --project --fetch --json"}))
 		res, err = sync(engine.SyncRequest{Installed: true, Update: true, Modules: []string{"example"}, Options: engine.Options{DryRun: true}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Notices).To(ContainElement(HaveField("Text",
-			"1 module served from your cache (fetched within cache_fresh_for) → lola update --project example --fetch -n")))
+		Expect(res.CacheServed).To(Equal(&engine.CacheServed{Modules: 1, Fetched: "just now", Command: "lola update --project example --fetch -n"}))
+	})
+
+	It("says how long ago the oldest cache head it served was fetched", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
+		clock = clock.Add(61 * time.Minute)
+		res, err := update(engine.SyncRequest{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.CacheServed).To(HaveField("Fetched", "1 hour ago"))
 	})
 
 	It("counts a fresh head that moves the module among those the cache served", func() {
@@ -562,8 +568,25 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		Expect(err).NotTo(HaveOccurred())
 		res, err := update(engine.SyncRequest{})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Notices).To(ContainElement(HaveField("Text",
-			"1 module served from your cache (fetched within cache_fresh_for) → lola update --project --fetch --trust=entries,profiles,scripts,hooks,runtime-hooks --unseen")))
+		Expect(res.CacheServed).To(Equal(&engine.CacheServed{Modules: 1, Fetched: "just now",
+			Command: "lola update --project --fetch --trust=entries,profiles,scripts,hooks,runtime-hooks --unseen"}))
+	})
+
+	It("carries the commit and digest a re-pin moves from and to into its trust change", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
+		was := lockFile().Modules["example"]
+		push(map[string]string{"commands/ship.md": "Ship v2\n"})
+		other := filepath.Join(tmp, "teammate")
+		Expect(os.MkdirAll(other, 0o755)).To(Succeed())
+		_, err := e.Install(ctx, engine.Scope{Kind: target.Project, ProjectDir: other}, other,
+			[]engine.InstallRequest{{Arg: url, Ref: "main"}}, claude) // moves the cache head for main
+		Expect(err).NotTo(HaveOccurred())
+		_, err = sync(engine.SyncRequest{Installed: true, Update: true})
+		refusal, refused := errors.AsType[*engine.TrustRefusalError](err)
+		Expect(refused).To(BeTrue(), "the re-pin needs trust")
+		Expect(refusal.Report.Changes).To(ConsistOf(And(HaveField("Module", "example"), HaveField("Fields", ConsistOf(
+			And(HaveField("Field", "commit"), HaveField("From", was.Commit), HaveField("To", Not(Equal(was.Commit)))),
+			And(HaveField("Field", "digest"), HaveField("From", was.Digest), HaveField("To", Not(Equal(was.Digest)))))))))
 	})
 
 	It("notes no cache-served module under Refetch, or when every head was fetched", func() {
@@ -574,7 +597,7 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 			}
 			res, err := update(req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Notices).NotTo(ContainElement(HaveField("Text", ContainSubstring("served from your cache"))))
+			Expect(res.CacheServed).To(BeNil())
 		}
 	})
 

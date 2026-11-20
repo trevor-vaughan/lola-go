@@ -48,6 +48,10 @@ type report struct {
 	// run that writes more, such as a profile split: as a dry run that would change nothing
 	// (nothingToDo), it prints only its outcome.
 	Alone bool
+	// CacheServed is lola update's modules served from your cache without checking their source.
+	// A run in sync says so as its InSync line (the line closing it, with the run that checks);
+	// any other run adds it after its outcome.
+	CacheServed *engine.CacheServed
 }
 
 // printReport renders a run's report. Under --plain it prints every row (printPlainReport).
@@ -108,7 +112,7 @@ func printReport(w io.Writer, s style, rep report) {
 		slices.ContainsFunc(r.Modules, func(m engine.ModuleResult) bool { return len(m.RuntimeHooks) > 0 }))
 	if len(newWarn)+len(newSkip) == 0 && !warnsInNotices(rest, r.Notices) && !verboseShows && nothingToDo(rep) {
 		if rep.InSync != "" {
-			fmt.Fprintln(w, s.info(rep.InSync))
+			printInSync(w, s, rep, r.DryRun)
 			return
 		}
 		for _, m := range r.Modules {
@@ -181,6 +185,12 @@ func printReport(w io.Writer, s style, rep report) {
 	}
 	if !rep.NoticesOnly {
 		printOutcome(w, s, rep)
+		printTrash(w, s, r)
+		if rep.InSync == "" && rep.CacheServed != nil {
+			c := rep.CacheServed
+			fmt.Fprintln(w, s.ok(fmt.Sprintf("%d %s %s", c.Modules, map[bool]string{true: "module", false: "modules"}[c.Modules == 1], cacheServedText(c))))
+			fmt.Fprintln(w, s.info(c.Command))
+		}
 	}
 	if folded > 0 {
 		printFoldFooter(w, s)
@@ -626,11 +636,8 @@ func excludedOnce(r *engine.Result) func(engine.ModuleResult) (string, bool) {
 func printOutcome(w io.Writer, s style, rep report) {
 	r := rep.Result
 	switch {
-	case rep.InSync != "" && r.DryRun:
-		fmt.Fprintln(w, s.info(rep.InSync))
-		return
 	case rep.InSync != "":
-		fmt.Fprintln(w, s.ok(rep.InSync))
+		printInSync(w, s, rep, r.DryRun)
 		return
 	case r.DryRun:
 		printPins(w, s, rep.Pins, rep.Update)
@@ -683,6 +690,51 @@ func printOutcome(w io.Writer, s style, rep report) {
 	}
 }
 
+// printTrash says where the files --force replaced or deleted went: per trash run "→ N files
+// --force replaced or deleted are in the trash: <run>", then tidy's warning for each file copied
+// that may hold credentials; under --plain a trash row per run (trash, run).
+func printTrash(w io.Writer, s style, r *engine.Result) {
+	for _, run := range r.Trash {
+		if s.plain {
+			fmt.Fprintf(w, "trash\t%s\n", untrusted.Text(run, untrusted.MaxName))
+			continue
+		}
+		n, verb := r.TrashedFiles(run), "are"
+		if n == 1 {
+			verb = "is"
+		}
+		fmt.Fprintln(w, s.info(fmt.Sprintf("%s --force replaced or deleted %s in the trash: %s", counted(n, "file"), verb,
+			untrusted.Text(run, untrusted.MaxName))))
+	}
+	if s.plain {
+		return
+	}
+	for _, c := range r.TrashedCredentialFiles() {
+		fmt.Fprintln(w, s.warn("the trash run holds a copy of "+untrusted.Text(c, untrusted.MaxName)+", which may contain credentials"))
+	}
+}
+
+// cacheServedText is what a run served from your cache says of those modules, after their count.
+func cacheServedText(c *engine.CacheServed) string {
+	return "up to date with your cache (fetched " + c.Fetched + ")"
+}
+
+// printInSync is the line closing a run that changes nothing, "→ <line>" in a dry run, "✓ <line>"
+// otherwise; a run served from your cache says so with a ✓ either way, and the run that checks the
+// source.
+func printInSync(w io.Writer, s style, rep report, dry bool) {
+	if c := rep.CacheServed; c != nil {
+		fmt.Fprintln(w, s.ok(rep.InSync))
+		fmt.Fprintln(w, s.info(c.Command))
+		return
+	}
+	if dry {
+		fmt.Fprintln(w, s.info(rep.InSync))
+		return
+	}
+	fmt.Fprintln(w, s.ok(rep.InSync))
+}
+
 // pinText is a pin in an outcome line, after the module: the project profile it is written into,
 // then lola update's move "a1b2c3 → d4e5f6", else "pinned <digest>" ("re-pinned" for an update).
 func pinText(p engine.Pin, update bool) string {
@@ -724,7 +776,11 @@ func printPlainReport(w io.Writer, s style, rep report) {
 	printScripts(w, s, r.Scripts)
 	printPins(w, s, rep.Pins, rep.Update)
 	printRemovals(w, s, append(slices.Clone(rep.Removals), engine.DeclinedRemovals(r)...))
+	printTrash(w, s, r)
 	printNotices(w, s, r)
+	if c := rep.CacheServed; c != nil {
+		fmt.Fprintf(w, "cache\t%d\t%s\t%s\n", c.Modules, c.Fetched, c.Command)
+	}
 }
 
 // printPlainHooks is m's install hook --plain rows (module, event, script, assistant, status,

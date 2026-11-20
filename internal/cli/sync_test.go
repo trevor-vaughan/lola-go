@@ -199,7 +199,7 @@ var _ = Describe("lola sync", func() {
 				run := append([]string{"install", hooked, "-t", "claude-code", "--trust=hooks"}, display...)
 				for range 2 {
 					r := lola(run...)
-					Expect(r.code).To(Equal(1), r.err)
+					Expect(r.code).To(Equal(3), r.err)
 					Expect(r.err).To(ContainSubstring("lola has not shown you this hook; see it with"))
 				}
 				r := lola(append(run, "-n")...)
@@ -283,7 +283,7 @@ var _ = Describe("lola sync", func() {
 				Expect(r.out).To(MatchRegexp(`\(not shown: too large; inspect .*/pre\.sh; only --unseen consents to it\)\n`))
 				Expect(r.out).NotTo(ContainSubstring("# filler"))
 				r = lola("install", dir, "-t", "claude-code", "--trust=hooks")
-				Expect(r.code).To(Equal(1))
+				Expect(r.code).To(Equal(3))
 				Expect(r.err).To(MatchRegexp(`hint: lola cannot show you this hook \(too large\); inspect .*/pre\.sh, then consent to it unseen: lola install .* --unseen\n`))
 				Expect(lola("install", dir, "-t", "claude-code", "--trust=hooks", "--unseen").code).To(Equal(0))
 			})
@@ -381,7 +381,7 @@ var _ = Describe("lola sync", func() {
 		pull("  - name: other\n    source: mods/other\n")
 		GinkgoT().Chdir(tmp)
 		r := lola("sync", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(MatchRegexp(`  hint: see them: lola sync -C ` + regexp.QuoteMeta(proj) + ` -n\n  hint: then accept them: lola sync -C ` +
 			regexp.QuoteMeta(proj) + ` --trust=entries --at other=sha256:[0-9a-f]{64}\n`))
 		GinkgoT().Chdir(filepath.Join(proj, "mods"))
@@ -415,7 +415,7 @@ var _ = Describe("lola sync", func() {
 	It("off a terminal, refuses a pulled change with the diff on stderr: -y does not trust it, --trust does", func() {
 		pull("  - name: other\n    source: mods/other\n")
 		r := lola("sync", "-C", proj, "-y")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring(".lola/project.yml changed since lola last wrote it or you last trusted it:\n  + other         mods/other\n"))
 		Expect(r.err).To(ContainSubstring("error: lola sync needs your trust for changes to .lola/project.yml, and there is no terminal to ask on; " +
 			"-y confirms removals only; accept them with --trust=entries\n" +
@@ -424,7 +424,7 @@ var _ = Describe("lola sync", func() {
 		Expect(filepath.Join(proj, ".claude", "commands", "other.md")).NotTo(BeAnExistingFile())
 
 		r = lola("sync", "-C", proj, "--json")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		var out map[string]any
 		Expect(json.Unmarshal([]byte(r.err), &out)).To(Succeed(), "under --json stderr holds only the error: %s", r.err)
 		Expect(out["hints"]).To(ContainElement(MatchRegexp(`^then accept them: lola sync --project --trust=entries --at other=sha256:[0-9a-f]{64} --json$`)))
@@ -501,7 +501,7 @@ var _ = Describe("lola sync", func() {
 		Expect(os.WriteFile(ledgerPath, b, 0o600)).To(Succeed())
 
 		r := lola("sync", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring(".lola/profiles/go.yml changed since lola last wrote it or you last trusted it:\n" +
 			"  in profile project:go (.lola/profiles/go.yml):\n  + other         mods/other\n"))
 		Expect(r.err).To(ContainSubstring("error: lola sync needs your trust for changes to .lola/profiles/go.yml, and there is no terminal to ask on\n"))
@@ -531,7 +531,7 @@ var _ = Describe("lola sync", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(ledgerPath, b, 0o600)).To(Succeed())
 		r := lola("sync", "-C", proj)
-		Expect(r.code).To(Equal(1), "the profile's kit wins over project.yml's, and needs trust")
+		Expect(r.code).To(Equal(3), "the profile's kit wins over project.yml's, and needs trust")
 		Expect(r.err).To(ContainSubstring("  in profile project:go (.lola/profiles/go.yml):\n  + kit"))
 
 		// A pull drops kit from project.yml: the profile's kit wins now, a change in both files.
@@ -570,7 +570,7 @@ var _ = Describe("lola sync", func() {
 			".lola/profiles/b.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: alpha, source: ../../mods/alpha}\n"})
 		turnOn("project:b")
 		r := lola("sync", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring(".lola/profiles/b.yml changed since lola last wrote it or you last trusted it:\n"),
 			"one profile is on at a time: its file alone heads the diff")
 		Expect(r.err).To(ContainSubstring("  in profile project:b (.lola/profiles/b.yml):\n  + alpha         mods/alpha\n"))
@@ -806,7 +806,7 @@ var _ = Describe("lola sync", func() {
 	It("a --json refusal carries the changes it needs trust for", func() {
 		pull("  - name: other\n    source: mods/other\n")
 		r := lola("sync", "-C", proj, "--json")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), "stderr holds only the error document: %s", r.err)
 		checkJSON(doc, "")
@@ -820,7 +820,7 @@ var _ = Describe("lola sync", func() {
 		// Removals alone: trust keeps its status, with no changes.
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
 		r = lola("sync", "-C", proj, "--json", "--trust")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		doc = nil
 		Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
 		checkJSON(doc, "")
@@ -950,7 +950,7 @@ var _ = Describe("lola sync", func() {
 		Expect(string(b)).To(MatchRegexp(`digest: sha256:[0-9a-f]{64}`), "the pin is written back")
 	})
 
-	It("refuses --update -y off a terminal without claiming project.yml changed", func() {
+	It("refuses --update -y off a terminal, naming the pins it would write to project.yml", func() {
 		writeZip := func(body string) {
 			GinkgoHelper()
 			f, err := os.Create(filepath.Join(proj, "mods", "arch.zip"))
@@ -974,8 +974,8 @@ var _ = Describe("lola sync", func() {
 
 		writeZip("Arch v2\n")
 		r = lola("sync", "--update", "-y", "-C", proj)
-		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HavePrefix(projectContext(proj) + ".lola/project.yml is unchanged; lola sync needs your trust for:\n" +
+		Expect(r.code).To(Equal(3))
+		Expect(r.err).To(HavePrefix(projectContext(proj) + "lola sync would change .lola/project.yml; it needs your trust for:\n" +
 			"  ~ arch          re-pin from " + filepath.Join(proj, "mods", "arch.zip") + " (--update)\n"))
 		Expect(r.err).To(ContainSubstring("error: lola sync needs your trust for the pins it would write for arch, and there is no terminal to ask on; " +
 			"-y confirms removals only; accept them with --trust=entries\n" +
@@ -987,7 +987,7 @@ var _ = Describe("lola sync", func() {
 		pull("  - name: other\n    source: mods/other\n")
 		c := &confirming{trusts: []engine.TrustAnswer{{}}}
 		r := lolaAsking(c, "sync", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(c.questions).To(Equal([]string{"trust"}))
 		Expect(c.before[0]).To(ContainSubstring(".lola/project.yml changed since lola last wrote it or you last trusted it:\n" +
 			"  + other         mods/other\n      files: 2 added\n        + commands/other.md\n        + mcps.json\n"))
@@ -1006,7 +1006,7 @@ var _ = Describe("lola sync", func() {
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
 		c := &confirming{trusts: []engine.TrustAnswer{{All: true}}, fail: cli.ErrAborted}
 		r := lolaAsking(c, "sync", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(c.questions).To(Equal([]string{"trust", "Remove these and sync? No applies nothing"}))
 		Expect(c.shows[0]).To(ContainSubstring("kit"), "the removals are the question's text")
 		Expect(r.err).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
@@ -1017,7 +1017,7 @@ var _ = Describe("lola sync", func() {
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
 		c := &confirming{trusts: []engine.TrustAnswer{{All: true}}, answers: []bool{false}}
 		r := lolaAsking(c, "sync", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(c.questions).To(Equal([]string{"trust", "Remove these and sync? No applies nothing"}))
 		Expect(strings.TrimPrefix(c.before[1], c.before[0])).To(HaveSuffix("To remove:\n  ✗ kit: claude-code (whole module)\n      .claude/commands/kit.md\n"))
 		Expect(r.err).To(HaveSuffix("removals declined; the project was not changed. The changes you trusted are recorded; " +
@@ -1100,7 +1100,7 @@ var _ = Describe("lola sync", func() {
 		build(three)
 		c = &confirming{trusts: []engine.TrustAnswer{{Modules: []string{"a", "b", "c"}}}, answers: []bool{false}}
 		r = lolaAsking(c, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).NotTo(ContainSubstring("the same off a terminal"))
 		Expect(r.err).To(HaveSuffix("removals declined; the project was not changed. The changes you trusted are recorded; "+
 			"the next lola sync --project asks about the removals and about c again: lola records a pin or a folder's content only once it writes it. "+
@@ -1198,7 +1198,7 @@ var _ = Describe("lola sync", func() {
 			"  - name: other\n    source: mods/other\n  - name: fresh\n    source: mods/fresh\n    targets: [claude-code]\n"), 0o644)).To(Succeed())
 		c := &confirming{trusts: []engine.TrustAnswer{{}}}
 		r := lolaAsking(c, "sync", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(c.steps[0].Changes).To(Equal(4), "the three modules and the top-level targets: a label per row")
 		Expect(c.steps[0].Groups).To(Equal([]cli.TrustGroup{
 			{Title: "Changed (1)", Options: []cli.TrustOption{{Module: "kit",
@@ -1232,7 +1232,7 @@ var _ = Describe("lola sync", func() {
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: other\n    source: mods/other\n"), 0o644)).To(Succeed())
 		c := &confirming{trusts: []engine.TrustAnswer{{All: true}}, answers: []bool{false}}
 		r := lolaAsking(c, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("removals declined"))
 
 		r = lola("sync", "-n", "other")
@@ -1254,12 +1254,12 @@ var _ = Describe("lola sync", func() {
 		pull("  - name: other\n    source: mods/other\n")
 		c := &confirming{trusts: []engine.TrustAnswer{{}}}
 		r = lolaAsking(c, "sync", "--project")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(c.steps[0].Groups).To(ContainElement(HaveField("Options", ContainElement(
 			HaveField("Label", HaveSuffix("1 hook changed"))))))
 	})
 
-	It("names the cause in the header: an --update re-pin leaves project.yml unchanged", func() {
+	It("names the cause in the header: an --update re-pin is a change lola sync would make to project.yml", func() {
 		archive := filepath.Join(proj, "mods", "arch.zip")
 		writeZip := func(body string) {
 			GinkgoHelper()
@@ -1279,7 +1279,7 @@ var _ = Describe("lola sync", func() {
 		writeZip("Arch, edited\n")
 		r = lola("sync", "--update", "-n", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring(".lola/project.yml is unchanged; lola sync needs your trust for:\n" +
+		Expect(r.out).To(ContainSubstring("lola sync would change .lola/project.yml; it needs your trust for:\n" +
 			"  ~ arch          re-pin from " + archive + " (--update)\n                  digest sha256:"))
 		Expect(r.out).NotTo(ContainSubstring("pins:"), "a dry run whose diff is on stdout shows the pins there")
 
@@ -1330,7 +1330,7 @@ var _ = Describe("lola sync", func() {
 	It("off a terminal, --trust alone does not confirm removals: -y does", func() {
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
 		r := lola("sync", "-C", proj, "--trust")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("error: lola sync needs your confirmation to remove kit, and there is no terminal to ask on\n"))
 		Expect(r.err).To(ContainSubstring("hint: then confirm them: lola sync --project --trust=entries,profiles -y\n"))
 		Expect(filepath.Join(proj, ".claude", "commands", "kit.md")).To(BeARegularFile())

@@ -226,6 +226,7 @@ func (out *InstallResult) eraSynced(res *SyncResult, sc Scope, many bool) {
 	out.Modules, out.Steps, out.Findings = append(out.Modules, res.Modules...), append(out.Steps, res.Steps...), append(out.Findings, res.Findings...)
 	out.EraNotices = append(out.EraNotices, inScope(res.Notices, sc, many)...)
 	out.Scripts, out.Trusted = append(out.Scripts, res.Scripts...), append(out.Trusted, res.Trusted...)
+	out.addTrash(res.Result)
 }
 
 // TargetVersion is a version an install records for a target at a scope: the version, the one the
@@ -504,8 +505,8 @@ func (e *Engine) confirmEdited(ctx context.Context, spec InstallSpec, then []Sco
 			continue
 		}
 		if spec.ConfirmRemovals == nil {
-			err := fmt.Errorf("lola profile --edit needs your confirmation to remove %s %s, and there is no terminal to ask on; nothing was written",
-				strings.Join(removalNames(res.Removals), ", "), scopeWhere(si.Scope))
+			err := errs.NeedsAnswer(fmt.Errorf("lola profile --edit needs your confirmation to remove %s %s, and there is no terminal to ask on; nothing was written",
+				strings.Join(removalNames(res.Removals), ", "), scopeWhere(si.Scope)))
 			if t := spec.Options.Target; t.Rerun != nil {
 				return nil, errs.WithHints(err, "see what goes: "+t.Rerun(append(t.ownFlags(), "-n")...),
 					"confirm it: "+t.Rerun(append(t.ownFlags(), "-y")...))
@@ -555,6 +556,7 @@ func (e *Engine) syncEdited(ctx context.Context, spec InstallSpec, si ScopeInsta
 	out.Modules, out.Steps = append(out.Modules, res.Modules...), append(out.Steps, res.Steps...)
 	out.Findings, out.Notices = append(out.Findings, res.Findings...), append(out.Notices, inScope(res.Notices, si.Scope, true)...)
 	out.Scripts, out.Trusted = append(out.Scripts, res.Scripts...), append(out.Trusted, res.Trusted...)
+	out.addTrash(res.Result)
 	out.Scopes = append(out.Scopes, ScopeResult{Scope: si.Scope.Kind.String(), Root: root(si.Scope), ScopeSource: si.Source})
 	return nil
 }
@@ -1081,8 +1083,8 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 					return nil, e.withRetry(spec, err, fetched)
 				}
 				if planned.needsTrust { // the sync needs a trust the install cannot give: its run asks, or refuses with the diff
-					return nil, errs.WithHints(fmt.Errorf("rewriting %s for the version this install writes for needs your trust first; nothing was written",
-						andJoin(shownAll(names))), "see what for, and trust it: "+e.SyncCommand(sp.sc))
+					return nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("rewriting %s for the version this install writes for needs your trust first; nothing was written",
+						andJoin(shownAll(names)))), "see what for, and trust it: "+e.SyncCommand(sp.sc))
 				}
 				if opts.DryRun {
 					out.eraSynced(planned, sp.sc, spec.many())
@@ -1587,6 +1589,9 @@ type UntrustedTargetsError struct {
 
 func (e *UntrustedTargetsError) Error() string { return e.msg }
 
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer).
+func (e *UntrustedTargetsError) Is(target error) bool { return target == errs.ErrNeedsAnswer }
+
 // JSONFields carries, beside error and hints, the trust diff of what the hint trusts, if any.
 func (e *UntrustedTargetsError) JSONFields() map[string]any {
 	if e.Report == nil {
@@ -1604,6 +1609,9 @@ type notTrustedError struct{ msg string }
 
 func (e *notTrustedError) Error() string { return e.msg }
 func (e *notTrustedError) Unwrap() error { return ErrNotTrusted }
+
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer).
+func (e *notTrustedError) Is(target error) bool { return target == errs.ErrNeedsAnswer }
 
 // trustRecord is the trust record of a project scope, nil at user scope, whose files are the user's
 // own.
@@ -2344,7 +2352,7 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 		}
 	}
 	at := ""
-	if opts.PinConsent {
+	if opts.PinRun != nil {
 		if at = v.Name + "=" + v.Meta.Digest; commit != "" {
 			at = v.Name + "=" + commit
 		}
@@ -2637,6 +2645,46 @@ func (e *Engine) notInstalled(sc Scope, name string, led *ledger.Ledger, display
 	return errs.WithHints(fmt.Errorf("lola uninstall: %q is not installed %s", name, e.where(sc)), hints...)
 }
 
+// UninstallAllNames are the modules lola uninstall --all removes at sc, in order: those lola list
+// shows (the base's and the profile on's), or, when req.Profile names a layer, the modules that
+// layer's file lists, whether or not it is on. It is empty, never nil, when there are none.
+func (e *Engine) UninstallAllNames(ctx context.Context, sc Scope, req TargetRequest, display []string) ([]string, error) {
+	names := []string{}
+	if req.Profile == "" {
+		rows, _, err := e.Status(ctx, sc, display)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			names = append(names, r.Name)
+		}
+		slices.Sort(names)
+		return slices.Compact(names), nil
+	}
+	unlockProfiles, err := e.readProfiles(true)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockProfiles()
+	man, led, _, err := e.load(sc, true)
+	if err != nil {
+		return nil, err
+	}
+	layers, _, err := e.layers(sc, man, led)
+	if err != nil {
+		return nil, err
+	}
+	t, _, err := e.uninstallTarget(sc, layers, req)
+	if err != nil {
+		return nil, err
+	}
+	for _, ent := range t.Entries {
+		names = append(names, ent.Name)
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
 // Uninstall removes modules' artifacts (on opts.Targets, or everywhere) and drops them from
 // the manifest once nothing remains.
 func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts Options) (_ *Result, err error) {
@@ -2670,7 +2718,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	}
 	res := newResult(opts.DryRun)
 	defer func() { markEvents(res.Findings) }() // what no scope's plan compared is new
-	res.PicksCleared = []PickCleared{}
+	res.PicksCleared, res.Kept = []PickCleared{}, []string{}
 	// The files an uninstall removes are the ledger's, which is this checkout's own only while
 	// git does not track it.
 	if err := e.refuseTrackedLedger(ctx, sc, res); err != nil {
@@ -2686,9 +2734,10 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	}
 	want, _ := desired(layers)
 	var changes []plan.ModuleChange
-	removing := map[string]*writeTo{} // module → the layer its entry is removed from
-	narrowed := map[string][]string{} // module → the targets its entry in removing keeps, when the run installs nothing of that edit
-	saved := map[string]bool{}        // the files of profiles that are not on whose edit was said to be saved only
+	removing := map[string]*writeTo{}   // module → the layer its entry is removed from
+	narrowed := map[string][]string{}   // module → the targets its entry in removing keeps, when the run installs nothing of that edit
+	alsoFrom := map[string][]*writeTo{} // module → the other layers that list it, whose entries opts.AllLayers removes too
+	saved := map[string]bool{}          // the files of profiles that are not on whose edit was said to be saved only
 	noteSaved := func(from *writeTo) {
 		if !from.on && !saved[from.Path] {
 			saved[from.Path] = true
@@ -2788,9 +2837,22 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 			// Another layer that still lists it keeps it installed; -t keeps the entry, so it still
 			// wants it there.
 			if rest := stillWanted(layers, from.Name, name); rest != nil && !partial {
-				noteSaved(from)
-				res.Notices = append(res.Notices, e.staysNotices(sc, layers, infos, rest, entry)...)
-				continue
+				if !opts.AllLayers {
+					noteSaved(from)
+					res.Notices = append(res.Notices, e.staysNotices(sc, layers, infos, rest, entry)...)
+					continue
+				}
+				// Every layer that lists it loses the entry, so nothing keeps the module installed.
+				for _, l := range layers {
+					if l.Name == from.Name || !slices.ContainsFunc(l.Entries, func(x manifest.Entry) bool { return x.Name == name }) {
+						continue
+					}
+					if remoteLayer(l.Name) {
+						return nil, errs.WithHints(fmt.Errorf("%s comes from %s, which is read-only; lola does not edit remote profiles", shown(name), layerLabel(infos, l.Name)),
+							e.remoteOnHints(sc, infos, l, opts.Display)...)
+					}
+					alsoFrom[name] = append(alsoFrom[name], &writeTo{Layer: l, on: true, label: layerLabel(infos, l.Name)})
+				}
 			}
 		}
 		from := removing[name]
@@ -2833,6 +2895,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	if err != nil {
 		return nil, err
 	}
+	e.noteKept(pr.plan.Steps, opts.DryRun, res)
 	var change manifest.Change
 	var base *writeTo // project.yml, when change edits it
 	files := map[string]*fileEdit{}
@@ -2859,17 +2922,22 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 				c.Set = []manifest.Entry{from.fileEntry(sc, *kept)}
 			}
 		}
-		if !from.Profile {
-			base = from
-			change.Remove, change.Set = append(change.Remove, c.Remove...), append(change.Set, c.Set...)
-			continue
+		for i, l := range append([]*writeTo{from}, alsoFrom[name]...) {
+			if i > 0 {
+				c = manifest.Change{Remove: []string{name}}
+			}
+			if !l.Profile {
+				base = l
+				change.Remove, change.Set = append(change.Remove, c.Remove...), append(change.Set, c.Set...)
+				continue
+			}
+			f := files[l.Path]
+			if f == nil {
+				f = &fileEdit{layer: l.Layer}
+				files[l.Path], targets[l.Path], order = f, l, append(order, l.Path)
+			}
+			f.change.Remove, f.change.Set = append(f.change.Remove, c.Remove...), append(f.change.Set, c.Set...)
 		}
-		f := files[from.Path]
-		if f == nil {
-			f = &fileEdit{layer: from.Layer}
-			files[from.Path], targets[from.Path], order = f, from, append(order, from.Path)
-		}
-		f.change.Remove, f.change.Set = append(f.change.Remove, c.Remove...), append(f.change.Set, c.Set...)
 	}
 	if base != nil {
 		res.Edits = append(res.Edits, editsOf(ctx, sc, *base, change.Set, change.Remove, nil)...)
@@ -2913,6 +2981,28 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		}
 	}
 	return res, nil
+}
+
+// noteKept lists in res.Kept, and as a notice each, the files and members steps keep (plan.ActionKeep):
+// what an uninstall with KeepEdits left in place and forgot. A notice is worded for a dry run as what
+// would happen.
+func (e *Engine) noteKept(steps []plan.Step, dry bool, res *Result) {
+	for _, st := range steps {
+		if st.Action != plan.ActionKeep {
+			continue
+		}
+		dest := st.Path
+		if st.Key != "" {
+			dest += " " + st.Key
+		}
+		dest = untrusted.Text(dest, untrusted.MaxName) // a member key is the module author's
+		res.Kept = append(res.Kept, dest)
+		text := "kept %s: hand-edited; lola no longer manages it, so installing the module again reports it as not written by lola"
+		if dry {
+			text = "would keep %s: hand-edited; lola would no longer manage it, so installing the module again would report it as not written by lola"
+		}
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: fmt.Sprintf(text, dest)})
+	}
 }
 
 // picksToClear is the removal of the picks a project's uninstall leaves behind: of each module of
@@ -3144,7 +3234,11 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		if ment != nil {
 			pin, ref = ment.Digest, ment.Ref
 		}
-		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest), entry.Source)
+		commit := entry.Commit
+		if pin != "" {
+			commit = ment.Commit
+		}
+		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest), commit, entry.Source)
 		base := StatusRow{Name: name, From: from, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
 			UpdateAvailable: update, SourceGone: sourceGone(entry.Source, sourceRoot(sc)), Skipped: []string{}, Only: shown, OnlyFrom: onlyFrom, Drift: []DriftEntry{}}
 		if ment != nil {
@@ -3257,7 +3351,7 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted, only []strin
 	status, update := "not_installed", false
 	if ment.Digest != "" {
 		var err error
-		if update, err = e.updateAvailable(ment.Name, ment.Ref, ment.Digest, ment.Source); err != nil {
+		if update, err = e.updateAvailable(ment.Name, ment.Ref, ment.Digest, ment.Commit, ment.Source); err != nil {
 			status = "unreadable" // the cache's record of the module cannot be loaded
 		}
 	}
@@ -3340,9 +3434,12 @@ func versionID(digest string) string {
 }
 
 // updateAvailable reports whether the cache head for ref of name holds another version than
-// digest, in the origin recorded for src as the entry writes it, else the newest. It reads the
-// cache index only, and a folder's head never counts: a folder is read again by every sync.
-func (e *Engine) updateAvailable(name, ref, digest, src string) (bool, error) {
+// digest, in the origin recorded for src as the entry writes it, else the newest. When the head
+// and the installed commit are different commits whose committer times the cache recorded, it is
+// true only if the head's is later (equal times order nothing): a pin at a newer commit than the head is not out of date. With
+// either time unknown, or both equal, it compares digests. It reads the cache index only, and a folder's head
+// never counts: a folder is read again by every sync.
+func (e *Engine) updateAvailable(name, ref, digest, commit, src string) (bool, error) {
 	origins, err := e.Store.Origins(name)
 	if err != nil || len(origins) == 0 {
 		return false, err
@@ -3355,9 +3452,16 @@ func (e *Engine) updateAvailable(name, ref, digest, src string) (bool, error) {
 		return false, nil
 	}
 	for _, h := range o.Heads {
-		if h.Ref == ref {
-			return h.Digest != versionID(digest), nil
+		if h.Ref != ref {
+			continue
 		}
+		if h.Digest == versionID(digest) {
+			return false, nil
+		}
+		if installed, ok := e.Store.CommitTime(name, commit); ok && commit != "" && h.Commit != commit && !h.Committed.IsZero() && !h.Committed.Equal(installed) {
+			return h.Committed.After(installed), nil
+		}
+		return true, nil
 	}
 	return false, nil
 }

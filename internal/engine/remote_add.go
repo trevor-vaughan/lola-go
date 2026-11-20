@@ -102,7 +102,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	}
 	covered := req.Trust.Covers(TrustProfiles)
 	if req.Consent == nil && !covered && !req.DryRun {
-		return nil, errs.WithHints(errors.New("lola profile --add shows the profile and asks before adding it, and there is no terminal to ask on"),
+		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola profile --add shows the profile and asks before adding it, and there is no terminal to ask on")),
 			"see it: "+e.ProfileRun(given, slices.Concat(typed, []string{"-n"}, display)...),
 			"then add it unasked: "+e.ProfileRun(given, slices.Concat(typed, []string{TrustProfiles.Arg()}, display)...))
 	}

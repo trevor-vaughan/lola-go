@@ -39,6 +39,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/templating"
+	"github.com/trevor-vaughan/lola-go/internal/trash"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -130,6 +131,14 @@ type Options struct {
 	// ForceRun is the user's run with --force, which a refusal of conflicts --force overrides
 	// hints; "" for no hint.
 	ForceRun string
+	// KeepEdits is uninstall only: a hand-edited file or member stays as it is and leaves the ledger
+	// (Result.Kept) instead of refusing the uninstall; KeepRun is the user's run with --keep-edits,
+	// which that refusal hints before ForceRun, "" for no hint.
+	KeepEdits bool
+	KeepRun   string
+	// AllLayers is uninstall only (--all): a module another layer also lists loses that entry too,
+	// instead of staying installed.
+	AllLayers bool
 	// TargetRun is the user's run at scope sc with -t naming only the target given, which a
 	// refusal of two targets' destinations that are one real file hints once per target; nil for
 	// no hint.
@@ -145,6 +154,9 @@ type Options struct {
 	// uninstall's profile edits are written, before anything is (a dry run asks too, so a caller
 	// can ask before an earlier write); a No is ErrDeclined. --force asks nothing.
 	ConfirmThen func(Scope, []Removal) (bool, error)
+	// Trash, when set, is the caller's trash run (lola migrate's): the files --force replaces or
+	// deletes are copied into it, and it is left open. nil opens a run per scope written.
+	Trash *trash.Trash
 	// named is the modules the run's command line named (an install's), whose conflicts with
 	// another installed module's destinations hint that module's uninstall.
 	named []string
@@ -185,10 +197,11 @@ type Options struct {
 	// Rerun is the user's run with the --trust argument for the kinds given (TrustKinds.Arg), which
 	// a refusal for want of trust hints; nil gives no such hint.
 	Rerun func(TrustKinds) string
-	// PinConsent says the run's command takes --at (lola install): the hint that consents to a
-	// module's hook or script pins the version the refusal showed, so a source changed since is
-	// refused rather than consented to. lola sync and lola update pin theirs in Rerun itself.
-	PinConsent bool
+	// PinRun, set by a command that takes --at (lola install), is Rerun with each pin, a
+	// <module>=<version>, in place of the user's own --at for that module: the hint that consents to a
+	// module's hook pins the version the refusal showed, so a source changed since is refused rather
+	// than consented to. lola sync and lola update pin theirs in Rerun itself.
+	PinRun func(k TrustKinds, pins ...string) string
 	// EraRun is what writes for target id's version since at scope sc instead (lola install's run
 	// at that scope with -t id@since, or the review's way to change the version): the hint of a
 	// frontmatter value the era written for drops and another era of the target keeps, and of a
@@ -407,10 +420,26 @@ type Result struct {
 	// PicksCleared is, for an uninstall, each module whose picks left selections.yaml with it, and
 	// under -n what would; [] when none, and nil, so absent from the JSON, for any other command.
 	PicksCleared []PickCleared `json:"picks_cleared,omitzero"`
+	// Kept is, for an uninstall with KeepEdits, each hand-edited file (a JSON member as its file and
+	// pointer) it left as it is and forgot, and under -n what it would; [] when none, and nil, so
+	// absent from the JSON, for any other command.
+	Kept []string `json:"kept,omitzero"`
+	// Trash is each trash run holding a copy of a file --force replaced or deleted, one per scope
+	// written (ForcedFiles); [] when none. TrashCredentials is each such copy that may hold
+	// credentials: the whole file of a JSON member --force wrote over or removed.
+	Trash            []string `json:"trash"`
+	TrashCredentials []string `json:"trash_credentials"`
+	// trashed counts, by run in Trash, the files copied into it; trashedCredentials is the file of
+	// each credential copy, relative to its scope's root when below it (TrashedCredentialFiles).
+	trashed            map[string]int
+	trashedCredentials []string
 	// grants are the consent.json records Trusted's items give, written after the receipt; needs is
 	// the kinds of trust the run met an item of that would be refused without it.
 	grants []grant
 	needs  TrustKinds
+	// pinned is the version (<module>=<version>, copy.at) of each module whose hook needs the consent
+	// in needs, which the run that consents pins (PinRun).
+	pinned []string
 	// said is the kinds of the consent items a yes granted in this run (a batch's, given in its
 	// collect pass, among them), and withheld the kinds of those that went without one: a no, or
 	// never asked (a batch's apply pass declines what its collect pass was told no). What a command
@@ -451,7 +480,8 @@ type PickCleared struct {
 }
 
 func newResult(dry bool) *Result {
-	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, Edits: []Edit{}, Scripts: []ScriptRun{}, DryRun: dry}
+	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, Edits: []Edit{}, Scripts: []ScriptRun{}, Trash: []string{},
+		TrashCredentials: []string{}, DryRun: dry}
 }
 
 // InstallRequest is one install argument with its --ref and --path.
@@ -933,7 +963,7 @@ func (e *Engine) fetchRequest(ctx context.Context, spec source.Spec, name, fallb
 	}
 	return store.PutRequest{Staged: f.Dir, FallbackName: cmp.Or(fallback, name, f.Name), Name: name, Source: spec.Location, Type: string(spec.Kind),
 		Components: spec.Components,
-		Path:       spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), ReplaceGoneOrigin: true}, nil
+		Path:       spec.Path, Ref: spec.Ref, Commit: f.Commit, Committed: f.Committed, Executables: f.Executables, Now: e.Now(), ReplaceGoneOrigin: true}, nil
 }
 
 // fetchAs copies a source into the store, staging it in the run directory run (fetchRequest
@@ -1622,7 +1652,7 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		}
 	}
 	req := plan.Request{Roots: map[string]string{}, Ledger: led, Changes: changes, Force: opts.Force,
-		ForceRun: opts.ForceRun, Replace: replace}
+		ForceRun: opts.ForceRun, KeepEdits: opts.KeepEdits, KeepRun: opts.KeepRun, Replace: replace}
 	for _, t := range e.Targets {
 		req.Roots[t.ID()] = t.Root(sc.Kind, sc.ProjectDir, e.Paths)
 	}
@@ -1706,6 +1736,11 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 	if err := e.runHooks(ctx, sc, pr.jobs, pr.scripts.run, PreInstall, opts, res); err != nil {
 		return errors.Join(err, sw.rollback())
 	}
+	// What --force replaces or deletes is copied into the trash just before the apply, as the
+	// pre-install hooks left it; pins.lock is not held while it copies.
+	if err := e.trashForced(sc, p.Steps, opts, res); err != nil {
+		return errors.Join(err, sw.rollback())
+	}
 	// At user scope the apply writes pins.yaml too, last, under pins.lock, which is held only until
 	// the apply returns.
 	unlockPins := func() {}
@@ -1747,6 +1782,7 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 	if !committed {
 		return errors.Join(err, sw.rollback())
 	}
+	res.Notices = append(res.Notices, e.machinePathNotices(ctx, sc, p)...)
 	errs := []error{err, sw.commit()}
 	for _, c := range pr.changes {
 		if p.Ledger.Modules[c.Name] == nil {

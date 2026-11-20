@@ -204,10 +204,10 @@ flowchart TD
   - `lola install <name>`, `lola info <name>` and the other commands that name a module and no
     source use the source cached most recently; an entry in `project.yml` always uses its own.
   - A **moved project:** when a source your cache records for the name is a local folder or
-    archive that no longer exists, and the entry's source is local too, sync says `<module>: your
-    cache has it from <old>, which no longer exists; caching it from <new>` and drops the old
-    record when you trust the new one (lola checks again, under the cache's lock, that the old
-    place is still gone; a dry run replaces nothing).
+    archive that no longer exists, and the entry's source is local too, sync says
+    `<module>: your cache has it from <old>, which no longer exists; caching it from <new>`. It
+    drops the old record when you trust the new one. lola checks again, under the cache's lock,
+    that the old place is still gone, and a dry run replaces nothing.
     - `lola install` of a local source does the same.
     - A folder that is only missing for a while (an unmounted drive) is replaced too; you
       see the notice and the trust diff.
@@ -246,13 +246,18 @@ the content each changed entry brings:
 
 An entry's [vars](templating.md#vars) are trusted with it: a vars-only edit is a change, listed as `vars`.
 
-The header names the cause: `has not been trusted on this machine (a fresh clone, or a moved
-project):` for a project with no record (its targets row reads `+ targets [claude-code]`),
-`changed since lola last wrote it or you last trusted it:` when the manifest changed, and
-`is unchanged; lola sync needs your trust for:` when only the pins sync would write or a folder's
-content need your trust; each such entry says why: `re-pin from v1 (--update)`,
-`pin what v1 serves now`, `content changed since lola installed it`, or, as an addition, `not
-installed yet` for a folder you trusted that lola has not installed (after a No to the removals).
+The header names the cause:
+
+- `has not been trusted on this machine (a fresh clone, or a moved project):` for a project with
+  no record (its targets row reads `+ targets [claude-code]`).
+- `changed since lola last wrote it or you last trusted it:` when the manifest changed.
+- `lola sync would change .lola/project.yml; it needs your trust for:` when the run writes pins
+  (`lola update` says `lola update would change …`).
+- `is unchanged; lola sync needs your trust for:` when only a folder's content needs your trust.
+
+Each entry that needs your trust says why: `re-pin from v1 (--update)`, `pin what v1 serves now`,
+`content changed since lola installed it`, or, as an addition, `not installed yet` for a folder
+you trusted that lola has not installed (after a No to the removals).
 
 `!` marks a source that moved to another host, scheme, or between your disk and the network; a
 change to or from the `host:path` form always counts, since it may name a folder. A note on an
@@ -264,27 +269,30 @@ A component whose `allowed-tools` pre-approve tools the version installed did no
 a new module) gets a `pre-approves in <kind> <name>: <tools>` line, since Claude Code then runs them
 without asking; tools already pre-approved are not repeated.
 
-The files
-are compared with the version installed, from your cache: counts, then one path per line,
-changed and removed before added, at most 20 per module, then
+The files are compared with the version installed, from your cache. The diff prints counts, then
+one path per line, changed and removed before added, at most 20 per module. After those comes
 `… and N more (lola sync -n --json lists them all)`, with your own names and flags
-(`lola sync big --update -n --json`); lola's own generated `lola.yml` is listed
-only when it changed or went. When your cache no longer has the version installed, or cannot read
-it, every file is listed as added with a note saying why (lola never fetches the old version to
-compare).
+(`lola sync big --update -n --json`). lola's own generated `lola.yml` is listed only when it
+changed or went. When your cache no longer has the version installed, or cannot read it, every
+file is listed as added with a note saying why (lola never fetches the old version to compare).
 
-Each MCP server and hook is marked `added`, `changed`, `unchanged` or `removed` against
-the version installed: an MCP server shows what it runs, with every argument that is not a plain
-word in quotes (`sh -c "curl x|sh"` is three words), or where it `connects to`, then its `env`,
-`header` and `cwd` lines, and a changed one adds a `was:` line under each part that differs; an
-unchanged one takes one line. A hook is identified by all of its fields, so a hook whose command
-changed is one `removed` and one `added`. Consent to runtime hooks (a module's Claude Code hooks and agent MCP servers; see
-[trust kinds](install-trust-kinds.md)) covers the module version
-too, so an unchanged runtime hook or agent MCP server that lola installed with your consent
-reads, in a changed module, `unchanged (consent needed again: the module changed)`: the run asks
-again, or, off a terminal without `--trust=runtime-hooks`, declines it and removes what lola
-installed of it. One you declined before reads plain `unchanged`, and, if you answered No to it,
-no run asks about it again.
+Each MCP server and hook is marked `added`, `changed`, `unchanged` or `removed` against the
+version installed.
+
+- An MCP server shows what it runs, with every argument that is not a plain word in quotes
+  (`sh -c "curl x|sh"` is three words), or where it `connects to`. Then come its `env`, `header`
+  and `cwd` lines. A changed one adds a `was:` line under each part that differs. An unchanged one
+  takes one line.
+- A hook is identified by all of its fields, so a hook whose command changed is one `removed` and
+  one `added`.
+
+Consent to runtime hooks (a module's Claude Code hooks and agent MCP servers; see
+[trust kinds](install-trust-kinds.md)) covers the module version too. An unchanged runtime hook
+or agent MCP server that lola installed with your consent therefore reads, in a changed module,
+`unchanged (consent needed again: the module changed)`. On a terminal the run asks again; off
+one without `--trust=runtime-hooks`, it declines the consent and removes what lola installed of
+it. One you declined
+before reads plain `unchanged`, and, if you answered No to it, no run asks about it again.
 
 Every hook the content declares is listed: install
 hooks, runtime hooks and an agent's own hooks and MCP servers, whatever assistants the entry
@@ -383,16 +391,16 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
 - The record is written once the sync has applied, so a failure asks again next time. Cancel or
   Ctrl+C prints `✗ cancelled — the project was not changed` (your cache may already hold versions you
   trusted before). In accessible mode (`LOLA_ACCESSIBLE=1`), Ctrl+C at any question cancels the
-  same way, with exit 0.
+  same way, with exit 4.
 - **A No to the removals** applies nothing.
   - It records the trust you just gave (only when it changed what the record holds), without the
     pins lola did not write, and says what the next sync asks again: `✗ removals declined; the
     project was not changed. The changes you trusted are recorded; the next lola sync asks only
     about the removals.`
-  - lola records a pin it would write, or a folder's content, only once it writes it, so for
-    those entries the message says `the next lola sync asks about the removals and about
-    <module>, … again: lola records a pin or a folder's content only once it writes it.` (and
-    leaves out `The changes you trusted are recorded` when they were all such changes).
+  - lola records a pin it would write, or a folder's content, only once it writes it. For those
+    entries the message says `the next lola sync asks about the removals and about <module>, …
+    again: lola records a pin or a folder's content only once it writes it.` It leaves out
+    `The changes you trusted are recorded` when they were all such changes.
   - When a sync of the modules you trusted would install them without removing anything, the
     message ends with that command, for example `lola sync --project lint-pack installs what you
     trusted without removing anything.`
@@ -416,10 +424,10 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
     are not fetched; each entry it would pin by name; and a new or changed folder with its
     content, read from your disk) and the removals.
   - An entry your trust record covers that the run would pin (an `--update` or `lola update` of
-    a module you installed) is fetched first, into the run's private staging and never into your
-    cache, so the diff shows its new pin and files, and the files it drops (as your picks would
-    install it) are listed as removals in the same refusal. One that finds nothing new needs no
-    trust and is not refused.
+    a module you installed) is fetched first. The fetch goes into the run's private staging and
+    never into your cache. The diff then shows the entry's new pin and files. The files it drops
+    (as your picks would install it) are listed as removals in the same refusal. One that finds
+    nothing new needs no trust and is not refused.
   - The accept hint carries `-y` only when every removal it would confirm is listed. An entry a
     pull changed is not fetched yet, so while one is installed the hint has no `-y`; the run it
     hints fetches it, lists every removal and asks for `-y` then.
@@ -443,11 +451,12 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
   persists between jobs, one job's `--trust=hooks` covers the next job that installs the same
   hooks; run each job with a fresh `XDG_STATE_HOME` for consent per job.
   - Those kinds, and `scripts`, consent only to what lola has shown you in full in an earlier
-    output (a `-n` run, a question, a report; never a refusal or a folded line); anything else is asked on a terminal,
-    or declined or refused off one with the hints `lola has not shown you these hooks; see them
-    with lola sync --trust=runtime-hooks -n, then run this again` and `or add --unseen to consent
-    without seeing them` ([What lola has shown you](install-trust-kinds.md#what-lola-has-shown-you)).
-    `--unseen` is for CI and fresh machines.
+    output (a `-n` run, a question, a report; never a refusal or a folded line). Anything else is
+    asked on a terminal. Off a terminal it is declined or refused, with the hints
+    `lola has not shown you these hooks; see them with lola sync --trust=runtime-hooks -n, then run this again`
+    and `or add --unseen to consent without seeing them`
+    ([What lola has shown you](install-trust-kinds.md#what-lola-has-shown-you)). `--unseen` is for
+    CI and fresh machines.
   - Runtime hooks you answered No to are asked about again only after they change; the report
     folds them as `declined earlier`, with the `--trust=runtime-hooks` run that consents to them.
 - **Project scripts.** A project's `pre_install:` and `post_install:` in `project.yml` run your
@@ -501,8 +510,11 @@ editing your own module costs one question per sync, or that install. A checkout
 `lock.json` has no version installed, so sync asks about each folder module once.
 
 **What update does.** `lola update` moves each installed module to the version its source holds
-now at the ref `project.yml` records (the default branch when it records none; a tag or full SHA
-stays put unless the tag itself moves; to follow another ref, `lola install <module> --ref <ref>`), fetching a ref only when `cache_fresh_for:` (`config.yaml`; `1d` unless it says otherwise,
+now at the ref `project.yml` records. That ref is the default branch when it records none, and a
+tag or full SHA stays put unless the tag itself moves. To follow another ref, use
+`lola install <module> --ref <ref>`.
+
+It fetches a ref only when `cache_fresh_for:` (`config.yaml`; `1d` unless it says otherwise,
 whole days or weeks, `never` to fetch every run) has passed since it was last fetched, or when you
 pass `--fetch`.
 
@@ -553,11 +565,14 @@ inside and is checked. A project reached through a symbolic link is checked agai
 root.
 
 **What a sync caches.** Content of entries you have not trusted is fetched into the run's
-private directory and enters your cache only after you trust it. `-n` (dry run) shows the diff,
-the plan and the removals on stdout, asks nothing and writes nothing to the project, the
-manifest or `trust.json`; the content of trusted entries at their pins may still be fetched into
-your cache, without moving any ref's cached head, and at user scope `--update -n` fetches into
-your cache and moves the refs' cached heads, as `-n` may there.
+private directory and enters your cache only after you trust it.
+
+`-n` (dry run) shows the diff, the plan and the removals on stdout, asks nothing and writes
+nothing to the project, the manifest or `trust.json`. Two things still reach your cache:
+
+- The content of trusted entries at their pins may be fetched into it, without moving any ref's
+  cached head.
+- At user scope `--update -n` fetches into it and moves the refs' cached heads, as `-n` may there.
 
 **The viewer.** When both stdout and stderr are terminals and the output is human, `lola sync`
 shows the trust diff, the removals it asks about and a dry run's diff and plan in full (output
@@ -579,11 +594,13 @@ warning, and the output is printed. Like any malformed key, it still fails a com
 `default_scope` (one without a scope flag).
 
 **`lola install` without arguments** says how many modules `project.yml` (and any active
-[profile](profiles.md#profiles); `default.yml` at user scope) lists that are not installed, on a terminal
-before the module picker (`1 module in project.yml is not installed → lola sync --project`;
-`2 modules in profile:default and profile:go are not installed → lola sync --user`), and off a
-terminal as a hint of its missing-argument error (`install what project.yml lists: lola sync
---project`). `lola install <module>` writes the file [your edits go to](profiles.md#where-your-edits-go);
+[profile](profiles.md#profiles); `default.yml` at user scope) lists that are not installed. On a
+terminal it says so before the module picker (`1 module in project.yml is not installed → lola sync --project`;
+`2 modules in profile:default and profile:go are not installed → lola sync --user`). Off a
+terminal it is a hint of its missing-argument error
+(`install what project.yml lists: lola sync --project`).
+
+`lola install <module>` writes the file [your edits go to](profiles.md#where-your-edits-go);
 when a higher layer lists the module with another entry, that entry keeps winning and the install
 says so (`gopls: profile go's entry wins; this change to default (base) applies when it is off`).
 

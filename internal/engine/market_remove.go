@@ -71,7 +71,7 @@ func (e *Engine) RemoveMarket(req MarketRemoveRequest) (*MarketRemoveResult, err
 		return res, nil
 	}
 	if req.Confirm == nil {
-		return nil, errs.WithHints(errors.New("lola market --remove asks before it forgets a marketplace, and there is no terminal to ask on"),
+		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola market --remove asks before it forgets a marketplace, and there is no terminal to ask on")),
 			MarketRun(append([]string{r.Name, "--remove", "-y"}, req.Display...)...))
 	}
 	c, _ := e.loadMarket(*r) // only for the question's row: an unreadable cache is removed all the same

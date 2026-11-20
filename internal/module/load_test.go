@@ -161,6 +161,25 @@ var _ = Describe("Load", func() {
 		}))
 	})
 
+	DescribeTable("warns about an MCP file a lola module names wrongly",
+		func(file string) {
+			write(root, map[string]string{file: `{"mcpServers":{"s":{"command":"s"}}}`, "commands/a.md": "x"})
+			m, err := module.Load(root, "x", targets.Builtin().IDs())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m.MCPServers).To(BeEmpty())
+			Expect(m.Warnings).To(ConsistOf(file + " is not read: a lola module declares MCP servers in mcps.json"))
+		},
+		Entry("mcp.json", "mcp.json"),
+		Entry(".mcp.json", ".mcp.json"),
+	)
+
+	It("does not warn about mcp.json when mcps.json is there too", func() {
+		write(root, map[string]string{"mcp.json": "{}", ".mcp.json": "{}", "mcps.json": `{"mcpServers":{"s":{"command":"s"}}}`})
+		m, err := module.Load(root, "x", targets.Builtin().IDs())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(m.Warnings).To(BeEmpty())
+	})
+
 	It("loads a module that ships only rules, sorted by name, and skips anything else in rules/ with a warning", func() {
 		write(root, map[string]string{"rules/a-b.md": "AB\n", "rules/a.md": "A\n", "rules/notes.txt": "n", "rules/sub/x.md": "x"})
 		m, err := module.Load(root, "x", targets.Builtin().IDs())

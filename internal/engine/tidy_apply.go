@@ -2,8 +2,6 @@ package engine
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -54,11 +52,8 @@ func (m *tidyMove) skip(u TidyUnit, code, reason string) {
 // resolves where it did, with no destination-level lock; the entry is the one the scan found;
 // no unit-level lock applies now. The first failed move stops the run; it is returned.
 func (s *tidyScanner) apply(chosen []TidyUnit, res *TidyResult) error {
-	m := &tidyMove{s: s, res: res, dest: "user", base: canonicalRoot(s.e.Paths.Home)}
-	if sc := s.req.Scope; sc.Kind == target.Project {
-		sum := sha256.Sum256([]byte(sc.Key()))
-		m.dest, m.base = hex.EncodeToString(sum[:8]), canonicalRoot(sc.ProjectDir)
-	}
+	m := &tidyMove{s: s, res: res}
+	m.dest, m.base = s.e.trashDest(s.req.Scope)
 	now, err := s.e.newTidyScanner(s.ctx, s.req, s.targetIDs, &tidyKeep{})
 	if err != nil {
 		return err

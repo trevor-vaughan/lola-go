@@ -285,6 +285,48 @@ var _ = Describe("Compute", func() {
 			Expect(p.Steps[0].Forced).To(Equal("hand-edited"))
 		})
 
+		It("keeps hand-edited orphans, files and members, out of the ledger when KeepEdits, deleting the rest", func() {
+			put(".claude/commands/x.md", "edited")
+			put(".claude/commands/y.md", "Y")
+			put(".mcp.json", `{"mcpServers":{"srv":{"command":"mine"}}}`)
+			own("a", fileArt(".claude/commands/x.md", "X"), fileArt(".claude/commands/y.md", "Y"),
+				ledger.Artifact{Target: tgt, Kind: "mcp", Path: ".mcp.json", Key: "/mcpServers/srv", SHA256: sum(`{"command":"lola"}`)})
+			r := req(false, removal("a"))
+			r.KeepEdits = true
+			p, err := plan.Compute(r)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(ConsistOf(
+				MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionKeep), "Path": Equal(".claude/commands/x.md"), "Forced": BeEmpty()}),
+				MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionKeep), "Path": Equal(".mcp.json"), "Key": Equal("/mcpServers/srv"), "Forced": BeEmpty()}),
+				MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionDelete), "Path": Equal(".claude/commands/y.md")}),
+			))
+			Expect(p.Files).To(HaveLen(1), "only the unedited file is written")
+			Expect(p.Files[0].Logical).To(Equal(".claude/commands/y.md"))
+			Expect(p.Files[0].Delete).To(BeTrue())
+			Expect(p.Ledger.Modules).NotTo(HaveKey("a"), "lola forgets what it kept")
+		})
+
+		It("still forgets a hand-edited orphan on a target it leaves, keeping the module's other targets, when KeepEdits", func() {
+			put(".claude/commands/x.md", "edited")
+			other := ledger.Artifact{Target: "opencode", Kind: "command", Path: ".opencode/commands/x.md", SHA256: sum("X")}
+			own("a", fileArt(".claude/commands/x.md", "X"), other)
+			r := req(false, removal("a"))
+			r.KeepEdits = true
+			p, err := plan.Compute(r)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Files).To(BeEmpty())
+			Expect(p.Ledger.Modules["a"].Artifacts).To(Equal([]ledger.Artifact{other}))
+		})
+
+		It("hints the run with --keep-edits before the one with --force for a hand-edited orphan", func() {
+			put(".claude/commands/x.md", "edited")
+			own("a", fileArt(".claude/commands/x.md", "X"))
+			r := req(false, removal("a"))
+			r.KeepRun = "lola uninstall --keep-edits"
+			_, err := plan.Compute(r)
+			Expect(errs.Hints(err)).To(Equal([]string{"lola uninstall --keep-edits", "lola uninstall --force"}))
+		})
+
 		It("forgets an orphan that is already gone", func() {
 			own("a", fileArt(".claude/commands/x.md", "X"))
 			p, err := plan.Compute(req(false, removal("a")))

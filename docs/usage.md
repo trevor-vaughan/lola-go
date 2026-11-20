@@ -85,10 +85,12 @@ Gemini CLI and OpenCode read; see [the agents target](guides/choosing-what-to-in
 only there, and off a terminal never beside an assistant that is set up.
 
 When you do not pass `-t`, lola uses the manifest's targets. Otherwise it offers the assistants
-installed on your machine (their command, `claude`, `gemini` or `opencode`, is on your
-`PATH`): on a terminal you pick from them, with those already set up in the project preselected,
-or every installed assistant preselected when none is set up (with only one installed, lola
-uses it without asking); off a terminal lola uses the ones both installed and set up.
+installed on your machine (their command, `claude`, `gemini` or `opencode`, is on your `PATH`).
+
+- On a terminal you pick from them. Those already set up in the project are preselected, or every
+  installed assistant is preselected when none is set up. With only one installed, lola uses it
+  without asking.
+- Off a terminal lola uses the ones both installed and set up.
 
 An assistant is set up in a project when it has `.claude/` or
 `CLAUDE.md` (Claude Code), `.gemini/` or `GEMINI.md` (Gemini CLI), or `.opencode/`,
@@ -251,10 +253,11 @@ or removed), trusted as `entries: target_versions`; `targets` is untouched by a 
   with your command for each version as hints: `to choose, for opencode >=1.0 <2.0: lola
   install ./kit --project -t opencode@1.0`.
 - A project in another directory (`-C`, or "Other directory..." in the scope question) is not
-  guessed for: off a terminal the install stops, writing nothing (a `-C` directory it had just
-  created is removed again, and it says `removed <dir> (lola created it; nothing was installed there)`), with
-  `which opencode version will read /srv/app? lola assumes the installed opencode only for the project you run it in, and /srv/app declares none`
-  and one hint per version, your command with every assistant it installs for:
+  guessed for. Off a terminal the install stops and writes nothing. A `-C` directory it had just
+  created is removed again, and it says
+  `removed <dir> (lola created it; nothing was installed there)`. The error is
+  `which opencode version will read /srv/app? lola assumes the installed opencode only for the project you run it in, and /srv/app declares none`,
+  with one hint per version, your command with every assistant it installs for:
   `for opencode >=2.0: lola install ./kit -C /srv/app -t opencode@2.0`,
   `for opencode >=1.0 <2.0: lola install ./kit -C /srv/app -t opencode@1.0`.
   - A `-C` directory that does not exist yet is refused before it is created, each hint the run
@@ -297,12 +300,15 @@ version when you pick the installed assistant's era in the user scope or the pro
 otherwise the `since` of the era you pick. A version the file already declares is not written again.
 
 The review says, for each destination and assistant with eras, which version its files are written
-for and why: `→ opencode >=2.0 (installed 2.2.5; will be recorded in .lola/project.yml)`,
-`→ opencode >=2.0 (from .lola/project.yml)` when declared, or `→ opencode >=2.0
-(nothing recorded; opencode is not installed here)`; a version that replaces the declared one says
-`(was 2.0 in .lola/project.yml; installed 2.2.5)`, and each installed module counts the files
-rewritten for it, those that come out the same byte for byte as unchanged: `kit: 1 rewritten for
-opencode >=1.0 <2.0, 1 unchanged`. The modules installed in a scope are always written for one
+for and why:
+
+- `→ opencode >=2.0 (installed 2.2.5; will be recorded in .lola/project.yml)`.
+- `→ opencode >=2.0 (from .lola/project.yml)` when declared.
+- `→ opencode >=2.0 (nothing recorded; opencode is not installed here)`.
+- `(was 2.0 in .lola/project.yml; installed 2.2.5)` when the version replaces the declared one.
+
+Each installed module counts the files rewritten for it. Files that come out the same byte for
+byte count as unchanged: `kit: 1 rewritten for opencode >=1.0 <2.0, 1 unchanged`. The modules installed in a scope are always written for one
 version of each assistant. The review says when they hold it: `→ opencode >=2.0 (from
 .lola/project.yml; this scope's modules are written for it)`. An install that writes for another
 version than the modules already there (other than those it installs again) is refused, under
@@ -472,7 +478,7 @@ report. Its sections come in this order, each under a header and left out when e
 7. The outcome (`✓ installed kit`, `✓ already in sync`).
 
 A dry run of `lola install`, `lola sync` or `lola update` that would change nothing prints only
-its outcome: `→ already in sync` (`→ already up to date` for `lola update`), or for an install `→ kit already up to date (claude-code)`, as
+its outcome: `→ already in sync` (`→ already up to date` for `lola update` that checked every source, `✓ up to date with your cache (fetched …)` for one that served modules from it), or for an install `→ kit already up to date (claude-code)`, as
 the real run words it. A runtime hook waiting for your consent that you have not seen declined
 before, a warning or skip you have not seen, or a warning notice (a module from outside the project, other modules out of sync) is
 something to show: that dry run prints its full report. So, under `-v`, is any finding, notice or
@@ -527,6 +533,13 @@ fails it. `lola info <module>` lists each executable with the libraries it loads
 | `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), (`hooks_pending`) a post-install hook you have not let run yet, (`scripts_pending`) the project's post-install script you have not let run on the module yet, the active [profile](guides/profiles.md#profiles) (`profile`; a `lock.json` with a pre-release `profiles` list is refused, naming the way out), the profile each module came from (`from`) and, for a module with [templates](guides/templating.md#templates), what they rendered with (`rendered_with`: `default` and the active profile when a template reads them, and `vars`), and the era of each target's assistant its files were written for (`eras`, target to the era's `since`; a target it does not name was written for its newest era). Every command that plans from it refuses a path in it outside a target's root, or a target lola does not know, hinting [`lola repair`](reference/repair.md#lola-repair), which forgets such entries. | No (gitignored for you) |
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
+| `.claude/` | Claude Code's skills, commands, agents and rules, as lola renders them. | Your choice: a teammate's `lola sync` adopts identical files; not one holding this machine's paths, which lola warns about. |
+| `.gemini/` | Gemini CLI's files, as lola renders them. | Your choice: a teammate's `lola sync` adopts identical files; not one holding this machine's paths, which lola warns about. |
+| `.opencode/` | OpenCode's files, as lola renders them. | Your choice: a teammate's `lola sync` adopts identical files; not one holding this machine's paths, which lola warns about. |
+| `.agents/` | The shared `.agents/skills` directory that Codex, Gemini CLI, OpenCode and other assistants read, as lola renders it. | Your choice: a teammate's `lola sync` adopts identical files; not one holding this machine's paths, which lola warns about. |
+| `.mcp.json` | Claude Code's MCP servers. A stdio server from an Agent Plugins module renders with absolute paths of this machine. | Your choice: a teammate's `lola sync` adopts identical files; not one holding this machine's paths, which lola warns about. |
+| `opencode.json` | OpenCode's MCP servers. A server from an Agent Plugins module can render with absolute paths of this machine. | Your choice: a teammate's `lola sync` adopts identical files; not one holding this machine's paths, which lola warns about. |
+| `.gemini/settings.json` | Gemini CLI's MCP servers. A server from an Agent Plugins module can render with absolute paths of this machine. | Your choice: a teammate's `lola sync` adopts identical files; not one holding this machine's paths, which lola warns about. |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
 | `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, your install scripts `pre_install` and `post_install`, `cache_unused_for`, `cache_fresh_for`, `theme`, and `target_versions` ([Declaring assistant versions](#declaring-assistant-versions)). | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally and per project (no `user:` section: a file with one is refused, and a user-scope module's picks live in its profile entry). A project in a git clone whose `origin` is on another host is keyed by its repository (`git:<host>/<path>#<dir>`, no credential), so a re-clone keeps its picks (a project in a subdirectory of an unrelated clone, such as a home directory kept in git, is keyed by that clone and its subdirectory); any other by its absolute path ([`config.yaml` and `selections.yaml`](guides/choosing-what-to-install.md#configyaml-and-selectionsyaml)). Your teammates do not get these picks; a project profile shares picks. | Yours to keep |
@@ -552,7 +565,8 @@ lola has no uninstaller of its own; you remove your modules, then what lola keep
 binary. Each step below was run against a throwaway `HOME`.
 
 1. Uninstall every module in each project and at user scope.
-   - `lola uninstall` takes several names and has no "all" flag; `lola list` shows them.
+   - `lola uninstall --all` removes every module `lola list` shows for the scope; `--scope both`
+     does it at each scope in one run.
    - It removes the entries from `project.yml` (or your default profile) and the files lola
      wrote, then the directories that leaves empty, whoever made them (a `~/.claude/commands/`
      that held only lola's files goes, even one you made).
@@ -560,8 +574,7 @@ binary. Each step below was run against a throwaway `HOME`.
      which stays even when empty.
 
    ```sh
-   cd my-project && lola list && lola uninstall mod-a mod-b -y
-   lola list --user && lola uninstall --user mod-a mod-b -y
+   cd my-project && lola uninstall --all --scope both -y
    ```
 
 2. Optionally move what lola does not manage out of the assistants' directories
@@ -607,10 +620,16 @@ binary. Each step below was run against a throwaway `HOME`.
     hint is your run with `--force` added, keeping its other flags but `-y` and `--trust`; for
     `lola sync` and `lola update` it completes your own run, so it keeps the `--trust`, `--at`
     and `-y` you gave, and runs as printed.
-  - `--force` also answers the destructive question itself (`install`'s review and the files a
-    pick change deletes, `sync`'s and `update`'s removals, `uninstall`, `lola profile --remove`,
-    `--on`, `--off`, `--switch` and `--edit`, `lola migrate`, `lola tidy`), on a terminal
-    or off one, so the hint runs as it is; a `lola sync` refusal whose run also removes modules
+  - What `--force` replaces or deletes (an unowned or hand-edited file, or the whole file holding a
+    JSON member it writes over or removes) is first copied into a new trash run, one per scope,
+    and the run says `→ 1 file --force replaced or deleted is in the trash: <run>`; `lola trash <run>
+    --restore --force` brings it back ([`lola trash`](reference/trash.md)). A copied settings or
+    MCP file may hold credentials: the run warns `the trash run holds a copy of .mcp.json, which
+    may contain credentials`. `-n` copies nothing.
+  - `--force` also answers the destructive question itself, on a terminal or off one, so the hint
+    runs as it is. That covers `install`'s review and the files a pick change deletes, `sync`'s and
+    `update`'s removals, `uninstall`, `lola profile --remove`, `--on`, `--off`, `--switch` and
+    `--edit`, `lola migrate`, and `lola tidy`. A `lola sync` refusal whose run also removes modules
     says which (`with --force it also removes, without asking: other (whole module)`).
   - `--force` never answers a consent question: a forced run that needs your trust for a pulled
     `project.yml`, or consent to a module's hooks, still asks, or off a terminal refuses with
@@ -671,11 +690,12 @@ binary. Each step below was run against a throwaway `HOME`.
 - Each command that fetches keeps its temporary files in one private directory,
   `$XDG_CACHE_HOME/lola/.staging/run-*`, removed when it ends, also when Ctrl+C or SIGTERM
   stops it.
-  - `install`, `sync`, `update`, `cache update`, `info`, `lola market --add` and `--update`, `lola
-    profile --add` and `--update`, and each `lola profile` change it applies with a sync (such as
-    `--on`, `--switch` or `--move`) also remove those a killed lola left behind once they are a
-    minute old, with their `run-*.lock` files, and a `run-*.lock` left without its directory once
-    it is a minute old; they warn when they cannot remove one.
+  - These commands also remove the directories a killed lola left behind, once they are a minute
+    old, with their `run-*.lock` files. They remove a `run-*.lock` left without its directory on
+    the same terms, and they warn when they cannot remove one. The commands are `install`, `sync`,
+    `update`, `cache update`, `info`, `lola market --add` and `--update`, `lola profile --add` and
+    `--update`, and each `lola profile` change that applies with a sync (such as `--on`, `--switch`
+    or `--move`).
   - A dry run (`-n`) still does this: the directories are lola's own temporaries.
   - A command waiting at a prompt keeps its directory however long it waits: the sweep skips the
     directory of a lola that is still running.
@@ -698,7 +718,7 @@ modules it rewrites for another era in `rewrites` (`{module, target, from, to}`)
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
 | `XDG_CONFIG_HOME` | User-scope manifest, `config.yaml`, `selections.yaml`, `markets.yaml`, `keep.yaml`, and OpenCode's user-scope directory (default `~/.config`) |
 | `LOLA_HOME` | The directory `lola migrate` reads (default `~/.lola`; must be absolute) |
-| `LOLA_ACCESSIBLE` | `1` asks every question as numbered line prompts (screen readers), each prompt's description printed before it, yes/no questions as `[y/N]` line prompts that take `y`, `n`, `yes` or `no`, and prints output without the viewer; a menu with no default (the review's "Apply these changes?") asks again on a blank line; end of input and Ctrl+C cancel (`✗ cancelled — nothing was changed`, exit 0) |
+| `LOLA_ACCESSIBLE` | `1` asks every question as numbered line prompts (screen readers), each prompt's description printed before it, yes/no questions as `[y/N]` line prompts that take `y`, `n`, `yes` or `no`, and prints output without the viewer; a menu with no default (the review's "Apply these changes?") asks again on a blank line; Ctrl+C cancels (`✗ cancelled — nothing was changed`, exit 4) and end of input refuses (exit 3) |
 | `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
 | `LOLA_PAGER` | A pager to use instead of lola's viewer, for all human output and help, split on whitespace and run without a shell; `cat` prints ([Output contract](#output-contract)) |

@@ -45,6 +45,14 @@ var _ = Describe("the Agent Plugins adapter", func() {
 	}
 	servers := func(json string) string { return `{` + mcpSchema + `,"mcpServers":{` + json + `}}` }
 
+	It("does not warn about its mcp.json, which is where the format keeps servers", func() {
+		m, err := detect(`{`+apSchema+`,"name":"dev.tools"}`, map[string]string{
+			"skills/s/SKILL.md": skill("s"), "mcp.json": servers(`"a":{"type":"stdio","command":"a"}`),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(m.Warnings).To(BeEmpty())
+	})
+
 	It("reads the manifest, the portable skills and mcp.json, writing servers inline with the host's variables", func() {
 		m, err := detect(`{`+apSchema+`,"name":"dev.tools","version":"0.1.0","description":"d","author":{"name":"A"},
 			"keywords":["k"],"license":"MIT","extensions":{"com.example.other":{"x":1}}}`, map[string]string{

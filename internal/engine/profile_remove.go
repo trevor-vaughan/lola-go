@@ -205,7 +205,7 @@ func (e *Engine) removeOwn(ctx context.Context, req ProfileRemoveRequest, i prof
 		return nil, err
 	}
 	if req.Confirm == nil && !req.DryRun && !req.Force {
-		return nil, errs.WithHints(fmt.Errorf("lola profile --remove asks before it moves %s to the trash, and there is no terminal to ask on", shown(i.Path)),
+		return nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("lola profile --remove asks before it moves %s to the trash, and there is no terminal to ask on", shown(i.Path))),
 			"move "+shown(i.Path)+" to the trash: "+e.Command(sc, "profile", slices.Concat(again, []string{"-y"}, req.Display)...))
 	}
 	_, remoteErr := os.Lstat(filepath.Join(e.Paths.RemoteProfiles, i.Name))

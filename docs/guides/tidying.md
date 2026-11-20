@@ -142,7 +142,7 @@ off a terminal.
 
 In accessible mode (`LOLA_ACCESSIBLE=1` or `TERM=dumb`) the pickers are numbered lists and every
 locked item is printed above them. There a keep picker that needs a pick refuses `0` with nothing
-selected, and Ctrl+C or the end of input cancels.
+selected, and Ctrl+C cancels, and the end of input refuses (exit 3).
 
 **When lola cannot ask** (off a terminal, or with `--json`), a run without names or `--all` lists
 every candidate and refuses ("lola tidy needs names or --all when it cannot ask (off a terminal or
@@ -155,7 +155,8 @@ with names needs `-y`.
 - `--force` answers the question as `-y` does and also offers what git tracks, but still needs
   names or `--all` (it never runs the pickers), and never moves a locked or kept item.
 - `-n` wins over `-y` and `--force`, takes no lock, writes nothing, and ends with the command that
-  applies it.
+  applies it. Off a terminal that command is refused for want of `-y`, so when items would move `-n` also
+  prints `off a terminal:` with the same command plus `-y`.
 
 Every command lola tidy hints keeps the run's `--json`, `--plain` and `--no-pager`. A name that
 matches nothing movable says exactly why (installed by a module, tracked, kept, locked, or nothing
@@ -216,7 +217,7 @@ jq '.mcpServers.legacy' <trash path of .mcp.json>   # then paste it into .mcp.js
 `lola tidy --json` prints `scope`, `root` (`""` at user scope), `dry_run`, `targets`, `trash`
 (`""` when nothing moved), `size_bytes`, `candidates` (what would move, on a dry run and in a
 refusal; else `[]`), `moved`, `protected`, `skipped`, `keep_added`, `keep_removed`,
-`trash_credentials` (the MCP copies), `notices` and `hints`. Items carry `target`, `kind`,
+`trash_credentials` (the MCP copies), `notices`, `hints` and `equivalent_commands`. Items carry `target`, `kind`,
 `name`, `path`, `key` (an MCP server's JSON Pointer), and `trash` (moved) or `code` and `reason`
 (protected, skipped). `path` and `trash` are raw, but for JSON's escaping. JSON never carries a
 server's command, arguments, environment, headers or URL; human output shows only its program's

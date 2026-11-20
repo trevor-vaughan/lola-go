@@ -19,15 +19,15 @@ package cli
 // also pinned (viewer: search --answer (an empty term)--> viewer): viewer_internal_test.go "clears the search for an empty term"
 // also pinned (viewer: search --esc--> viewer; viewer: search --q--> search): viewer_internal_test.go "takes q and the other keys as text while typing, and Esc drops the typing"
 // also pinned (accessible: pick --a number--> pick; accessible: pick --answer--> next): huh_internal_test.go "offers Project, User and Other directory…, in that order, with nothing preselected"
-// also pinned (accessible: pick --empty submit (a pick needed)--> pick; accessible: pick --end of input--> cancelled): huh_internal_test.go "a picker that needs a pick refuses none, naming the keys, and still cancels at end of input"
+// also pinned (accessible: pick --empty submit (a pick needed)--> pick; accessible: pick --end of input--> refused): huh_internal_test.go "a picker that needs a pick refuses none, naming the keys, and still refuses at end of input"
 // also pinned (accessible: pick --empty submit (none is an answer)--> next): huh_internal_test.go "asks a bundle's members with its members ticked, and takes ticking none, as lola profile --edit's module page does"
 // also pinned (accessible: pick --q--> pick): keys_internal_test.go "keeps accessible mode's numbered prompts: q is no answer there, and nothing goes back"
 // also pinned (accessible: choose --answer--> next; accessible: choose --a blank line (a default)--> next): huh_internal_test.go "asks which version to write for as a numbered list, the title, then the scope and note, Enter taking the preselected one"
-// also pinned (accessible: choose --end of input--> cancelled): huh_internal_test.go "treats end of input as cancel, not as the default answer"
-// also pinned (accessible: choose --ctrl+c--> cancelled): huh_internal_test.go "accessible mode: Ctrl+C at a sync question cancels with exit 0"
-// also pinned (accessible: line --answer--> next; accessible: line --end of input--> cancelled): huh_internal_test.go "asks for the Other directory with the reason it is asked again, and cancels at end of input"
+// also pinned (accessible: choose --end of input--> refused): huh_internal_test.go "refuses at end of input, not answering the default"
+// also pinned (accessible: choose --ctrl+c--> cancelled): huh_internal_test.go "accessible mode: Ctrl+C at a sync question cancels with exit 4"
+// also pinned (accessible: line --answer--> next; accessible: line --end of input--> refused): huh_internal_test.go "asks for the Other directory with the reason it is asked again, and cancels at end of input"
 // also pinned (accessible: line --a blank line (nothing pre-filled)--> next): huh_internal_test.go "asks where a missing root is, offering your home, and skips on an empty answer"
-// also pinned (accessible: yesno --y or n--> next; accessible: yesno --end of input--> cancelled): huh_internal_test.go "aborts a consent prompt at end of input and answers one that is given"
+// also pinned (accessible: yesno --y or n--> next; accessible: yesno --end of input--> refused): huh_internal_test.go "refuses a consent prompt at end of input and answers one that is given"
 // also pinned (accessible: yesno --a blank line--> next): huh_internal_test.go "asks sync's questions, defaulting to No, and cancels at end of input"
 // also pinned (keys: screen --answer--> next; keys: picker --x--> picker; keys: picker --empty submit (none is an answer)--> next; keys: picker --/--> filter): keys_internal_test.go "the ssh host picker filters, x ticks, and Enter answers the raw hosts ticked, none included"
 // also pinned (keys: screen --q (fewer than two answers)--> cancelled): keys_internal_test.go "q quits a picker at once when fewer than two steps are answered, as a quit"
@@ -283,7 +283,7 @@ var _ = Describe("accessible mode's transitions", func() {
 		Expect(got).To(Equal(engine.TrustAnswer{All: true}), "trust is given by its number")
 		Expect(out.String()).To(ContainSubstring("Invalid: must be a number between 1 and 2"), "a blank line consents to nothing")
 		_, err = accessible(&out, "").Trust(TrustStep{Changes: 2})
-		Expect(err).To(MatchError(ErrAborted), "a blank line, then end of input: cancelled, never trusted")
+		Expect(err).To(MatchError(errInputEnded), "a blank line, then end of input: cancelled, never trusted")
 	})
 
 	It("accessible: choose --invalid--> choose", func() {

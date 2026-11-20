@@ -35,6 +35,9 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 	if r.Installed {
 		run, verb, inSync = "lola update", "updated", "already up to date"
 	}
+	if r.CacheServed != nil {
+		inSync = cacheServedText(r.CacheServed)
+	}
 	if len(names) > 0 {
 		var shownNames []string
 		for _, n := range names {
@@ -50,7 +53,7 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 		printTrustDiff(w, s, name, run, r.Trust, more)
 	}
 	rep := report{Result: r.Result, Verb: verb, Sync: true, Update: r.Installed, Changed: r.Changed, Removals: r.Removals,
-		ToApply: r.ToApply, OffTerminal: r.OffTerminal, Alone: alone}
+		ToApply: r.ToApply, OffTerminal: r.OffTerminal, Alone: alone, CacheServed: r.CacheServed}
 	if r.DryRun {
 		rep.More = more
 	}
@@ -246,6 +249,8 @@ func printTrustDiff(w io.Writer, s style, name, run string, rep engine.TrustRepo
 		fmt.Fprintf(w, "%s has not been trusted on this machine (a fresh clone, or a moved project):\n", name)
 	case rep.ManifestChanged:
 		fmt.Fprintf(w, "%s changed since lola last wrote it or you last trusted it:\n", name)
+	case slices.ContainsFunc(rep.Changes, func(c engine.TrustChange) bool { return c.Reason != "" && !c.FolderContent }): // the run writes a pin
+		fmt.Fprintf(w, "%s would change %s; it needs your trust for:\n", run, name)
 	default:
 		fmt.Fprintf(w, "%s is unchanged; %s needs your trust for:\n", name, run)
 	}

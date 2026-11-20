@@ -46,7 +46,8 @@ Guidance for coding agents working on lola (Go).
   `style`. Author-chosen text reaches output only through `untrusted.Text` or `untrusted.CleanErr`,
   except JSON `steps[].path`, `steps[].member` and `steps[].value`, which carry what lola wrote,
   `lola tidy`'s JSON `path` and `trash`, which carry paths lola wrote, moved or found in its
-  destinations, `lola cache clean`'s JSON `path`, which carries a path in its cache as it is on disk
+  destinations, JSON `trash` and `trash_credentials` of `install`, `sync`, `update` and `uninstall`,
+  which carry trash paths lola wrote, `lola cache clean`'s JSON `path`, which carries a path in its cache as it is on disk
   unless it holds control or format characters, which are replaced, and `lola init`'s JSON `path`,
   the directory lola writes to, raw but for JSON's escaping of control characters, and JSON `body`
   of an install hook or project script, its text raw (valid UTF-8 with no NUL, at most 64 KiB, else
@@ -83,7 +84,7 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   is at least as tall as the terminal, so use `-y 6` to force it. A question (`[y/N]`) opens it when its
   text and prompt line do not fit; otherwise the text prints and the prompt sits under it.
 - **Surfaces** (ready marker): `lola help <cmd>` / bare `lola` viewer (`━━ lines N–M of T`); `lola install`
-  form (`Step 1 of 5`, review `Apply these changes? [y/c/n]`); scope pickers on `tidy`, `update`,
+  form (`Step 1`, review `Apply these changes? [y/c/n]`); scope pickers on `tidy`, `update`,
   `sync`, `repair`, `profile … --on/--switch/--move` (`<Verb> where?`); `trash` (`Restore or empty
   which?`); `cache clean` (`Remove these from your cache?`); `init` without `-y`; `profile <n> --edit
   <mod>` (`Step 1 of 3`); trust diff on `sync`/`update` (`Trust these changes?`); yes/no questions
@@ -96,7 +97,7 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   Questions: type `y`, `n` (`c` at the review), then `Enter`; `Enter` alone takes the capital letter's
   answer, and the review has none. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`,
   `tab`/`shift+tab` (fold highlight), `space` (open/close it; pages with none), `esc` (clears the
-  highlight, else closes; back in a question), `q`. `ctrl+c` exits 0 with `nothing changed`. After
+  highlight, else closes; back in a question), `q`. `ctrl+c` exits 4 with `nothing changed`. After
   `q` the viewer reprints its content to scrollback.
 
 ```bash

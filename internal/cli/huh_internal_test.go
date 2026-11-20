@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -218,7 +219,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 
 	It("resolves no scope from empty input: it asks again, and end of input cancels, never Project", func() {
 		got, err := accessible(&out, "0").Scope(ScopeStep{Question: "Render where?", ProjectRoot: "/src/api", One: true})
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 		Expect(got).To(BeEmpty())
 	})
 
@@ -258,7 +259,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		out.Reset()
 		st.Preselect, st.Scope, st.Note = -1, "", ""
 		_, err = accessible(&out, "").Version(st)
-		Expect(err).To(MatchError(ErrAborted), "nothing preselected: Enter answers nothing, and end of input cancels")
+		Expect(err).To(MatchError(errInputEnded), "nothing preselected: Enter answers nothing, and end of input cancels")
 		Expect(out.String()).NotTo(ContainSubstring("for project"))
 		Expect(out.String()).To(ContainSubstring("Type a number (no default) \n"))
 	})
@@ -276,7 +277,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			{Title: "Added (2)", Options: []TrustOption{{Module: "a", Label: "+ a source mods/a"}, {Module: "b", Label: "+ b source mods/b"}}},
 		}}
 		_, err := accessible(&out, "").Trust(st)
-		Expect(err).To(MatchError(ErrAborted), "Enter alone is Cancel")
+		Expect(err).To(MatchError(errInputEnded), "Enter alone is Cancel")
 		Expect(out.String()).To(ContainSubstring("Trust these changes?"))
 		Expect(out.String()).To(ContainSubstring("1. Trust all 3 changes\n2. Choose…\n3. Cancel (the project is not changed)\n"))
 
@@ -293,11 +294,11 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("2.   + b source mods/b\n"))
 
 		_, err = accessible(&out, "2", "0", "0").Trust(st)
-		Expect(err).To(MatchError(ErrAborted), "choosing nothing is Cancel")
+		Expect(err).To(MatchError(errInputEnded), "choosing nothing is Cancel")
 
 		out.Reset()
 		_, err = accessible(&out, "").Trust(TrustStep{Changes: 1})
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 		Expect(out.String()).To(ContainSubstring("1. Trust this change\n2. Cancel (the project is not changed)\n"), "nothing to choose: no Choose…")
 	})
 
@@ -310,7 +311,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("could not add ./x; try another source"))
 	})
 
-	DescribeTable("a picker that needs a pick refuses none, naming the keys, and still cancels at end of input",
+	DescribeTable("a picker that needs a pick refuses none, naming the keys, and still refuses at end of input",
 		func(_ SpecContext, ask func(*huhForms) (any, error), want any) {
 			got, err := ask(accessible(&out, "0", "1", "0"))
 			Expect(err).NotTo(HaveOccurred())
@@ -318,7 +319,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			Expect(out.String()).To(ContainSubstring("nothing selected — type an option's number to select it, 0 confirms, ctrl+c quits\n"))
 
 			_, err = ask(accessible(&out, "0"))
-			Expect(err).To(MatchError(ErrAborted), "huh asks again while Validate refuses; at end of input it must stop")
+			Expect(err).To(MatchError(errInputEnded), "huh asks again while Validate refuses; at end of input it must stop")
 		},
 		Entry("scope", NodeTimeout(time.Minute), func(h *huhForms) (any, error) { return h.Scope(ScopeStep{ProjectRoot: "/p"}) }, []string{ScopeProject}),
 		Entry("modules", NodeTimeout(time.Minute), func(h *huhForms) (any, error) {
@@ -397,7 +398,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("/p/missing does not exist"))
 
 		_, err = accessible(&out).OtherDirectory(DirectoryStep{})
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 	})
 
 	It("reads a leading ~ of a new migrate root as the home directory", func() {
@@ -408,15 +409,15 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(got).To(Equal("/home/u/old"))
 	})
 
-	It("treats end of input as cancel, not as the default answer", func() {
+	It("refuses at end of input, not answering the default", func() {
 		_, err := accessible(&out).Scope(ScopeStep{ProjectRoot: "/p", Preselect: []string{"project"}})
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 		_, err = accessible(&out, "0").Review(ReviewStep{Options: []string{ReviewApply, ReviewQuit}})
-		Expect(err).To(MatchError(ErrAborted), "input ends after an answer huh rejected")
+		Expect(err).To(MatchError(errInputEnded), "input ends after an answer huh rejected")
 		_, err = accessible(&out, "7").Scope(ScopeStep{ProjectRoot: "/p"})
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 		_, err = accessible(&out).Ask(Question{Prompt: "Install m with no components?", Answers: "yN"})
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 	})
 
 	It("asks sync's questions, defaulting to No, and cancels at end of input", func() {
@@ -428,7 +429,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ans).To(Equal('n'))
 		_, err = accessible(&out).Ask(Question{Prompt: "Remove these?", Answers: "yN"})
-		Expect(err).To(MatchError(ErrAborted), "end of input is a cancel, not the default No")
+		Expect(err).To(MatchError(errInputEnded), "end of input is a cancel, not the default No")
 	})
 
 	It("stops a multi-field form at the first end of input, reading nothing after it", func() {
@@ -438,12 +439,12 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		}}
 		r := &onceEOFReader{after: []string{"1", "0"}}
 		_, err := (&huhForms{in: &eofReader{r: r}, out: &out, tty: true, accessible: true}).Components(pg)
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 		Expect(r.after).To(HaveLen(2), "the Commands field must not wait for more input")
 
 		r = &onceEOFReader{after: []string{"v1.0.0"}}
 		_, err = (&huhForms{in: &eofReader{r: r}, out: &out, tty: true, accessible: true}).addSource(nil, Nav{})
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 		Expect(r.after).To(HaveLen(1), "the Ref field must not wait for more input")
 	})
 
@@ -540,9 +541,9 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("2. ✓ /src · n (installed)"))
 	})
 
-	It("cancels on huh's index panic after input ended, and re-raises any other panic", func() {
+	It("refuses on huh's index panic after input ended, and re-raises any other panic", func() {
 		index := func() { _ = []int{}[len(os.Args)] }
-		Expect(accessible(&out).run(Nav{}, panicField{Note: huh.NewNote(), drain: true, panic: index})).To(MatchError(ErrAborted))
+		Expect(accessible(&out).run(Nav{}, panicField{Note: huh.NewNote(), drain: true, panic: index})).To(MatchError(errInputEnded))
 		Expect(func() {
 			_ = accessible(&out).run(Nav{}, panicField{Note: huh.NewNote(), drain: true, panic: func() { panic("boom") }})
 		}).To(PanicWith("boom"))
@@ -590,7 +591,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Entry("no copy for it to wrap: trust it for later runs", true, "Trust this project's pre-install script for later runs?"),
 	)
 
-	It("accessible mode: Ctrl+C at a sync question cancels with exit 0", func() {
+	It("accessible mode: Ctrl+C at a sync question cancels with exit 4", func() {
 		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())
 		proj := filepath.Join(tmp, "proj")
@@ -624,8 +625,14 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			go func() { waited <- cmd.Wait() }()
 			Eventually(out.String, "10s").Should(ContainSubstring(c.prompt), "%s: the question waits for input", c.child)
 			Expect(cmd.Process.Signal(os.Interrupt)).To(Succeed())
-			Eventually(waited, "10s").Should(Receive(BeNil()), func() string {
-				return c.child + ": exit 0, not killed by the signal: " + out.String()
+			Eventually(waited, "10s").Should(Receive(WithTransform(func(err error) int {
+				var exit *exec.ExitError
+				if !errors.As(err, &exit) {
+					return -1
+				}
+				return exit.ExitCode()
+			}, Equal(4))), func() string {
+				return c.child + ": exit 4, not killed by the signal: " + out.String()
 			})
 			Expect(out.String()).To(HaveSuffix(c.says), c.child)
 		}
@@ -661,7 +668,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(got).To(BeEmpty(), "accessible mode pre-fills nothing, so an empty answer skips")
 
 		_, err = accessible(&out).MigrateRoot(st)
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 	})
 
 	It("offers the assistants on your PATH for a missing one, all preselected; none skips", func() {
@@ -828,7 +835,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("1.   /src evil · m — Mod"))
 	})
 
-	It("aborts a consent prompt at end of input and answers one that is given", func() {
+	It("refuses a consent prompt at end of input and answers one that is given", func() {
 		a := &app{getenv: func(k string) string {
 			if k == "LOLA_ACCESSIBLE" {
 				return "1"
@@ -852,7 +859,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		cmd.SetIn(&lineReader{})
 		cmd.SetErr(&out)
 		ok, err := askYes(a.huhPrompter(cmd), Question{Prompt: "Run m's install hooks?"})
-		Expect(err).To(MatchError(ErrAborted), "end of input is a cancel, not the default No")
+		Expect(err).To(MatchError(errInputEnded), "end of input is a cancel, not the default No")
 		Expect(ok).To(BeFalse())
 	})
 
@@ -910,8 +917,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		root.SetOut(&stdout)
 		root.SetErr(&errb)
 		root.SetArgs([]string{"install", "-t", "claude-code", "--scope", "user"})
-		Expect(Execute(root)).To(Equal(0))
-		Expect(errb.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"), "end of input at the module picker cancels")
+		Expect(Execute(root)).To(Equal(3))
+		Expect(errb.String()).To(ContainSubstring("error: input ended before the question was answered\n"), "end of input at the module picker refuses")
 		Expect(filepath.Join(os.Getenv("HOME"), ".claude")).NotTo(BeADirectory())
 	})
 
@@ -1037,7 +1044,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		// move picker: tick the first (mcp/remote), confirm; keep picker: confirm nothing; review: no.
 		var errb bytes.Buffer
 		code, got := run(accessible(&errb, "1", "0", "0", "n"))
-		Expect(code).To(Equal(0), got)
+		Expect(code).To(Equal(4), got)
 		Expect(errb.String()).NotTo(ContainSubstring("SENTINEL"))
 		Expect(errb.String()).To(ContainSubstring("1.   claude-code  mcp/remote (mcp.example.com)  .mcp.json /mcpServers/remote\n"))
 		Expect(errb.String()).To(ContainSubstring("2.   claude-code  mcp/stdio (srv-cmd)  .mcp.json /mcpServers/stdio\n"))
@@ -1051,7 +1058,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(code).To(Equal(0), got)
 		Expect(got).To(ContainSubstring("  → claude-code  mcp/stdio (srv-cmd)  .mcp.json /mcpServers/stdio\n"), "the dry run")
 		code, got = run(nil)
-		Expect(code).To(Equal(1), "the refusal's listing")
+		Expect(code).To(Equal(3), "the refusal's listing")
 		Expect(got).To(ContainSubstring("  → claude-code  mcp/remote (mcp.example.com)  .mcp.json /mcpServers/remote\n"))
 	})
 

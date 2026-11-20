@@ -64,7 +64,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/t1.out 2> /tmp/t1.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t1.out /tmp/t1.err"
         assertions:
@@ -123,7 +123,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj -y --json > /tmp/t3.out 2> /tmp/t3.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t3.out /tmp/t3.err"
         assertions:
@@ -190,7 +190,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"kit\tclaude-code\tok\ton\thttp://127.0.0.1:8765/kit.git\tproject\tproject.yml\tmain\""
+          - "result.systemout ShouldEqual \"kit\tclaude-code\tok\ton\thttp://127.0.0.1:8765/kit.git\tproject\tproject.yml\tmain\t-\""
 
   - name: T5 A pulled pin change needs trust again
     steps:
@@ -201,7 +201,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/t5.out 2> /tmp/t5.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t5.out /tmp/t5.err"
         assertions:
@@ -257,7 +257,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/t6.out 2> /tmp/t6.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t6.out /tmp/t6.err"
         assertions:
@@ -335,7 +335,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile review --on -C /work/proj -y --json > /tmp/t8.out 2> /tmp/t8.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t8.out /tmp/t8.err"
         assertions:
@@ -381,7 +381,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"lint\tclaude-code\tok\ton\thttp://127.0.0.1:8765/lint.git\tproject\tprofile:project:review\tmain\""
+          - "result.systemout ShouldEqual \"lint\tclaude-code\tok\ton\thttp://127.0.0.1:8765/lint.git\tproject\tprofile:project:review\tmain\t-\""
 
   - name: T9 uninstall removes a module from the project profile on, and lola's edit stays trusted
     steps:
@@ -537,7 +537,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'printf \"n\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} sync --project -C /work/proj3 --trust\" /dev/null'"
         assertions:
-          - result.code ShouldEqual 0
+          - result.code ShouldEqual 4
           - result.systemout ShouldContainSubstring "trusting, as --trust=entries,profiles allows:"
           - "result.systemout ShouldContainSubstring \"  → entries: targets (new), kit (new)\""
           - result.systemout ShouldContainSubstring "Proceed? [y/N]"
@@ -619,7 +619,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj4 --json > /tmp/t16.out 2> /tmp/t16.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t16.out /tmp/t16.err"
         assertions:
@@ -672,7 +672,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj4 --json > /tmp/t16b.out 2> /tmp/t16b.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} python3 -c '

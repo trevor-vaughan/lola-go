@@ -115,7 +115,7 @@ var _ = Describe("profile edit paths", func() {
 		sp := &scripted{where: []int{0}, modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods(), mods()},
 			review: []string{goBack, cli.ReviewQuit}}
 		r := lolaP(sp, "profile", "try", "--edit", "--user")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"where", "modules", "review", "modules", "review"}))
 		Expect(sp.reviewSteps[0].Nav.Back).To(BeTrue())
 		Expect(sp.moduleSteps[1].Title).To(Equal("new profile try › modules"))
@@ -218,7 +218,7 @@ var _ = Describe("profile edit paths", func() {
 			assistants: []func(cli.AssistantStep) ([]string, error){func(cli.AssistantStep) ([]string, error) { return []string{"gemini-cli"}, nil }},
 			review:     []string{cli.ReviewModules, goBack, cli.ReviewQuit}}
 		r := lolaP(sp, "profile", "try", "--edit", "--user")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"where", "modules", "assistants", "review", "modules", "review", "modules", "review"}))
 		Expect(sp.reviewSteps[1].Options).To(Equal([]string{cli.ReviewApply, cli.ReviewModules, cli.ReviewQuit}), "nothing to install: no assistants to change")
 		Expect(sp.reviewSteps[1].Summary.Folded()).To(HaveSuffix(", empty)\n"))
@@ -240,7 +240,7 @@ var _ = Describe("profile edit paths", func() {
 		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("kit")},
 			components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}
 		r := lolaP(sp, "profile", "go", "--edit", "--user")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"modules", "components:profile go › kit", "review"}))
 		nothingWritten()
 	})
@@ -261,13 +261,13 @@ var _ = Describe("profile edit paths", func() {
 	}
 	kitAndLint := "version: 1\nmodules:\n  - {name: lint, source: %s}\n  - {name: kit, source: %s}\n"
 
-	DescribeTable("Ctrl+C or Cancel at a step cancels the run: nothing is written and it exits 0",
+	DescribeTable("Ctrl+C or Cancel at a step cancels the run: nothing is written and it exits 4",
 		func(setup func(), sp *scripted, args []string, calls []string) {
 			if setup != nil {
 				setup()
 			}
 			r := lolaP(sp, append(args, "--user")...)
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.calls).To(Equal(calls))
 			nothingWritten()
 		},
@@ -286,11 +286,11 @@ var _ = Describe("profile edit paths", func() {
 			[]string{"profile", "go", "--edit"}, []string{"modules", "confirm:Remove lint from profile go?"}),
 	)
 
-	DescribeTable("Ctrl+C at a bundle's step cancels the run: the bundle is as it was and it exits 0",
+	DescribeTable("Ctrl+C at a bundle's step cancels the run: the bundle is as it was and it exits 4",
 		func(sp *scripted, calls []string) {
 			work := bundleOn()
 			r := lolaP(sp, "profile", "work", "--edit", "--user")
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.calls).To(Equal(calls))
 			Expect(os.ReadFile(work)).To(Equal([]byte("version: 1\nbundle: [go]\n")))
 			Expect(lintMd).To(BeARegularFile())
@@ -318,7 +318,7 @@ var _ = Describe("profile edit paths", func() {
 	It("profile edit: components --esc (the first page, module arguments)--> components", func() {
 		sp := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}
 		r := lolaP(sp, "profile", "go", "--edit", "kit", "--user")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.pages[0].Nav).To(Equal(cli.Nav{}), "the run's first screen: Esc stays, its key help saying q quits")
 		nothingWritten()
 	})
@@ -338,7 +338,7 @@ var _ = Describe("profile edit paths", func() {
 		kitProfile()
 		sp := &scripted{where: []int{-1}}
 		r := lolaP(sp, "profile", "--edit", "kit", "--user")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.whereSteps).To(Equal([]cli.WhereStep{{Title: "kit names profile user:kit (" + filepath.Join(p.UserProfiles, "kit.yml") + ") and a module.",
 			Options: []string{"Edit profile user:kit", "Edit module kit in profile go"}}}))
 		nothingWritten()
@@ -502,7 +502,7 @@ var _ = Describe("profile edit paths", func() {
 		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("lint", "kit"), mods("lint", "kit")},
 			components: []func(cli.ComponentPage) ([]string, error){goneBack[cli.ComponentPage, []string], keep()}, review: []string{cli.ReviewQuit}}
 		r := lolaP(sp, "profile", "go", "--edit", "--user")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"modules", "components:profile go › kit", "modules", "components:profile go › kit", "review"}))
 		Expect(sp.pages[0].Nav.Back).To(BeTrue())
 		Expect(sp.moduleSteps[1].Preselect).To(Equal([]string{"lint", "kit"}), "the page as answered")
@@ -526,7 +526,7 @@ var _ = Describe("profile edit paths", func() {
 		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("lint", "kit")},
 			components: []func(cli.ComponentPage) ([]string, error){keep("skill/b"), keep()}, review: []string{goBack, cli.ReviewQuit}}
 		r := lolaP(sp, "profile", "go", "--edit", "--user")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"modules", "components:profile go › kit", "review", "components:profile go › kit", "review"}))
 		Expect(ticked(sp.pages[1])).To(Equal([]string{"skill/a"}), "the last page, as answered")
 		nothingWritten()
@@ -597,7 +597,7 @@ var _ = Describe("profile edit paths across two scopes", func() {
 	})
 	neitherWritten := func(r result) {
 		GinkgoHelper()
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(os.ReadFile(goYml)).To(Equal([]byte(goBefore)))
 		Expect(projLint).To(BeARegularFile())
 		Expect(userLint).To(BeARegularFile())
@@ -678,7 +678,7 @@ var _ = Describe("profile edit paths through a pulled bundle", func() {
 		sp := &scripted{members: []func(cli.MembersStep) ([]string, error){pickMembers("deploy"), aborted[cli.MembersStep, []string]},
 			trust: []func(cli.TrustStep) (engine.TrustAnswer, error){trustAll}, confirmBacks: 1}
 		r := lolaP(sp, "profile", "team", "--edit")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"members", "trust", "confirm:Remove these and apply? No applies nothing", "members"}),
 			"Esc at the removals goes back to the members page, as the trust question was the bundle edit's own")
 		Expect(r.err).NotTo(ContainSubstring("error: back"))

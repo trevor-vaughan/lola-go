@@ -172,7 +172,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		func(command string) {
 			c := fixture(command)
 			r := lola(with(c.args, "--json")...)
-			Expect(r.code).To(Equal(1))
+			Expect(r.code).To(Equal(3))
 			Expect(r.out).To(BeEmpty())
 			Expect(strings.Count(r.err, "\n")).To(Equal(1), r.err)
 			Expect(r.err).NotTo(ContainSubstring(c.plan), "no human plan")
@@ -192,7 +192,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		func(command string) {
 			c := fixture(command)
 			r := lola(c.args...)
-			Expect(r.code).To(Equal(1))
+			Expect(r.code).To(Equal(3))
 			Expect(r.out).To(BeEmpty())
 			Expect(r.err).To(HavePrefix(c.context + c.plan + "\n"))
 			Expect(r.err).To(HaveSuffix("error: lola " + command + " needs confirmation, and there is no terminal to ask on\n" +
@@ -236,13 +236,13 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"),
 		Entry("repair", "repair"), Entry("trash --empty", "trash"))
 
-	DescribeTable("c5: declining <cmd> on a terminal writes nothing and exits 0",
+	DescribeTable("c5: declining <cmd> on a terminal writes nothing and exits 4",
 		func(command string) {
 			c := fixture(command)
 			for _, args := range [][]string{c.args, with(c.args, "--json")} {
 				p := &confirming{answers: []bool{false}}
 				r := lolaAsking(p, args...)
-				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.code).To(Equal(4), r.err)
 				Expect(r.out).To(BeEmpty())
 				ctx := c.context
 				if slices.Contains(args, "--json") {
@@ -299,7 +299,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		func(command string) {
 			c := fixture(command)
 			r := lola(with(c.args, "--json")...)
-			Expect(r.code).To(Equal(1))
+			Expect(r.code).To(Equal(3))
 			doc := refusal(r.err)
 			delete(doc, "error")
 			delete(doc, "hints")
@@ -316,7 +316,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		func(command string) {
 			c := fixture(command)
 			r := lola(with(c.args, "--json")...)
-			Expect(r.code).To(Equal(1))
+			Expect(r.code).To(Equal(3))
 			doc := refusal(r.err)
 			hint := doc["hints"].([]any)[0].(string)
 			again := lola(shellWords(hint)[1:]...)
@@ -337,7 +337,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		Expect(lola("install", kit, "-C", proj, "-t", "claude-code").code).To(Equal(0))
 		r := lola("uninstall", "kit", "-C", proj, "--json")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).NotTo(ContainSubstring("\x1b"), "JSON escapes it")
 		Expect(r.err).NotTo(ContainSubstring("\a"))
 		Expect(r.err).To(ContainSubstring(`r\u001b[31mx.md`))
@@ -382,11 +382,11 @@ var _ = Describe("lola init asks before scaffolding the current directory", func
 		Expect(filepath.Join(dir, "plugin.json")).To(BeARegularFile())
 	})
 
-	It("on a terminal, declining writes nothing and exits 0", func() {
+	It("on a terminal, declining writes nothing and exits 4", func() {
 		for _, args := range [][]string{{"init"}, {"init", "--json"}} {
 			p := &confirming{answers: []bool{false}}
 			r := lolaAsking(p, args...)
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(r.out).To(BeEmpty())
 			Expect(r.err).To(Equal(fmt.Sprintf(plan, dir) + "✗ cancelled — nothing was changed\n"))
 			empty(dir)
@@ -396,7 +396,7 @@ var _ = Describe("lola init asks before scaffolding the current directory", func
 	DescribeTable("off a terminal, refuses with the plan and a hint that keeps the run's flags, writing nothing",
 		func(args []string, hint string) {
 			r := lola(args...)
-			Expect(r.code).To(Equal(1))
+			Expect(r.code).To(Equal(3))
 			Expect(r.out).To(BeEmpty())
 			Expect(r.err).To(HaveSuffix("error: lola init needs confirmation, and there is no terminal to ask on\n  hint: " + hint + "\n"))
 			Expect(r.err).To(HavePrefix("will create module fresh in " + dir))
@@ -411,7 +411,7 @@ var _ = Describe("lola init asks before scaffolding the current directory", func
 
 	It("off a terminal under --json, prints one JSON line carrying the plan on stderr, and nothing on stdout", func() {
 		r := lola("init", "--json")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.out).To(BeEmpty())
 		Expect(strings.Count(r.err, "\n")).To(Equal(1), r.err)
 		Expect(r.err).NotTo(ContainSubstring("will create"), "no human plan")
@@ -451,7 +451,7 @@ var _ = Describe("lola init asks before scaffolding the current directory", func
 		shown := filepath.Join(tmp, "x?[31m", "fresh")
 		p := &confirming{answers: []bool{false}}
 		r := lolaAsking(p, "init")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).NotTo(ContainSubstring("\x1b"))
 		Expect(p.questions).To(Equal([]string{"Create module fresh in " + shown + "?"}))
 		Expect(p.before[0]).To(Equal(fmt.Sprintf(plan, shown)))

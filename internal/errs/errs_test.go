@@ -30,3 +30,20 @@ var _ = Describe("hinted errors", func() {
 		Expect(errs.WithHints(nil, "h")).To(Succeed())
 	})
 })
+
+var _ = Describe("needs-answer errors", func() {
+	It("marks the error and keeps its message, type and hints", func() {
+		inner := errs.WithHints(fs.ErrNotExist, "say yes")
+		err := errs.NeedsAnswer(inner)
+		Expect(errors.Is(err, errs.ErrNeedsAnswer)).To(BeTrue())
+		Expect(errors.Is(err, fs.ErrNotExist)).To(BeTrue())
+		Expect(err.Error()).To(Equal(fs.ErrNotExist.Error()))
+		Expect(errs.Hints(err)).To(Equal([]string{"say yes"}))
+		Expect(errs.Hints(errs.WithHints(err, "outer"))).To(Equal([]string{"outer", "say yes"}))
+	})
+
+	It("leaves other errors unmarked and passes nil through", func() {
+		Expect(errors.Is(errors.New("x"), errs.ErrNeedsAnswer)).To(BeFalse())
+		Expect(errs.NeedsAnswer(nil)).To(Succeed())
+	})
+})

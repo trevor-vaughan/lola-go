@@ -234,7 +234,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 	}
 	covered := req.Trust.Covers(TrustProfiles)
 	if req.Consent == nil && !covered && !req.DryRun {
-		return nil, errs.WithHints(errors.New("lola profile --update shows how each profile changes and asks before keeping it, and there is no terminal to ask on"),
+		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola profile --update shows how each profile changes and asks before keeping it, and there is no terminal to ask on")),
 			"see it: "+e.ProfileRun(given, run("-n")...),
 			"then update it unasked: "+e.ProfileRun(given, trusting()...))
 	}

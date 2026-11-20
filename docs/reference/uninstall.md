@@ -4,6 +4,7 @@ Command reference, for lola users; back to [Using lola](../usage.md) and the [RE
 
 ```
 lola uninstall <module>...
+lola uninstall --all
 ```
 
 Aliases: `remove`, `rm`, `erase`, `delete`, `del`. Remove the module's entry from the layer it
@@ -56,10 +57,18 @@ says `saved to profile rust; it is not on at user scope → lola profile --user 
 | Flag | What it does |
 |---|---|
 | `-t`, `--target <assistant>` | Only uninstall from these assistants, of those it is installed on; the entry keeps the others, and writes `targets:` only when they differ from its file's. With `--profile` naming a layer the module does not come from (a lower layer, or a profile that is off), it narrows that entry's targets and removes no files. |
+| `--all` | Remove every module `lola list` shows for the scope, the base's and the profile on's, in place of names. With `--profile`, the modules that profile's file lists (even one that is off). `--scope both` runs it at each scope. It asks once per scope, with every module in the plan, and answers which layer a module comes from, so a base module goes while a profile is on. Without `--profile` a module several layers list loses each entry, so nothing stays installed (plain `uninstall <module>` leaves it, naming the layer). Combines with `-t`, `--keep-edits` and `--force`. |
 | `--profile <name>` | Remove the entry from this profile (`base` is the scope's base) instead of the layer the module comes from. |
 | `-y`, `--yes` | Do not ask for confirmation. |
-| `--force` | Also delete files edited since lola wrote them, without asking. |
+| `--force` | Also delete files edited since lola wrote them, without asking; what it replaces or deletes goes to a new trash run (`lola trash`). |
+| `--keep-edits` | Leave files (and JSON members) edited since lola wrote them as they are, and stop managing them; everything else is removed as usual. Cannot be combined with `--force`. Still asks like a plain uninstall. |
 | `-n`, `--dry-run` | Print the plan and write nothing. |
+
+With `--keep-edits` each kept file prints `→ kept <path>: hand-edited; lola no longer manages it, so
+installing the module again reports it as not written by lola` (`would keep` under `-n`), and a kept JSON
+member names its file and key. The files leave `lock.json`, so installing the module again reports each as an
+`unowned` conflict (`--force` then replaces it, into the trash). JSON: `kept`, an array (`[]` when none)
+of those paths, and a `keep` step for each in `steps`.
 
 Refusals:
 
@@ -86,7 +95,15 @@ Refusals:
 - Off a terminal without `-y`, when files would be removed: `lola uninstall needs confirmation,
   and there is no terminal to ask on`, hinting the run with `-y` (`lola uninstall my-module -y`).
 - A file edited since lola wrote it: `refusing to change anything: 1 conflict, which --force
-  overrides`, each file on its own line, hinting `lola uninstall my-module --force`.
+  overrides`, each file on its own line, hinting two runs: `lola uninstall my-module --keep-edits`
+  (leaves the edited files, your flags kept; `-y` only if you gave it, so off a terminal that run's own refusal hints it) and `lola uninstall my-module --force`
+  (deletes them).
+- `--all` with names: `--all removes every module, and my-module names some`, hinting the run without
+  `--all` and the run without the names.
+- `--all` with nothing installed prints `nothing to uninstall` and succeeds, also off a terminal without `-y`.
+- `--keep-edits` with `--force`: `--keep-edits and --force cannot be combined; pick one`, hinting each
+  run without the other.
 
-JSON (`--json`, [Output contract](../usage.md#output-contract)): `modules`, `steps`, `findings`, `notices`, `edits`, `scripts` and `dry_run`; the refusal off a
-terminal carries the same keys beside `error` and `hints`.
+JSON (`--json`, [Output contract](../usage.md#output-contract)): with `--all` over two scopes, one document, `scopes`, an array of the per-scope results below; otherwise `modules`, `steps`, `findings`, `notices`, `edits`, `scripts`, `kept`, `trash`, `trash_credentials`, `picks_cleared` and `dry_run`; the refusal off a
+terminal carries the same keys beside `error` and `hints`. When `--all` over two scopes stops at the second, the error
+document holds the finished scope's result in `scopes` and the failed scope's name in `failed_scope`; the message names both, and the exit status is the refusal's.

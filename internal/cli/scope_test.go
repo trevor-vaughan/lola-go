@@ -307,12 +307,12 @@ var _ = Describe("scope for every command", func() {
 		Expect(os.WriteFile(manPath, append(slices.Clone(was), "  - name: kit\n    source: mods/kit\n"...), 0o644)).To(Succeed())
 		c := &confirming{trusts: []engine.TrustAnswer{{}}}
 		r = lolaAsking(c, "sync", "--scope", "both", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(c.questions).To(Equal([]string{"trust"}), "user scope was never reached")
 		Expect(r.err).To(HaveSuffix("✗ cancelled — the project was not changed; user scope was not synced\n"))
 		Expect(inHome).NotTo(BeAnExistingFile())
 		r = lola("sync", "--scope", "both", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("error: lola sync needs your trust"))
 		Expect(r.err).To(ContainSubstring("; user scope was not synced\n"))
 		Expect(r.out).NotTo(ContainSubstring("user:"))
@@ -338,7 +338,7 @@ var _ = Describe("scope for every command", func() {
 		Expect(os.WriteFile(filepath.Join(tmp, "config", "lola", "profiles", "default.yml"), []byte("version: 1\nmodules: []\n"), 0o600)).To(Succeed())
 		c := &confirming{answers: []bool{false}}
 		r := lolaAsking(c, "sync", "--user")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(HaveSuffix("removals declined; user scope was not changed.\n"))
 	})
 
@@ -371,7 +371,7 @@ var _ = Describe("scope for every command", func() {
 		Expect(r.out).To(MatchRegexp(`\nuser\s+example\s+claude-code\s+✓ ok`))
 		p := &scripted{}
 		r = lolaP(p, "list", "--plain")
-		Expect(r.out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\tproject.yml\t\nexample\tclaude-code\tok\ton\t" + mod + "\tuser\tprofile:default\t\n"))
+		Expect(r.out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\tproject.yml\t\t-\nexample\tclaude-code\tok\ton\t" + mod + "\tuser\tprofile:default\t\t-\n"))
 		Expect(p.calls).To(BeEmpty(), "list never asks for a scope on a terminal")
 
 		By("the flags decide, --scope both included")

@@ -145,16 +145,16 @@ var _ = Describe("Ask, a yes/no question", func() {
 		Expect(out.String()).NotTo(ContainSubstring(foldFooter))
 	})
 
-	It("in accessible mode cancels at end of input, never answering the default", func() {
+	It("in accessible mode refuses at end of input, never answering the default", func() {
 		_, err := accessible(&out).Ask(plan)
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 		Expect(out.String()).To(HaveSuffix("Uninstall kit? [y/N] \n"), "the cancel prints under the prompt, not beside it")
 	})
 
-	It("in accessible mode cancels an answer that input ends before its newline", func() {
+	It("in accessible mode refuses an answer that input ends before its newline", func() {
 		h := &huhForms{in: &eofReader{r: strings.NewReader("y")}, out: &out, tty: true, accessible: true}
 		_, err := h.Ask(plan)
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(errInputEnded))
 	})
 
 	It("on a full terminal asks through the terminal's question", func() {

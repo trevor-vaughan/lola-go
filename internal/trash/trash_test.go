@@ -190,6 +190,46 @@ var _ = Describe("the trash behaves as before its move out of migrate", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(gone).To(BeFalse(), "a file the backup lacks is kept")
 	})
+
+	It("says where a copy it made holds a path: its own copy, or its place in a copied directory, past links in its parents", func() {
+		t := open()
+		defer func() { Expect(t.Close()).To(Succeed()) }()
+		Expect(os.Symlink(filepath.Join(proj, ".claude"), filepath.Join(tmp, "via"))).To(Succeed())
+		_, ok := t.Holds(filepath.Join(proj, ".claude/commands/ship.md"))
+		Expect(ok).To(BeFalse(), "nothing is copied yet")
+
+		ship, err := t.Copy("user", proj, filepath.Join(proj, ".claude/commands/ship.md"))
+		Expect(err).NotTo(HaveOccurred())
+		review, err := t.Copy("user", proj, filepath.Join(tmp, "via", "skills", "review"))
+		Expect(err).NotTo(HaveOccurred())
+
+		held := func(p string) string {
+			GinkgoHelper()
+			to, ok := t.Holds(p)
+			Expect(ok).To(BeTrue(), p)
+			return to
+		}
+		Expect(held(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal(ship))
+		Expect(held(filepath.Join(tmp, "via", "commands", "ship.md"))).To(Equal(ship))
+		Expect(held(filepath.Join(proj, ".claude/skills/review/ref/a.md"))).To(Equal(filepath.Join(review, "ref", "a.md")))
+		Expect(held(filepath.Join(proj, ".claude/skills/review"))).To(Equal(review))
+		_, ok = t.Holds(filepath.Join(proj, ".claude/commands/ship.md/x"))
+		Expect(ok).To(BeFalse(), "a copied file holds nothing below it")
+		_, ok = t.Holds(filepath.Join(proj, ".claude/skills/reviewer/SKILL.md"))
+		Expect(ok).To(BeFalse(), "a sibling that shares the prefix is not held")
+		_, ok = t.Holds(filepath.Join(proj, ".claude"))
+		Expect(ok).To(BeFalse(), "a parent of a copy is not held")
+	})
+
+	It("holds nothing below a copied symbolic link: the copy is the link, not what it leads to", func() {
+		t := open()
+		defer func() { Expect(t.Close()).To(Succeed()) }()
+		Expect(os.Symlink(filepath.Join(proj, ".claude/skills/review"), filepath.Join(proj, "link"))).To(Succeed())
+		_, err := t.Copy("user", proj, filepath.Join(proj, "link"))
+		Expect(err).NotTo(HaveOccurred())
+		_, ok := t.Holds(filepath.Join(proj, "link", "SKILL.md"))
+		Expect(ok).To(BeFalse())
+	})
 })
 
 var _ = Describe("Trash.CopyBytes", func() {

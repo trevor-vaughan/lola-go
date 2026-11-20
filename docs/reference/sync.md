@@ -30,13 +30,13 @@ rules](../usage.md#safety-rules).
 
 | Flag | What it does |
 |---|---|
-| `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask: `entries` (the changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write), `profiles` (the changes to its active project profiles, and a project profile taking your profile's place), `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all`; bare `--trust` is `entries,profiles`, which run no code. With module names it accepts only those modules' changes (names limit what a run asks about and records). It never bypasses a refusal ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
+| `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask: `entries` (the changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write), `profiles` (the changes to its active project profiles, and a project profile taking your profile's place), `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all`; bare `--trust` is `entries,profiles`: lola runs no code for them, but accepting entries is also your consent to the MCP servers they list, which your assistant launches; the trust diff prints each server's command first. With module names it accepts only those modules' changes (names limit what a run asks about and records). It never bypasses a refusal ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
 | `--unseen` | Let `--trust`'s `scripts`, `hooks` and `runtime-hooks` consent to content lola has not shown you too; without it they consent only to what an earlier output showed you in full ([What lola has shown you](../guides/install-trust-kinds.md#what-lola-has-shown-you)). For CI and fresh machines. Refused without one of those kinds in `--trust`; `--force` never implies it. |
 | `-y`, `--yes` | Open no scope picker (off a terminal the scope is found as [Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope) describes, or the run is refused with hints for the scope flags), and confirm removals, and only removals: it never trusts changes. |
 | `--update` | Fetch the refs again and re-pin the modules of the run. |
 | `--at <module>=<version>` | Install the module only at this version: a git module's commit (any case), or a folder's or archive's `sha256:<digest>` (the digest the diff prints). Repeatable; given twice alike it counts once; a module the run does not include is refused (with `--scope both`, only one no scope includes). A run given it applies only the versions it names: one its source no longer serves, and any other module whose version would change, are refused before anything is written. A refusal's hint adds one for each new version it showed (a pin it would write, a folder whose content changed), so the run it hints answers only what was listed. |
 | `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |
-| `--force` | Overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals; never answers a consent question. |
+| `--force` | Overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals; never answers a consent question; what it replaces or deletes goes to a new trash run (`lola trash`). |
 | `-n`, `--dry-run` | Print the plan and the trust diff, ask nothing and write nothing. |
 
 Refusals:
@@ -56,10 +56,10 @@ Refusals:
     files <module>'s new version drops`.
   - The accept hint carries `-y` only when every removal it would confirm is listed; that is the
     guarantee.
-  - An entry a pull added or changed is fetched only after you trust it, and a source can fail
-    to serve one (a notice says why, with its hints), so while one is installed and unread the
-    hint has no `-y`, not even the `-y` you gave, and the message says `until it reads <module>,
-    the removals listed may change, so -y waits until the next run lists them`; that run fetches
+  - An entry a pull added or changed is fetched only after you trust it. A source can fail to
+    serve one (a notice says why, with its hints). While such an entry is installed and unread,
+    the hint has no `-y`, not even the `-y` you gave. The message says `until it reads <module>,
+    the removals listed may change, so -y waits until the next run lists them`. That run fetches
     it, lists every removal and hints `-y`.
   - A `-y` you type yourself on a hinted run confirms that run's removals, listed or not.
   - A failure of lola's own state (your cache, the staging directory) stops the run instead.

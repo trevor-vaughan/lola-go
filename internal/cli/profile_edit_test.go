@@ -353,7 +353,7 @@ var _ = Describe("lola profile --edit", func() {
 	It("refuses an inherited edit off a terminal with lola profile base --edit and lola profile <target> --edit --override, which run as printed", func() {
 		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
 		r := lola("profile", "--edit", "kit", "--only", "skill/a", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(HaveSuffix("error: kit comes from default (base); lola profile --edit needs to know whether to change it there or override it in profile go, " +
 			"and there is no terminal to ask on\n  hint: lola profile base kit --edit --only skill/a --user\n  hint: lola profile go kit --edit --only skill/a --user --override\n"))
 		for _, hint := range []string{"lola profile go kit --edit --only skill/a --user --override", "lola profile base kit --edit --only skill/a --user"} {
@@ -485,7 +485,7 @@ var _ = Describe("lola profile --edit", func() {
 		goYml := filepath.Join(p.UserProfiles, "go.yml")
 
 		r := lola("profile", "go", "--edit", "kit", "--only", "skill/a")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(lola("profile", "go", "kit", "--edit", "--only", "skill/a", "-n").code).To(Equal(0), "the -n hint runs as printed")
 		Expect(r.err).To(HaveSuffix("error: lola profile --edit needs your confirmation to remove kit (opencode) at user scope, and there is no terminal to ask on; nothing was written\n" +
 			"  hint: see what goes: lola profile go kit --edit --only skill/a -n\n  hint: confirm it: lola profile go kit --edit --only skill/a -y\n"))
@@ -503,7 +503,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(os.WriteFile(p.Markets, []byte("version: [\n"), 0o600)).To(Succeed())
 		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
 		r := lola("profile", "--edit", "kit", "--only", "skill/a", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(HaveSuffix("  hint: lola profile base kit --edit --only skill/a --user\n  hint: lola profile user:go kit --edit --only skill/a --user --override\n"),
 			"go might be a catalog's entry too")
 		r = lola("profile", "user:go", "kit", "--edit", "--only", "skill/a", "--user", "--override", "-y") // -y: the hint's run deletes skill/b, which it asks
@@ -515,7 +515,7 @@ var _ = Describe("lola profile --edit", func() {
 	It("refuses off a terminal a name that is a profile and a module, hinting each reading, which run as printed", func() {
 		writeTree(p.UserProfiles, map[string]string{"kit.yml": "version: 1\n"})
 		r := lola("profile", "kit", "--edit", "--only", "skill/a", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(Equal(userContext + "error: kit names profile user:kit (" + filepath.Join(p.UserProfiles, "kit.yml") + ") and a module; " +
 			"lola profile --edit needs to know which to edit, and there is no terminal to ask on\n" +
 			"  hint: see profile user:kit, then name a module after it: lola profile --user user:kit\n" +
@@ -548,7 +548,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
 		skill := func(n string) string { return filepath.Join(p.Home, ".claude", "skills", n, "SKILL.md") }
 		r := lola("profile", "go", "--edit", "kit", "--skip", "skill/b", "--user")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("error: lola profile --edit needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\n"))
 		Expect(r.err).To(ContainSubstring("hint: lola profile go kit --edit --skip skill/b --user -y\n"))
 		Expect(skill("b")).To(BeAnExistingFile())
@@ -558,7 +558,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(skill("b")).To(BeAnExistingFile())
 		Expect(os.WriteFile(skill("b"), []byte("mine\n"), 0o600)).To(Succeed())
 		r = lola("profile", "go", "--edit", "kit", "--skip", "skill/b", "--user", "-y")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(HaveSuffix("  hint: lola profile go kit --edit --skip skill/b --user --force\n"))
 		Expect(skill("b")).To(BeAnExistingFile())
 		r = lola("profile", "go", "kit", "--edit", "--skip", "skill/b", "--user", "--force")
@@ -685,7 +685,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(os.WriteFile(lint, []byte("version: 1\ntargets: [claude-code, cursor]\n"), 0o600)).To(Succeed())
 
 		r := lola("profile", "team", "--edit", "--bundle", "lint,extra")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(HaveSuffix("error: lola profile needs your trust for changes to the members of project:team and changes to the targets of project:lint, " +
 			"and there is no terminal to ask on; nothing was written\n  hint: see them: lola profile --project team --edit --bundle lint,extra -n\n" +
 			"  hint: then accept them: lola profile --project team --edit --bundle lint,extra --trust=profiles\n"))
@@ -722,7 +722,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: [go]\n")))
 
 		r = lola("profile", "work", "--edit", "--bundle", "")
-		Expect(r.code).To(Equal(1), r.out+r.err)
+		Expect(r.code).To(Equal(3), r.out+r.err)
 		Expect(r.err).To(HaveSuffix("error: lola profile needs your confirmation to remove kit (claude-code) at user scope, and there is no terminal to ask on; nothing was written\n" +
 			"  hint: see what goes: lola profile --project work --edit --bundle '' -n\n  hint: then confirm them: lola profile --project work --edit --bundle '' -y\n"))
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: [go]\n")))
@@ -876,7 +876,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(sp.calls).NotTo(ContainElement("trust"))
 			Expect(r.out).To(ContainSubstring("bundle team already lists lint, deploy"))
 			r = lola("sync")
-			Expect(r.code).To(Equal(1), "the pulled list is still untrusted: "+r.out)
+			Expect(r.code).To(Equal(3), "the pulled list is still untrusted: "+r.out)
 			Expect(r.err).To(ContainSubstring("trust"))
 
 			for _, extra := range [][]string{nil, {"-y"}, {"--force"}} {
@@ -918,7 +918,7 @@ var _ = Describe("lola profile --edit", func() {
 			}
 			sp := review()
 			r := lolaP(sp, "profile", "go", "--edit")
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.reviewSteps[0].Summary.Folded()).To(HavePrefix("Summary:\n  user (" + p.Home + "), no .lola/ project in " + bare + " or above it:\n"))
 
 			proj := filepath.Join(tmp, "proj")
@@ -928,7 +928,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(lola("profile", "user:go", "--switch", "-y").code).To(Equal(0))
 			sp = review()
 			r = lolaP(sp, "profile", "go", "--edit")
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.reviewSteps[0].Summary.Folded()).To(And(ContainSubstring("  project ("+proj+"), found .lola/ at "+proj+":\n"),
 				ContainSubstring("  user ("+p.Home+"), where profile go is on too:\n")))
 		})
@@ -1073,7 +1073,7 @@ var _ = Describe("lola profile --edit", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sp := &scripted{where: []int{-1}}
 				r := lolaP(sp, "profile", "--edit", "kit", "--user")
-				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.code).To(Equal(4), r.err)
 				Expect(sp.calls).To(Equal([]string{"where"}), r.err)
 				Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 
@@ -1180,7 +1180,7 @@ var _ = Describe("lola profile --edit", func() {
 				Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
 				sp := &scripted{where: []int{-1}}
 				r := lolaP(sp, "profile", "--edit", "kit", "--user")
-				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.code).To(Equal(4), r.err)
 				Expect(sp.calls).To(Equal([]string{"where"}))
 				Expect(sp.whereSteps[0].Title).To(Equal("work is a bundle. Which profile gets kit?"))
 				Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
@@ -1198,7 +1198,7 @@ var _ = Describe("lola profile --edit", func() {
 				Expect(led.Save(p.UserLedger)).To(Succeed())
 				sp = &scripted{where: []int{-1}}
 				r = lolaP(sp, "profile", "--edit", "kit", "--user")
-				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.code).To(Equal(4), r.err)
 				Expect(sp.calls).To(Equal([]string{"where"}))
 				Expect(sp.whereSteps[0].Title).To(Equal("remote:team is read-only."))
 				Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))

@@ -200,7 +200,7 @@ func (e *Engine) followPin(ctx context.Context, se *syncEntry, run string) error
 		return fmt.Errorf("%s: %w", se.ent.Name, err)
 	}
 	st, err := e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: se.ent.Name, Name: se.ent.Name, Source: se.spec.Location,
-		Type: string(se.spec.Kind), Path: se.spec.Path, Ref: se.spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(),
+		Type: string(se.spec.Kind), Path: se.spec.Path, Ref: se.spec.Ref, Commit: f.Commit, Committed: f.Committed, Executables: f.Executables, Now: e.Now(),
 		Components: se.spec.Components})
 	if err != nil {
 		return err

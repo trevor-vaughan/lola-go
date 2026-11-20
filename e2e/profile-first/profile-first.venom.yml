@@ -80,7 +80,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} list --user --plain"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"review-kit\tclaude-code\tok\ton\t{{.git}}/review-kit.git\tuser\tprofile:default\tv1.4.0\""
+          - "result.systemout ShouldEqual \"review-kit\tclaude-code\tok\ton\t{{.git}}/review-kit.git\tuser\tprofile:default\tv1.4.0\t-\""
           - "result.systemerr ShouldEqual \"context\tuser\t\tdefault\t-\t\""
 
   - name: S2 A baseline of 4 skills, a go-review profile over it, an override and the way back
@@ -156,7 +156,7 @@ testcases:
           - "result.systemerr ShouldEqual \"project /work/acme: project.yml\""
           - "result.systemout ShouldContainSubstring \"✓ added my-notes to project.yml (base, shared: git tracks it)\""
           - "result.systemout ShouldContainSubstring \"→ meant for another profile? lola profile --project --move my-notes --to go-review --switch\""
-          - "result.systemout ShouldContainSubstring \"→ meant for every project? lola profile --user --move my-notes --to base\""
+          - "result.systemout ShouldContainSubstring \"→ meant for every project? move it from this project into your user base: lola profile --user --move my-notes --to base\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} git -C /work/acme status --porcelain"
         assertions:
@@ -172,7 +172,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.lola}} profile --move my-notes --to me --json > /tmp/s4.out 2> /tmp/s4.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/s4.out /tmp/s4.err"
         assertions:
@@ -211,14 +211,14 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - "result.systemerr ShouldEqual \"context\tproject\t/work/acme\tproject.yml\tuser:me\t\""
-          - "result.systemout ShouldEqual \"my-notes\tclaude-code\tok\ton\t/e2e/fixtures/my-notes\tproject\tprofile:user:me\t\nteam-kit\tclaude-code\tok\ton\t{{.git}}/team-kit.git\tproject\tproject.yml\tmain\""
+          - "result.systemout ShouldEqual \"my-notes\tclaude-code\tok\ton\t/e2e/fixtures/my-notes\tproject\tprofile:user:me\t\t-\nteam-kit\tclaude-code\tok\ton\t{{.git}}/team-kit.git\tproject\tproject.yml\tmain\t-\""
 
   - name: S3 An experiment copied from go-review, then back to go-review, keeping the experiment
     steps:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile try --switch --new --from go-review -C /work/acme --json > /tmp/s3.out 2> /tmp/s3.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/s3.out /tmp/s3.err"
         assertions:
@@ -336,7 +336,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/spellcheck --user -t claude-code --json > /tmp/s7.out 2> /tmp/s7.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/s7.out /tmp/s7.err"
         assertions:

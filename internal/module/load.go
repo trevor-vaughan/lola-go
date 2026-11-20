@@ -600,6 +600,13 @@ type mcpEntry struct {
 
 func loadMCP(dir string, m *Module) error {
 	if _, err := os.Lstat(filepath.Join(dir, "mcps.json")); errors.Is(err, fs.ErrNotExist) {
+		if m.Format == "native" || m.Format == "lola" {
+			for _, misnamed := range []string{".mcp.json", "mcp.json"} {
+				if _, err := os.Lstat(filepath.Join(dir, misnamed)); err == nil {
+					m.Warnings = append(m.Warnings, misnamed+" is not read: a lola module declares MCP servers in mcps.json")
+				}
+			}
+		}
 		return nil
 	}
 	servers, err := mcpFile(dir, "mcps.json")

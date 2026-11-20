@@ -45,7 +45,7 @@ func (e *Engine) fetchPin(ctx context.Context, name string, spec source.Spec, co
 		return store.Staged{}, errs.WithHints(&servedCommitError{name: name, location: spec.Location, got: f.Commit, want: commit}, installAgain...)
 	}
 	st, err := e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: name, Name: name, Source: spec.Location, Type: string(spec.Kind),
-		Path: spec.Path, Ref: spec.Ref, Commit: commit, Executables: f.Executables, Now: e.Now(), Components: spec.Components})
+		Path: spec.Path, Ref: spec.Ref, Commit: commit, Committed: f.Committed, Executables: f.Executables, Now: e.Now(), Components: spec.Components})
 	if err != nil {
 		return store.Staged{}, err // a module that renamed itself: fetching again cannot help, and the caller names the way out
 	}

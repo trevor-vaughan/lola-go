@@ -114,7 +114,7 @@ var _ = Describe("lola tidy", func() {
 			Expect(r.out).To(ContainSubstring("mcp/"+name+"  .mcp.json /mcpServers/"+name+"\n"), "a label never comes from args")
 		}
 		r = check()
-		Expect(r.code).To(Equal(1), "the refusal's listing")
+		Expect(r.code).To(Equal(3), "the refusal's listing")
 		Expect(r.err).To(ContainSubstring("mcp/stdio (srv-cmd)"))
 		r = check("--all", "-y", "--keep", "mcp/kept")
 		Expect(r.out).To(ContainSubstring("mcp/remote (mcp.example.com)"))
@@ -124,7 +124,7 @@ var _ = Describe("lola tidy", func() {
 		writeTree(proj, map[string]string{".mcp.json": file})
 		p := &scripted{confirm: []bool{false}}
 		r = lolaP(p, "tidy", "--all", "-C", proj, "--keep", "mcp/kept")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(HaveLen(1))
 		Expect(strings.Join(p.calls, "\n") + r.out + r.err).NotTo(ContainSubstring("SENTINEL"))
 		Expect(r.err).To(ContainSubstring("mcp/envonly  .mcp.json /mcpServers/envonly\n"))
@@ -190,12 +190,12 @@ var _ = Describe("lola tidy", func() {
 		writeTree(proj, map[string]string{".claude/commands/dup.md": "x\n", ".gemini/commands/dup.toml": "x\n", ".claude/commands/solo.md": "x\n"})
 		p = &scripted{tidyPick: tidyPicks("skill/axb"), tidyKeep: tidyKeeps("command/dup"), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", proj, "-t", "claude-code", "-t", "gemini-cli")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(tidyLabels(p.tidyKeepSteps[0].Options)).To(Equal([]string{"command/dup  claude-code, gemini-cli", "command/solo  claude-code",
 			"command/tmp  claude-code"}))
 		p = &scripted{tidyPick: tidyPicks(".claude/commands/dup.md"), tidyKeep: tidyKeeps(), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", proj, "-t", "claude-code", "-t", "gemini-cli")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(tidyLabels(p.tidyKeepSteps[0].Options)).To(Equal([]string{"skill/axb  claude-code", "command/solo  claude-code",
 			"command/tmp  claude-code"}), "keeping command/dup would keep the item chosen to move")
 		Expect(os.RemoveAll(filepath.Join(proj, ".gemini"))).To(Succeed())
@@ -206,7 +206,7 @@ var _ = Describe("lola tidy", func() {
 		p = &scripted{tidyPick: tidyPicks(), tidyKeep: []func(cli.TidyKeepStep) ([]string, error){
 			func(cli.TidyKeepStep) ([]string, error) { return nil, cli.ErrAborted }}}
 		r = lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "tidy-keep"}))
 		Expect(p.tidyKeepSteps[0].Required).To(BeTrue())
@@ -214,7 +214,7 @@ var _ = Describe("lola tidy", func() {
 		By("choosing everything skips the keep picker")
 		p = &scripted{tidyPick: tidyPicks("claude-code"), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "confirm:Move 2 items to the trash?"}))
 	})
 
@@ -224,7 +224,7 @@ var _ = Describe("lola tidy", func() {
 			tidyKeep: append([]func(cli.TidyKeepStep) ([]string, error){goneBack[cli.TidyKeepStep, []string]}, tidyKeeps()...),
 			confirm:  []bool{false}}
 		r := lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "tidy-keep", "tidy-pick", "tidy-keep", "confirm:Move 1 item to the trash?"}))
 		Expect(p.tidyPickSteps[0].Preselect).To(BeEmpty(), "nothing is preselected at first")
 		Expect(p.tidyPickSteps[1].Preselect).To(Equal(tidyIDs(p.tidyPickSteps[0].Options, "skill/old")))
@@ -234,7 +234,7 @@ var _ = Describe("lola tidy", func() {
 
 		p = &scripted{tidyPick: tidyPicks("claude-code"), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "confirm:Move 2 items to the trash?"}))
 		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Back: true, Answered: 1}}), "one step answered: q quits at once")
 	})
@@ -265,13 +265,13 @@ var _ = Describe("lola tidy", func() {
 		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n", ".claude/commands/dup.md": "x\n", ".claude/commands/dup/ref.md": "x\n"})
 		p := &scripted{tidyPick: tidyPicks("skill/old"), tidyKeep: tidyKeeps(), confirm: []bool{false}}
 		r := lolaP(p, "tidy", "-C", proj, "-t", "claude-code")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("Equivalent command:\n  lola tidy -C " + proj + " skill/old -t claude-code\n"))
 		Expect(r.err).NotTo(ContainSubstring("no single command"))
 
 		p = &scripted{tidyPick: tidyPicks(".claude/commands/dup.md"), tidyKeep: tidyKeeps(), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", proj, "-t", "claude-code")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("no single command selects this set\n"), "command/dup also names its sidecar directory")
 		Expect(r.err).NotTo(ContainSubstring("Equivalent command"))
 
@@ -279,13 +279,13 @@ var _ = Describe("lola tidy", func() {
 		writeTree(proj, map[string]string{".claude/agents/z.md": "x\n"})
 		p = &scripted{tidyPick: tidyPicks("skill/old"), tidyKeep: tidyKeeps("agent/z"), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", proj, "-t", "claude-code")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("Equivalent command:\n  lola tidy -C " + proj + " skill/old -t claude-code --keep agent/z\n"))
 
 		By("a keep-only answer's equivalent is the keep-only run")
 		p = &scripted{tidyPick: tidyPicks(), tidyKeep: tidyKeeps("agent/z"), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", proj, "-t", "claude-code")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "tidy-keep", "confirm:Keep 1?"}))
 		Expect(r.err).To(ContainSubstring("Equivalent command:\n  lola tidy -C " + proj + " -t claude-code --keep agent/z\n"))
 
@@ -294,7 +294,7 @@ var _ = Describe("lola tidy", func() {
 		writeTree(odd, map[string]string{".claude/skills/old/SKILL.md": "x\n"})
 		p = &scripted{tidyPick: tidyPicks("skill/old"), tidyKeep: tidyKeeps(), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", odd, "-t", "claude-code")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("lola cannot show the equivalent command: it holds characters lola does not print or a word too long to print\n"))
 		Expect(r.err).NotTo(ContainSubstring("no single command"))
 		Expect(r.err).NotTo(ContainSubstring("Equivalent command"))
@@ -305,7 +305,7 @@ var _ = Describe("lola tidy", func() {
 		writeTree(long, map[string]string{".claude/skills/old/SKILL.md": "x\n"})
 		p = &scripted{tidyPick: tidyPicks("skill/old"), tidyKeep: tidyKeeps(), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", long, "-t", "claude-code")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(ContainSubstring("lola cannot show the equivalent command: it holds characters lola does not print or a word too long to print\n"))
 		Expect(r.err).NotTo(ContainSubstring("no single command"))
 		Expect(r.err).NotTo(ContainSubstring("Equivalent command"))
@@ -313,7 +313,7 @@ var _ = Describe("lola tidy", func() {
 		By("the review of a named run prints neither")
 		p = &scripted{confirm: []bool{false}}
 		r = lolaP(p, "tidy", "skill/old", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).NotTo(ContainSubstring("Equivalent command"))
 		Expect(r.err).NotTo(ContainSubstring("no single command"))
 	})
@@ -322,7 +322,7 @@ var _ = Describe("lola tidy", func() {
 		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n"})
 		p := &scripted{}
 		r := lolaP(p, "tidy", "-C", proj, "--json")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(p.calls).To(BeEmpty())
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
@@ -335,7 +335,7 @@ var _ = Describe("lola tidy", func() {
 		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n", ".claude/commands/tmp.md": "x\n"})
 		p := &scripted{}
 		r := lolaP(p, "tidy", "-y", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(p.calls).To(BeEmpty(), "-y asks no question")
 		Expect(r.err).To(Equal(lola("tidy", "-y", "-C", proj).err))
 		Expect(filepath.Join(proj, ".claude", "skills", "old")).To(BeAnExistingFile())
@@ -350,7 +350,7 @@ var _ = Describe("lola tidy", func() {
 
 		By("off a terminal it still refuses with the --all -y hint")
 		r = lola("tidy", "-C", proj)
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("error: lola tidy needs names or --all when it cannot ask (off a terminal or with --json): 2 items can move\n"))
 		Expect(r.err).To(ContainSubstring("  hint: lola tidy -C " + proj + " --all -y\n"))
 	})
@@ -373,7 +373,7 @@ var _ = Describe("lola tidy", func() {
 	It("a hint keeps --json, --plain and --no-pager as given, and never -n", func() {
 		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n"})
 		r := lola("tidy", "-C", proj, "--plain", "--no-pager")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("  hint: lola tidy -C " + proj + " --all -y --plain --no-pager\n"))
 		r = lola("tidy", "-n", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
@@ -382,7 +382,7 @@ var _ = Describe("lola tidy", func() {
 		Expect(doc["hints"]).To(Equal([]any{"lola tidy -C " + proj + " --all --json"}))
 		words := shellWords(doc["hints"].([]any)[0].(string))
 		r = lola(words[1:]...)
-		Expect(r.code).To(Equal(1), "the dry run's hint carries no -y you did not give, so off a terminal it is refused")
+		Expect(r.code).To(Equal(3), "the dry run's hint carries no -y you did not give, so off a terminal it is refused")
 		var refusal struct{ Hints []string }
 		Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
 		Expect(refusal.Hints).To(Equal([]string{"lola tidy -C " + proj + " --all -y --json"}))
@@ -393,11 +393,54 @@ var _ = Describe("lola tidy", func() {
 		Expect(doc["moved"]).To(HaveLen(1), "the hint, pasted, is the run it names")
 	})
 
+	It("-n also prints the -y run that works off a terminal, in human, --plain and --json output", func() {
+		writeTree(proj, map[string]string{".claude/skills/a/SKILL.md": "x\n", ".claude/skills/b/SKILL.md": "x\n", ".claude/commands/c.md": "x\n"})
+		off := "lola tidy -C " + proj + " --all -y"
+		r := lola("tidy", "-n", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("→ lola tidy -C " + proj + " --all\n"))
+		Expect(r.out).To(ContainSubstring("→ off a terminal: " + off + "\n"))
+		Expect(strings.Index(r.out, "→ lola tidy")).To(BeNumerically("<", strings.Index(r.out, "off a terminal")))
+
+		r = lola("tidy", "-n", "-C", proj, "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("off_terminal\t" + off + " --plain\n"))
+
+		r = lola("tidy", "-n", "-C", proj, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var doc map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
+		Expect(doc["hints"]).To(Equal([]any{"lola tidy -C " + proj + " --all --json"}), "the main hint never adds -y")
+		Expect(doc["equivalent_commands"]).To(Equal([]any{off + " --json"}))
+
+		r = lola(shellWords(off)[1:]...)
+		Expect(r.code).To(Equal(0), "the off-terminal line, pasted, is not refused: "+r.err)
+		Expect(filepath.Join(proj, ".claude", "skills", "a")).NotTo(BeADirectory())
+		Expect(filepath.Join(proj, ".claude", "commands", "c.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("-n prints no off-terminal line when nothing would move, or the run already has -y, --force or only edits the keep-list", func() {
+		r := lola("tidy", "-n", "-C", proj, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var doc map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
+		Expect(doc["equivalent_commands"]).To(Equal([]any{}), "an empty list, never null")
+		r = lola("tidy", "-n", "-C", proj)
+		Expect(r.out).NotTo(ContainSubstring("off a terminal"))
+
+		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n"})
+		for _, args := range [][]string{{"-y"}, {"--force", "--all"}, {"--keep", "skill/old"}} {
+			r = lola(append([]string{"tidy", "-n", "-C", proj}, args...)...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).NotTo(ContainSubstring("off a terminal"), strings.Join(args, " "))
+		}
+	})
+
 	It("asks the review on a terminal when names are given, and declining moves nothing", func() {
 		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n", ".claude/commands/tmp.md": "x\n"})
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "tidy", "skill/old", "--keep", "command/tmp", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Move 1 item to the trash and keep 1?"}))
 		Expect(r.err).To(ContainSubstring("→ claude-code  skill/old  .claude/skills/old"))
 		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
@@ -416,7 +459,7 @@ var _ = Describe("lola tidy", func() {
 			":\n    - command/tmp-2\n    - command/gone\n"})
 		p := &scripted{confirm: []bool{false}}
 		r := lolaP(p, "tidy", "skill/old", "--keep", "skill/n*", "--keep", "skill/n*", "--keep", "command/tmp-2", "--unkeep", "command/gone", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Move 1 item to the trash and keep 1 and stop keeping 1?"}))
 		Expect(r.err).To(ContainSubstring("  → keep skill/n*\n"))
 		Expect(r.err).To(ContainSubstring("  → unkeep command/gone\n"))
@@ -439,7 +482,7 @@ var _ = Describe("lola tidy", func() {
 	It("a printed hint works as the user pastes it", func() {
 		writeTree(proj, map[string]string{".claude/skills/a b'c/SKILL.md": "x\n", ".claude/commands/tmp-1.md": "x\n", ".claude/agents/z.md": "x\n"})
 		r := lola("tidy", "command/tmp-*", "skill/a b'c", "-C", proj, "-t", "claude-code", "--keep", "agent/z")
-		Expect(r.code).To(Equal(1))
+		Expect(r.code).To(Equal(3))
 		var hint string
 		for l := range strings.SplitSeq(r.err, "\n") {
 			if h, ok := strings.CutPrefix(l, "  hint: "); ok {

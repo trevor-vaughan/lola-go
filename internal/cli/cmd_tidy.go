@@ -387,6 +387,13 @@ func printTidy(w io.Writer, s style, r *engine.TidyResult) {
 		}
 		fmt.Fprintln(w, s.info(h))
 	}
+	switch {
+	case r.OffTerminal == "":
+	case s.plain:
+		fmt.Fprintln(w, "off_terminal\t"+r.OffTerminal)
+	default:
+		fmt.Fprintln(w, s.info("off a terminal: "+r.OffTerminal))
+	}
 }
 
 // printTidyEdits prints what a tidy run wrote to the keep-list and its notices, which a run that

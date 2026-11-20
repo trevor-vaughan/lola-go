@@ -53,7 +53,7 @@ func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Na
 		return err
 	}
 	// -y answers exactly this question, the one the plan asks.
-	err := errs.WithHints(fmt.Errorf("%s needs confirmation, and there is no terminal to ask on", cmd.CommandPath()),
+	err := errs.WithHints(errs.NeedsAnswer(fmt.Errorf("%s needs confirmation, and there is no terminal to ask on", cmd.CommandPath())),
 		runWithout(cmd, args, "yes")+" -y")
 	if !a.json {
 		collected(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr()), asking: true})

@@ -56,6 +56,8 @@ testcases:
         script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} {{.lola}} install ../my-module --scope project -t claude-code"
         assertions:
           - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ added my-module to project.yml (base)"
+          - "result.systemout ShouldContainSubstring \"▸ my-module: 2 changes (claude-code 2)\""
           - result.systemout ShouldContainSubstring "✓ installed my-module (claude-code)"
       - type: exec
         script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} {{.lola}} list"
@@ -71,7 +73,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - "result.systemerr ShouldContainSubstring \"project /work/qs/my-project: project.yml\""
-          - result.systemout ShouldContainSubstring "✓ update claude-code .claude/skills/hello/SKILL.md"
+          - "result.systemout ShouldContainSubstring \"▸ my-module: 1 change (claude-code 1)\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} tail -n 1 /work/qs/my-project/.claude/skills/hello/SKILL.md"
         assertions:
@@ -163,7 +165,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/kit -C /work/proj --scope project -t claude-code -t gemini-cli -t opencode@2.0 > /tmp/i3.out && cat /tmp/i3.out'"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/kit -C /work/proj --scope project -t claude-code -t gemini-cli -t opencode@2.0 -v > /tmp/i3.out && cat /tmp/i3.out'"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/agents/critic.md\""
@@ -189,15 +191,16 @@ testcases:
         script: |
           {{.runtime}} exec {{.container}} python3 -c '
           lines = open("/tmp/i3.out", encoding="utf-8").read().splitlines()
-          assert len(lines) == 25, len(lines)
-          assert lines[0] == "✓ added kit to project.yml (base)", lines[0]
-          assert sum(l.startswith("  ✓ create ") for l in lines) == 17, lines
-          assert lines[18:20] == ["kit MCP servers:", "    kit-tools (stdio) runs: kit-mcp --stdio"], lines[18:20]
-          assert lines[20] == "⚠ kit comes from /e2e/fixtures/kit, outside the project: a teammate\x27s sync will refuse it; share a module through a git repository or an https:// archive", lines[20]
-          assert lines[21] == "→ recorded opencode 2.0 in .lola/project.yml (target_versions): files are written for opencode >=2.0", lines[21]
-          assert lines[22:24] == ["→ keep it to yourself: lola profile -C /work/proj --move kit --to mine --switch",
-                                  "→ meant for every project? lola profile --user --move kit --to base -C /work/proj"], lines[22:24]
-          assert lines[24] == "✓ installed kit (claude-code, gemini-cli, opencode)", lines[24]
+          assert len(lines) == 29, len(lines)
+          assert lines[0:3] == ["MCP servers:", "kit MCP servers:", "    kit-tools (stdio) runs: kit-mcp --stdio"], lines[0:3]
+          assert lines[3] == "Notices:", lines[3]
+          assert lines[4] == "⚠ kit comes from /e2e/fixtures/kit, outside the project: a teammate\x27s sync will refuse it; share a module through a git repository or an https:// archive", lines[4]
+          assert lines[5] == "→ recorded opencode 2.0 in .lola/project.yml (target_versions): files are written for opencode >=2.0", lines[5]
+          assert lines[6:8] == ["→ keep it to yourself: lola profile -C /work/proj --move kit --to mine --switch",
+                                "→ meant for every project? move it from this project into your user base: lola profile --user --move kit --to base -C /work/proj"], lines[6:8]
+          assert lines[8:11] == ["Files:", "✓ added kit to project.yml (base)", "kit: 17 changes (claude-code 5, gemini-cli 6, opencode 6)"], lines[8:11]
+          assert sum(l.startswith("    ✓ create ") for l in lines) == 17, lines
+          assert lines[28] == "✓ installed kit (claude-code, gemini-cli, opencode)", lines[28]
           print("ok the install printed its 17 creates, the MCP server, the outside-source warning, the recorded version and the moves that fix where it went")
           '
         assertions:
@@ -299,7 +302,7 @@ testcases:
           {{.runtime}} exec {{.container}} python3 -c '
           import subprocess
           out = subprocess.run(["/opt/lola-go/lola-go", "list", "-C", "/work/proj", "--plain"], capture_output=True, text=True, check=True).stdout
-          want = "".join("kit\t%s\tok\ton\t/e2e/fixtures/kit\tproject\tproject.yml\t\n" % t for t in ("claude-code", "gemini-cli", "opencode"))
+          want = "".join("kit\t%s\tok\ton\t/e2e/fixtures/kit\tproject\tproject.yml\t\t-\n" % t for t in ("claude-code", "gemini-cli", "opencode"))
           assert out == want, repr(out)
           print("ok plain rows")
           '
@@ -322,7 +325,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} sync -C /work/proj"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - result.systemout ShouldBeEmpty
           - 'result.systemerr ShouldStartWith "project /work/proj: project.yml"'
           - 'result.systemerr ShouldContainSubstring "error: refusing to change anything: 1 conflict, which --force overrides"'
@@ -331,7 +334,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/i6.out 2> /tmp/i6.err; echo exit=$? $(tail -n 1 /work/proj/.claude/commands/deploy.md)'"
         assertions:
-          - result.systemout ShouldEqual "exit=1 My edit."
+          - result.systemout ShouldEqual "exit=3 My edit."
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} refusal /tmp/i6.out /tmp/i6.err > /dev/null && python3 -c "
@@ -374,7 +377,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} uninstall kit -C /work/proj --json < /dev/null > /tmp/i8.out 2> /tmp/i8.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/i8.out /tmp/i8.err"
         assertions:
@@ -479,7 +482,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.git_cache}} {{.container}} sh -c '{{.lola}} sync --update kit -C /work/proj -y --json > /tmp/i11.out 2> /tmp/i11.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/i11.out /tmp/i11.err"
         assertions:
@@ -538,12 +541,12 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.zip_cache}} {{.container}} {{.lola}} install /work/kit.zip -C /work/proj3 --scope project -t claude-code"
+        script: "{{.runtime}} exec {{.zip_cache}} {{.container}} {{.lola}} install /work/kit.zip -C /work/proj3 --scope project -t claude-code -v"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "✓ create claude-code .claude/commands/deploy.md"
       - type: exec
-        script: "{{.runtime}} exec {{.tar_cache}} {{.container}} {{.lola}} install /work/kit.tar.gz -C /work/proj3-tar --scope project -t claude-code"
+        script: "{{.runtime}} exec {{.tar_cache}} {{.container}} {{.lola}} install /work/kit.tar.gz -C /work/proj3-tar --scope project -t claude-code -v"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "✓ create claude-code .claude/commands/deploy.md"
@@ -575,7 +578,7 @@ testcases:
   - name: I13 User scope is separate from the project
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/kit --user -t claude-code"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/kit --user -t claude-code -v"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "✓ create claude-code .claude.json /mcpServers/kit-tools"
@@ -596,7 +599,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} cache rm kit --json < /dev/null > /tmp/i14.out 2> /tmp/i14.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/i14.out /tmp/i14.err"
         assertions:
@@ -781,7 +784,7 @@ testcases:
           - result.systemout ShouldStartWith "exit=0"
           - result.systemout ShouldContainSubstring "delivered through .agents/skills"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/ag/mod -C /work/proj20b --scope project -t gemini-cli -y > /tmp/i20-d.out 2>&1; echo exit=$?; cat /tmp/i20-d.out; find /work/proj20b -name SKILL.md -not -path \"*/.lola/*\" | sort'"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/ag/mod -C /work/proj20b --scope project -t gemini-cli -y -v > /tmp/i20-d.out 2>&1; echo exit=$?; cat /tmp/i20-d.out; find /work/proj20b -name SKILL.md -not -path \"*/.lola/*\" | sort'"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldStartWith "exit=0"
@@ -795,7 +798,7 @@ testcases:
     # consent, and a recorded consent asks nothing.
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'for m in hka hkb; do d=/work/hk/$m; mkdir -p $d/commands $d/scripts; printf \"%s\\n\" --- \"description: $m\" --- $m > $d/commands/$m.md; printf \"#!/bin/sh\\necho ran-$m\\n\" > $d/scripts/post.sh; chmod +x $d/scripts/post.sh; printf \"name: $m\\ndescription: d\\nhooks: {post-install: scripts/post.sh}\\n\" > $d/lola.yml; done; ls /work/hk | tr \"\\n\" ,'"
+        script: "{{.runtime}} exec {{.container}} sh -c 'for m in hka hkb; do d=/work/hk/$m; mkdir -p $d/commands $d/scripts; printf \"%s\\n\" --- \"description: $m\" --- $m > $d/commands/$m.md; printf \"#!/bin/sh\\necho ran-$m\\ntouch /tmp/ran-$m\\n\" > $d/scripts/post.sh; chmod +x $d/scripts/post.sh; printf \"name: $m\\ndescription: d\\nhooks: {post-install: scripts/post.sh}\\n\" > $d/lola.yml; done; ls /work/hk | tr \"\\n\" ,'"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "hka,hkb,"
@@ -805,18 +808,17 @@ testcases:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"Run hka's install hooks? [y/N]\""
           - "result.systemout ShouldContainSubstring \"Run hkb's install hooks? [y/N]\""
-          - "result.systemout ShouldContainSubstring \"✓ hka post-install hook scripts/post.sh (claude-code): ran\""
-          - "result.systemout ShouldContainSubstring \"✓ hkb post-install hook scripts/post.sh (claude-code): ran\""
+          - "result.systemout ShouldContainSubstring \"✓ hka post-install hook scripts/post.sh (sha256 7994abc1df97de49d97d53493603eb8c741442f99f8ed4fa8a42568c6da41720, claude-code): ran\""
+          - "result.systemout ShouldContainSubstring \"✓ hkb post-install hook scripts/post.sh (sha256 7c5aa35ffa2ed8c941908a1e97009ba3fbd0e8f84cbdb5c83bb4e4e973e54759, claude-code): ran\""
       - type: exec
         script: "{{.runtime}} exec {{.i21_homes_yn}} {{.container}} sh -c 'mkdir -p /work/proj21yn && printf \"y\\nn\\n\" | LOLA_ACCESSIBLE=1 NO_COLOR=1 script -qec \"{{.lola}} install /work/hk/hka /work/hk/hkb -C /work/proj21yn --scope project -t claude-code\" /dev/null'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✓ hka post-install hook scripts/post.sh (claude-code): ran\""
-          - "result.systemout ShouldContainSubstring \"⚠ hkb post-install hook scripts/post.sh (claude-code): declined\""
+          - "result.systemout ShouldContainSubstring \"✓ hka post-install hook scripts/post.sh (sha256 7994abc1df97de49d97d53493603eb8c741442f99f8ed4fa8a42568c6da41720, claude-code): ran\""
+          - "result.systemout ShouldContainSubstring \"⚠ hkb post-install hook scripts/post.sh (sha256 7c5aa35ffa2ed8c941908a1e97009ba3fbd0e8f84cbdb5c83bb4e4e973e54759, claude-code): declined\""
       - type: exec
-        script: "{{.runtime}} exec {{.i21_homes_y}} {{.container}} sh -c 'mkdir -p /work/proj21y && printf \"y\\n\" | LOLA_ACCESSIBLE=1 NO_COLOR=1 script -qec \"{{.lola}} install /work/hk/hka /work/hk/hkb -C /work/proj21y --scope project -t claude-code\" /dev/null; test ! -e /work/proj21y/.claude'"
+        script: "{{.runtime}} exec {{.i21_homes_y}} {{.container}} sh -c 'rm -f /tmp/ran-hka /tmp/ran-hkb; mkdir -p /work/proj21y && printf \"y\\n\" | LOLA_ACCESSIBLE=1 NO_COLOR=1 script -qec \"{{.lola}} install /work/hk/hka /work/hk/hkb -C /work/proj21y --scope project -t claude-code\" /dev/null; test ! -e /work/proj21y/.claude && test ! -e /tmp/ran-hka && test ! -e /tmp/ran-hkb'"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"Run hkb's install hooks? [y/N] \""
-          - result.systemout ShouldContainSubstring "✗ cancelled — nothing was changed"
-          - result.systemout ShouldNotContainSubstring "ran-hka"
+          - "result.systemout ShouldContainSubstring \"error: input ended before the question was answered\""

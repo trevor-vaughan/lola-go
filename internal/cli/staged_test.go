@@ -52,23 +52,23 @@ var _ = Describe("lola install's staged run", func() {
 	aborted := func(cli.ComponentPage) ([]string, error) { return nil, cli.ErrAborted }
 
 	DescribeTable("a run that ends without Apply leaves the cache as it was and removes its staging",
-		func(sp *scripted, extra ...string) {
+		func(code int, sp *scripted, extra ...string) {
 			r := lolaP(sp, append([]string{"install", fresh, "--scope", "project"}, extra...)...)
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(code), r.err)
 			Expect(cachedFresh()).To(BeFalse())
 			Expect(runDirs()).To(BeEmpty())
 			Expect(filepath.Join(tmp, installed)).NotTo(BeAnExistingFile())
 		},
-		Entry("cancelled at the component page", &scripted{components: []func(cli.ComponentPage) ([]string, error){aborted}}),
-		Entry("Quit at the review", &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}),
-		Entry("-n, applied at the review", &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}, "-n"),
+		Entry("cancelled at the component page", 4, &scripted{components: []func(cli.ComponentPage) ([]string, error){aborted}}),
+		Entry("Quit at the review", 4, &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}),
+		Entry("-n, applied at the review", 0, &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}, "-n"),
 	)
 
 	It("a refusal at Apply leaves the cache as it was", func() {
 		writeTree(proj, map[string]string{".claude/commands/fresh.md": "mine\n"})
 		r := lolaP(&scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}},
 			"install", fresh, "--scope", "project")
-		Expect(r.code).To(Equal(1), r.err)
+		Expect(r.code).To(Equal(3), r.err)
 		Expect(r.err).To(ContainSubstring("fresh.md"))
 		Expect(cachedFresh()).To(BeFalse())
 		Expect(runDirs()).To(BeEmpty())
@@ -104,7 +104,7 @@ var _ = Describe("lola install's staged run", func() {
 		Expect(runDirs()).To(BeEmpty())
 
 		writeTree(proj, map[string]string{".claude/commands/fresh.md": "mine\n"})
-		Expect(run().code).To(Equal(1))
+		Expect(run().code).To(Equal(3))
 		Expect(cachedFresh()).To(BeFalse())
 		Expect(runDirs()).To(BeEmpty())
 

@@ -24,7 +24,7 @@ per scope in `keep.yaml`, names what tidy stops offering ([Tidying](../guides/ti
 | `--unkeep <selector>` | Remove a selector from this scope's keep-list, as written there (repeatable). Alias: `--unprotect`. |
 | `-y`, `--yes` | Do not ask for confirmation, and open no picker (not the scope picker either): the scope is the one found off a terminal (the `.lola/` project in the directory or above it, else `default_scope` in `config.yaml`), and a run without names or `--all` is refused as it is there. |
 | `--force` | Also move what git tracks, without asking; names or `--all` are still needed. |
-| `-n`, `--dry-run` | List what would move and what is locked, and change nothing. |
+| `-n`, `--dry-run` | List what would move and what is locked, and change nothing. It ends with the run that applies it (no `-y` you did not give) and, when that run would be refused off a terminal, `off a terminal:` and the same run with `-y` (`--plain`: an `off_terminal` row). |
 
 The global flags apply too ([Using lola](../usage.md#commands)): `--project`, `--user`, `-C/--root <dir>`
 and `-s/--scope` pick the scope; `--json`, `--plain` and `--no-pager` pick the output.
@@ -54,5 +54,5 @@ JSON: `scope`, `root` (`""` at user scope), `dry_run`, `targets` (the assistants
 dry run and in a refusal; else `[]`), `moved`, `protected` (locked items, which never move),
 `skipped` (items left in place, each with a `code` and `reason`), `keep_added`, `keep_removed`,
 `trash_credentials` (the trash paths of MCP file copies that may hold credentials), `notices` and
-`hints`. Each item carries `target`, `kind`, `name` and `path`
+`hints` and `equivalent_commands` (a dry run that would move items: the `-y` run for off a terminal; else `[]`). Each item carries `target`, `kind`, `name` and `path`
 ([the guide](../guides/tidying.md#tidying) lists the rest).

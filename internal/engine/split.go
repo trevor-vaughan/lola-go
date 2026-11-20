@@ -241,7 +241,7 @@ func (e *Engine) Split(ctx context.Context, req SplitRequest) (*SplitResult, err
 	}
 	if !req.Options.DryRun && !req.Yes && !req.Options.Force {
 		if req.Confirm == nil {
-			return nil, errs.WithHints(fmt.Errorf("lola profile --split rewrites %s and makes %s, and there is no terminal to ask on", shown(i.Path), shown(newPath)),
+			return nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("lola profile --split rewrites %s and makes %s, and there is no terminal to ask on", shown(i.Path), shown(newPath))),
 				"split it: "+run(append(again, "-y")...))
 		}
 		ok, err := req.Confirm(res.Plan)

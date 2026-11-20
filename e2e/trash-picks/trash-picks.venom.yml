@@ -134,7 +134,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/b -t claude-code --skip skill/bravo"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - "result.systemerr ShouldContainSubstring \"✗ kit: claude-code (dropped by your pick change)\""
           - "result.systemerr ShouldContainSubstring \".claude/skills/bravo/SKILL.md\""
           - "result.systemerr ShouldContainSubstring \"error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\""
@@ -148,7 +148,7 @@ testcases:
   - name: N2 With -y the same pick deletes the skill in that clone, and the shared entry records it
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/b -t claude-code --skip skill/bravo -y"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/b -t claude-code --skip skill/bravo -y -v"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"→ delete claude-code .claude/skills/bravo/SKILL.md\""
@@ -170,7 +170,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} trash --empty"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - "result.systemerr ShouldContainSubstring \"will delete from the trash:\""
           - "result.systemerr ShouldContainSubstring \"lola tidy -C /work/a  11 B\""
           - "result.systemerr ShouldContainSubstring \"error: lola trash needs confirmation, and there is no terminal to ask on\""
@@ -203,7 +203,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - "result.systemerr ShouldContainSubstring \"✗ kit: gemini-cli (target dropped by -t)\""
           - "result.systemerr ShouldContainSubstring \".gemini/skills/alpha/SKILL.md\""
           - "result.systemerr ShouldContainSubstring \"error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\""
@@ -216,7 +216,7 @@ testcases:
   - name: X2 With -y it removes them now, and lola list and the next sync agree
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code -y"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code -y -v"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"→ delete gemini-cli  .gemini/skills/alpha/SKILL.md\""

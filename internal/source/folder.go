@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
@@ -26,9 +27,12 @@ var ignoredNames = map[string]bool{".git": true, ".venv": true, "node_modules": 
 // archive's entry modes, a folder's file system), as sorted slash paths relative to Dir: the
 // digest takes execute bits from them, never from the file system lola copied to.
 type Fetched struct {
-	Dir         string
-	Name        string // fallback module name: the base name of the module root's folder
-	Commit      string
+	Dir    string
+	Name   string // fallback module name: the base name of the module root's folder
+	Commit string
+	// Committed is the commit's committer time (git only; zero otherwise). The author writes it,
+	// so it only orders versions for advice and never feeds a trust decision.
+	Committed   time.Time
 	Executables []string
 	// Root is where Dir's tree was in the source, a slash path from its top ("" for the top
 	// itself): the module root lola found (an archive's wrapping directory, a module/) or the

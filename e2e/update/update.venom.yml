@@ -56,8 +56,9 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} update -C /work/proj"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemout ShouldContainSubstring "already up to date"
-          - result.systemout ShouldContainSubstring "1 module served from your cache (fetched within cache_fresh_for)"
+          - result.systemout ShouldContainSubstring "up to date with your cache (fetched"
+          - result.systemout ShouldContainSubstring "update -C /work/proj --fetch"
+          - result.systemout ShouldNotContainSubstring "already up to date"
           - result.systemout ShouldNotContainSubstring "updated pack"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log | cmp - /tmp/u2.mid'"
@@ -114,7 +115,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} update -C /work/proj"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - result.systemerr ShouldContainSubstring "re-pin from main"
           - result.systemerr ShouldNotContainSubstring "not fetched yet"
           - result.systemerr ShouldContainSubstring "~ commands/deploy.md"
@@ -137,7 +138,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "updated pack"
-          - result.systemout ShouldNotContainSubstring "served from your cache"
+          - result.systemout ShouldNotContainSubstring "up to date with your cache"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'test \"$(wc -l < /run/gitserve/requests.log)\" -gt \"$(cat /tmp/u4.before)\"'"
         assertions:
@@ -267,7 +268,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/pick"
         assertions:
-          - result.code ShouldEqual 1
+          - result.code ShouldEqual 3
           - "result.systemerr ShouldContainSubstring \"✗ pick: claude-code (not in the version this run installs)\""
           - "result.systemerr ShouldContainSubstring \"needs your confirmation to remove the files pick's new version drops, and there is no terminal to ask on\""
           - "result.systemerr ShouldContainSubstring \"hint: then confirm them: lola update -C /work/pick --fetch --trust=entries,profiles --at pick=\""
@@ -312,7 +313,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} update --fetch -C /work/drop --json > /tmp/u10.out 2> /tmp/u10.err; echo exit=$?'"
         assertions:
-          - result.systemout ShouldEqual "exit=1"
+          - result.systemout ShouldEqual "exit=3"
       - type: exec
         script: "{{.runtime}} exec {{.container}} cat /tmp/u10.err"
         assertions:

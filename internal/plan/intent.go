@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -92,6 +94,7 @@ const (
 	ActionDelete Action = "delete"
 	ActionForget Action = "forget"
 	ActionAbsent Action = "absent" // an owned non-string array member the user removed: kept owned, not rewritten
+	ActionKeep   Action = "keep"   // a hand-edited file or member an uninstall with KeepEdits leaves as it is and forgets
 )
 
 // KindDirectory is the Kind of a step that removes a directory the plan's deletions leave empty.
@@ -157,6 +160,12 @@ type Conflict struct {
 type ConflictError struct {
 	Conflicts   []Conflict
 	Overridable bool
+}
+
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer) when --force
+// overrides every conflict; one it cannot override is an error.
+func (e *ConflictError) Is(target error) bool {
+	return target == errs.ErrNeedsAnswer && !slices.ContainsFunc(e.Conflicts, func(c Conflict) bool { return !c.Forceable })
 }
 
 func (e *ConflictError) Error() string {
