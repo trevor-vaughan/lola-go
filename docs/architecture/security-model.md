@@ -4,6 +4,29 @@ Back to the [README](../../README.md).
 
 Maintainer notes on Security model. It is split out of [architecture](../architecture.md).
 
+The table lists each threat, the path it takes to lola, the mitigation and the section below that
+covers it. The sections give the detail, including each residual risk.
+
+| Threat | Path | Mitigation | Section |
+|---|---|---|---|
+| A flag or consent grants more than the user meant | `--trust`, `-y`, `--force`, a hint | Each kind answers a fixed set of questions; hints add only the kinds missing; grants are recorded after the receipt's yes | **Trust kinds cannot widen** |
+| Module code runs without informed consent | Install hooks, runtime hooks, an agent's hooks | Consent tied to the exact scripts, or to the rendered groups and module version; only content shown in full is granted | **Hooks run code, with consent** |
+| A module starts an unwanted program | MCP servers written into the assistant's files | `entries` and `runtime-hooks` consent; the trust diff prints each command; lola never starts a server | **Module MCP servers** |
+| Module content reads or writes outside its tree | Symlinks, archive links, odd names | Relative in-tree links only, read through `os.Root`; archives never write a link; names validated | **Sources are not trusted** |
+| A checkout redirects lola's writes | Symlinked directories in the project | Conflict detection; the plan shows every redirected destination | **Destinations** |
+| A repository points lola's own directories elsewhere | A symlinked `.lola/`, `.lola/modules/` or `.lola/plugin-data/` | Such links are refused; a module copy that is not a real directory is replaced | **Project state** |
+| A fetch returns other content than expected | The network, git config, redirects | Digests and commits are checked on refetch; checkouts run no filter program | **Fetched sources** |
+| A remote profile reaches inside your network | A host name that resolves to an internal address | `https://`/`ssh://` hosts by name only; a planted `lock.json` changes only an annotation | **Remote profiles** |
+| A catalog runs code or escapes its tree | A stranger's marketplace JSON | Parsed by a package with no file access; sources classified and checked; no field runs a command | **Marketplace catalogs** |
+| Recorded sources or text carry an attack | Someone else's `project.yml` or `lock.json` | Checked on load, before any git run; printed text passes `untrusted.Text` | **Recorded sources** |
+| A pulled manifest installs content you did not review | `git pull`, a hand edit of `project.yml` | The trust diff; only a yes or `--trust` acts, never `-y`; untrusted content stays in staging | **Pulled manifests** |
+| Tidy destroys or redirects files | Links onto the root or another project | It never deletes, only moves to the trash, and only declared entries | **Tidy** |
+| A template reaches the machine | Liquid in module files | A sandbox with no file, environment, network or Go method; output capped and checked | **Templates are untrusted input** |
+| A synced `pins.yaml` upgrades or fetches without asking | A dotfile manager | Strict validation; fetched only from allowed sources; commit and digest must match | **`pins.yaml` is synced input** |
+| A malformed file is overwritten | Hand edits, a partial sync | Unparseable files are never rewritten | **Unparseable files** |
+| A config file feeds the terminal or the parser | `config.yaml`, `selections.yaml` | Size caps, strict validation, `untrusted.Text` | **User files are untrusted** |
+| Another local user reads lola's state | File modes | State files are `0600`; XDG directories `0700` | **lola's own state files** (the last bullet) |
+
 - **Trust kinds cannot widen.** Each kind answers a fixed set of questions.
   - Bare `--trust` covers only `entries,profiles`. lola runs no code for them, but accepting
     entries is also the consent to the MCP servers they list (see **Module MCP servers**).
@@ -39,18 +62,20 @@ Maintainer notes on Security model. It is split out of [architecture](../archite
   - **Residual risk:** at user scope some assistants start a server without asking again, so
     accepting the entry is the only prompt you get.
 - **Sources are not trusted.**
-  - A symlink in module content is copied as the regular file it names only when it is relative and
-    resolves, through at most 8 links and no linked directory, to a regular file inside the source
-    tree (the folder given, the clone, the extracted archive) that lola would copy (not `.git`,
-    `node_modules` and the other ignored names, nor a file git ignores in a folder's work tree).
-    - `resolveLink` reads every hop through an `os.Root` of the source tree, and the copy opens the
-      target through it and checks it is the file resolved.
+  - A symlink in module content is copied as the regular file it names only when all of these hold:
+    - it is relative;
+    - it resolves, through at most 8 links and no linked directory, to a regular file;
+    - that file is inside the source tree (the folder given, the clone, the extracted archive);
+    - lola would copy that file (not `.git`, `node_modules` and the other ignored names, nor a
+      file git ignores in a folder's work tree).
+  - `resolveLink` reads every hop through an `os.Root` of the source tree, and the copy opens the
+    target through it and checks it is the file resolved.
   - Archives never write a link: link entries resolve lexically against the extracted files, and
     their copies count against the byte limit.
   - Every other link is refused (`ErrLinkInSource`), as is a file swapped for a symlink while it is
-    copied, and the cache never holds a link;
-  - names that become paths or JSON keys are validated; `CopyTree` reads through `os.Root`; cache
-    names and version ids are validated before use.
+    copied, and the cache never holds a link.
+  - Names that become paths or JSON keys are validated, and `CopyTree` reads through `os.Root`.
+    Cache names and version ids are validated before use.
 - **Destinations.** lola follows symlinked directories in the project, because dotfile managers
   use them, and shows writes that leave the project. **Residual risk:** a repository you check
   out can contain symlinks that redirect lola's writes elsewhere in your home directory.

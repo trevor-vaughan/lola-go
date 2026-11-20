@@ -85,10 +85,12 @@ Gemini CLI and OpenCode read; see [the agents target](guides/choosing-what-to-in
 only there, and off a terminal never beside an assistant that is set up.
 
 When you do not pass `-t`, lola uses the manifest's targets. Otherwise it offers the assistants
-installed on your machine (their command, `claude`, `gemini` or `opencode`, is on your
-`PATH`): on a terminal you pick from them, with those already set up in the project preselected,
-or every installed assistant preselected when none is set up (with only one installed, lola
-uses it without asking); off a terminal lola uses the ones both installed and set up.
+installed on your machine (their command, `claude`, `gemini` or `opencode`, is on your `PATH`).
+
+- On a terminal you pick from them. Those already set up in the project are preselected, or every
+  installed assistant is preselected when none is set up. With only one installed, lola uses it
+  without asking.
+- Off a terminal lola uses the ones both installed and set up.
 
 An assistant is set up in a project when it has `.claude/` or
 `CLAUDE.md` (Claude Code), `.gemini/` or `GEMINI.md` (Gemini CLI), or `.opencode/`,
@@ -251,10 +253,11 @@ or removed), trusted as `entries: target_versions`; `targets` is untouched by a 
   with your command for each version as hints: `to choose, for opencode >=1.0 <2.0: lola
   install ./kit --project -t opencode@1.0`.
 - A project in another directory (`-C`, or "Other directory..." in the scope question) is not
-  guessed for: off a terminal the install stops, writing nothing (a `-C` directory it had just
-  created is removed again, and it says `removed <dir> (lola created it; nothing was installed there)`), with
-  `which opencode version will read /srv/app? lola assumes the installed opencode only for the project you run it in, and /srv/app declares none`
-  and one hint per version, your command with every assistant it installs for:
+  guessed for. Off a terminal the install stops and writes nothing. A `-C` directory it had just
+  created is removed again, and it says
+  `removed <dir> (lola created it; nothing was installed there)`. The error is
+  `which opencode version will read /srv/app? lola assumes the installed opencode only for the project you run it in, and /srv/app declares none`,
+  with one hint per version, your command with every assistant it installs for:
   `for opencode >=2.0: lola install ./kit -C /srv/app -t opencode@2.0`,
   `for opencode >=1.0 <2.0: lola install ./kit -C /srv/app -t opencode@1.0`.
   - A `-C` directory that does not exist yet is refused before it is created, each hint the run
@@ -297,12 +300,15 @@ version when you pick the installed assistant's era in the user scope or the pro
 otherwise the `since` of the era you pick. A version the file already declares is not written again.
 
 The review says, for each destination and assistant with eras, which version its files are written
-for and why: `→ opencode >=2.0 (installed 2.2.5; will be recorded in .lola/project.yml)`,
-`→ opencode >=2.0 (from .lola/project.yml)` when declared, or `→ opencode >=2.0
-(nothing recorded; opencode is not installed here)`; a version that replaces the declared one says
-`(was 2.0 in .lola/project.yml; installed 2.2.5)`, and each installed module counts the files
-rewritten for it, those that come out the same byte for byte as unchanged: `kit: 1 rewritten for
-opencode >=1.0 <2.0, 1 unchanged`. The modules installed in a scope are always written for one
+for and why:
+
+- `→ opencode >=2.0 (installed 2.2.5; will be recorded in .lola/project.yml)`.
+- `→ opencode >=2.0 (from .lola/project.yml)` when declared.
+- `→ opencode >=2.0 (nothing recorded; opencode is not installed here)`.
+- `(was 2.0 in .lola/project.yml; installed 2.2.5)` when the version replaces the declared one.
+
+Each installed module counts the files rewritten for it. Files that come out the same byte for
+byte count as unchanged: `kit: 1 rewritten for opencode >=1.0 <2.0, 1 unchanged`. The modules installed in a scope are always written for one
 version of each assistant. The review says when they hold it: `→ opencode >=2.0 (from
 .lola/project.yml; this scope's modules are written for it)`. An install that writes for another
 version than the modules already there (other than those it installs again) is refused, under
@@ -620,10 +626,10 @@ binary. Each step below was run against a throwaway `HOME`.
     --restore --force` brings it back ([`lola trash`](reference/trash.md)). A copied settings or
     MCP file may hold credentials: the run warns `the trash run holds a copy of .mcp.json, which
     may contain credentials`. `-n` copies nothing.
-  - `--force` also answers the destructive question itself (`install`'s review and the files a
-    pick change deletes, `sync`'s and `update`'s removals, `uninstall`, `lola profile --remove`,
-    `--on`, `--off`, `--switch` and `--edit`, `lola migrate`, `lola tidy`), on a terminal
-    or off one, so the hint runs as it is; a `lola sync` refusal whose run also removes modules
+  - `--force` also answers the destructive question itself, on a terminal or off one, so the hint
+    runs as it is. That covers `install`'s review and the files a pick change deletes, `sync`'s and
+    `update`'s removals, `uninstall`, `lola profile --remove`, `--on`, `--off`, `--switch` and
+    `--edit`, `lola migrate`, and `lola tidy`. A `lola sync` refusal whose run also removes modules
     says which (`with --force it also removes, without asking: other (whole module)`).
   - `--force` never answers a consent question: a forced run that needs your trust for a pulled
     `project.yml`, or consent to a module's hooks, still asks, or off a terminal refuses with
@@ -684,11 +690,12 @@ binary. Each step below was run against a throwaway `HOME`.
 - Each command that fetches keeps its temporary files in one private directory,
   `$XDG_CACHE_HOME/lola/.staging/run-*`, removed when it ends, also when Ctrl+C or SIGTERM
   stops it.
-  - `install`, `sync`, `update`, `cache update`, `info`, `lola market --add` and `--update`, `lola
-    profile --add` and `--update`, and each `lola profile` change it applies with a sync (such as
-    `--on`, `--switch` or `--move`) also remove those a killed lola left behind once they are a
-    minute old, with their `run-*.lock` files, and a `run-*.lock` left without its directory once
-    it is a minute old; they warn when they cannot remove one.
+  - These commands also remove the directories a killed lola left behind, once they are a minute
+    old, with their `run-*.lock` files. They remove a `run-*.lock` left without its directory on
+    the same terms, and they warn when they cannot remove one. The commands are `install`, `sync`,
+    `update`, `cache update`, `info`, `lola market --add` and `--update`, `lola profile --add` and
+    `--update`, and each `lola profile` change that applies with a sync (such as `--on`, `--switch`
+    or `--move`).
   - A dry run (`-n`) still does this: the directories are lola's own temporaries.
   - A command waiting at a prompt keeps its directory however long it waits: the sweep skips the
     directory of a lola that is still running.

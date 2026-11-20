@@ -56,10 +56,10 @@ Refusals:
     files <module>'s new version drops`.
   - The accept hint carries `-y` only when every removal it would confirm is listed; that is the
     guarantee.
-  - An entry a pull added or changed is fetched only after you trust it, and a source can fail
-    to serve one (a notice says why, with its hints), so while one is installed and unread the
-    hint has no `-y`, not even the `-y` you gave, and the message says `until it reads <module>,
-    the removals listed may change, so -y waits until the next run lists them`; that run fetches
+  - An entry a pull added or changed is fetched only after you trust it. A source can fail to
+    serve one (a notice says why, with its hints). While such an entry is installed and unread,
+    the hint has no `-y`, not even the `-y` you gave. The message says `until it reads <module>,
+    the removals listed may change, so -y waits until the next run lists them`. That run fetches
     it, lists every removal and hints `-y`.
   - A `-y` you type yourself on a hinted run confirms that run's removals, listed or not.
   - A failure of lola's own state (your cache, the staging directory) stops the run instead.
