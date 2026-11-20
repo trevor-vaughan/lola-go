@@ -1,0 +1,89 @@
+docs/architecture/install-hooks.md
+  s_6f225ac7a3eb2f::t_814250420fa128 12
+docs/architecture/lola-tidy.md
+  s_6f225ac7a3eb2f::t_8f5d2880635795 93
+docs/architecture/marketplaces.md
+  s_6f225ac7a3eb2f::t_b3944398e41925 8
+docs/architecture/security-model.md
+  s_6f225ac7a3eb2f::t_cf37bb779b1ba4 10-28,135,147,163
+docs/architecture/templates.md
+  s_6f225ac7a3eb2f::t_a3ce7a8d0f2eb2 51,54,69
+docs/architecture/trust-record.md
+  s_6f225ac7a3eb2f::t_99106166a8696e 14
+docs/architecture/tui-flows.md
+  s_6f225ac7a3eb2f::t_fd087e16c73e45 42,62-63,67-78,91-102,209-221,225-306,310-315,322-332,441-453,457-536,540-547,551-558,605-617,621-624,631-662,666-670,674-678,751-756,760-790,794-799,803-807,869-874,878-908,912-918,922-927,987-992,996-1030,1034-1039,1043-1047,1091-1092,1097-1109,1113-1117,1121-1123,1170-1171,1176-1188,1192-1197,1201-1203,1254-1257,1261-1281,1285-1289,1293-1297,1370-1376,1380-1414,1418-1424,1428-1434,1503-1509,1513-1546,1550-1554,1558-1560,1644-1652,1656-1720,1724-1728,1730-1731,1735-1737,1803-1808,1812-1834,1841-1864,1868-1872,1876-1878,1943-1949,1953-1986,1990-1991,1993-1994,1998-2001
+docs/decisions.md
+  s_6f225ac7a3eb2f::t_ec905a979691fc 11-223
+docs/guides/choosing-what-to-install.md
+  s_6f225ac7a3eb2f::t_7ed27a20585bca 250-251,253-255,266-272,326-333,363-365,378-381,456-458
+docs/guides/install-scripts.md
+  s_6f225ac7a3eb2f::t_8bece58a8ea206 52-54,56
+docs/guides/install-trust-kinds.md
+  s_6f225ac7a3eb2f::t_bc995e23ebfee2 10-16,36
+docs/guides/sources-and-the-cache.md
+  s_6f225ac7a3eb2f::t_4bba6a313b5d64 11-18,152-160
+docs/guides/sync-and-trust.md
+  s_6f225ac7a3eb2f::t_e132ff4fc72fc8 537-542
+docs/guides/target-specs.md
+  s_6f225ac7a3eb2f::t_7fa4a83b7051e7 61-69,132,137-147,155-163
+docs/guides/templating.md
+  s_6f225ac7a3eb2f::t_d5b81813107a41 68,72-73,80
+docs/reference/cache.md
+  s_6f225ac7a3eb2f::t_941fc83cf17201 22-25,48-49,67-79
+docs/reference/check.md
+  s_6f225ac7a3eb2f::t_0991007a4842fa 16-17,19
+docs/reference/completion.md
+  s_6f225ac7a3eb2f::t_3a23123d69b48e 14-19,27-44
+docs/reference/help.md
+  s_6f225ac7a3eb2f::t_e8400cd0dc22cd 11-15,23-26
+docs/reference/info.md
+  s_6f225ac7a3eb2f::t_c9155e0c1515bc 97-98,100-101
+docs/reference/init.md
+  s_6f225ac7a3eb2f::t_9fb0a4f54dfa4b 18-19,21
+docs/reference/install.md
+  s_6f225ac7a3eb2f::t_a356b7589ba49c 27-47
+docs/reference/list.md
+  s_6f225ac7a3eb2f::t_c167b9df000610 79-80
+docs/reference/market.md
+  s_6f225ac7a3eb2f::t_cbab40b66ceac1 41-52
+docs/reference/migrate.md
+  s_6f225ac7a3eb2f::t_80839274bbe624 13-22
+docs/reference/output-contract.md
+  s_6f225ac7a3eb2f::t_8096b5e797f126 51,104,220-227
+docs/reference/profile.md
+  s_6f225ac7a3eb2f::t_b199cec958df30 37-62
+docs/reference/repair.md
+  s_6f225ac7a3eb2f::t_a63f163765e2bf 16-19
+docs/reference/sync.md
+  s_6f225ac7a3eb2f::t_ea476eb947371c 31-40
+docs/reference/tidy.md
+  s_6f225ac7a3eb2f::t_7f03b2773a8112 18-27
+docs/reference/trash.md
+  s_6f225ac7a3eb2f::t_a0c4408eb6eab9 61-68
+docs/reference/uninstall.md
+  s_6f225ac7a3eb2f::t_2f704d1e293669 57-65
+docs/reference/update.md
+  s_6f225ac7a3eb2f::t_781e5cdd5b94cf 77-87
+docs/template_engine_analysis.md
+  s_6f225ac7a3eb2f::t_6b3de216a9d144 54-64
+docs/testing.md
+  s_6f225ac7a3eb2f::t_2b8ab02c778f35 10-12,14-15,79-88,314-320
+docs/usage.md
+  s_6f225ac7a3eb2f::t_f36769ef5660a7 111-118,122-128,133-139,143-146,406-453,530-557,586-590,592,714-733
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "6a987f20a585d6f750b857b56ffee0a886914a60",
+  "prompts": {},
+  "sessions": {
+    "s_6f225ac7a3eb2f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae28ab37e381f5348",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
