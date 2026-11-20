@@ -1,0 +1,29 @@
+internal/engine/engine.go
+  s_dd223d1de430b7::t_e30fac297ba0a3 1754
+internal/engine/gitignore.go
+  s_dd223d1de430b7::t_12c70972f031b8 4,8,10-11,15,118-132,134,139-200,202-205,207-210,213
+  s_dd223d1de430b7::t_cdbabf93272388 206
+internal/engine/machine_paths_internal_test.go
+  s_dd223d1de430b7::t_a782d70b235bc4 1-27
+internal/engine/machine_paths_test.go
+  s_dd223d1de430b7::t_5e8615fc29d05e 1-63,65-81
+  s_dd223d1de430b7::t_d36a8f9502b4bd 64
+docs/usage.md
+  s_dd223d1de430b7::t_41cb0923ae6ebd 116,530-536
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e5b782768a2fe48fcbeae813d4b9f433c1739e15",
+  "prompts": {},
+  "sessions": {
+    "s_dd223d1de430b7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa90f5f7a8a3f27ef",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
