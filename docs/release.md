@@ -38,7 +38,7 @@ mean to tag, with a clean work tree.
 4. **The Go toolchain.** `go.mod`'s `toolchain` line names the newest patch release of the pinned
    minor (`go1.26.x`), and `task vuln` is clean on it.
 
-5. **The e2e image's base.** `BASE_DIGEST` in `e2e/image/pins.env` is the digest of the
+5. **The e2e image's base.** `BASE_DIGEST` in `e2e/image/pins.sh` is the digest of the
    multi-platform index the e2e image's base, `python:3.13-slim`, is pinned by. It still resolves
    (the runner pulls `docker.io/library/python:3.13-slim@<digest>`), and the Debian security tracker
    (<https://security-tracker.debian.org/tracker/>) shows no fixed security update for the

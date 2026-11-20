@@ -452,7 +452,7 @@ func remoteRef(ctx context.Context, spec Spec) (string, error) {
 func checkoutCommit(ctx context.Context, spec Spec, scratch string) ([]string, error) {
 	url, ref, sub := spec.Location, spec.Ref, spec.Path
 	shown, shownRef := untrusted.Text(url, untrusted.MaxName), untrusted.Text(ref, untrusted.MaxName)
-	format := "sha1"
+	format := "sha1" // DevSkim: ignore DS126858 - git object-format name passed to git init, not a hash lola computes
 	if len(ref) == 64 {
 		format = "sha256"
 	}

@@ -38,18 +38,18 @@ change nothing but what `lola market <name> <entry>` plans for.
 `add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show` and `search` are not `lola market`
 verbs: each is refused with the lola command to run instead.
 
-| Flag | What it does |
-|---|---|
-| `--add <source>` | Fetch the catalog at this source and register it. Alias: `--get`. |
-| `--ref <ref>` | With `--add`: the branch, tag or commit of a git source. |
-| `--path <file-or-dir>` | With `--add`: the catalog file, or the directory to look for it in, inside the source. |
-| `--update` | Fetch the named marketplaces' catalogs again and report what changed. Aliases: `--upgrade`, `--refresh`. |
-| `--all` | With `--update`: every marketplace you have. |
-| `--remove` | Forget the named marketplace and drop its cached catalog (asks; `-y`). Aliases: `--rm`, `--delete`, `--del`, `--erase`. |
-| `--ssh-host <host>` | With `--add` or `--update` (one marketplace): let the catalog's ssh sources at this host name use your ssh keys. Repeatable. With `--remove`: stop allowing it. |
-| `-y`, `--yes` | With `--remove`: forget it without asking. |
-| `-n`, `--dry-run` | Report what the action would do, and write nothing. |
-| `-t`, `--target <assistant>` | With `<name> <entry>`: the assistants to plan for, as `lola info`'s `-t`. |
+| Flag                                         | What it does                                                                                                                                                      |
+|----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--add <source>`                             | Fetch the catalog at this source and register it. Alias: `--get`.                                                                                                 |
+| `--ref <ref>`                                | With `--add`: the branch, tag or commit of a git source.                                                                                                          |
+| `--path <file-or-dir>`                       | With `--add`: the catalog file, or the directory to look for it in, inside the source.                                                                            |
+| `--update`                                   | Fetch the named marketplaces' catalogs again and report what changed. Aliases: `--upgrade`, `--refresh`.                                                          |
+| `--all`                                      | With `--update`: every marketplace you have.                                                                                                                      |
+| `--remove`                                   | Forget the named marketplace and drop its cached catalog (asks; `-y`). Aliases: `--rm`, `--delete`, `--del`, `--erase`.                                           |
+| `--ssh-host <host>`                          | With `--add` or `--update` (one marketplace): let the catalog's ssh sources at this host name use your ssh keys. Repeatable. With `--remove`: stop allowing it.   |
+| `-y`, `--yes`                                | With `--remove`: forget it without asking.                                                                                                                        |
+| `-n`, `--dry-run`                            | Report what the action would do, and write nothing.                                                                                                               |
+| `-t`, `--target <assistant>`                 | With `<name> <entry>`: the assistants to plan for, as `lola info`'s `-t`.                                                                                         |
 | `--scope`, `--user`, `--project`, `-C <dir>` | With `<name> <entry>`: the scope to plan for, as `lola info`'s. With any other action they change nothing, but one naming a scope that cannot be used is refused. |
 
 A catalog's `ssh://` and `user@host:path` sources are skipped unless you allowed their host. The

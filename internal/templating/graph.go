@@ -97,7 +97,7 @@ func (g *graph) visit(n *node, names, files []string) error {
 			child = &node{fileInfo: fileInfo{src: Source{Module: n.src.Module, File: file, Line: 1, Body: g.p.Files[file]}},
 				from: fmt.Sprintf("%s:%d", clean(n.src.File, maxFile), mk.line)}
 			if len(child.src.Body) > g.lim.Body {
-				return child.refusal(newError(codeTooLarge, file, 0, "is %d bytes; a partial file is at most %s", len(child.src.Body), sizeText(g.lim.Body)))
+				return child.refusal(newError(codeTooLarge, file, 0, "is %d bytes; a partial file is at most %s", len(child.src.Body), SizeText(g.lim.Body)))
 			}
 			if !utf8.ValidString(child.src.Body) {
 				return child.refusal(newError(codeInvalidUTF8, file, 1+invalidLine(child.src.Body), "is not UTF-8; a partial file must be UTF-8 text"))

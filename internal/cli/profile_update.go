@@ -458,10 +458,7 @@ func (e *updateError) Unwrap() error { return e.err }
 // JSONFields carries the run's document beside error and hints, and trusted: the profiles' grants
 // and what each scope's sync recorded, the failed one's included.
 func (e *updateError) JSONFields() map[string]any {
-	fields := map[string]any{}
-	if f, ok := errors.AsType[jsonFielder](e.err); ok {
-		maps.Copy(fields, f.JSONFields())
-	}
+	fields := jsonFields(e.err)
 	maps.Copy(fields, map[string]any{"remote_profiles": e.doc.Profiles, "notices": e.doc.Notices, "dry_run": e.doc.DryRun,
 		"updates": e.doc.Updates, "scopes": e.doc.Scopes})
 	var done []*engine.SyncResult

@@ -169,14 +169,14 @@ func (f *filterSet) check(name string, vs ...any) error {
 			return f.unsupported(name)
 		}
 		if n > f.lim.Value {
-			return &filterRefusal{codeValueTooLarge, fmt.Sprintf("%s got a %s value; a value in a lola template is at most %s", name, sizeText(n), sizeText(f.lim.Value))}
+			return &filterRefusal{codeValueTooLarge, fmt.Sprintf("%s got a %s value; a value in a lola template is at most %s", name, SizeText(n), SizeText(f.lim.Value))}
 		}
 	}
 	return nil
 }
 
 func (f *filterSet) tooLarge(name string, n int) error {
-	return &filterRefusal{codeValueTooLarge, fmt.Sprintf("%s would make a %s value; a value in a lola template is at most %s", name, sizeText(n), sizeText(f.lim.Value))}
+	return &filterRefusal{codeValueTooLarge, fmt.Sprintf("%s would make a %s value; a value in a lola template is at most %s", name, SizeText(n), SizeText(f.lim.Value))}
 }
 
 func (f *filterSet) tooManyItems(name string, n int) error {
@@ -799,7 +799,7 @@ func (s byKey) Less(i, j int) bool { return s.key(s.l[i]) < s.key(s.l[j]) }
 // value wherever it lands in frontmatter.
 func (f *filterSet) json(in any, _ []any) (any, error) {
 	if bound := jsonBound(in); bound > f.lim.Value {
-		return nil, &filterRefusal{codeValueTooLarge, fmt.Sprintf("json could make a %s value; a value in a lola template is at most %s", sizeText(bound), sizeText(f.lim.Value))}
+		return nil, &filterRefusal{codeValueTooLarge, fmt.Sprintf("json could make a %s value; a value in a lola template is at most %s", SizeText(bound), SizeText(f.lim.Value))}
 	}
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)

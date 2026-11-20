@@ -300,14 +300,7 @@ func printTrustDiff(w io.Writer, s style, name, run string, rep engine.TrustRepo
 	}
 	// What new target_versions drop, before the question: up to maxDrops in full, then how many
 	// more, with the dry run that lists them.
-	drops := make([]target.Finding, 0, min(len(rep.Drops), maxDrops))
-	for _, f := range rep.Drops[:min(len(rep.Drops), maxDrops)] {
-		if f.AuthorHint {
-			f.Hint = f.UserHint
-		}
-		drops = append(drops, f)
-	}
-	printFindings(w, s, drops)
+	printFindings(w, s, userFindings(rep.Drops[:min(len(rep.Drops), maxDrops)]))
 	if len(rep.Drops) > maxDrops {
 		fmt.Fprintln(w, s.info(fmt.Sprintf("and %d more — %s", len(rep.Drops)-maxDrops, rep.DropsRun)))
 	}

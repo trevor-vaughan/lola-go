@@ -335,12 +335,23 @@ func Load(path string) (*Profile, error) {
 // link, and it is opened without following one (yamldoc.ReadNoFollow). Its refusals coach the
 // fix a committed file takes.
 func LoadProject(path string) (*Profile, error) {
-	const hint = "fix it by hand, or restore it from version control"
-	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-		return nil, errs.WithHints(fmt.Errorf("%s is a symbolic link; a project's profile must be a file of its own", untrusted.Text(path, untrusted.MaxName)),
-			"replace it with the file it points to", hint)
+	if err := projectLink(path); err != nil {
+		return nil, err
 	}
-	return load(path, yamldoc.ReadNoFollow, hint, KindProject)
+	return load(path, yamldoc.ReadNoFollow, projectHint, KindProject)
+}
+
+// projectHint coaches the fix of a project's profile, a file the project commits.
+const projectHint = "fix it by hand, or restore it from version control"
+
+// projectLink refuses the project profile at path when it is a symbolic link: it must be a file
+// of its own.
+func projectLink(path string) error {
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		return errs.WithHints(fmt.Errorf("%s is a symbolic link; a project's profile must be a file of its own", untrusted.Text(path, untrusted.MaxName)),
+			"replace it with the file it points to", projectHint)
+	}
+	return nil
 }
 
 // Parse is the profile of yours at path whose bytes are b, checked as Load checks it: the profile
@@ -357,12 +368,11 @@ func Parse(path string, b []byte) (*Profile, error) {
 // ParseProject is Parse for a project's profile at path: the profile a write in progress leaves in
 // a project (a new one lola makes), checked as LoadProject checks it.
 func ParseProject(path string, b []byte) (*Profile, error) {
-	const hint = "fix it by hand, or restore it from version control"
 	d, err := yamldoc.Decode(b)
 	if err != nil {
-		return nil, errs.WithHints(fmt.Errorf("%s: %s", untrusted.Text(path, untrusted.MaxName), err.Error()), hint)
+		return nil, errs.WithHints(fmt.Errorf("%s: %s", untrusted.Text(path, untrusted.MaxName), err.Error()), projectHint)
 	}
-	return parse(path, d, b, hint, KindProject)
+	return parse(path, d, b, projectHint, KindProject)
 }
 
 // NewBundle is a new bundle file of members, in their order, as lola writes one: its version and
@@ -375,13 +385,7 @@ func NewBundle(members []string) ([]byte, error) {
 	}
 	root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
 		yamldoc.Str("version"), {Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(Version)}, yamldoc.Str("bundle"), list}}
-	var b bytes.Buffer
-	enc := yaml.NewEncoder(&b)
-	enc.SetIndent(2)
-	if err := errors.Join(enc.Encode(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}}), enc.Close()); err != nil {
-		return nil, err
-	}
-	return b.Bytes(), nil
+	return yamldoc.Encode(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}})
 }
 
 // load reads the profile at path with read, every refusal coached with hint; kind is whose it is,
@@ -955,7 +959,7 @@ func (p *Profile) SetBundle(path string, members []string) ([]byte, error) {
 	} else {
 		root.Content = append(root.Content, yamldoc.Str("bundle"), list)
 	}
-	out, err := encode(d)
+	out, err := yamldoc.Encode(d)
 	if err != nil {
 		return nil, err
 	}

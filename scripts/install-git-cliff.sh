@@ -9,7 +9,9 @@ VERSION=2.14.2
 dest="${1:?usage: install-git-cliff.sh <dest-dir>}"
 
 # A case, not an associative array: macOS ships bash 3.2.
-case "$(uname -s)-$(uname -m)" in
+os="$(uname -s)"
+arch="$(uname -m)"
+case "$os-$arch" in
   Linux-x86_64)
     triple=x86_64-unknown-linux-gnu
     sha512=26d1f7c8ea2400f2ccb0b2e7f321635f600b583bf4cd1f7afaa5e8c24068ad1088a2504e0a4d9f4333d4bb20a80329327d9462634343ee3af91e1a7fbdc6f18a
@@ -27,7 +29,7 @@ case "$(uname -s)-$(uname -m)" in
     sha512=6ec30660233fcd73b92e9d888965945b6435d6fcd7120df8d7c0799faa46cf06d563d49de721ccf4387e6d61bdc5b37c8eb73273c7d9a0883b90cd9857c6ad9f
     ;;
   *)
-    echo "no pinned git-cliff ${VERSION} for $(uname -s)-$(uname -m); install it yourself: cargo install --locked git-cliff --version ${VERSION}" >&2
+    echo "no pinned git-cliff ${VERSION} for $os-$arch; install it yourself: cargo install --locked git-cliff --version ${VERSION}" >&2
     exit 1
     ;;
 esac

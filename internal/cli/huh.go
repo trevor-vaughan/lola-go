@@ -1049,10 +1049,7 @@ func (h *huhForms) TidyPick(st TidyPickStep) ([]string, error) {
 // locked, cut to the terminal height; in accessible mode, where huh prints no description, a
 // note above it lists every locked item.
 func (h *huhForms) tidyPick(st TidyPickStep, value *[]string) []huh.Field {
-	opts := h.tidyOptions(st.Options)
-	for i, o := range st.Options {
-		opts[i] = opts[i].Selected(contains(st.Preselect, o.ID))
-	}
+	opts := h.tidyOptions(st.Options, st.Preselect)
 	if len(st.Locked) == 0 {
 		return []huh.Field{h.multi("Move which to the trash?", "", opts, value).Filterable(true)}
 	}
@@ -1085,10 +1082,7 @@ func (h *huhForms) tidyPick(st TidyPickStep, value *[]string) []huh.Field {
 // st.Preselect; when st.Required, it refuses an empty answer.
 func (h *huhForms) TidyKeep(st TidyKeepStep) ([]string, error) {
 	var chosen []string
-	opts := h.tidyOptions(st.Options)
-	for i, o := range st.Options {
-		opts[i] = opts[i].Selected(contains(st.Preselect, o.ID))
-	}
+	opts := h.tidyOptions(st.Options, st.Preselect)
 	const desc = "what your keep-list names stays, and lola tidy stops offering it"
 	ms := h.multi("Add any of the rest to your keep-list?", desc, opts, &chosen).Filterable(true)
 	var f huh.Field = ms
@@ -1102,8 +1096,8 @@ func (h *huhForms) TidyKeep(st TidyKeepStep) ([]string, error) {
 // tidyOptions are a tidy picker's options, each label cut to the terminal width unless that
 // makes it equal to another's, and labels still equal in full numbered " [n]": huh v2.0.3 toggles
 // every option whose label equals the one under the cursor, which would tick an item the user did
-// not choose.
-func (h *huhForms) tidyOptions(in []TidyOption) []huh.Option[string] {
+// not choose. Those whose ID preselect holds start ticked.
+func (h *huhForms) tidyOptions(in []TidyOption, preselect []string) []huh.Option[string] {
 	labels := make([]string, len(in))
 	count := map[string]int{}
 	for i, o := range in {
@@ -1136,7 +1130,7 @@ func (h *huhForms) tidyOptions(in []TidyOption) []huh.Option[string] {
 			}
 			used[label] = true
 		}
-		opts[i] = huh.NewOption(label, o.ID)
+		opts[i] = huh.NewOption(label, o.ID).Selected(contains(preselect, o.ID))
 	}
 	return opts
 }
@@ -1155,10 +1149,7 @@ func (h *huhForms) TrashPick(st TrashPickStep) (TrashAnswer, error) {
 // trashFields is TrashPick's form: the list of runs and files, its answer going to picked, then
 // the action, going to action. The options are labelled as tidy's are, so no two share a label.
 func (h *huhForms) trashFields(st TrashPickStep, picked *[]string, action *string) []huh.Field {
-	opts := h.tidyOptions(st.Options)
-	for i, o := range st.Options {
-		opts[i] = opts[i].Selected(contains(st.Preselect, o.ID))
-	}
+	opts := h.tidyOptions(st.Options, st.Preselect)
 	whole := strings.TrimPrefix(st.Problem+"\na [whole run] row takes the whole run, whatever of its files is ticked", "\n")
 	fields := h.described(whole, h.multi("Restore or empty which?", whole+"\nenter: next", opts, picked).Filterable(true))
 	*action = TrashRestore

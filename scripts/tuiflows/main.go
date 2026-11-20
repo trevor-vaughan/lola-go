@@ -57,8 +57,9 @@ type name struct {
 }
 
 var (
-	specRE    = regexp.MustCompile(`\b(?:It|Entry)\(("(?:[^"\\]|\\.)*")`)
-	pointerRE = regexp.MustCompile(`^\s*// also pinned \((.*?)\): `)
+	specRE      = regexp.MustCompile(`\b(?:It|Entry)\(("(?:[^"\\]|\\.)*")`)
+	pointerRE   = regexp.MustCompile(`^\s*// also pinned \((.*?)\): `)
+	separatorRE = regexp.MustCompile(`^:?-+:?$`)
 )
 
 func main() {
@@ -104,18 +105,21 @@ func readRows(path string) ([]*row, []string, error) {
 	section, inTable := "", false
 	for i, l := range strings.Split(string(b), "\n") {
 		n := i + 1
+		var c []string
+		if strings.HasPrefix(l, "|") {
+			c = splitCells(l)
+		}
 		switch {
 		case strings.HasPrefix(l, "## "):
 			section, inTable = strings.TrimSpace(l[3:]), false
-		case strings.HasPrefix(l, "| from | input | guard | to |"):
+		case len(c) >= 4 && c[0] == "from" && c[1] == "input" && c[2] == "guard" && c[3] == "to":
 			_, inTable = surfaces[section] // an unknown section's rows are reported here, not one by one
 			if !inTable {
 				problems = append(problems, fmt.Sprintf("%s:%d: section %q has a transition table but no spec prefix in scripts/tuiflows", path, n, section))
 			}
 		case inTable && !strings.HasPrefix(l, "|"):
 			inTable = false
-		case inTable && !strings.HasPrefix(l, "|---"):
-			c := strings.Split(strings.Trim(l, "|"), "|")
+		case inTable && !isSeparator(c):
 			if len(c) < 4 {
 				problems = append(problems, fmt.Sprintf("%s:%d: a transition row needs from, input, guard and to", path, n))
 				continue
@@ -127,6 +131,42 @@ func readRows(path string) ([]*row, []string, error) {
 		}
 	}
 	return rows, problems, nil
+}
+
+// splitCells splits a table line into its trimmed cells at every "|" that is not escaped as "\|",
+// which stays in its cell as "|". The line's outer pipes delimit no cell.
+func splitCells(l string) []string {
+	var cells []string
+	var cell strings.Builder
+	for i := 0; i < len(l); i++ {
+		switch {
+		case l[i] == '\\' && i+1 < len(l) && l[i+1] == '|':
+			cell.WriteByte('|')
+			i++
+		case l[i] == '|':
+			cells = append(cells, strings.TrimSpace(cell.String()))
+			cell.Reset()
+		default:
+			cell.WriteByte(l[i])
+		}
+	}
+	if rest := strings.TrimSpace(cell.String()); rest != "" {
+		cells = append(cells, rest)
+	}
+	return cells[1:] // the text before the line's leading pipe
+}
+
+// isSeparator reports whether cells are those of a table's delimiter row, such as "---" or ":-:".
+func isSeparator(cells []string) bool {
+	if len(cells) == 0 {
+		return false
+	}
+	for _, c := range cells {
+		if !separatorRE.MatchString(c) {
+			return false
+		}
+	}
+	return true
 }
 
 // readNames reads the row names in every spec file under dir: those of its specs whose

@@ -102,7 +102,7 @@ func renderWith(ctx context.Context, src Source, p Partials, d Data, lim Limits,
 		src.Line = 1
 	}
 	if len(src.Body) > lim.Body {
-		return Rendered{}, newError(codeTooLarge, src.File, 0, "is %d bytes; a template file is at most %s", len(src.Body), sizeText(lim.Body))
+		return Rendered{}, newError(codeTooLarge, src.File, 0, "is %d bytes; a template file is at most %s", len(src.Body), SizeText(lim.Body))
 	}
 	if !utf8.ValidString(src.Body) {
 		return Rendered{}, newError(codeInvalidUTF8, src.File, src.Line+invalidLine(src.Body), "is not UTF-8; a template file must be UTF-8 text")
@@ -235,7 +235,7 @@ func (w *boundedWriter) Write(p []byte) (int, error) {
 		return 0, stopped(w.ctx, w.file, w.timeout)
 	}
 	if w.buf.Len()+len(p) > w.max {
-		return 0, newError(codeOutputTooLarge, w.file, 0, "renders more than %s; lola writes at most %s per file", sizeText(w.max), sizeText(w.max))
+		return 0, newError(codeOutputTooLarge, w.file, 0, "renders more than %s; lola writes at most %s per file", SizeText(w.max), SizeText(w.max))
 	}
 	return w.buf.Write(p)
 }

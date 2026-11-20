@@ -1,11 +1,9 @@
 package profile
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"strconv"
 
 	"go.yaml.in/yaml/v3"
@@ -32,10 +30,9 @@ type Mixed struct {
 func ReadMixed(path string, project bool) (*Mixed, error) {
 	read, hint := yamldoc.Read, "fix it by hand"
 	if project {
-		hint = "fix it by hand, or restore it from version control"
-		if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-			return nil, errs.WithHints(fmt.Errorf("%s is a symbolic link; a project's profile must be a file of its own", untrusted.Text(path, untrusted.MaxName)),
-				"replace it with the file it points to", hint)
+		hint = projectHint
+		if err := projectLink(path); err != nil {
+			return nil, err
 		}
 		read = yamldoc.ReadNoFollow
 	}
@@ -88,13 +85,13 @@ func (m *Mixed) Split(modules string) (bundle, profile []byte, err error) {
 	targets, mods := moved("targets"), moved("modules")
 	list := yamldoc.Value(root, "bundle") // a list: ReadMixed refused any other bundle:
 	list.Content = append(list.Content, yamldoc.Str(modules))
-	if bundle, err = encode(&d); err != nil {
+	if bundle, err = yamldoc.Encode(&d); err != nil {
 		return nil, nil, err
 	}
 	p := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
 		yamldoc.Str("version"), {Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(Version)}}}
 	p.Content = append(append(p.Content, targets...), mods...)
-	profile, err = encode(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{p}})
+	profile, err = yamldoc.Encode(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{p}})
 	return bundle, profile, err
 }
 
@@ -107,15 +104,4 @@ func (m *Mixed) Current(root string) error {
 		return p.Unchanged(root, m.Path)
 	}
 	return p.Current(m.Path)
-}
-
-// encode is d as lola writes a YAML file: two-space indent.
-func encode(d *yaml.Node) ([]byte, error) {
-	var b bytes.Buffer
-	enc := yaml.NewEncoder(&b)
-	enc.SetIndent(2)
-	if err := errors.Join(enc.Encode(d), enc.Close()); err != nil {
-		return nil, err
-	}
-	return b.Bytes(), nil
 }

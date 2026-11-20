@@ -94,11 +94,11 @@ installing the cached name afterwards fetches nothing. It prints:
    → install it: lola install https://example.com/kit.git --ref 4f0c2a9e1b7d3c5a6e8f9012ab34cd56ef7890ab --project --trust=hooks
    ```
 
-| Flag | What it does |
-|---|---|
+| Flag                         | What it does                                                                           |
+|------------------------------|----------------------------------------------------------------------------------------|
 | `-t`, `--target <assistant>` | Plan for these assistants, as `lola install -t` would (repeatable or comma-separated). |
-| `--ref <ref>` | The git branch, tag or full commit SHA to fetch. |
-| `--path <dir>` | The module root inside the source (monorepos); refused with `@market/module`. |
+| `--ref <ref>`                | The git branch, tag or full commit SHA to fetch.                                       |
+| `--path <dir>`               | The module root inside the source (monorepos); refused with `@market/module`.          |
 
 Scope: `--scope` (`both` shows one plan per scope), `--user`, `--project` or `-C`; else the
 project with `.lola/` at or above the current directory; else `default_scope` in `config.yaml`.

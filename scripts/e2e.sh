@@ -46,7 +46,10 @@ done
 
 runtime=""
 for rt in podman docker; do
-  if command -v "$rt" >/dev/null 2>&1; then runtime="$rt"; break; fi
+  if command -v "$rt" >/dev/null 2>&1; then
+    runtime="$rt"
+    break
+  fi
 done
 if [[ -z "$runtime" ]]; then
   echo "skipped: the e2e suites need podman or docker, and neither is on PATH"
@@ -67,7 +70,10 @@ if [[ ${#suites[@]} -eq 0 ]]; then suites=("${all[@]}"); fi
 for name in "${suites[@]}"; do
   found=false
   for known in "${all[@]}"; do
-    if [[ "$name" == "$known" ]]; then found=true; break; fi
+    if [[ "$name" == "$known" ]]; then
+      found=true
+      break
+    fi
   done
   if ! "$found"; then
     echo "error: no e2e suite named $name; suites: ${all[*]}" >&2
@@ -75,8 +81,8 @@ for name in "${suites[@]}"; do
   fi
 done
 
-# shellcheck source=SCRIPTDIR/../e2e/image/pins.env
-source "$ROOT/e2e/image/pins.env"
+# shellcheck source=SCRIPTDIR/../e2e/image/pins.sh
+source "$ROOT/e2e/image/pins.sh"
 
 # What the containers mount and the binary live in a directory this run makes and removes, so
 # no directory already under $OUT_ROOT is mounted, relabeled or built into; the runner rewrites
@@ -92,7 +98,7 @@ cleanup() {
   local status=$? cid
   if [[ -n "$builder_pid" ]]; then
     kill "$builder_pid" 2>/dev/null || : # it may have ended already
-    wait "$builder_pid" || : # its status is the interrupted build's, which this exit replaces
+    wait "$builder_pid" || :             # its status is the interrupted build's, which this exit replaces
   fi
   for cid in "$builder_cid" "$suite_cid"; do
     if [[ -n "$cid" && -s "$cid" ]] && ! "$runtime" rm -f "$(<"$cid")" >/dev/null 2>&1; then
@@ -113,7 +119,7 @@ trap 'exit 143' TERM
 shown() { if [[ "$1" == "$ROOT"/* ]]; then echo "${1#"$ROOT"/}"; else echo "$1"; fi; }
 
 repo="$(printf '%s' "$PY_LOLA_REPO" | sha256sum | cut -c1-12)"
-recipe="$(cat "$ROOT/e2e/image/build-image.sh" "$ROOT/e2e/image/requirements.txt" "$ROOT/e2e/image/pins.env" | sha256sum | cut -c1-12)"
+recipe="$(cat "$ROOT/e2e/image/build-image.sh" "$ROOT/e2e/image/requirements.txt" "$ROOT/e2e/image/pins.sh" | sha256sum | cut -c1-12)"
 image="localhost/lola-e2e:py-$PY_LOLA_COMMIT-repo-$repo-base-${BASE_DIGEST:7:12}-$recipe"
 if ! "$runtime" image inspect "$image" >/dev/null 2>&1; then
   # The build container keeps the default capabilities and the network: apt-get and git clone
@@ -132,7 +138,8 @@ if ! "$runtime" image inspect "$image" >/dev/null 2>&1; then
   wait "$builder_pid" || built=false
   builder_pid=""
   if ! "$built" || ! "$runtime" commit "$(<"$builder_cid")" "$image" >>"$log" 2>&1; then
-    echo "error: building $image failed; see $(shown "$log")" >&2
+    shown_log="$(shown "$log")"
+    echo "error: building $image failed; see $shown_log" >&2
     exit 1
   fi
   "$runtime" rm "$(<"$builder_cid")" >/dev/null
@@ -146,7 +153,7 @@ CGO_ENABLED=0 GOOS=linux go build -C "$ROOT" -trimpath -o "$work/bin/lola-go" ./
 # run_suite runs one suite in its own container, its output in $OUT/venom.log, and returns
 # venom's status.
 run_suite() {
-  # It runs as an if condition, where set -e is off, so every step checks its own status.
+  # It runs with set -e off, so every step checks its own status.
   local name="$1" OUT="$OUT_ROOT/e2e-$1" container copy version options rootless=false venom_version
   mkdir -p "$OUT" || return 1
   rm -f "$OUT/venom.log" || return 1
@@ -176,7 +183,8 @@ run_suite() {
     -e "GIT_AUTHOR_DATE=2026-01-01T00:00:00+00:00" -e "GIT_COMMITTER_DATE=2026-01-01T00:00:00+00:00" -e NO_COLOR=1 \
     -v "$copy/suite:/e2e:ro,z" -v "$copy/common:/e2e-common:ro,z" -v "$work/bin:/opt/lola-go:ro,z" \
     "$image" python3 /e2e-common/gitserve.py /srv/git 8765 >"$OUT/venom.log" 2>&1; then
-    echo "error: starting the container for $name failed; see $(shown "$OUT/venom.log")" >&2
+    shown_log="$(shown "$OUT/venom.log")"
+    echo "error: starting the container for $name failed; see $shown_log" >&2
     # run -d can create the container and then fail to start it.
     if [[ -s "$suite_cid" ]] && ! "$runtime" rm -f "$(<"$suite_cid")" >/dev/null 2>&1; then
       echo "warning: removing container $container failed" >&2
@@ -206,7 +214,13 @@ passed=0 failed=0 rows=()
 for name in "${suites[@]}"; do
   began=$SECONDS
   log="$(shown "$OUT_ROOT/e2e-$name/venom.log")"
-  if run_suite "$name"; then
+  # run_suite checks every step's status itself, so set -e is off around it and its status is read
+  # here.
+  set +e
+  run_suite "$name"
+  suite_status=$?
+  set -e
+  if [[ "$suite_status" -eq 0 ]]; then
     status=ok passed=$((passed + 1))
     if [[ "$MODE" == llm ]]; then echo "ok: e2e $name passed in $((SECONDS - began))s (log: $log)"; fi
   else

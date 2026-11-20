@@ -21,7 +21,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"fixture ready\""
+          - 'result.systemout ShouldEqual "fixture ready"'
 
   - name: U2 install --help lists quill after the built-in targets
     steps:
@@ -29,14 +29,14 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install --help"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"Assistants (-t): claude-code, gemini-cli, opencode, agents, quill.\""
+          - 'result.systemout ShouldContainSubstring "Assistants (-t): claude-code, gemini-cli, opencode, agents, quill."'
 
   - name: U3 Installing into quill writes every component at its layout path and drops hooks
     steps:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/pen -t quill@2.0 -C {{.proj}} -y --json > /tmp/u3.json 2> /tmp/u3.err; echo exit=$?'"
         assertions:
-          - "result.systemout ShouldEqual \"exit=0\""
+          - 'result.systemout ShouldEqual "exit=0"'
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u3.json > /dev/null && python3 -c "
@@ -54,15 +54,15 @@ testcases:
         script: "{{.runtime}} exec {{.container}} sh -c 'cd {{.proj}}/.quill && find . -type f | sort'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"./skills/scribble/SKILL.md\""
-          - "result.systemout ShouldContainSubstring \"./commands/ink.md\""
-          - "result.systemout ShouldContainSubstring \"./agents/editor.md\""
-          - "result.systemout ShouldContainSubstring \"./rules/lola/pen/plain.md\""
+          - 'result.systemout ShouldContainSubstring "./skills/scribble/SKILL.md"'
+          - 'result.systemout ShouldContainSubstring "./commands/ink.md"'
+          - 'result.systemout ShouldContainSubstring "./agents/editor.md"'
+          - 'result.systemout ShouldContainSubstring "./rules/lola/pen/plain.md"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'grep -c hooks {{.proj}}/.quill/agents/editor.md'"
         assertions:
           - result.code ShouldEqual 1
-          - "result.systemout ShouldEqual \"0\""
+          - 'result.systemout ShouldEqual "0"'
 
   - name: U4 list shows the module installed for quill
     steps:
@@ -83,7 +83,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} uninstall pen -C {{.proj}} -y"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✓ uninstalled pen (quill)\""
+          - 'result.systemout ShouldContainSubstring "✓ uninstalled pen (quill)"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'find {{.proj}}/.quill -type f'"
         assertions:
@@ -93,19 +93,19 @@ testcases:
   - name: U6 A spec with a built-in's id replaces it, said on stderr in human output only
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'sed \"s/^id: quill/id: opencode/\" {{.specs}}/quill.yaml > {{.specs}}/opencode.yaml'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''sed "s/^id: quill/id: opencode/" {{.specs}}/quill.yaml > {{.specs}}/opencode.yaml'''
         assertions:
           - result.code ShouldEqual 0
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} list -C {{.proj}}"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemerr ShouldContainSubstring \"note: opencode uses your target spec {{.specs}}/opencode.yaml in place of lola's built-in\""
+          - 'result.systemerr ShouldContainSubstring "note: opencode uses your target spec {{.specs}}/opencode.yaml in place of lola''s built-in"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C {{.proj}} --json > /dev/null 2> /tmp/u6.err; echo exit=$?; ! grep -q \"in place of\" /tmp/u6.err'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''{{.lola}} list -C {{.proj}} --json > /dev/null 2> /tmp/u6.err; echo exit=$?; ! grep -q "in place of" /tmp/u6.err'''
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"exit=0\""
+          - 'result.systemout ShouldEqual "exit=0"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} rm {{.specs}}/opencode.yaml"
         assertions:
@@ -118,25 +118,25 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'echo \"id: broken\" > {{.specs}}/broken.yaml'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''echo "id: broken" > {{.specs}}/broken.yaml'''
         assertions:
           - result.code ShouldEqual 0
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} version"
         assertions:
           - result.code ShouldEqual 1
-          - "result.systemerr ShouldContainSubstring \"error: \""
-          - "result.systemerr ShouldContainSubstring \"broken.yaml\""
-          - "result.systemerr ShouldContainSubstring \"  hint: \""
+          - 'result.systemerr ShouldContainSubstring "error: "'
+          - 'result.systemerr ShouldContainSubstring "broken.yaml"'
+          - 'result.systemerr ShouldContainSubstring "  hint: "'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} version --json > /tmp/u7.out 2> /tmp/u7.err; echo exit=$?'"
         assertions:
-          - "result.systemout ShouldEqual \"exit=1\""
+          - 'result.systemout ShouldEqual "exit=1"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/u7.out /tmp/u7.err"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemoutjson.error ShouldContainSubstring \"broken.yaml\""
+          - 'result.systemoutjson.error ShouldContainSubstring "broken.yaml"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} rm {{.specs}}/broken.yaml"
         assertions:
@@ -156,8 +156,8 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} list -C {{.proj}}"
         assertions:
           - result.code ShouldEqual 1
-          - "result.systemerr ShouldContainSubstring \"quill2.yml\""
-          - "result.systemerr ShouldContainSubstring \"hint: rename it to quill2.yaml: lola reads target specs only from .yaml files\""
+          - 'result.systemerr ShouldContainSubstring "quill2.yml"'
+          - 'result.systemerr ShouldContainSubstring "hint: rename it to quill2.yaml: lola reads target specs only from .yaml files"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} rm {{.specs}}/quill2.yml"
         assertions:
@@ -172,7 +172,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p9 && {{.lola}} check /e2e/fixtures/pen -t quill --project --json > /tmp/u9.json 2> /tmp/u9.err; echo exit=$?'"
         assertions:
-          - "result.systemout ShouldEqual \"exit=0\""
+          - 'result.systemout ShouldEqual "exit=0"'
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u9.json > /dev/null && python3 -c "
@@ -189,7 +189,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'cd / && {{.lola}} check /e2e/fixtures/pen -t quill -C /work/p9 --json > /tmp/u9-other.json 2> /tmp/u9-other.err; echo exit=$?'"
         assertions:
-          - "result.systemout ShouldEqual \"exit=0\""
+          - 'result.systemout ShouldEqual "exit=0"'
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u9-other.json > /dev/null && python3 -c "
@@ -213,7 +213,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/pen -t quill -C /work/p10 -y --json > /tmp/u10.json 2> /tmp/u10.err; echo exit=$?'"
         assertions:
-          - "result.systemout ShouldEqual \"exit=0\""
+          - 'result.systemout ShouldEqual "exit=0"'
       - type: exec
         script: |
           {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u10.json > /dev/null && python3 -c "
@@ -234,8 +234,8 @@ testcases:
         script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p10/.quill && find . -type f | sort'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"./slash/ink.md\""
-          - "result.systemout ShouldNotContainSubstring \"./commands/\""
+          - 'result.systemout ShouldContainSubstring "./slash/ink.md"'
+          - 'result.systemout ShouldNotContainSubstring "./commands/"'
 
   - name: U11 A target_versions id lola has no target for is refused and nothing is written
     steps:
@@ -247,9 +247,9 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/pen -t quill -C /work/p11 -y"
         assertions:
           - result.code ShouldEqual 1
-          - "result.systemerr ShouldContainSubstring \".lola/project.yml: target_versions.nib: lola has no target nib\""
-          - "result.systemerr ShouldContainSubstring \"hint: valid targets: \""
-          - "result.systemerr ShouldContainSubstring \"hint: remove it, or add a target spec for it to {{.specs}}\""
+          - 'result.systemerr ShouldContainSubstring ".lola/project.yml: target_versions.nib: lola has no target nib"'
+          - 'result.systemerr ShouldContainSubstring "hint: valid targets: "'
+          - 'result.systemerr ShouldContainSubstring "hint: remove it, or add a target spec for it to {{.specs}}"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'find /work/p11/.quill -type f | wc -l'"
         assertions:
@@ -262,10 +262,10 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/pen -t quill -C /work/p12 -y"
         assertions:
           - result.code ShouldEqual 1
-          - "result.systemerr ShouldNotContainSubstring \"created /work/p12\""
-          - "result.systemerr ShouldContainSubstring \"error: -C /work/p12 does not exist; which quill version will read it? lola assumes the installed quill only for the project you run it in\""
-          - "result.systemerr ShouldContainSubstring \"hint: create it, for quill >=2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@2.0 -y\""
-          - "result.systemerr ShouldContainSubstring \"hint: create it, for quill >=1.0 <2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@1.0 -y\""
+          - 'result.systemerr ShouldNotContainSubstring "created /work/p12"'
+          - 'result.systemerr ShouldContainSubstring "error: -C /work/p12 does not exist; which quill version will read it? lola assumes the installed quill only for the project you run it in"'
+          - 'result.systemerr ShouldContainSubstring "hint: create it, for quill >=2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@2.0 -y"'
+          - 'result.systemerr ShouldContainSubstring "hint: create it, for quill >=1.0 <2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@1.0 -y"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'test ! -e /work/p12'"
         assertions:
@@ -274,10 +274,10 @@ testcases:
         script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/p12 && {{.lola}} install /e2e/fixtures/pen -t quill -C /work/p12 -y'"
         assertions:
           - result.code ShouldEqual 1
-          - "result.systemerr ShouldContainSubstring \"which quill version will read /work/p12? lola assumes the installed quill only for the project you run it in, and /work/p12 declares none\""
-          - "result.systemerr ShouldContainSubstring \"hint: for quill >=2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@2.0 -y\""
-          - "result.systemerr ShouldContainSubstring \"hint: for quill >=1.0 <2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@1.0 -y\""
-          - "result.systemerr ShouldNotContainSubstring \"declare it\""
+          - 'result.systemerr ShouldContainSubstring "which quill version will read /work/p12? lola assumes the installed quill only for the project you run it in, and /work/p12 declares none"'
+          - 'result.systemerr ShouldContainSubstring "hint: for quill >=2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@2.0 -y"'
+          - 'result.systemerr ShouldContainSubstring "hint: for quill >=1.0 <2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@1.0 -y"'
+          - 'result.systemerr ShouldNotContainSubstring "declare it"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'test ! -e /work/p12/.lola && rmdir /work/p12'"
         assertions:
@@ -288,28 +288,28 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/pen -t quill@1.2 -C /work/p13 -y > /tmp/u13.out 2> /tmp/u13.err; echo exit=$?'"
         assertions:
-          - "result.systemout ShouldEqual \"exit=0\""
+          - 'result.systemout ShouldEqual "exit=0"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} cat /tmp/u13.out"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"recorded quill 1.2 in .lola/project.yml (target_versions): files are written for quill >=1.0 <2.0\""
+          - 'result.systemout ShouldContainSubstring "recorded quill 1.2 in .lola/project.yml (target_versions): files are written for quill >=1.0 <2.0"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p13/.quill && find . -type f | sort'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"./slash/ink.md\""
-          - "result.systemout ShouldNotContainSubstring \"./commands/\""
+          - 'result.systemout ShouldContainSubstring "./slash/ink.md"'
+          - 'result.systemout ShouldNotContainSubstring "./commands/"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} grep -A1 target_versions: /work/p13/.lola/project.yml"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "quill: "1.2""'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} python3 -c 'import json; print(json.load(open(\"/work/p13/.lola/lock.json\"))[\"modules\"][\"pen\"][\"eras\"])'"
+        script: '{{.runtime}} exec {{.container}} python3 -c ''import json; print(json.load(open("/work/p13/.lola/lock.json"))["modules"]["pen"]["eras"])'''
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"{'quill': '1.0'}\""
+          - 'result.systemout ShouldEqual "{''quill'': ''1.0''}"'
 
   - name: U14 In the project lola runs in, an undeclared version is the installed one, recorded
     steps:
@@ -320,17 +320,17 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p14 && {{.lola}} install /e2e/fixtures/pen -t quill --project -y > /tmp/u14.out 2> /tmp/u14.err; echo exit=$?'"
         assertions:
-          - "result.systemout ShouldEqual \"exit=0\""
+          - 'result.systemout ShouldEqual "exit=0"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} cat /tmp/u14.out"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"recorded quill 1.2.0 (the installed version) in .lola/project.yml (target_versions): files are written for quill >=1.0 <2.0\""
+          - 'result.systemout ShouldContainSubstring "recorded quill 1.2.0 (the installed version) in .lola/project.yml (target_versions): files are written for quill >=1.0 <2.0"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p14/.quill && find . -type f | sort'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"./slash/ink.md\""
+          - 'result.systemout ShouldContainSubstring "./slash/ink.md"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} grep -A1 target_versions: /work/p14/.lola/project.yml"
         assertions:

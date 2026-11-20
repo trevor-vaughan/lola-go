@@ -8,14 +8,14 @@ A **source** is where a module comes from. lola copies the module into your **ca
 (`$XDG_CACHE_HOME/lola/modules/`, normally `~/.cache/lola/modules/`), so a source can move or
 disappear without breaking installs. lola recognizes these forms, first match first:
 
-| You pass | lola reads it as |
-|---|---|
-| An existing directory | a folder |
-| An existing file ending in `.zip`, `.tar`, `.tar.gz` or `.tgz` (any case) | an archive |
-| A `file://` URL | a folder or an archive, by what the path is |
-| An `https://` URL whose path ends in an archive suffix | an archive, downloaded |
-| Any other `https://` or `ssh://` URL, or `user@host:path` | a git repository |
-| An `http://` URL | as `https://`, but only for `localhost`, `127.0.0.0/8` or `::1` |
+| You pass                                                                  | lola reads it as                                                |
+|---------------------------------------------------------------------------|-----------------------------------------------------------------|
+| An existing directory                                                     | a folder                                                        |
+| An existing file ending in `.zip`, `.tar`, `.tar.gz` or `.tgz` (any case) | an archive                                                      |
+| A `file://` URL                                                           | a folder or an archive, by what the path is                     |
+| An `https://` URL whose path ends in an archive suffix                    | an archive, downloaded                                          |
+| Any other `https://` or `ssh://` URL, or `user@host:path`                 | a git repository                                                |
+| An `http://` URL                                                          | as `https://`, but only for `localhost`, `127.0.0.0/8` or `::1` |
 
 Anything else is not a source: a bare name means a module in your cache, and `@market/module`
 an entry of one of your [marketplaces](marketplaces.md#marketplaces), on the command line only (a directory of
@@ -149,15 +149,15 @@ An archive may hold only regular files and directories. lola refuses the whole a
 entry is absolute, contains `..` or a backslash, is a link or device, or repeats a path. Files
 keep only their execute bit (`0755` or `0644`). Limits, which are not configurable:
 
-| Limit | Value |
-|---|---|
-| Entries | 20,000 |
-| Zip central directory | about 19.5 MiB (1 KiB for each of 20,000 entries), checked before it is read |
-| Unpacked size | 512 MiB in total |
-| Compression ratio of one zip entry | 200 to 1 |
-| Download size | 256 MiB |
-| Download time | 2 minutes |
-| Redirects | 5, never from `https` to `http`, and never to `http` off loopback |
+| Limit                              | Value                                                                        |
+|------------------------------------|------------------------------------------------------------------------------|
+| Entries                            | 20,000                                                                       |
+| Zip central directory              | about 19.5 MiB (1 KiB for each of 20,000 entries), checked before it is read |
+| Unpacked size                      | 512 MiB in total                                                             |
+| Compression ratio of one zip entry | 200 to 1                                                                     |
+| Download size                      | 256 MiB                                                                      |
+| Download time                      | 2 minutes                                                                    |
+| Redirects                          | 5, never from `https` to `http`, and never to `http` off loopback            |
 
 Once a module is cached, `lola install <name>` uses the cached copy without touching the source:
 the cache's newest version for the ref the project already records for it (`--ref` picks

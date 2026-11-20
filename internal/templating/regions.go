@@ -322,22 +322,10 @@ func (u *usage) in(s Source) bool {
 			bound := leadingName(args)
 			args = strings.TrimSpace(args)[len(bound):]
 		}
-		for i := 0; i < len(args); {
-			c := args[i]
-			switch {
-			case c == '"' || c == '\'':
-				i = skipString(args, i)
-			case c == '.' && i+1 < len(args) && isIdentStart(args[i+1]):
-				i = identEnd(args, i+1)
-			case isIdentStart(c):
-				end := identEnd(args, i)
-				if args[i:end] == u.name {
-					found = true
-					return false
-				}
-				i = end
-			default:
-				i++
+		for start, end := range bareIdents(args) {
+			if args[start:end] == u.name {
+				found = true
+				return false
 			}
 		}
 		return true
@@ -365,25 +353,13 @@ func AttrRefs(srcs []Source, p Partials) []AttrRef {
 	for _, src := range srcs {
 		scanMarkup(src, func(tok parser.Token) bool {
 			args := tok.Args
-			for i := 0; i < len(args); {
-				c := args[i]
-				switch {
-				case c == '"' || c == '\'':
-					i = skipString(args, i)
-				case c == '.' && i+1 < len(args) && isIdentStart(args[i+1]):
-					i = identEnd(args, i+1) // a property, never the variable attrs
-				case isIdentStart(c):
-					end := identEnd(args, i)
-					if args[i:end] == "attrs" {
-						var path []string
-						path, end = attrPath(args, end)
-						if len(path) > 0 {
-							out = append(out, AttrRef{File: src.File, Line: tok.SourceLoc.LineNo, Path: path})
-						}
-					}
-					i = end
-				default:
-					i++
+			for start, end := range bareIdents(args) {
+				if args[start:end] != "attrs" {
+					continue
+				}
+				// The keys attrPath reads are properties and quoted strings, which bareIdents skips.
+				if path, _ := attrPath(args, end); len(path) > 0 {
+					out = append(out, AttrRef{File: src.File, Line: tok.SourceLoc.LineNo, Path: path})
 				}
 			}
 			return true

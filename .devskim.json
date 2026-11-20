@@ -1,0 +1,26 @@
+{
+  "RespectGitIgnore": true,
+  "Globs": [
+    "**/.cache/**",
+    "**/.git/**",
+    "**/bin/**",
+    "**/.venv/**",
+    "**/venv/**",
+    "**/__pycache__/**",
+    "**/node_modules/**",
+    "**/megalinter-reports/**",
+    "**/.pytest_cache/**",
+    "**/.ruff_cache/**",
+    "**/.specify/**",
+    "**/.opencode/**",
+    "**/.claude/**",
+    "**/.uf/**",
+    "**/.test-output/**",
+    "**/third_party/**",
+    "**/e2e/market/fixtures/mk/.claude-plugin/marketplace.json"
+  ],
+  "IgnoreRuleIds": [
+    "DS137138",
+    "DS162092"
+  ]
+}

@@ -487,6 +487,19 @@ func printFindings(w io.Writer, s style, findings []target.Finding) {
 	}
 }
 
+// userFindings is fs as lola shows them to whoever runs it: a finding whose hint is for the
+// module's author (target.Finding.AuthorHint) carries the hint for the user (UserHint) instead.
+func userFindings(fs []target.Finding) []target.Finding {
+	out := make([]target.Finding, 0, len(fs))
+	for _, f := range fs {
+		if f.AuthorHint {
+			f.Hint = f.UserHint
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 // printNotices prints the findings and notices of an install, sync, update or profile switch:
 // safety ones in full, as printFindings and noticeLine do; detail ones (target.ClassDetail) in full
 // under -v or --plain, else as one line per module and lola check (a scope's), in the order they
@@ -497,13 +510,7 @@ func printFindings(w io.Writer, s style, findings []target.Finding) {
 // module's author (target.Finding.AuthorHint) is never printed here, only what the engine added for
 // the user: lola check prints the rest.
 func printNotices(w io.Writer, s style, r *engine.Result) {
-	findings := make([]target.Finding, 0, len(r.Findings))
-	for _, f := range r.Findings {
-		if f.AuthorHint {
-			f.Hint = f.UserHint
-		}
-		findings = append(findings, f)
-	}
+	findings := userFindings(r.Findings)
 	if s.plain || s.verbose {
 		printFindings(w, s, findings)
 		for _, n := range r.Notices {

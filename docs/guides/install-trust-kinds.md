@@ -7,13 +7,13 @@ How trust kinds apply to an install. It is split out of [choosing-what-to-instal
 Every question lola asks before it runs or installs something you did not write has a kind, and
 `--trust` answers the kinds you name, on `sync`, `update`, `profile`, `install` and `migrate`:
 
-| Kind | Covers | Recorded in `$XDG_STATE_HOME/lola/` |
-|---|---|---|
-| `entries` | The changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write | `trust.json` |
-| `profiles` | A project profile's changes, a project profile taking your profile's place, a remote profile `--add` or `--update` shows | `trust.json` |
-| `scripts` | A project's install scripts, per project, event and the digest of the script ([Install scripts](install-scripts.md)) | `consent.json` |
-| `hooks` | A module's install hooks, by the digest of their scripts | `consent.json` |
-| `runtime-hooks` | A module's Claude Code runtime hooks and agent MCP servers, per settings file | `consent.json` |
+| Kind            | Covers                                                                                                                   | Recorded in `$XDG_STATE_HOME/lola/` |
+|-----------------|--------------------------------------------------------------------------------------------------------------------------|-------------------------------------|
+| `entries`       | The changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write                  | `trust.json`                        |
+| `profiles`      | A project profile's changes, a project profile taking your profile's place, a remote profile `--add` or `--update` shows | `trust.json`                        |
+| `scripts`       | A project's install scripts, per project, event and the digest of the script ([Install scripts](install-scripts.md))     | `consent.json`                      |
+| `hooks`         | A module's install hooks, by the digest of their scripts                                                                 | `consent.json`                      |
+| `runtime-hooks` | A module's Claude Code runtime hooks and agent MCP servers, per settings file                                            | `consent.json`                      |
 
 Write the kinds after `=`, as a comma list or the flag repeated (`--trust=entries,hooks`). A
 command's help shows `--trust[=entries,profiles]` when a bare `--trust` (no `=`) grants those two
@@ -33,7 +33,7 @@ each server's command first. `all` is every kind the command takes.
 of them only for content lola has shown you in full, every byte of it (control characters
 replaced), in any output it printed on this machine: a dry run (`-n`), a question, the install
 review or a run's report, in human output, `--plain` or `--json`. Each install hook and project
-script prints its body under its line (`    | …`; `hook-line` and `script-line` rows under
+script prints its body under its line (four spaces, then `| …`; `hook-line` and `script-line` rows under
 `--plain`, `body` under `--json`) until it has been shown; after that the human output folds it
 (`▸ pre.sh: 12 lines`). A runtime hook prints every field, its prompt uncut. lola remembers what it
 showed by the sha256 of the content, not by module version or project, so the same hook shown for

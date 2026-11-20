@@ -48,7 +48,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     earlier`), their block's status `declined earlier`.
   - Under `Hooks and scripts`, each install hook and install script names its sha256:
     `kit pre-install hook hooks/pre.sh (sha256 …, claude-code): would run`.
-    - A hook's or project script's body follows once, in full, `    | ` before each line (a tab
+    - A hook's or project script's body follows once, in full, each line prefixed with four spaces, `|` and a space (a tab
       expanded to 8-column stops, control characters replaced), until lola has shown it, then as a
       fold (`▸ hooks/pre.sh: 12 lines`); an empty one is shown by its line.
     - One withheld (too large or not text) prints `(not shown: too large; inspect <file>; only
@@ -101,7 +101,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     `runtime-hook<TAB>module<TAB>target<TAB>event<TAB>type<TAB>status<TAB>component`, the component
     (`<kind> <name>`) whose frontmatter has the hook, `-` for a hook in a settings file, then `new`
     or `seen` in a run.
-  - Every `runtime-hook` row ends with the hook in full, its lines joined by `; ` (`Stop: command;
+  - Every `runtime-hook` row ends with the hook in full, its lines joined by `;` and a space (`Stop: command;
     runs: ./stop.sh`).
   - A run's `hook` and `script` rows end with the script's sha256, each followed by its body, a row
     per line: `hook-line<TAB>module<TAB>event<TAB>script<TAB>line`,
@@ -217,14 +217,14 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   none; under `-n`, what it would cover ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)).
 - Exit status:
 
-  | Code | Meaning |
-  |---|---|
-  | `0` | success, or nothing to do |
-  | `1` | an error, which includes a module whose fetch `lola update` could not make |
-  | `2` | unused, kept for usage errors |
-  | `3` | lola changed nothing because the run needs something only you can give: `--trust` kinds, consent, `-y`, or `--force` over a conflict, or you gave none, such as end of input; rerunning with the hint's flags proceeds |
-  | `4` | you declined or cancelled (a `n` answer, `q` in a picker or form, Ctrl+C in a form or question) |
-  | `128+n` | killed by signal `n`, unchanged |
+  | Code    | Meaning                                                                                                                                                                                                                |
+  |---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+  | `0`     | success, or nothing to do                                                                                                                                                                                              |
+  | `1`     | an error, which includes a module whose fetch `lola update` could not make                                                                                                                                             |
+  | `2`     | unused, kept for usage errors                                                                                                                                                                                          |
+  | `3`     | lola changed nothing because the run needs something only you can give: `--trust` kinds, consent, `-y`, or `--force` over a conflict, or you gave none, such as end of input; rerunning with the hint's flags proceeds |
+  | `4`     | you declined or cancelled (a `n` answer, `q` in a picker or form, Ctrl+C in a form or question)                                                                                                                        |
+  | `128+n` | killed by signal `n`, unchanged                                                                                                                                                                                        |
 
   - A conflict `--force` cannot override (a file another module owns: uninstall that module first)
     is an error: `1`. A No you typed at a hook or script consent question prints the refusal and

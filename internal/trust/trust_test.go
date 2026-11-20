@@ -109,14 +109,14 @@ var _ = Describe("trust record", func() {
 		Expect(h2).To(Equal(h1))
 		empty, err := trust.ViewOf(&manifest.Manifest{Targets: []string{}}).Hash()
 		Expect(err).NotTo(HaveOccurred())
-		Expect(empty).To(Equal("44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"), "sha256 of {}")
+		Expect(empty).To(Equal("44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"), "sha256 of {}") // DevSkim: ignore DS173237 - expected sha256 of a fixed test input, not a key
 	})
 
 	It("a trust view without profiles hashes as in 6a", func() {
 		v := trust.ViewOf(man)
 		h, err := v.Hash()
 		Expect(err).NotTo(HaveOccurred())
-		Expect(h).To(Equal("3c2b3f96f5f1ded8cfe03aecc90c7410abba8003d4ac210f657e958782e1c018"), "the hash 6a (48dfc2a) computes for this view")
+		Expect(h).To(Equal("3c2b3f96f5f1ded8cfe03aecc90c7410abba8003d4ac210f657e958782e1c018"), "the hash 6a (48dfc2a) computes for this view") // DevSkim: ignore DS173237 - expected sha256 of a fixed test input, not a key
 		b, err := json.Marshal(v)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).NotTo(ContainSubstring("profiles"), "an empty profiles key is left out")

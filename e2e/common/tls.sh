@@ -15,7 +15,8 @@ set -euo pipefail
 dir=/run/e2e-tls
 umask 077
 
-if [[ "$(stat -c %a "$dir")" != 700 ]]; then
+mode="$(stat -c %a "$dir")"
+if [[ "$mode" != 700 ]]; then
   echo "error: $dir is not mode 0700; the runner mounts it as a tmpfs with mode=0700" >&2
   exit 1
 fi

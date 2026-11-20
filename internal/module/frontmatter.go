@@ -13,6 +13,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
 // Doc is a markdown document with optional YAML frontmatter between --- fences.
@@ -191,20 +192,15 @@ func (d Doc) With(fm map[string]any) (Doc, error) {
 		m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k}, &v)
 	}
 	quoteMerge(&root) // a << key or value set here is text, never a merge key ParseDoc would refuse
-	var b strings.Builder
-	enc := yaml.NewEncoder(&b)
-	enc.SetIndent(2)
-	if err := enc.Encode(&root); err != nil {
-		return Doc{}, fmt.Errorf("frontmatter: %w", err)
-	}
-	if err := enc.Close(); err != nil {
+	b, err := yamldoc.Encode(&root)
+	if err != nil {
 		return Doc{}, fmt.Errorf("frontmatter: %w", err)
 	}
 	var parsed map[string]any
-	if err := yaml.Unmarshal([]byte(b.String()), &parsed); err != nil {
+	if err := yaml.Unmarshal(b, &parsed); err != nil {
 		return Doc{}, fmt.Errorf("frontmatter: %w", err)
 	}
-	return Doc{Frontmatter: parsed, RawFrontmatter: b.String(), Body: d.Body}, nil
+	return Doc{Frontmatter: parsed, RawFrontmatter: string(b), Body: d.Body}, nil
 }
 
 // Without returns a copy without the given top-level frontmatter keys. The remaining keys
@@ -234,20 +230,15 @@ func (d Doc) Without(keys ...string) (Doc, error) {
 		return Doc{Body: d.Body}, nil
 	}
 	m.Content = kept
-	var b strings.Builder
-	enc := yaml.NewEncoder(&b)
-	enc.SetIndent(2)
-	if err := enc.Encode(&root); err != nil {
-		return Doc{}, fmt.Errorf("frontmatter: %w", err)
-	}
-	if err := enc.Close(); err != nil {
+	b, err := yamldoc.Encode(&root)
+	if err != nil {
 		return Doc{}, fmt.Errorf("frontmatter: %w", err)
 	}
 	fm := maps.Clone(d.Frontmatter)
 	for _, k := range drop {
 		delete(fm, k)
 	}
-	return Doc{Frontmatter: fm, RawFrontmatter: b.String(), Body: d.Body}, nil
+	return Doc{Frontmatter: fm, RawFrontmatter: string(b), Body: d.Body}, nil
 }
 
 // ambiguousScalar matches plain YAML scalars that YAML 1.1 and 1.2 parsers read differently:

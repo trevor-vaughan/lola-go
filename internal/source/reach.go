@@ -63,7 +63,7 @@ func (e *NotOnRefError) Error() string {
 
 // reachable is CheckReachable's work in the empty repository directory repo.
 func reachable(ctx context.Context, spec Spec, commit, name, repo string) error {
-	format := "sha1"
+	format := "sha1" // DevSkim: ignore DS126858 - git object-format name passed to git init, not a hash lola computes
 	if len(commit) == 64 {
 		format = "sha256"
 	}

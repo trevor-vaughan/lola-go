@@ -101,8 +101,8 @@ pluggy==1.6.0 \
 setuptools-scm==10.2.1 \
     --hash=sha256:b7c82f4102d389ee57dc66ccdb4f9b4bca3c40ba83b43f1f63d68ccd72db2580
     # via the Python lola's build backend
-setuptools==84.0.0 \
-    --hash=sha256:51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670
+setuptools==84.2.1 \
+    --hash=sha256:ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2
     # via the Python lola's build backend
 tomlkit==0.15.1 \
     --hash=sha256:177a05aece5a8ca5266fd3c448abb47b8d352f09d477d3ca8332db4d89b24304

@@ -16,7 +16,7 @@ var _ = Describe("the check hint", func() {
 		e := &Engine{Getwd: func() (string, error) { return tmp, nil }}
 		sc := Scope{Kind: target.User}
 		refused := &TemplateError{Module: "kit", Code: "template-undefined-variable"}
-		const commit = "0123456789abcdef0123456789abcdef01234567"
+		const commit = "0123456789abcdef0123456789abcdef01234567" // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
 		market := &manifest.MarketRef{Name: "acme", Source: "https://example.com/plugins.git"}
 		for what, ent := range map[string]*manifest.Entry{
 			"no entry":                               {},

@@ -1,7 +1,6 @@
 package manifest
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -174,13 +173,7 @@ func EditDocument(d *yaml.Node, c Change) ([]byte, error) {
 		mods.Style &^= yaml.FlowStyle
 		setKey(root, topKeys, "modules", mods)
 	}
-	var b bytes.Buffer
-	enc := yaml.NewEncoder(&b)
-	enc.SetIndent(2)
-	if err := errors.Join(enc.Encode(d), enc.Close()); err != nil {
-		return nil, err
-	}
-	return b.Bytes(), nil
+	return yamldoc.Encode(d)
 }
 
 // entryName is the name of a modules item, or "".

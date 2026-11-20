@@ -315,7 +315,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} sh -c 'printf \"1\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} sync --project -C /work/proj2\" /dev/null'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \".lola/project.yml has not been trusted on this machine (a fresh clone, or a moved project):\""
+          - 'result.systemout ShouldContainSubstring ".lola/project.yml has not been trusted on this machine (a fresh clone, or a moved project):"'
           - result.systemout ShouldContainSubstring "1. Trust all 2 changes"
           - result.systemout ShouldContainSubstring "→ trusting all 2 changes"
           - result.systemout ShouldContainSubstring "✓ synced kit (claude-code)"
@@ -406,14 +406,14 @@ testcases:
   - name: T10 A user profile turns on and off
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p \"$XDG_CONFIG_HOME/lola/profiles\" && cp /e2e/fixtures/mine.yml \"$XDG_CONFIG_HOME/lola/profiles/mine.yml\"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''mkdir -p "$XDG_CONFIG_HOME/lola/profiles" && cp /e2e/fixtures/mine.yml "$XDG_CONFIG_HOME/lola/profiles/mine.yml"'''
         assertions:
           - result.code ShouldEqual 0
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} profile mine --on --user -y"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → on\""
+          - 'result.systemout ShouldContainSubstring "Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → on"'
           - result.systemout ShouldContainSubstring "✓ synced lint (claude-code)"
       - type: exec
         script: "{{.runtime}} exec {{.container}} test -f /home/tester/.claude/commands/lint.md"
@@ -423,7 +423,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} profile mine --off --user -y"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → off\""
+          - 'result.systemout ShouldContainSubstring "Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → off"'
           - result.systemout ShouldContainSubstring "✓ removed lint"
       - type: exec
         script: "{{.runtime}} exec {{.container}} test ! -e /home/tester/.claude/commands/lint.md"
@@ -436,8 +436,8 @@ testcases:
         script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile go --add https://git.lola.test:8443/profiles.git --trust"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemerr ShouldContainSubstring \"remote:go → /home/tester/.local/share/lola/profiles/go/profile.yml (shared by every scope)\""
-          - "result.systemout ShouldContainSubstring \"✓ added remote:go (/home/tester/.local/share/lola/profiles/go/profile.yml)\""
+          - 'result.systemerr ShouldContainSubstring "remote:go → /home/tester/.local/share/lola/profiles/go/profile.yml (shared by every scope)"'
+          - 'result.systemout ShouldContainSubstring "✓ added remote:go (/home/tester/.local/share/lola/profiles/go/profile.yml)"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /home/tester/.local/share/lola/profiles/go/source.json"
         assertions:
@@ -476,7 +476,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t12a.out /tmp/t12a.err"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemoutjson.error ShouldEqual \"https://127.0.0.1:8443/profiles.git names the loopback address 127.0.0.1; a remote profile reaches hosts by name only, never inside your network; use the repository's https:// or ssh:// URL (or user@host:path), with its host name\""
+          - 'result.systemoutjson.error ShouldEqual "https://127.0.0.1:8443/profiles.git names the loopback address 127.0.0.1; a remote profile reaches hosts by name only, never inside your network; use the repository''s https:// or ssh:// URL (or user@host:path), with its host name"'
           - result.systemoutjson.hints ShouldBeEmpty
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile go --add http://127.0.0.1:8765/profiles.git --json > /tmp/t12b.out 2> /tmp/t12b.err; echo exit=$?'"
@@ -486,7 +486,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t12b.out /tmp/t12b.err"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemoutjson.error ShouldEqual \"http://127.0.0.1:8765/profiles.git uses http://; a remote profile's sources must use https:// or ssh:// (or user@host:path), with its host name\""
+          - 'result.systemoutjson.error ShouldEqual "http://127.0.0.1:8765/profiles.git uses http://; a remote profile''s sources must use https:// or ssh:// (or user@host:path), with its host name"'
           - result.systemoutjson.hints ShouldBeEmpty
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log | cmp - /tmp/t12.count'"
@@ -498,7 +498,7 @@ testcases:
     # names, once it has asserted the hint is exactly that command.
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'git -C /work/proj add -f .lola/lock.json && git -C /work/proj commit -q -m \"track lock.json\"'"
+        script: '{{.runtime}} exec {{.container}} sh -c ''git -C /work/proj add -f .lola/lock.json && git -C /work/proj commit -q -m "track lock.json"'''
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -539,7 +539,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 4
           - result.systemout ShouldContainSubstring "trusting, as --trust=entries,profiles allows:"
-          - "result.systemout ShouldContainSubstring \"  → entries: targets (new), kit (new)\""
+          - 'result.systemout ShouldContainSubstring "  → entries: targets (new), kit (new)"'
           - result.systemout ShouldContainSubstring "Proceed? [y/N]"
           - result.systemout ShouldNotContainSubstring "Trust all"
           - result.systemout ShouldContainSubstring "✗ cancelled — the project was not changed"
@@ -556,7 +556,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} sh -c 'printf \"y\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} sync --project -C /work/proj3 --trust\" /dev/null'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"  → entries: targets (new), kit (new)\""
+          - 'result.systemout ShouldContainSubstring "  → entries: targets (new), kit (new)"'
           - result.systemout ShouldContainSubstring "Proceed? [y/N]"
           - result.systemout ShouldContainSubstring "✓ synced kit (claude-code)"
       - type: exec

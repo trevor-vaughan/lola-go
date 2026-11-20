@@ -31,7 +31,8 @@ restore_changelog() {
   fi
 }
 
-[[ -z "$(git status --porcelain)" ]] ||
+dirty="$(git status --porcelain)"
+[[ -z "$dirty" ]] ||
   die "the work tree is not clean; the release goes on the commit every checklist item passed on" "git status"
 
 last="$(git tag --merged HEAD --list 'v*' --sort=-v:refname | grep -E -m1 "$RELEASE_TAG_RE" || true)"
@@ -74,9 +75,10 @@ if ! git commit -q -m "chore(release): v$version"; then
   die "the release commit failed (a hook may have rejected it); CHANGELOG.md was restored"
 fi
 
+head_sha="$(git rev-parse --short HEAD)"
 printf 'lola v%s\n\n%s\n' "$version" "$notes" | git tag -a --cleanup=verbatim "v$version" -F - ||
-  die "the release commit $(git rev-parse --short HEAD) was created but tagging failed" \
+  die "the release commit $head_sha was created but tagging failed" \
     "drop it with git reset --keep HEAD~1, then run release:bump again"
-echo "✓ released v$version: CHANGELOG.md committed and tagged on $(git rev-parse --short HEAD)"
+echo "✓ released v$version: CHANGELOG.md committed and tagged on $head_sha"
 echo "  review: git show v$version"
 echo "  publish when ready: git push origin HEAD v$version"

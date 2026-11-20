@@ -11,7 +11,7 @@ The **view** of a manifest is what can change what lola fetches or writes:
 
 - The top-level `targets` and each entry's `name`, `source`, `ref`, `path`, `commit`, `digest`,
   `targets`, `rules`, `member` (set only on a project profile's entry that comes from a remote
-  profile that is a member of a project bundle; see [Layers](#layers))
+  profile that is a member of a project bundle; see [Layers](layers.md))
 - The member list of each project bundle (`View.Bundle`, in its own part)
 - `market` (shown in the diff as `market (as written)`, through `untrusted.Text`, never checked)
 - `components` and `vars` (what its templates render with; shown as `name = value` pairs through

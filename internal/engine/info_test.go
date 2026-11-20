@@ -262,7 +262,7 @@ var _ = Describe("lola info", func() {
 		Expect(info.Runs.MCPServers).To(BeEmpty())
 	})
 
-	It("info shows each hook's sha256 and first lines cleaned, and runtime hooks and MCP servers as the assistant would run them", func() {
+	It("info shows each hook's sha256 and first lines cleaned, and runtime hooks and MCP servers as the assistant would run them", func() { // DevSkim: ignore DS197836 - prose naming sha256 and runtime hooks, not a hash of low-entropy data
 		script := "#!/bin/sh\necho \x1b[2Jcleared\n"
 		writeTree(kit, map[string]string{"setup.sh": script})
 		info, err := e.Info(ctx, claudeHere())

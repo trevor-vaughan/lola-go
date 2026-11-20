@@ -1,6 +1,7 @@
 package templating
 
 import (
+	"iter"
 	"slices"
 	"strings"
 
@@ -162,29 +163,18 @@ func leadingName(markup string) string {
 // literal, which could compute any key, or one starting with ".", which names liquid's own
 // state (forloop['.cycles']), never a property.
 func forloopWhole(markup string) bool {
-	for i := 0; i < len(markup); {
-		c := markup[i]
-		switch {
-		case c == '"' || c == '\'':
-			i = skipString(markup, i)
-		case c == '.' && i+1 < len(markup) && isIdentStart(markup[i+1]):
-			i = identEnd(markup, i+1) // a property, never the variable forloop
-		case isIdentStart(c):
-			end := identEnd(markup, i)
-			if markup[i:end] == "forloop" {
-				rest := strings.TrimLeft(markup[end:], " \t\n\v\f\r")
-				key, bracket := strings.CutPrefix(rest, "[")
-				key = strings.TrimLeft(key, " \t\n\v\f\r")
-				literal := len(key) > 1 && (key[0] == '"' || key[0] == '\'') && key[1] != '.' &&
-					strings.HasPrefix(strings.TrimLeft(key[min(skipString(key, 0), len(key)):], " \t\n\v\f\r"), "]")
-				property := bracket && literal || !bracket && len(rest) > 1 && rest[0] == '.' && isIdentStart(rest[1])
-				if !property {
-					return true
-				}
-			}
-			i = end
-		default:
-			i++
+	for start, end := range bareIdents(markup) {
+		if markup[start:end] != "forloop" {
+			continue
+		}
+		rest := strings.TrimLeft(markup[end:], " \t\n\v\f\r")
+		key, bracket := strings.CutPrefix(rest, "[")
+		key = strings.TrimLeft(key, " \t\n\v\f\r")
+		literal := len(key) > 1 && (key[0] == '"' || key[0] == '\'') && key[1] != '.' &&
+			strings.HasPrefix(strings.TrimLeft(key[min(skipString(key, 0), len(key)):], " \t\n\v\f\r"), "]")
+		property := bracket && literal || !bracket && len(rest) > 1 && rest[0] == '.' && isIdentStart(rest[1])
+		if !property {
+			return true
 		}
 	}
 	return false
@@ -232,23 +222,11 @@ func parenDepth(markup string) int {
 // "vars.x" is text.
 func varRefs(markup string) []string {
 	var names []string
-	for i := 0; i < len(markup); {
-		c := markup[i]
-		switch {
-		case c == '"' || c == '\'':
-			i = skipString(markup, i)
-		case c == '.' && i+1 < len(markup) && isIdentStart(markup[i+1]):
-			i = identEnd(markup, i+1) // a property, never the variable vars
-		case isIdentStart(c):
-			end := identEnd(markup, i)
-			if markup[i:end] == "vars" && (end == len(markup) || markup[end] != ':') {
-				if name, ok := varName(markup[end:]); ok {
-					names = append(names, name)
-				}
+	for start, end := range bareIdents(markup) {
+		if markup[start:end] == "vars" && (end == len(markup) || markup[end] != ':') {
+			if name, ok := varName(markup[end:]); ok {
+				names = append(names, name)
 			}
-			i = end
-		default:
-			i++
 		}
 	}
 	return names
@@ -298,6 +276,31 @@ func unquoted(markup string) string {
 		i = end
 	}
 	return b.String()
+}
+
+// bareIdents yields the start and end of each identifier in markup that names a variable, lexing
+// as liquid's expression scanner does: a quoted string is text, and a name after "." is a
+// property, never a variable.
+func bareIdents(markup string) iter.Seq2[int, int] {
+	return func(yield func(int, int) bool) {
+		for i := 0; i < len(markup); {
+			c := markup[i]
+			switch {
+			case c == '"' || c == '\'':
+				i = skipString(markup, i)
+			case c == '.' && i+1 < len(markup) && isIdentStart(markup[i+1]):
+				i = identEnd(markup, i+1)
+			case isIdentStart(c):
+				end := identEnd(markup, i)
+				if !yield(i, end) {
+					return
+				}
+				i = end
+			default:
+				i++
+			}
+		}
+	}
 }
 
 // skipString returns the index after the string literal that starts at s[i]: a double-quoted

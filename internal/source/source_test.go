@@ -278,7 +278,7 @@ var _ = Describe("Parse of URLs", func() {
 var _ = Describe("Parse of malformed URLs", func() {
 	It("refuses a URL that does not parse without echoing its credentials or query, with a hint", func() {
 		cwd := testenv.Isolate()
-		for _, arg := range []string{"https://user:s3cr3t@github.com:44x/o/r.git", "https://h/%zz?token=s3cr3t", "x%zz:s3cr3t@h://r"} {
+		for _, arg := range []string{"https://user:s3cr3t@github.com:44x/o/r.git", "https://h/%zz?token=s3cr3t", "x%zz:s3cr3t@h://r"} { // secretlint-disable-line @secretlint/secretlint-rule-basicauth -- redaction test input, not a credential
 			_, _, err := source.Parse(arg, cwd)
 			Expect(err).To(MatchError(ContainSubstring("not a valid URL")), arg)
 			Expect(err.Error()).NotTo(ContainSubstring("s3cr3t"), arg)
@@ -397,7 +397,7 @@ var _ = Describe("Parse of git sources", func() {
 
 var _ = Describe("CommitRef and RecordedRef", func() {
 	BeforeEach(func() { testenv.Isolate() })
-	sha1, sha256 := strings.Repeat("ab", 20), strings.Repeat("cd", 32)
+	sha1, sha256 := strings.Repeat("ab", 20), strings.Repeat("cd", 32) // DevSkim: ignore DS126858 - test commit IDs in the sha1 object format, not a hash computation
 	DescribeTable("a ref of 40 or 64 hex digits, in any case, is that commit, lower-cased",
 		func(ref, commit string, isCommit bool, recorded string) {
 			got, ok := source.CommitRef(ref)
@@ -407,12 +407,12 @@ var _ = Describe("CommitRef and RecordedRef", func() {
 			}
 			Expect(source.RecordedRef(ref)).To(Equal(recorded))
 		},
-		Entry("a sha1 commit", sha1, sha1, true, sha1),
-		Entry("a sha1 commit in capitals", strings.ToUpper(sha1), sha1, true, sha1),
+		Entry("a sha1 commit", sha1, sha1, true, sha1),                              // DevSkim: ignore DS126858 - test commit IDs in the sha1 object format, not a hash computation
+		Entry("a sha1 commit in capitals", strings.ToUpper(sha1), sha1, true, sha1), // DevSkim: ignore DS126858 - test commit IDs in the sha1 object format, not a hash computation
 		Entry("a sha256 commit", sha256, sha256, true, sha256),
 		Entry("a sha256 commit in mixed case", "CD"+sha256[2:], sha256, true, sha256),
 		Entry("a short SHA is a branch or tag name, kept as typed", "ABCDEF1", "", false, "ABCDEF1"),
-		Entry("41 hex digits", sha1+"a", "", false, sha1+"a"),
+		Entry("41 hex digits", sha1+"a", "", false, sha1+"a"), // DevSkim: ignore DS126858 - test commit IDs in the sha1 object format, not a hash computation
 		Entry("a branch name in capitals, kept as typed", "Main", "", false, "Main"),
 		Entry("the default branch", "", "", false, ""),
 	)

@@ -58,15 +58,15 @@ take (a `kind-unsupported` finding) and the rest installs. `lola uninstall pen` 
 
 ## Fields
 
-| Field | Meaning |
-|---|---|
-| `id` | The target's name: lowercase letters, digits and single inner hyphens (`my-tool`). |
-| `readers` | For a target with no `exec` probe: what reads the files it writes. Required then, and refused when there is an `exec` probe. |
-| `kind_unsupported_note` | Optional text added to the finding for an artifact of a kind the target does not place. |
-| `probe` | How lola reads the installed assistant's version: a list of methods, `exec` and `file`, tried in order. Omit it for a tool with no binary and no version file. |
-| `roots` | The directory lola writes into: `project:` and `user:`, each a root variable alone or followed by a clean relative path (`{config_home}/mytool`). |
-| `detect` | How lola decides the assistant is set up, per scope (`project:` and `user:`). |
-| `eras` | What the assistant reads from a version on. At least one. |
+| Field                   | Meaning                                                                                                                                                        |
+|-------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                    | The target's name: lowercase letters, digits and single inner hyphens (`my-tool`).                                                                             |
+| `readers`               | For a target with no `exec` probe: what reads the files it writes. Required then, and refused when there is an `exec` probe.                                   |
+| `kind_unsupported_note` | Optional text added to the finding for an artifact of a kind the target does not place.                                                                        |
+| `probe`                 | How lola reads the installed assistant's version: a list of methods, `exec` and `file`, tried in order. Omit it for a tool with no binary and no version file. |
+| `roots`                 | The directory lola writes into: `project:` and `user:`, each a root variable alone or followed by a clean relative path (`{config_home}/mytool`).              |
+| `detect`                | How lola decides the assistant is set up, per scope (`project:` and `user:`).                                                                                  |
+| `eras`                  | What the assistant reads from a version on. At least one.                                                                                                      |
 
 ### `probe`
 
@@ -129,22 +129,22 @@ one era and no declared version it asks which era to write for (preselecting the
 or takes `-t <id>@<version>`, and records the answer in `target_versions` ([Picking a version at
 install](../usage.md#picking-a-version-at-install)). Era labels in that question come from the
 spec's `since` values: `>=2.0` for the newest and `>=1.0 <2.0` (its since, then the next era's)
-for the others, each followed by ` — <summary>` when the era has one. A declared
+for the others, each followed by a space and `— <summary>` when the era has one. A declared
 version below the first era selects the first, with a warning. To add support for a newer
 version, add an era with `extends: previous`; projects that declare an older version keep the
 earlier output.
 
-| Field | Meaning |
-|---|---|
-| `since` | The first version this era applies to. |
-| `summary` | Optional. What this era reads differently, in plain text of at most 80 characters, shown beside the era's label when `lola install` asks which version to write for. An era with `extends` keeps the previous era's summary unless it gives its own. |
-| `extends: previous` | Start from the era before and change only what differs. Not allowed on the first era. |
-| `remove` | With `extends`, delete from the previous era: `layout.<kind>`, `kinds.<kind>.keys.<key>` or `behaviors.<id>`. |
-| `vars` | Your own path variables, `{project: ..., user: ...}` each, for use in `layout`. |
-| `layout` | Where each artifact kind goes. At least one entry. |
-| `kinds` | What frontmatter each kind accepts. |
-| `behaviors` | Constructs in a command body the tool treats differently from Claude Code. |
-| `shared` | Fragments of checks to add, as a list: `shared: [skill-rules]`. The only one is `skill-rules`: lola's findings for skills that run shell with ``!`…` `` or fill `$ARGUMENTS`, which tools reading a shared skills directory do not. |
+| Field               | Meaning                                                                                                                                                                                                                                              |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `since`             | The first version this era applies to.                                                                                                                                                                                                               |
+| `summary`           | Optional. What this era reads differently, in plain text of at most 80 characters, shown beside the era's label when `lola install` asks which version to write for. An era with `extends` keeps the previous era's summary unless it gives its own. |
+| `extends: previous` | Start from the era before and change only what differs. Not allowed on the first era.                                                                                                                                                                |
+| `remove`            | With `extends`, delete from the previous era: `layout.<kind>`, `kinds.<kind>.keys.<key>` or `behaviors.<id>`.                                                                                                                                        |
+| `vars`              | Your own path variables, `{project: ..., user: ...}` each, for use in `layout`.                                                                                                                                                                      |
+| `layout`            | Where each artifact kind goes. At least one entry.                                                                                                                                                                                                   |
+| `kinds`             | What frontmatter each kind accepts.                                                                                                                                                                                                                  |
+| `behaviors`         | Constructs in a command body the tool treats differently from Claude Code.                                                                                                                                                                           |
+| `shared`            | Fragments of checks to add, as a list: `shared: [skill-rules]`. The only one is `skill-rules`: lola's findings for skills that run shell with ``!`…` `` or fill `$ARGUMENTS`, which tools reading a shared skills directory do not.                  |
 
 ## `layout` and mechanisms
 
@@ -152,15 +152,15 @@ earlier output.
 entry. The entry's `mech` names the Go mechanism that writes it; the other fields are that
 mechanism's parameters, and any it does not take is an error.
 
-| `mech` | Places | Required | Optional |
-|---|---|---|---|
-| `skill-dir` | `skill` | `path` | `shared`, `reads_shared_skills`, `name_matches_dir`, `prepend_name`, `hook_settings` |
-| `agentskills-dir` | `skill` | `path` | `shared` |
-| `markdown-file` | `command`, `agent` | `path`, `ext` | `prepend_name`, `defaults`, `arguments`, `sidecar`, `hook_settings` |
-| `toml-command` | `command` | `path`, `ext` | `sidecar` |
-| `json-servers` | `mcp` | `file`, `pointer`, `shape` | none |
-| `rules-dir` | `rule` | `path` | `concat`, `register` |
-| `claude-hooks` | `runtime-hook` | `file` | none |
+| `mech`            | Places             | Required                   | Optional                                                                             |
+|-------------------|--------------------|----------------------------|--------------------------------------------------------------------------------------|
+| `skill-dir`       | `skill`            | `path`                     | `shared`, `reads_shared_skills`, `name_matches_dir`, `prepend_name`, `hook_settings` |
+| `agentskills-dir` | `skill`            | `path`                     | `shared`                                                                             |
+| `markdown-file`   | `command`, `agent` | `path`, `ext`              | `prepend_name`, `defaults`, `arguments`, `sidecar`, `hook_settings`                  |
+| `toml-command`    | `command`          | `path`, `ext`              | `sidecar`                                                                            |
+| `json-servers`    | `mcp`              | `file`, `pointer`, `shape` | none                                                                                 |
+| `rules-dir`       | `rule`             | `path`                     | `concat`, `register`                                                                 |
+| `claude-hooks`    | `runtime-hook`     | `file`                     | none                                                                                 |
 
 Parameters:
 

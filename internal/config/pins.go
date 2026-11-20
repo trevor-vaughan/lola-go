@@ -214,11 +214,11 @@ func (p *Pins) Bytes(modules map[string][]Pin, remotes map[string]Remote) ([]byt
 		}
 		root.Content = append(root.Content, yamldoc.Str("remotes"), r)
 	}
-	enc := yaml.NewEncoder(&b)
-	enc.SetIndent(2)
-	if err := errors.Join(enc.Encode(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}}), enc.Close()); err != nil {
+	out, err := yamldoc.Encode(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}})
+	if err != nil {
 		return nil, err
 	}
+	b.Write(out)
 	return b.Bytes(), nil
 }
 

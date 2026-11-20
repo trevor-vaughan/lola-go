@@ -9,7 +9,7 @@ when the module is loaded).
 
 After the plan is computed and before anything is written, the engine decides consent per module: a
 recorded consent for the same digest (sha256 over each hook's event, script path and script sha256),
-a `--trust=hooks` (its grant recorded only after the receipt, [Trust kinds](#trust-kinds)), or the
+a `--trust=hooks` (its grant recorded only after the receipt, [Trust kinds](trust-kinds.md)), or the
 CLI's prompt, whose yes is recorded in `$XDG_STATE_HOME/lola/consent.json` with the run's grants,
 after its receipt is answered yes and before the first write. Without consent a `pre-install` hook
 is an error and a `post-install` hook is declined with a warning.

@@ -128,7 +128,7 @@ var _ = Describe("Store", func() {
 	})
 
 	Describe("a head's fetch time", func() {
-		const commit = "0123456789abcdef0123456789abcdef01234567"
+		const commit = "0123456789abcdef0123456789abcdef01234567" // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
 		putAt := func(at time.Time, files map[string]string) {
 			GinkgoHelper()
 			_, err := s.Put(store.PutRequest{Staged: stage(files), FallbackName: "example", Source: "https://example.com/example.git", Type: "git",

@@ -1,0 +1,21 @@
+# TruffleHog path exclusions (shared template)
+# Referenced by REPOSITORY_TRUFFLEHOG_ARGUMENTS in .mega-linter.yml.
+# Regex patterns, one per line. Lines starting with # are comments.
+# Docs: https://github.com/trufflesecurity/trufflehog#excluding-paths
+#
+# Target repos can override this by placing their own
+# .trufflehog-exclude-paths.txt at the repo root. The runner skips
+# overlay when the target already has a file with the same name.
+
+^\.cache/
+
+# lola: specs whose inputs are credential-shaped URLs (a made-up user and
+# password before the host) that prove lola refuses or strips userinfo and never
+# echoes it. They hold no real credential. The scan covers every commit of
+# HEAD's history, so an inline ignore cannot clear the commits already made;
+# each pattern names exactly one file.
+^internal/config/repokey_test\.go$
+^internal/engine/repokey_test\.go$
+^internal/module/agentplugins_test\.go$
+^internal/source/fetch_test\.go$
+^internal/source/source_test\.go$

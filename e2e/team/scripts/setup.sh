@@ -56,9 +56,12 @@ printf -- '---\ndescription: Deploy the project\n---\nDeploy with kit v2.\n' >"$
 git -C "$src" commit -q -am v2
 git -C "$src" tag v2
 publish kit "$src"
-publish lint "$(repo lint "$fixtures/lint")"
-publish fmt "$(repo fmt "$fixtures/fmt")"
-publish profiles "$(repo profiles "$fixtures/profiles")"
+src="$(repo lint "$fixtures/lint")"
+publish lint "$src"
+src="$(repo fmt "$fixtures/fmt")"
+publish fmt "$src"
+src="$(repo profiles "$fixtures/profiles")"
+publish profiles "$src"
 
 src="$(repo main "$fixtures/team")"
 git -C "$src" checkout -q -b next
@@ -68,7 +71,10 @@ cp "$fixtures/team-drop.yml" "$src/.lola/project.yml"
 git -C "$src" commit -q -am "drop kit"
 git -C "$src" checkout -q -b scripts main
 mkdir "$src/ci"
-printf '#!/bin/sh\necho "check $LOLA_MODULE_NAME $LOLA_ASSISTANT" >> /tmp/t16.log\n' >"$src/ci/check.sh"
+cat >"$src/ci/check.sh" <<'SCRIPT'
+#!/bin/sh
+echo "check $LOLA_MODULE_NAME $LOLA_ASSISTANT" >> /tmp/t16.log
+SCRIPT
 chmod 755 "$src/ci/check.sh"
 cp "$fixtures/team-script.yml" "$src/.lola/project.yml"
 git -C "$src" add -A

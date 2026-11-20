@@ -205,9 +205,9 @@ func liquidMessage(err parser.Error) string {
 	return s
 }
 
-// sizeText writes a byte count as lola's messages do: "256 KiB", "1 MiB", "70 KiB" (rounded
+// SizeText writes a byte count as lola's messages do: "256 KiB", "1 MiB", "70 KiB" (rounded
 // up), or "10 bytes" under 1 KiB.
-func sizeText(n int) string {
+func SizeText(n int) string {
 	switch {
 	case n < 1<<10:
 		return fmt.Sprintf("%d bytes", n)

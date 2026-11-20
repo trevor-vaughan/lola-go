@@ -1,3 +1,7 @@
 # Shared policy, pinned to a release; bump together with the action ref in
 # .github/workflows/megalinter.yml. Project overrides go below.
 EXTENDS: https://github.com/trevor-vaughan/megalint-config/raw/v0.7.0/.mega-linter.yml
+
+# third_party/ holds vendored upstream code (liquid, replaced in go.mod) whose style is
+# upstream's, so the file linters skip it. This overrides the shared "^vendor/"; keep vendor.
+FILTER_REGEX_EXCLUDE: "^(vendor|third_party)/"

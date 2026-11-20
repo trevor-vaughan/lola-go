@@ -48,10 +48,10 @@ vars, which trust covers.
 Residual: a capability key (`permissionMode`, `allowed-tools`, `tools`, OpenCode's `permission`) is
 reachable that way, bounded by trust, plus a warning on Claude Code.
 
-**Frontmatter values.** Before compiling a region or a partial, `withValueCheck` appends ` |
+**Frontmatter values.** Before compiling a region or a partial, `withValueCheck` appends, after a space, the filter `|
 lola_frontmatter_value` to the markup of every `{{ }}` outside `raw` and `comment` that is its
 line's whole value or whole key and whose last filter is not `json` (`wholeValue`, from the source
-text around the token), and ` | lola_frontmatter_break` to every other, keeping the token's
+text around the token), and, after a space, the filter `| lola_frontmatter_break` to every other, keeping the token's
 delimiters, trims and whitespace (an object may span lines through the whitespace around its markup,
 so rebuilding it would move lines); a lone `-` (`{{-}}`) stays markup.
 
@@ -66,7 +66,7 @@ parses `k: <value>` with yaml.v3, to `RenderDoc`, so the depguard-fenced templat
 no YAML.
 
 Only a whole value or key is checked: a value composed with the author's text (`v{{ x }}`,
-`"{{ x }}"`) is the author's to shape, so a ` #` there can still cut it short. Numbers and booleans
+`"{{ x }}"`) is the author's to shape, so a `#` after a space there can still cut it short. Numbers and booleans
 are not checked. The check is a data-correctness aid, not a security boundary: consent and the
 recheck see the parsed result.
 

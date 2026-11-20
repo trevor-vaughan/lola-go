@@ -617,21 +617,9 @@ func (e *Engine) spend(r *templateRun, module string, sc string, start time.Time
 	case r.spent.time > b.RunTime:
 		return refuse(fmt.Sprintf("rendering templates took more than %s; lola stops after %s per run", b.RunTime, b.RunTime))
 	case r.spent.held > b.RunOutput:
-		return refuse(fmt.Sprintf("rendering templates held more than %s of rendered templates; at most %s per run", budgetSize(b.RunOutput), budgetSize(b.RunOutput)))
+		return refuse(fmt.Sprintf("rendering templates held more than %s of rendered templates; at most %s per run", templating.SizeText(b.RunOutput), templating.SizeText(b.RunOutput)))
 	}
 	return nil
-}
-
-// budgetSize writes a byte count as the sandbox's messages do: "10 bytes" under 1 KiB, "32 MiB"
-// for an exact MiB, else KiB rounded up.
-func budgetSize(n int) string {
-	switch {
-	case n < 1<<10:
-		return fmt.Sprintf("%d bytes", n)
-	case n%(1<<20) == 0:
-		return fmt.Sprintf("%d MiB", n>>20)
-	}
-	return fmt.Sprintf("%d KiB", (n+1<<10-1)>>10)
 }
 
 // newTemplateRun starts a plan pass at sc that renders with the precedence list: default first at

@@ -7,25 +7,25 @@ Maintainer notes on Security model. It is split out of [architecture](../archite
 The table lists each threat, the path it takes to lola, the mitigation and the section below that
 covers it. The sections give the detail, including each residual risk.
 
-| Threat | Path | Mitigation | Section |
-|---|---|---|---|
-| A flag or consent grants more than the user meant | `--trust`, `-y`, `--force`, a hint | Each kind answers a fixed set of questions; hints add only the kinds missing; grants are recorded after the receipt's yes | **Trust kinds cannot widen** |
-| Module code runs without informed consent | Install hooks, runtime hooks, an agent's hooks | Consent tied to the exact scripts, or to the rendered groups and module version; only content shown in full is granted | **Hooks run code, with consent** |
-| A module starts an unwanted program | MCP servers written into the assistant's files | `entries` and `runtime-hooks` consent; the trust diff prints each command; lola never starts a server | **Module MCP servers** |
-| Module content reads or writes outside its tree | Symlinks, archive links, odd names | Relative in-tree links only, read through `os.Root`; archives never write a link; names validated | **Sources are not trusted** |
-| A checkout redirects lola's writes | Symlinked directories in the project | Conflict detection; the plan shows every redirected destination | **Destinations** |
-| A repository points lola's own directories elsewhere | A symlinked `.lola/`, `.lola/modules/` or `.lola/plugin-data/` | Such links are refused; a module copy that is not a real directory is replaced | **Project state** |
-| A fetch returns other content than expected | The network, git config, redirects | Digests and commits are checked on refetch; checkouts run no filter program | **Fetched sources** |
-| A remote profile reaches inside your network | A host name that resolves to an internal address | `https://`/`ssh://` hosts by name only; a planted `lock.json` changes only an annotation | **Remote profiles** |
-| A catalog runs code or escapes its tree | A stranger's marketplace JSON | Parsed by a package with no file access; sources classified and checked; no field runs a command | **Marketplace catalogs** |
-| Recorded sources or text carry an attack | Someone else's `project.yml` or `lock.json` | Checked on load, before any git run; printed text passes `untrusted.Text` | **Recorded sources** |
-| A pulled manifest installs content you did not review | `git pull`, a hand edit of `project.yml` | The trust diff; only a yes or `--trust` acts, never `-y`; untrusted content stays in staging | **Pulled manifests** |
-| Tidy destroys or redirects files | Links onto the root or another project | It never deletes, only moves to the trash, and only declared entries | **Tidy** |
-| A template reaches the machine | Liquid in module files | A sandbox with no file, environment, network or Go method; output capped and checked | **Templates are untrusted input** |
-| A synced `pins.yaml` upgrades or fetches without asking | A dotfile manager | Strict validation; fetched only from allowed sources; commit and digest must match | **`pins.yaml` is synced input** |
-| A malformed file is overwritten | Hand edits, a partial sync | Unparseable files are never rewritten | **Unparseable files** |
-| A config file feeds the terminal or the parser | `config.yaml`, `selections.yaml` | Size caps, strict validation, `untrusted.Text` | **User files are untrusted** |
-| Another local user reads lola's state | File modes | State files are `0600`; XDG directories `0700` | **lola's own state files** (the last bullet) |
+| Threat                                                  | Path                                                           | Mitigation                                                                                                                | Section                                      |
+|---------------------------------------------------------|----------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
+| A flag or consent grants more than the user meant       | `--trust`, `-y`, `--force`, a hint                             | Each kind answers a fixed set of questions; hints add only the kinds missing; grants are recorded after the receipt's yes | **Trust kinds cannot widen**                 |
+| Module code runs without informed consent               | Install hooks, runtime hooks, an agent's hooks                 | Consent tied to the exact scripts, or to the rendered groups and module version; only content shown in full is granted    | **Hooks run code, with consent**             |
+| A module starts an unwanted program                     | MCP servers written into the assistant's files                 | `entries` and `runtime-hooks` consent; the trust diff prints each command; lola never starts a server                     | **Module MCP servers**                       |
+| Module content reads or writes outside its tree         | Symlinks, archive links, odd names                             | Relative in-tree links only, read through `os.Root`; archives never write a link; names validated                         | **Sources are not trusted**                  |
+| A checkout redirects lola's writes                      | Symlinked directories in the project                           | Conflict detection; the plan shows every redirected destination                                                           | **Destinations**                             |
+| A repository points lola's own directories elsewhere    | A symlinked `.lola/`, `.lola/modules/` or `.lola/plugin-data/` | Such links are refused; a module copy that is not a real directory is replaced                                            | **Project state**                            |
+| A fetch returns other content than expected             | The network, git config, redirects                             | Digests and commits are checked on refetch; checkouts run no filter program                                               | **Fetched sources**                          |
+| A remote profile reaches inside your network            | A host name that resolves to an internal address               | `https://`/`ssh://` hosts by name only; a planted `lock.json` changes only an annotation                                  | **Remote profiles**                          |
+| A catalog runs code or escapes its tree                 | A stranger's marketplace JSON                                  | Parsed by a package with no file access; sources classified and checked; no field runs a command                          | **Marketplace catalogs**                     |
+| Recorded sources or text carry an attack                | Someone else's `project.yml` or `lock.json`                    | Checked on load, before any git run; printed text passes `untrusted.Text`                                                 | **Recorded sources**                         |
+| A pulled manifest installs content you did not review   | `git pull`, a hand edit of `project.yml`                       | The trust diff; only a yes or `--trust` acts, never `-y`; untrusted content stays in staging                              | **Pulled manifests**                         |
+| Tidy destroys or redirects files                        | Links onto the root or another project                         | It never deletes, only moves to the trash, and only declared entries                                                      | **Tidy**                                     |
+| A template reaches the machine                          | Liquid in module files                                         | A sandbox with no file, environment, network or Go method; output capped and checked                                      | **Templates are untrusted input**            |
+| A synced `pins.yaml` upgrades or fetches without asking | A dotfile manager                                              | Strict validation; fetched only from allowed sources; commit and digest must match                                        | **`pins.yaml` is synced input**              |
+| A malformed file is overwritten                         | Hand edits, a partial sync                                     | Unparseable files are never rewritten                                                                                     | **Unparseable files**                        |
+| A config file feeds the terminal or the parser          | `config.yaml`, `selections.yaml`                               | Size caps, strict validation, `untrusted.Text`                                                                            | **User files are untrusted**                 |
+| Another local user reads lola's state                   | File modes                                                     | State files are `0600`; XDG directories `0700`                                                                            | **lola's own state files** (the last bullet) |
 
 - **Trust kinds cannot widen.** Each kind answers a fixed set of questions.
   - Bare `--trust` covers only `entries,profiles`. lola runs no code for them, but accepting
@@ -132,7 +132,7 @@ covers it. The sections give the detail, including each residual risk.
   prints them; other text a module contains (frontmatter keys quoted in finding texts, for
   example) is not yet sanitized.
 - **Pulled manifests.** An entry of `project.yml` lola did not write (a pull, a hand edit) is
-  never installed by name or rewritten: see [Trust record](#trust-record).
+  never installed by name or rewritten: see [Trust record](trust-record.md).
   - `lola sync` shows every change with the content it brings and acts only on a yes or
     `--trust`, never `-y`; off a terminal it refuses before any network contact.
   - Uncovered local sources, and covered ones written inside the project, must stay inside it,
@@ -144,7 +144,7 @@ covers it. The sections give the detail, including each residual risk.
   - A sync still renders installed modules at the versions `lock.json` records, which a pull cannot
     change because the ledger is private, and a tracked `lock.json` is refused by `sync`, `update`,
     `install`, `uninstall`, `list` and `lola profile` (see **Tracked ledger** in [Trust
-    record](#trust-record)).
+    record](trust-record.md)).
   - Step paths in `--json` output stay raw (JSON-escaped): `lola migrate` reads them as paths. So
     do `lola tidy`'s item `path` and `trash`, which scripts restore from.
   - Every other string `lola tidy` prints went through `untrusted.Text`, and MCP servers show only
@@ -160,7 +160,7 @@ covers it. The sections give the detail, including each residual risk.
     `renameat` would need a new dependency), so a process running as you, or a git checkout, that
     swaps a path component between the re-check and the rename can redirect it; across file
     systems such a process can change an entry between the fingerprint and its removal.
-- **Templates are untrusted input.** They render in the sandbox of [Templates](#templates): no
+- **Templates are untrusted input.** They render in the sandbox of [Templates](templates.md): no
   file, environment, network or Go method is reachable, every value and the output are capped,
   and the output is checked and consented as a literal file with those bytes would be. The
   vendored liquid copy is outside `govulncheck`'s reach; its advisories are checked by hand

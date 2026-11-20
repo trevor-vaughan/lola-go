@@ -75,13 +75,13 @@ var _ = Describe("CheckReachable", func() {
 	})
 
 	It("skips the check when the ref is the commit itself", func() {
-		commit := "0123456789abcdef0123456789abcdef01234567"
+		commit := "0123456789abcdef0123456789abcdef01234567" // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
 		Expect(check("https://127.0.0.1:1/nowhere.git", commit, commit)).To(Succeed())
 	})
 
 	It("refuses a hostile location or ref before git runs", func() {
 		pwned := filepath.Join(tmp, "PWNED")
-		commit := "0123456789abcdef0123456789abcdef01234567"
+		commit := "0123456789abcdef0123456789abcdef01234567" // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
 		Expect(check("--upload-pack=touch "+pwned, "main", commit)).To(MatchError(ContainSubstring("starts with '-'")))
 		Expect(check("https://example.com/x.git", "--upload-pack=touch "+pwned, commit)).To(MatchError(ContainSubstring("starts with '-'")))
 		Expect(pwned).NotTo(BeAnExistingFile())

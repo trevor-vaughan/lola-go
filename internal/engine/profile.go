@@ -293,16 +293,7 @@ func (e *Engine) loadStack(sc Scope, infos []profile.Info, actives ...*ledger.Ac
 			// A bundle lists no module: expand reads its members (bundle.go).
 			return Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, read: p}, nil
 		}
-		kept := err
-		ents := p.Entries()
-		for k := range ents {
-			ents[k].Source = besideProfile(ents[k].Source, base)
-		}
-		l := Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, Entries: ents, read: p}
-		if i.Kind == profile.KindProject {
-			l.Key = i.Name
-		}
-		return l, kept
+		return fileLayer(i, p, base), err
 	}
 	var unresolved error
 	if k := slices.IndexFunc(infos, func(i profile.Info) bool { return i.Kind == profile.KindDefault }); k >= 0 {
@@ -607,6 +598,21 @@ func (e *Engine) syncLayers(sc Scope, man *manifest.Manifest, led *ledger.Ledger
 		return nil, nil, err
 	}
 	return pl.assemble(e.baseLayer(sc, man, pl), led.Profile), append(pl.notices, e.replacementNotices(sc, replacements(infos, led.Profile))...), nil
+}
+
+// fileLayer is the layer of i, a profile of yours or the project's that lists modules, read as p
+// from its file in dir: its entries, each local source resolved beside the file (besideProfile),
+// keyed by name when it is the project's.
+func fileLayer(i profile.Info, p *profile.Profile, dir string) Layer {
+	ents := p.Entries()
+	for k := range ents {
+		ents[k].Source = besideProfile(ents[k].Source, dir)
+	}
+	l := Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, Entries: ents, read: p}
+	if i.Kind == profile.KindProject {
+		l.Key = i.Name
+	}
+	return l
 }
 
 // besideProfile is a profile entry's source with a relative local path joined to dir, the profile's

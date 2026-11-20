@@ -19,10 +19,10 @@ Alias: `get`. Fetch a module into your cache without installing it. `@market/mod
 entry of one of your marketplaces as `lola install` would, its commit pin checked against its
 ref (`--path` is refused: the catalog gives it).
 
-| Flag | What it does |
-|---|---|
-| `--ref <ref>` | The git branch, tag or full commit SHA to fetch. |
-| `--path <dir>` | The module root inside the source (monorepos). |
+| Flag           | What it does                                     |
+|----------------|--------------------------------------------------|
+| `--ref <ref>`  | The git branch, tag or full commit SHA to fetch. |
+| `--path <dir>` | The module root inside the source (monorepos).   |
 
 Refusals: no source: `lola cache add needs a source`.
 
@@ -45,8 +45,8 @@ Aliases: `remove`, `uninstall`, `erase`, `delete`, `del`. Remove every cached ve
 modules. Installed modules keep working: each one runs from its own module copy, and `lola
 sync` fetches the source again when it needs to. Asks first.
 
-| Flag | What it does |
-|---|---|
+| Flag          | What it does                 |
+|---------------|------------------------------|
 | `-y`, `--yes` | Do not ask for confirmation. |
 
 Refusals: `nope is not in your cache`, hinting `cached modules: lola cache list`; off a terminal
@@ -64,19 +64,19 @@ lola cache clean [--unused-for <age>] [--all] [-n] [-y]
 
 Remove what your cache no longer needs. Asks first.
 
-| Form | Removes |
-|---|---|
-| bare | Superseded versions (each version no head points to: a head is the version a ref currently resolves to, and a newer fetch of the ref replaced it) and scratch: each `.staging/run-*` and `tmp/check-*` that no running lola holds, a `run-*.lock` or `check-*.lock` left without its directory, and a `.staging/clean-*` a killed clean left. Every module keeps its heads. With `cache_unused_for` set in `config.yaml`, also what `--unused-for` with that age removes. |
-| `--unused-for <n>d` or `<n>w` | Also every version no run used for at least that many days (`1w` is 7 days), current heads included: a head whose version goes is dropped, and a module whose last version goes is removed whole. |
-| `--unused-for never` | What bare removes, without the configured age. |
-| `--all` | Every module, every marketplace catalog and all scratch, except scratch a running lola holds. The cache's lock file and `probes.json` (the assistant versions lola has probed, per binary build) stay. |
+| Form                          | Removes                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|-------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| bare                          | Superseded versions (each version no head points to: a head is the version a ref currently resolves to, and a newer fetch of the ref replaced it) and scratch: each `.staging/run-*` and `tmp/check-*` that no running lola holds, a `run-*.lock` or `check-*.lock` left without its directory, and a `.staging/clean-*` a killed clean left. Every module keeps its heads. With `cache_unused_for` set in `config.yaml`, also what `--unused-for` with that age removes. |
+| `--unused-for <n>d` or `<n>w` | Also every version no run used for at least that many days (`1w` is 7 days), current heads included: a head whose version goes is dropped, and a module whose last version goes is removed whole.                                                                                                                                                                                                                                                                         |
+| `--unused-for never`          | What bare removes, without the configured age.                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `--all`                       | Every module, every marketplace catalog and all scratch, except scratch a running lola holds. The cache's lock file and `probes.json` (the assistant versions lola has probed, per binary build) stay.                                                                                                                                                                                                                                                                    |
 
-| Flag | What it does |
-|---|---|
-| `--unused-for <age>` | `<n>d` (days), `<n>w` (weeks) or `never`; not with `--all`. |
-| `--all` | Remove everything but held scratch; not with `--unused-for`. |
-| `-n`, `--dry-run` | Print what would be removed and remove nothing. |
-| `-y`, `--yes` | Do not ask for confirmation. |
+| Flag                 | What it does                                                 |
+|----------------------|--------------------------------------------------------------|
+| `--unused-for <age>` | `<n>d` (days), `<n>w` (weeks) or `never`; not with `--all`.  |
+| `--all`              | Remove everything but held scratch; not with `--unused-for`. |
+| `-n`, `--dry-run`    | Print what would be removed and remove nothing.              |
+| `-y`, `--yes`        | Do not ask for confirmation.                                 |
 
 A version is used when a run installs it (`install`), fetches it (an `install` that applies, or
 `info`, of a source, `cache add`, `cache update`, `sync`, `update` fetching it again, `profile

@@ -874,15 +874,7 @@ func (e *Engine) offLayer(i profile.Info) (Layer, error) {
 	if err != nil {
 		return Layer{}, err
 	}
-	ents := p.Entries()
-	for k := range ents {
-		ents[k].Source = besideProfile(ents[k].Source, dir)
-	}
-	l := Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, Entries: ents, read: p}
-	if i.Kind == profile.KindProject {
-		l.Key = i.Name
-	}
-	return l, nil
+	return fileLayer(i, p, dir), nil
 }
 
 // ownTargets reports whether t is a profile with top-level targets of its own, which its entries

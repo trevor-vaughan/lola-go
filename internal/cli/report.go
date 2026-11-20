@@ -255,13 +255,7 @@ func upToDateLine(rep report, m engine.ModuleResult) string {
 // lines count (foldDropped).
 func reportFindings(s style, rep report) ([]target.Finding, []string) {
 	r := rep.Result
-	findings := make([]target.Finding, 0, len(r.Findings))
-	for _, f := range r.Findings {
-		if f.AuthorHint {
-			f.Hint = f.UserHint
-		}
-		findings = append(findings, f)
-	}
+	findings := userFindings(r.Findings)
 	if s.verbose || rep.InSync == "" && rep.UpToDate == nil {
 		return findings, nil
 	}

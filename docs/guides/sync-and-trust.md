@@ -534,12 +534,12 @@ served a ref from the cache it says how many modules, with your run and `--fetch
 entries listed but not installed, with the `lola sync` that installs them. It leaves a
 module as installed (no files, copy or hooks touched), with a warning and its remedy, when:
 
-| Code | Why | Hint |
-|---|---|---|
-| `not-in-manifest` | no layer lists it any more | `lola sync`, which would remove it |
-| `targets-differ` | its entry asks for other assistants than are installed | `lola sync`, which applies the change |
-| `fetch-failed` | its source could not be fetched | what the fetch says to fix, then `lola update <module> --fetch` |
-| `source-gone` | its source folder is gone, so the version installed was rendered | restore the folder, or `lola uninstall <module>` |
+| Code              | Why                                                              | Hint                                                            |
+|-------------------|------------------------------------------------------------------|-----------------------------------------------------------------|
+| `not-in-manifest` | no layer lists it any more                                       | `lola sync`, which would remove it                              |
+| `targets-differ`  | its entry asks for other assistants than are installed           | `lola sync`, which applies the change                           |
+| `fetch-failed`    | its source could not be fetched                                  | what the fetch says to fix, then `lola update <module> --fetch` |
+| `source-gone`     | its source folder is gone, so the version installed was rendered | restore the folder, or `lola uninstall <module>`                |
 
 An entry that comes from a remote profile is left too, with a notice to run `lola profile <name>
 --update`. `lola update` fetches the rest and exits `1` when any fetch failed. To render again at

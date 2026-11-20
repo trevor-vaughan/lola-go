@@ -90,7 +90,7 @@ keep answer is a selector of a moved item.
 Ticks map back to `UnitID`s and to selectors. When nothing is ticked to move, the keep step needs a
 pick (`TidyKeepStep.Required`), so the choice is never empty; cancelling either step is
 `ErrAborted`. huh (the version pinned in `go.mod`) toggles every option whose label equals the one under the cursor, so
-`tidyOptions` keeps whole any labels the width would cut alike and numbers (` [n]`) labels still
+`tidyOptions` keeps whole any labels the width would cut alike and numbers (a space then `[n]`, as a suffix) labels still
 equal in full.
 
 The engine then validates the answer (`offered`), and `Confirm` prints the review with `Command`,
