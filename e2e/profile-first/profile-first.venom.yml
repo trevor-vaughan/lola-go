@@ -80,7 +80,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} list --user --plain"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"review-kit\tclaude-code\tok\ton\t{{.git}}/review-kit.git\tuser\tprofile:default\tv1.4.0\""
+          - "result.systemout ShouldEqual \"review-kit\tclaude-code\tok\ton\t{{.git}}/review-kit.git\tuser\tprofile:default\tv1.4.0\t-\""
           - "result.systemerr ShouldEqual \"context\tuser\t\tdefault\t-\t\""
 
   - name: S2 A baseline of 4 skills, a go-review profile over it, an override and the way back
@@ -211,7 +211,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - "result.systemerr ShouldEqual \"context\tproject\t/work/acme\tproject.yml\tuser:me\t\""
-          - "result.systemout ShouldEqual \"my-notes\tclaude-code\tok\ton\t/e2e/fixtures/my-notes\tproject\tprofile:user:me\t\nteam-kit\tclaude-code\tok\ton\t{{.git}}/team-kit.git\tproject\tproject.yml\tmain\""
+          - "result.systemout ShouldEqual \"my-notes\tclaude-code\tok\ton\t/e2e/fixtures/my-notes\tproject\tprofile:user:me\t\t-\nteam-kit\tclaude-code\tok\ton\t{{.git}}/team-kit.git\tproject\tproject.yml\tmain\t-\""
 
   - name: S3 An experiment copied from go-review, then back to go-review, keeping the experiment
     steps:

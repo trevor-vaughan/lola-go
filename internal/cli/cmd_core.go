@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -406,7 +405,7 @@ func (a *app) listCmd() *cobra.Command {
 // kinds with a row for the -t targets, however the module names cut rows), coaching install (the
 // command install names for a scope; the line names the -t targets when given). A drifted row's status says how many of its files drifted. Without detail
 // (no module named), a line per scope with drift names the modules to list for what changed.
-// --plain rows are name, target, status, rules, source, scope, from, ref.
+// --plain rows are name, target, status, rules, source, scope, from, ref, update (update-available or -).
 func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.StatusRow, holding map[string]bool, targets []string, contexts []engine.ScopeContext, command func(engine.Scope, string, ...string) string, detail bool) {
 	if s.plain {
 		for _, r := range rows {
@@ -414,7 +413,11 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 			if !r.Rules {
 				rules = "off"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, rules, r.Source, r.Scope, r.From, untrusted.Text(r.Ref, untrusted.MaxName))
+			update := "-"
+			if r.UpdateAvailable {
+				update = "update-available"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, rules, r.Source, r.Scope, r.From, untrusted.Text(r.Ref, untrusted.MaxName), update)
 		}
 		return
 	}
@@ -442,7 +445,7 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 	// FROM only when a module comes from a profile.
 	skipped := slices.ContainsFunc(rows, func(r engine.StatusRow) bool { return len(r.Skipped) > 0 })
 	profiled := slices.ContainsFunc(rows, func(r engine.StatusRow) bool { return strings.HasPrefix(r.From, "profile:") })
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	tw := &ansiTable{w: w}
 	head := "SCOPE\tMODULE\tTARGET\tSTATUS\tRULES"
 	if skipped {
 		head += "\tSKIPPED"
@@ -453,23 +456,24 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 	}
 	fmt.Fprintln(tw, head)
 	for _, r := range rows {
-		status := s.ok(r.Status)
+		label, paint := r.Status, s.ok
 		switch r.Status {
 		case "modified", "stale", "unreadable", "skipped":
-			status = s.warn(r.Status)
+			paint = s.warn
 		case "not_installed":
-			status = s.warn("not installed")
+			label, paint = "not installed", s.warn
 		case "missing":
-			status = s.bad(r.Status)
+			paint = s.bad
 		}
 		if n := driftedFiles(r); r.Status == "missing" || r.Status == "modified" {
 			switch {
 			case onlyCopyMissing(r):
-				status = strings.Replace(status, r.Status, r.Status+" (module copy)", 1)
+				label += " (module copy)"
 			case n > 0:
-				status = strings.Replace(status, r.Status, fmt.Sprintf("%s %d/%d", r.Status, n, r.Recorded), 1)
+				label += fmt.Sprintf(" %d/%d", n, r.Recorded)
 			}
 		}
+		status := paint(label)
 		if r.UpdateAvailable {
 			status += " → update available"
 		}

@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"bytes"
 	"cmp"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
@@ -25,6 +28,67 @@ func (s style) ok(t string) string   { return s.paint("32", "✓ "+t) }
 func (s style) warn(t string) string { return s.paint("33", "⚠ "+t) }
 func (s style) bad(t string) string  { return s.paint("31", "✗ "+t) }
 func (s style) info(t string) string { return s.paint("36", "→ "+t) }
+
+var ansiSeq = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// ansiTable aligns tab-separated lines like a tabwriter (two spaces between columns, the last cell
+// unpadded) but measures a cell by what shows: a tabwriter counts the bytes of a color sequence,
+// so rows whose cells are colored differently would not line up. Use it for any table whose cells
+// may carry color.
+type ansiTable struct {
+	w   io.Writer
+	buf bytes.Buffer
+}
+
+func (t *ansiTable) Write(p []byte) (int, error) { return t.buf.Write(p) }
+
+// Flush writes the buffered lines aligned; a column's width spans the run of consecutive lines
+// that have a cell in it, as a tabwriter's does.
+func (t *ansiTable) Flush() error {
+	text := strings.TrimSuffix(t.buf.String(), "\n")
+	t.buf.Reset()
+	if text == "" {
+		return nil
+	}
+	var lines [][]string
+	for l := range strings.SplitSeq(text, "\n") {
+		lines = append(lines, strings.Split(l, "\t"))
+	}
+	visible := func(c string) int { return utf8.RuneCountInString(ansiSeq.ReplaceAllString(c, "")) }
+	widths := make([][]int, len(lines))
+	for i, cells := range lines {
+		widths[i] = make([]int, len(cells))
+	}
+	for col, found := 0, true; found; col++ {
+		found = false
+		for i := 0; i < len(lines); {
+			if len(lines[i])-1 <= col {
+				i++
+				continue
+			}
+			found = true
+			end, width := i, 0
+			for ; end < len(lines) && len(lines[end])-1 > col; end++ {
+				width = max(width, visible(lines[end][col]))
+			}
+			for ; i < end; i++ {
+				widths[i][col] = width + 2
+			}
+		}
+	}
+	var out strings.Builder
+	for i, cells := range lines {
+		for col, c := range cells {
+			out.WriteString(c)
+			if col < len(cells)-1 {
+				out.WriteString(strings.Repeat(" ", widths[i][col]-visible(c)))
+			}
+		}
+		out.WriteByte('\n')
+	}
+	_, err := io.WriteString(t.w, out.String())
+	return err
+}
 
 // strong is bold when the style is (app.bold): on a terminal, as emphasis, not color.
 func (s style) strong(t string) string {

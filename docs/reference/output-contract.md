@@ -312,7 +312,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
 - `list --json` and `check --json` carry `skipped` per module.
   - `list --json` rows carry `scope` (`project` or `user`) and `from` (the
     [layer](../guides/profiles.md#profiles) the module comes from: `project.yml`, `profile:default`,
-    `profile:user:<name>`); `list --plain` rows carry the two just before their last field, `ref`.
+    `profile:user:<name>`); `list --plain` rows carry the two just before `ref`, which a final `update-available` (or `-`) follows.
   - `list --json` has `notices` (`[]` when none), as `--plain` has `notice` rows.
 - `sync --json`:
   - Top level: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, `rewrites`,

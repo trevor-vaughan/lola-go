@@ -6,7 +6,9 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -226,6 +228,28 @@ var _ = Describe("list drift", func() {
 		Expect(r.out).To(MatchRegexp(`^kit\tclaude-code\tmissing\ton\t.*\tuser\t.*\n$`))
 		Expect(r.out).NotTo(ContainSubstring("restore"))
 		Expect(r.out).NotTo(ContainSubstring("see what changed"))
+	})
+
+	It("--plain ends each row with - when no update is available", func() {
+		installKit(nil)
+		Expect(lola("list", "--user", "--plain", "kit").out).To(MatchRegexp(`^kit\tclaude-code\tok\ton\t.*\tuser\t.*\t.*\t-\n$`))
+	})
+
+	It("aligns its columns under color when statuses differ in length and color", func() {
+		installKit(nil)
+		writeTree(filepath.Join(tmp, "mods", "other"), map[string]string{"lola.yml": "name: other\n", "skills/c/SKILL.md": skill("c")})
+		Expect(lola("install", filepath.Join(tmp, "mods", "other"), "--user", "-t", "claude-code", "-y").code).To(Equal(0))
+		deleteSkill("a")
+		GinkgoT().Setenv("LOLA_COLOR", "1")
+		r := lola("list", "--user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("\x1b["), "color is forced, so the table carries escapes")
+		plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(r.out, "")
+		lines := strings.Split(strings.TrimSpace(plain), "\n")[:3]
+		col := utf8.RuneCountInString(lines[0][:strings.Index(lines[0], "RULES")])
+		for _, line := range lines[1:] {
+			Expect(string([]rune(line)[col:])).To(HavePrefix("on  "), "RULES starts at the header's offset in: "+line)
+		}
 	})
 
 	It("prints a component name carrying an escape without the raw ESC", func() {

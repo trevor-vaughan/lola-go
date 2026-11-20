@@ -206,7 +206,7 @@ var _ = Describe("lola info", func() {
 		Expect(lola("info", "kit", "-C", proj, "--plain").out).To(ContainSubstring("follow\tproject\tlola install -C " + proj + " kit --ref <ref>\n"))
 
 		Expect(lola("list", "-C", proj).out).To(MatchRegexp(`kit\s+claude-code\s+✓ ok\s+on\s+\S+kit\.git @ v1\n`))
-		Expect(lola("list", "-C", proj, "--plain").out).To(MatchRegexp(`kit\tclaude-code\tok\ton\t\S+kit\.git\tproject\tproject\.yml\tv1\n`))
+		Expect(lola("list", "-C", proj, "--plain").out).To(MatchRegexp(`kit\tclaude-code\tok\ton\t\S+kit\.git\tproject\tproject\.yml\tv1\t-\n`))
 		var res struct {
 			Modules []map[string]any `json:"modules"`
 		}

@@ -190,7 +190,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"kit\tclaude-code\tok\ton\thttp://127.0.0.1:8765/kit.git\tproject\tproject.yml\tmain\""
+          - "result.systemout ShouldEqual \"kit\tclaude-code\tok\ton\thttp://127.0.0.1:8765/kit.git\tproject\tproject.yml\tmain\t-\""
 
   - name: T5 A pulled pin change needs trust again
     steps:
@@ -381,7 +381,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"lint\tclaude-code\tok\ton\thttp://127.0.0.1:8765/lint.git\tproject\tprofile:project:review\tmain\""
+          - "result.systemout ShouldEqual \"lint\tclaude-code\tok\ton\thttp://127.0.0.1:8765/lint.git\tproject\tprofile:project:review\tmain\t-\""
 
   - name: T9 uninstall removes a module from the project profile on, and lola's edit stays trusted
     steps:

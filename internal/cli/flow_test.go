@@ -1734,7 +1734,7 @@ var _ = Describe("the install flow", func() {
 			return r.out
 		}
 		before := listed()
-		Expect(before).To(ContainSubstring("\tprofile:user:go\t\n"))
+		Expect(before).To(ContainSubstring("\tprofile:user:go\t\t-\n"))
 
 		r := lola("install", "review-kit", "--scope", "user", "-t", "claude-code", "--profile", "base", "-y")
 		Expect(r.code).To(Equal(0), r.err)

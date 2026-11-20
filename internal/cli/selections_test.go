@@ -53,7 +53,7 @@ var _ = Describe("selections.yaml in list, check and sync", func() {
 		}
 		Expect(json.Unmarshal([]byte(lola("ls", "-C", proj, "--json").out), &v)).To(Succeed())
 		Expect(v.Modules[0].Skipped).To(Equal([]string{"command/test"}))
-		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t"+mod+"\tproject\tproject.yml\t\n"), "--plain rows keep their columns, scope and from last")
+		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t"+mod+"\tproject\tproject.yml\t\t-\n"), "--plain rows keep their columns, scope and from last")
 	})
 
 	It("says a dry run would skip, since it saves nothing", func() {

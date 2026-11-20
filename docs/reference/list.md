@@ -70,7 +70,7 @@ Entries of
 [profiles](../guides/profiles.md#profiles) are listed as `project.yml`'s own entries are, and when any module comes
 from a profile a `FROM` column names its layer as the context line does: `default`, `project.yml`,
 `profile go-review`, or for a member of a [bundle](../guides/bundles.md) on, `docs (bundle work)`; `--plain` and `--json`
-keep `from` as `lock.json` records it (`profile:default`, `profile:user:docs`, `project.yml`), and `--plain` ends each row with the ref (empty when none).
+keep `from` as `lock.json` records it (`profile:default`, `profile:user:docs`, `project.yml`), and `--plain` ends each row with the ref (empty when none) and then `update-available` when your cache has a newer version of it, `-` otherwise.
 Without a scope flag it shows the project found from here, if any, and user scope; every row names
 its scope ([Choosing a scope](../guides/choosing-what-to-install.md#choosing-a-scope)).
 Like `lola sync`, it refuses a project whose `.lola/lock.json` git tracks, since a committed one could
