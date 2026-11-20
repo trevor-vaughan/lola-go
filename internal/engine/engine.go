@@ -185,10 +185,11 @@ type Options struct {
 	// Rerun is the user's run with the --trust argument for the kinds given (TrustKinds.Arg), which
 	// a refusal for want of trust hints; nil gives no such hint.
 	Rerun func(TrustKinds) string
-	// PinConsent says the run's command takes --at (lola install): the hint that consents to a
-	// module's hook or script pins the version the refusal showed, so a source changed since is
-	// refused rather than consented to. lola sync and lola update pin theirs in Rerun itself.
-	PinConsent bool
+	// PinRun, set by a command that takes --at (lola install), is Rerun with each pin, a
+	// <module>=<version>, in place of the user's own --at for that module: the hint that consents to a
+	// module's hook pins the version the refusal showed, so a source changed since is refused rather
+	// than consented to. lola sync and lola update pin theirs in Rerun itself.
+	PinRun func(k TrustKinds, pins ...string) string
 	// EraRun is what writes for target id's version since at scope sc instead (lola install's run
 	// at that scope with -t id@since, or the review's way to change the version): the hint of a
 	// frontmatter value the era written for drops and another era of the target keeps, and of a
@@ -411,6 +412,9 @@ type Result struct {
 	// the kinds of trust the run met an item of that would be refused without it.
 	grants []grant
 	needs  TrustKinds
+	// pinned is the version (<module>=<version>, copy.at) of each module whose hook needs the consent
+	// in needs, which the run that consents pins (PinRun).
+	pinned []string
 	// said is the kinds of the consent items a yes granted in this run (a batch's, given in its
 	// collect pass, among them), and withheld the kinds of those that went without one: a no, or
 	// never asked (a batch's apply pass declines what its collect pass was told no). What a command

@@ -114,6 +114,12 @@ func (e *Engine) trustGrants(opts Options, kind TrustKinds, keys []string, showa
 	return ok, err
 }
 
+// Needed is the kinds of trust the run met an item of that it would be refused without, and the
+// version (<module>=<version>) of each module whose hook needs one, for the run that consents.
+func (r *Result) Needed() (TrustKinds, []string) {
+	return r.needs, slices.Clone(r.pinned)
+}
+
 // ShownKeys is the shown record key of every consent item r lists: each module's runtime hooks
 // and install hooks, and the project's install scripts; sorted, each once. Output that prints r
 // in full (--json, --plain) adds them to the record.

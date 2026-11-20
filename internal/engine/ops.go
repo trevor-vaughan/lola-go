@@ -2344,7 +2344,7 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 		}
 	}
 	at := ""
-	if opts.PinConsent {
+	if opts.PinRun != nil {
 		if at = v.Name + "=" + v.Meta.Digest; commit != "" {
 			at = v.Name + "=" + commit
 		}

@@ -249,7 +249,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	}
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
 		edits: edits, picker: &scopePicker{p: p, eng: eng, cwd: cwd, refuseHome: true, create: true}, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
-	if fl.f.targets, fl.flagVersions, err = splitTargets(eng, f.targets, a.root != "", func(ts []string) string { return fl.typedRun(nil, ts, false) }); err != nil {
+	if fl.f.targets, fl.flagVersions, err = splitTargets(eng, f.targets, a.root != "", func(ts []string) string { return fl.typedRun(nil, ts, false, "trust", "unseen") }); err != nil {
 		return err
 	}
 	if err := eng.CheckVersions(fl.flagVersions, fl.versionRun(nil, fl.f.targets, false)); err != nil {
@@ -312,7 +312,8 @@ func (fl *installFlow) removeAbandoned() {
 // the hint leads to, which a -C directory that does not exist asks outside one; short flags, as the
 // user types them. A hint for one scope of the run (sc) has
 // that scope's flags in place of the run's (scopeArgs), so it acts there alone. The flags named in
-// drop are left out too.
+// drop are left out too: a hint that completes the run drops its consent flags (completeRun's
+// reason), one that applies it keeps them.
 func (fl *installFlow) typedRun(sc *engine.Scope, ts []string, yes bool, drop ...string) string {
 	args := fl.args
 	if len(args) == 0 { // the modules picked
@@ -322,7 +323,7 @@ func (fl *installFlow) typedRun(sc *engine.Scope, ts []string, yes bool, drop ..
 	if sc != nil {
 		scope = scopeFlags
 	}
-	run := completeRun(fl.cmd, fl.hintArgs(args), slices.Concat(scope, drop, []string{"target", "yes"})...)
+	run := runWithout(fl.cmd, fl.hintArgs(args), slices.Concat(scope, drop, []string{"target", "yes"})...)
 	var typed, where []string // -C as given, and the scope flags the hint gives
 	create := false           // the hint runs where -C names a directory that does not exist
 	made := false             // this run created -C's directory, which -y may have been given for alone
@@ -376,7 +377,7 @@ func (fl *installFlow) versionRun(sc *engine.Scope, ids []string, yes bool) func
 				}
 			}
 		}
-		return fl.typedRun(sc, withVersions(ids, versions, id, since), yes)
+		return fl.typedRun(sc, withVersions(ids, versions, id, since), yes, "trust", "unseen")
 	}
 }
 
@@ -877,7 +878,7 @@ func (fl *installFlow) run() error {
 		spec.Options.Receipt = appliedReceipt(spec.Options.Receipt, reviewedConsents(fl.reviewShown, fl.a.style(fl.cmd).verbose))
 	}
 	if fl.cmd.Name() == "install" { // lola install takes --at; lola profile --edit does not
-		spec.Options.PinConsent, spec.At = true, fl.f.pinned
+		spec.Options.PinRun, spec.At = pinnedRun(fl.cmd, fl.hintArgs(fl.args)), fl.f.pinned
 		spec.AtFresh = runWithout(fl.cmd, fl.hintArgs(fl.args), "at", "dry-run") + " -n"
 	}
 	fl.a.hookOptions(fl.cmd, &spec.Options)
@@ -931,15 +932,22 @@ func (fl *installFlow) run() error {
 	// A dry run that would change something ends with the run that applies it, as lola sync -n
 	// does, and JSON's equivalent commands carry it, without the output flags, as sync's do; a review
 	// lists its equivalent commands instead. A directory the dry run would create needs -y off a
-	// terminal.
-	apply := ""
+	// terminal. A hook whose consent the run lacks adds the run that consents, as sync's does:
+	// --trust for the kind with the version the dry run showed pinned.
+	apply, offTerminal := "", ""
 	if res.DryRun && !fl.reviews() && len(res.Steps)+len(res.Edits)+len(res.TargetVersions) > 0 {
-		apply = fl.typedRun(nil, withVersions(fl.f.targets, fl.flagVersions, "", ""), fl.wouldCreate != "" || given(fl.cmd, "yes"), "dry-run", "json", "plain", "no-pager")
+		ts, yes, output := withVersions(fl.f.targets, fl.flagVersions, "", ""), fl.wouldCreate != "" || given(fl.cmd, "yes"), []string{"dry-run", "json", "plain", "no-pager"}
+		apply = fl.typedRun(nil, ts, yes, output...)
 		eq = []string{apply}
+		if needs, pins := res.Needed(); needs&^fl.f.trust != 0 {
+			k := fl.f.trust | needs
+			offTerminal = fl.typedRun(nil, ts, yes, append(output, "trust", "at")...) + " " + k.Arg() + atArgs(fl.cmd, pins)
+			eq = []string{offTerminal}
+		}
 	}
 	return fl.a.emit(fl.cmd, func(w io.Writer, s style) {
 		rep := installReport(res)
-		rep.ToApply, rep.Alone, rep.Reviewed = apply, true, fl.reviewShown
+		rep.ToApply, rep.OffTerminal, rep.Alone, rep.Reviewed = apply, offTerminal, true, fl.reviewShown
 		printReport(w, s, rep)
 	}, installOutput{InstallResult: res, EquivalentCommands: eq})
 }

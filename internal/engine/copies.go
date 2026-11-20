@@ -23,7 +23,7 @@ type moduleCopy struct {
 	// it reads now, the version the run read there, for when no cached version shows it: a refusal
 	// caches nothing (reviewSource).
 	fromSource []string
-	// at is the version a consent hint pins with --at (PinConsent), as <name>=<version>; "" for none.
+	// at is the version a consent hint pins with --at (PinRun), as <name>=<version>; "" for none.
 	at       string
 	name     string
 	src      string // cache content dir

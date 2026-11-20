@@ -923,6 +923,84 @@ var _ = Describe("lola install --at", func() {
 		Expect(filepath.Join(proj, ".claude", "commands", "kit.md")).NotTo(BeAnExistingFile())
 	})
 
+	Context("hints that run as printed", func() {
+		var marker, pin string
+		// line is the text after prefix on the first line of out that holds it, "" for none.
+		line := func(out, prefix string) string {
+			GinkgoHelper()
+			for l := range strings.SplitSeq(out, "\n") {
+				if _, rest, ok := strings.Cut(l, prefix); ok {
+					return rest
+				}
+			}
+			return ""
+		}
+		consentOf := func(stderr string) string {
+			GinkgoHelper()
+			for _, h := range hintLines(stderr) {
+				if _, c, ok := strings.Cut(h, "then consent to it: "); ok {
+					return c
+				}
+			}
+			return ""
+		}
+		BeforeEach(func() {
+			marker = filepath.Join(tmp, "hook-ran")
+			writeTree(kit, map[string]string{"setup.sh": "#!/bin/sh\ntouch " + marker + "\n"})
+			Expect(os.Chmod(filepath.Join(kit, "setup.sh"), 0o755)).To(Succeed())
+			r := lola("install", kit, "-C", proj, "-t", "claude-code")
+			Expect(r.code).To(Equal(1), r.out)
+			pin = regexp.MustCompile(`--at kit=(sha256:[0-9a-f]{64})`).FindStringSubmatch(consentOf(r.err))[1]
+		})
+
+		It("the consent hint of an install that gave --at names the module once, with the pin, and runs the hook", func() {
+			r := lola("install", kit, "-C", proj, "-t", "claude-code", "--at", "kit="+pin)
+			Expect(r.code).To(Equal(1), r.out)
+			consent := consentOf(r.err)
+			Expect(strings.Count(consent, "--at kit=")).To(Equal(1), consent)
+			Expect(consent).To(HaveSuffix("--at kit=" + pin))
+			Expect(lola("install", kit, "-C", proj, "-t", "claude-code", "--at", "kit="+pin, "-n").code).To(Equal(0), "the dry run shows the hook")
+			r = runHint(consent)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(marker).To(BeAnExistingFile())
+		})
+
+		It("the consent hint of an install without --at names the pin once", func() {
+			Expect(strings.Count(consentOf(lola("install", kit, "-C", proj, "-t", "claude-code").err), "--at kit=")).To(Equal(1))
+		})
+
+		It("the to apply: line of a dry run keeps --trust and the pin, and runs the hook", func() {
+			r := lola("install", kit, "-C", proj, "-t", "claude-code", "--trust=hooks", "--at", "kit="+pin, "-n")
+			Expect(r.code).To(Equal(0), r.err)
+			apply := line(r.out, "to apply: ")
+			Expect(apply).To(And(ContainSubstring(" --trust=hooks"), ContainSubstring("--at kit="+pin), Not(ContainSubstring(" -n"))), r.out)
+			Expect(line(r.out, "off a terminal: ")).To(BeEmpty(), "the consent is given")
+			Expect(marker).NotTo(BeAnExistingFile())
+			r = runHint(apply)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(marker).To(BeAnExistingFile())
+		})
+
+		It("a dry run whose hook lacks consent ends with an off a terminal: line that consents with the pin, and runs the hook", func() {
+			r := lola("install", kit, "-C", proj, "-t", "claude-code", "-n")
+			Expect(r.code).To(Equal(0), r.err)
+			off := line(r.out, "off a terminal: ")
+			Expect(off).To(MatchRegexp(` --trust=hooks --at kit=sha256:[0-9a-f]{64}$`), r.out)
+			Expect(line(r.out, "to apply: ")).NotTo(ContainSubstring("--trust"), "to apply: is the run as typed")
+			r = runHint(off)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(marker).To(BeAnExistingFile())
+		})
+
+		It("a dry run of a module without hooks has no off a terminal: line", func() {
+			writeTree(kit, map[string]string{"lola.yml": "name: kit\n"})
+			r := lola("install", kit, "-C", proj, "-t", "claude-code", "-n")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("to apply: "))
+			Expect(r.out).NotTo(ContainSubstring("off a terminal:"))
+		})
+	})
+
 	It("takes --at as sync does: checked, coached, and refused for a module the install does not include", func() {
 		r := lola("install", kit, "-C", proj, "--at", "kit=main", "-t", "claude-code")
 		Expect(r.code).To(Equal(1))

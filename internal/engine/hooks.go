@@ -305,18 +305,17 @@ func (e *Engine) consentHints(sc Scope, c moduleCopy, opts Options, kinds TrustK
 		hints = append(hints, "review it: "+e.Command(sc, "info", append(slices.Clone(review), opts.Display...)...))
 	}
 	k := opts.Trust | kinds
-	var pin []string // the version shown, which the consent alone covers (PinConsent)
-	if c.at != "" {
-		pin = []string{"--at", c.at}
-	}
-	if opts.Rerun != nil {
-		run := opts.Rerun(k)
-		if pin != nil {
-			run += " " + errs.ShellJoin(pin)
+	// c.at is the version shown, which the consent alone covers (PinRun)
+	switch {
+	case opts.PinRun != nil && c.at != "":
+		return append(hints, consentHintPrefix+opts.PinRun(k, c.at)), nil
+	case opts.Rerun != nil:
+		return append(hints, consentHintPrefix+opts.Rerun(k)), nil
+	case len(c.again) > 0:
+		var pin []string
+		if c.at != "" {
+			pin = []string{"--at", c.at}
 		}
-		return append(hints, consentHintPrefix+run), nil
-	}
-	if len(c.again) > 0 {
 		hints = append(hints, consentHintPrefix+e.Command(sc, c.again[0], slices.Concat(c.again[1:], opts.Display, []string{k.Arg()}, pin)...))
 	}
 	return hints, nil
@@ -431,6 +430,9 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, unasked 
 		if err == nil && !ok {
 			if pre && (!c.forced || c.pending) {
 				res.needs |= TrustHooks // a kept copy runs nothing, so needs nothing
+				if c.at != "" {
+					res.pinned = append(res.pinned, c.at)
+				}
 			}
 			ok, err = e.allowed(c.name, scripts, digest, opts, res)
 		}

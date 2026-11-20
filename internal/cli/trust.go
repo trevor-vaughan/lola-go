@@ -187,6 +187,39 @@ func consentRun(cmd *cobra.Command, args []string) func(engine.TrustKinds) strin
 	return func(k engine.TrustKinds) string { return fixedRun(cmd, args, k, "dry-run") }
 }
 
+// pinnedRun is an install's engine PinRun: consentRun with --at for the pins, each a
+// <module>=<version>, in place of the user's own --at for those modules (atArgs).
+func pinnedRun(cmd *cobra.Command, args []string) func(engine.TrustKinds, ...string) string {
+	return func(k engine.TrustKinds, pins ...string) string {
+		return fixedRun(cmd, args, k, "dry-run", "at") + atArgs(cmd, pins)
+	}
+}
+
+// atArgs is the --at flags, each led by a space, of a run that pins the versions in pins, each a
+// <module>=<version>: the user's --at for every other module, then the pins. A module is named
+// once, so the pinned run is not refused for naming it twice.
+func atArgs(cmd *cobra.Command, pins []string) string {
+	given, _ := cmd.Flags().GetStringArray("at")
+	pinned := map[string]bool{}
+	for _, p := range pins {
+		name, _, _ := strings.Cut(p, "=")
+		pinned[name] = true
+	}
+	var out []string
+	for _, v := range given {
+		if name, _, _ := strings.Cut(v, "="); !pinned[name] {
+			out = append(out, "--at", untrusted.Text(v, untrusted.MaxName))
+		}
+	}
+	for _, p := range pins {
+		out = append(out, "--at", p)
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	return " " + errs.ShellJoin(out)
+}
+
 // reviewedConsents is the consent items, as the receipt names them, whose every runtime hook the
 // install review of r listed in full: a module's runtime hooks in a settings file, all of them new
 // (or seen, under -v, which prints those too).
