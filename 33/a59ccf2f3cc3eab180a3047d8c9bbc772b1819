@@ -1,0 +1,23 @@
+internal/cli/huh_internal_test.go
+  s_aea7c8dedfd847::t_a7be853f6b3c9b 1005,1010
+internal/cli/huh.go
+  s_aea7c8dedfd847::t_944b0eb2482499 1133
+  s_aea7c8dedfd847::t_344023bc4d8edf 1099-1100
+  s_aea7c8dedfd847::t_a83190fcac235d 1052,1085,1152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "33a59ccf2f3cc3eab180a3047d8c9bbc772b1819",
+  "prompts": {},
+  "sessions": {
+    "s_aea7c8dedfd847": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e41f7643-e890-4cae-a076-3aca8c461aa1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
