@@ -1,0 +1,48 @@
+internal/source/download_test.go
+  s_d4c2e393b2d338::t_9b5dbf8792020c 263-295
+internal/cli/cmd_store.go
+  s_d4c2e393b2d338::t_ce49573fc9b593 138
+  s_d4c2e393b2d338::t_e5d553fe02b863 159-175
+  s_630b2637060c65::t_11d7210f4154ff 125-126,200
+internal/source/download.go
+  s_d4c2e393b2d338::t_0d04c451b5179e 78
+  s_d4c2e393b2d338::t_9ab20443433d21 5,49-52
+  s_d4c2e393b2d338::t_eb76e07e287d6d 77
+  s_630b2637060c65::t_ce73c23cc0f699 75,87-91,116-122
+docs/reference/market.md
+  s_d4c2e393b2d338::t_04392918f2e045 71-73
+docs/reference/cache.md
+  s_630b2637060c65::t_59c64fcda93ed6 15,26,37-42
+internal/cli/store_test.go
+  s_630b2637060c65::t_07dd03669e3daa 5-6,66-107
+internal/engine/cache.go
+  s_630b2637060c65::t_4a6b3773a8c3b2 48,52-60,62,65-95
+internal/engine/market.go
+  s_630b2637060c65::t_27de9f7a267441 304-305,307
+internal/engine/market_install.go
+  s_630b2637060c65::t_206e1b1811c32b 342-367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "3d7684dc7663c253b7661fb5c64de1e945396609",
+  "prompts": {},
+  "sessions": {
+    "s_630b2637060c65": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a2bab512968e4f8d0",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_d4c2e393b2d338": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "027fc7b5-938e-4ff8-837a-5fc9dc181fb4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
