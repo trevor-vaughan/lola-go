@@ -1361,6 +1361,28 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(errs.Hints(err)).To(ContainElement("fetch it again, then install it: lola cache update example, then lola install example"))
 		})
 
+		It("pins a version a tag cached to the commit, when the ref asked for is that commit's full SHA", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			led, err := e.Ledger(sc)
+			Expect(err).NotTo(HaveOccurred())
+			id := strings.TrimPrefix(led.Modules["example"].Digest, "sha256:")[:12]
+			Expect(os.RemoveAll(filepath.Join(proj, ".lola"))).To(Succeed())
+			// As lola migrate installs: the version it resolved, pinned, with no fetch for the new ref.
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: v1, Version: &engine.VersionRef{Name: "example", ID: id}}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(entry()).To(And(HaveField("Ref", v1), HaveField("Commit", v1)))
+		})
+
+		It("refuses to pin a version to a full SHA no head of the cache holds with that content", func() {
+			def, err := e.AddSource(ctx, proj, url, "", "", nil)
+			Expect(err).NotTo(HaveOccurred())
+			later := push(map[string]string{"commands/ship.md": "Ship v2\n"})
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: later, Version: &engine.VersionRef{Name: "example", ID: def.ID}}}, claude)
+			Expect(err).To(MatchError(ContainSubstring("example: your cache does not record which commit its version")))
+			Expect(errs.Hints(err)).To(ContainElement("fetch it again, then install it: lola cache update example, then lola install example"))
+		})
+
 		It("gives each scope the commit of its own entry's ref", func() {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, claude)
 			Expect(err).NotTo(HaveOccurred())

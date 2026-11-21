@@ -202,7 +202,8 @@ var _ = Describe("lola migrate of a module whose source moved", func() {
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).NotTo(ContainSubstring("changed upstream"), ref)
 			r = lola("migrate", "-y", "--keep-python")
-			Expect(r.code).NotTo(Equal(3), ref+": "+r.err) // trust is the question; a record the cache cannot fetch exits 5
+			Expect(r.code).To(Equal(0), ref+": "+r.err)
+			Expect(r.out).To(ContainSubstring("migrated project "+proj), ref)
 			Expect(os.RemoveAll(filepath.Join(proj, ".lola"))).To(Succeed())
 		}
 		python("main", map[string]string{"skills/ra/SKILL.md": ra2, "mcps.json": mcp})
