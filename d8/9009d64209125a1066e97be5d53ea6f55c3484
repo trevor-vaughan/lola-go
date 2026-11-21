@@ -1,0 +1,44 @@
+internal/engine/hooks.go
+  s_d4c2e393b2d338::t_0a05627f726c8e 386-387,396-404,407,409,490
+internal/cli/trust_test.go
+  s_d4c2e393b2d338::t_3702402193f366 105,449
+  s_d4c2e393b2d338::t_17c13ded3d982f 106,359
+internal/cli/core_test.go
+  s_d4c2e393b2d338::t_17c13ded3d982f 295
+  s_d4c2e393b2d338::t_59b98c9c5b7c2b 296
+  s_d4c2e393b2d338::t_0a05627f726c8e 297
+internal/cli/misc2_paths_test.go
+  s_d4c2e393b2d338::t_3702402193f366 784
+internal/cli/scripts_test.go
+  s_d4c2e393b2d338::t_b7309c4c1eb6d7 63
+docs/guides/install-trust-kinds.md
+  s_d4c2e393b2d338::t_ae4253e22c45da 63-64
+internal/engine/trustkinds_test.go
+  s_d4c2e393b2d338::t_17c13ded3d982f 40,150
+  s_d4c2e393b2d338::t_3702402193f366 791
+  s_d4c2e393b2d338::t_b7309c4c1eb6d7 38
+internal/cli/migrate_test.go
+  s_d4c2e393b2d338::t_17c13ded3d982f 153
+internal/engine/trustkinds.go
+  s_d4c2e393b2d338::t_0a05627f726c8e 157-159
+  s_d4c2e393b2d338::t_c0bc2da5758f76 161
+  s_d4c2e393b2d338::t_53f9350c068a1a 149-151
+e2e/team/team.venom.yml
+  s_d4c2e393b2d338::t_6751b0b8bc41e6 633,682
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "d89009d64209125a1066e97be5d53ea6f55c3484",
+  "prompts": {},
+  "sessions": {
+    "s_d4c2e393b2d338": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "027fc7b5-938e-4ff8-837a-5fc9dc181fb4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
