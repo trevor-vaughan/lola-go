@@ -1,0 +1,39 @@
+docs/architecture/tui-flows.md
+  s_8e40a7060352db::t_57aac068cb7592 623,1807
+docs/reference/output-contract.md
+  s_8e40a7060352db::t_86d44c5e9ae165 113-114,116
+internal/cli/cmd_info.go
+  s_8e40a7060352db::t_0ae40cbecff97b 262-263,265
+internal/cli/cmd_migrate.go
+  s_8e40a7060352db::t_c996b34716881d 413-414,416
+internal/cli/hints_internal_test.go
+  s_8e40a7060352db::t_9d04e8f4892dda 13-15,17,139-188
+internal/cli/huh.go
+  s_8e40a7060352db::t_01c0d4bcaa4580 17,353-354,373-379,411-448,467
+internal/cli/huh_internal_test.go
+  s_8e40a7060352db::t_29e38e2af3ffb1 220-237
+internal/cli/human.go
+  s_8e40a7060352db::t_e70cdb1531050d 161-163,165
+internal/cli/keys_paths_internal_test.go
+  s_8e40a7060352db::t_6944d49d28416b 199-214
+internal/cli/output.go
+  s_8e40a7060352db::t_02e6ef0ddd3322 252-253,256,258-266,276
+internal/cli/theme_internal_test.go
+  s_8e40a7060352db::t_0788b7c145b6d1 112-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "481b892b5f69614ea0abba745e252f74983ef527",
+  "prompts": {},
+  "sessions": {
+    "s_8e40a7060352db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8afbf1e-2d96-4296-9618-529a50248a6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
