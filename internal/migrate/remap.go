@@ -266,6 +266,24 @@ func suggestTargets(e *engine.Engine, recs []Record, targets map[string][]string
 	return out, mapped
 }
 
+// skillsOnlyAssistants are the Python lola's assistants whose skills the agents target can hold: it
+// takes skills only, so a record's commands and agents are skipped.
+var skillsOnlyAssistants = []string{"cursor", "copilot-cli", "copilot-vscode", "openclaw"}
+
+// skillsOnlyNote tells a hint that offers the agents target what it leaves out.
+const skillsOnlyNote = " (agents takes skills only: the record's commands and agents are skipped)"
+
+// suggestedTargets are the targets a hint maps assistant's records to: those on your PATH
+// (detected) and, for an assistant whose skills the agents target holds, agents.
+func suggestedTargets(e *engine.Engine, assistant string, detected []string) []string {
+	out := slices.Clone(detected)
+	if slices.Contains(skillsOnlyAssistants, assistant) && !slices.Contains(out, "agents") &&
+		slices.ContainsFunc(e.Targets, func(t target.Target) bool { return t.ID() == "agents" }) {
+		out = append(out, "agents")
+	}
+	return out
+}
+
 // installedHere is, by target, whether its assistant is on your PATH or set up at sc (its
 // markers exist there), as lola tidy counts it (engine/tidy.go): lola migrate installs a record
 // for its own assistant only where it is.
@@ -333,6 +351,11 @@ func ParseRootMaps(args []string) ([]RootMap, error) {
 		trimmed := strings.TrimRight(old, `/\`)
 		if movesEverything(trimmed) {
 			return nil, fmt.Errorf("--map-root %q would move every path: name the directory the Python lola's project paths start with, such as /Users/alice", shown)
+		}
+		if slices.ContainsFunc(out, func(m RootMap) bool { return m.Old == trimmed }) {
+			name := untrusted.Text(trimmed, untrusted.MaxName)
+			return nil, fmt.Errorf("--map-root names %s twice: give it once, with where it is on this machine after =, such as --map-root %s=%s",
+				name, name, untrusted.Text(filepath.Clean(to), untrusted.MaxName))
 		}
 		out = append(out, RootMap{Old: trimmed, New: filepath.Clean(to)})
 	}

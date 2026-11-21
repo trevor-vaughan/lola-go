@@ -178,7 +178,7 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.out).To(ContainSubstring("summary\t1\t0\t1\t0\n"))
 
 		r = lola("migrate", "-y", "--json")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(5), r.err)
 		var v struct {
 			Destinations []struct {
 				Status string `json:"status"`
@@ -191,7 +191,7 @@ var _ = Describe("lola migrate", func() {
 		Expect(v.Summary).To(Equal(map[string]int{"migrated": 1, "already": 0, "left": 1, "failed": 0}))
 
 		r = lola("migrate", "-y")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(5), r.err)
 		Expect(r.out).To(ContainSubstring("records: 0 to migrate, 1 already migrated, 1 left as they are\n"))
 	})
 
@@ -279,7 +279,7 @@ var _ = Describe("lola migrate", func() {
 				"→ then point the Python lola and lola migrate at it with LOLA_HOME=" + aside + "\n"))
 
 			r = lola("migrate", "-y", "--json", "--map-target", "claude-code=opencode")
-			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.code).To(Equal(5), r.err)
 			var v struct {
 				Remap string `json:"remap"`
 			}
@@ -359,11 +359,92 @@ var _ = Describe("lola migrate", func() {
 	It("lists what it keeps and why when nothing is left to migrate", func() {
 		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n- module: review\n  assistant: cursor\n  project_path: " + proj + "\n"})
 		r := lola("migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(5), r.err)
 		Expect(r.out).To(HavePrefix("nothing more to migrate; what lola leaves as it is, and what to do about it, follows\n"))
 		Expect(r.out).NotTo(ContainSubstring("nothing to migrate\n"), "the header may not say nothing and then list records")
 		Expect(r.out).To(ContainSubstring("unmappable review (cursor): lola-go has no target for cursor"))
 		Expect(r.out).To(ContainSubstring("the Python lola's home " + home + " stays: 1 record(s) lola-go cannot migrate are still in installed.yml"))
+	})
+
+	Describe("when it leaves records", func() {
+		BeforeEach(func() {
+			fakeAssistant(tmp, "claude", "1.0.0")
+			writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n" +
+				"- {module: review, assistant: claude-code, scope: user, skills: [review]}\n" +
+				"- {module: other, assistant: cursor, scope: project, project_path: " + proj + "}\n"})
+		})
+
+		It("exits 5 after printing what it migrated, with -y and with --json", func() {
+			r := lola("migrate", "-y")
+			Expect(r.code).To(Equal(5), r.err)
+			Expect(r.out).To(ContainSubstring("records: 1 migrated, 1 left as they are\n"))
+			Expect(r.err).To(BeEmpty(), "the code alone says it: the summary was the report")
+
+			writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n" +
+				"- {module: other, assistant: cursor, scope: project, project_path: " + proj + "}\n"})
+			r = lola("migrate", "-y", "--json")
+			Expect(r.code).To(Equal(5), r.err)
+			Expect(json.Valid([]byte(r.out))).To(BeTrue(), r.out)
+		})
+
+		It("exits 0 when every record migrated and only files of them stay, such as a module's plugin data", func() {
+			writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n" +
+				"- {module: review, assistant: claude-code, scope: user, skills: [review]}\n",
+				"plugin-data/review/state.json": "{}\n"})
+			r := lola("migrate", "-y", "--json")
+			Expect(r.code).To(Equal(0), r.err)
+			var v struct {
+				Summary     map[string]int   `json:"summary"`
+				NotMigrated []map[string]any `json:"not_migrated"`
+			}
+			Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
+			Expect(v.Summary["left"]).To(Equal(0))
+			Expect(v.NotMigrated).NotTo(BeEmpty(), "the plugin data is still reported")
+			Expect(lola("migrate", "-y").code).To(Equal(0), "the second run, with nothing to install, as well")
+		})
+
+		It("exits 0 on a dry run, which finishes nothing", func() {
+			Expect(lola("migrate", "-n").code).To(Equal(0))
+		})
+
+		It("lists every left record at the top level of --json, and keeps those nested in a destination", func() {
+			r := lola("migrate", "-n", "--json")
+			var v struct {
+				Unmappable   []map[string]any `json:"unmappable"`
+				NotMigrated  []map[string]any `json:"not_migrated"`
+				Destinations []struct {
+					Unmappable []map[string]any `json:"unmappable"`
+				} `json:"destinations"`
+			}
+			Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed(), r.out)
+			Expect(v.Unmappable).To(HaveLen(1))
+			Expect(v.Unmappable[0]).To(HaveKeyWithValue("module", "other"))
+			var nested int
+			for _, d := range v.Destinations {
+				nested += len(d.Unmappable)
+			}
+			Expect(nested).To(Equal(1))
+		})
+	})
+
+	It("says a LOLA_HOME that does not exist does not exist, rather than nothing to migrate", func() {
+		missing := filepath.Join(tmp, "typo")
+		GinkgoT().Setenv("LOLA_HOME", missing)
+		t := lola("migrate")
+		Expect(t.code).To(Equal(1))
+		Expect(t.err).To(ContainSubstring("error: LOLA_HOME=" + missing + " does not exist\n"))
+		Expect(t.err).To(ContainSubstring("hint: unset LOLA_HOME to use ~/.lola, or set it to the Python lola's home"))
+		GinkgoT().Setenv("LOLA_HOME", "")
+		Expect(os.RemoveAll(home)).To(Succeed())
+		r := lola("migrate")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("nothing to migrate\n"), "no ~/.lola is no Python lola")
+	})
+
+	It("refuses a --map-root that names an old root twice", func() {
+		r := lola("migrate", "-n", "--map-root", "/a="+tmp, "--map-root", "/a="+proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: --map-root names /a twice: give it once, with where it is on this machine after =, such as --map-root /a=" + proj + "\n"))
 	})
 
 	It("prints each hint for a record it cannot migrate on a line of its own, and as a hints array in JSON", func() {

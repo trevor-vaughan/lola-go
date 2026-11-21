@@ -1151,7 +1151,7 @@ func (r *runner) decide(d *Destination, res *engine.InstallResult, led *ledger.L
 		if err != nil && rec.Key != "" {
 			r.blind = rec.Abs()
 			if dr != nil {
-				dr.NotMigrated = append(dr.NotMigrated, leftMCP(rec, "lola cannot read this file to check the entry: "+untrusted.CleanErr(err).Error()))
+				dr.NotMigrated = append(dr.NotMigrated, r.leftMCP(d, rec, "lola cannot read this file to check the entry: "+untrusted.CleanErr(err).Error(), nil))
 			}
 			continue
 		}
@@ -1178,7 +1178,7 @@ func (r *runner) decide(d *Destination, res *engine.InstallResult, led *ledger.L
 			dc.act = actReplace
 		case rec.Key != "":
 			if dr != nil {
-				dr.NotMigrated = append(dr.NotMigrated, leftMCP(rec, ""))
+				dr.NotMigrated = append(dr.NotMigrated, r.leftMCP(d, rec, "", steps))
 			}
 			continue
 		case r.opts.KeepPython:
@@ -1277,9 +1277,17 @@ func covers(rec Recorded, tgt, path, key string) bool {
 	return path == rec.Rel && key == ""
 }
 
-// leftMCP is an MCP entry the Python lola added that lola-go does not write.
-func leftMCP(rec Recorded, why string) Item {
+// leftMCP is an MCP entry the Python lola added at d that lola-go does not write. The user-scope
+// ~/.mcp.json is no user scope to Claude Code, so its hint says so, and says lola wrote the server
+// to ~/.claude.json only when the run is real and steps, the destination's install, write that server.
+func (r *runner) leftMCP(d *Destination, rec Recorded, why string, steps []plan.Step) Item {
 	hint := "it keeps working; remove the entry by hand when you no longer need it"
+	wrote := slices.ContainsFunc(steps, func(st plan.Step) bool {
+		return st.Target == "claude-code" && st.Path == ".claude.json" && st.Key == rec.Key && st.Action != plan.ActionDelete && st.Action != plan.ActionForget
+	})
+	if !r.opts.DryRun && wrote && d.Scope.Kind == target.User && rec.Target == "claude-code" && rec.Rel == ".mcp.json" {
+		hint = "Claude Code reads ~/.mcp.json only for sessions started in ~; lola wrote the server to ~/.claude.json, which every session reads. Remove the old entry from ~/.mcp.json"
+	}
 	if why != "" {
 		hint = why
 	}
@@ -1293,9 +1301,9 @@ func (r *runner) addLeftMCP(d *Destination, decisions []decision, dr *DestResult
 			continue
 		}
 		if present, err := r.present(rec); err != nil {
-			dr.NotMigrated = append(dr.NotMigrated, leftMCP(rec, "lola cannot read this file to check the entry: "+untrusted.CleanErr(err).Error()))
+			dr.NotMigrated = append(dr.NotMigrated, r.leftMCP(d, rec, "lola cannot read this file to check the entry: "+untrusted.CleanErr(err).Error(), nil))
 		} else if present {
-			dr.NotMigrated = append(dr.NotMigrated, leftMCP(rec, ""))
+			dr.NotMigrated = append(dr.NotMigrated, r.leftMCP(d, rec, "", dr.Steps))
 		}
 	}
 }

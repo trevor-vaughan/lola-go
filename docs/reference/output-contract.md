@@ -225,6 +225,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   | `2`     | unused, kept for usage errors                                                                                                                                                                                          |
   | `3`     | lola changed nothing because the run needs something only you can give: `--trust` kinds, consent, `-y`, or `--force` over a conflict, or you gave none, such as end of input; rerunning with the hint's flags proceeds |
   | `4`     | you declined or cancelled (a `n` answer, `q` in a picker or form, Ctrl+C in a form or question)                                                                                                                        |
+  | `5`     | the run finished and printed its report, but `lola migrate` left records as they are                                                                                                                                   |
   | `128+n` | killed by signal `n`, unchanged                                                                                                                                                                                        |
 
   - A conflict `--force` cannot override (a file another module owns: uninstall that module first)

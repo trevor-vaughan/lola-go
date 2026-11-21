@@ -105,14 +105,20 @@ func (a *app) migrateCmd() *cobra.Command {
 				opts.Progress = nil // the run's questions and hooks draw on the same line
 				preview.Remap = remap
 				if dry || preview.Nothing {
-					return a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, preview)
+					if err := a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, migrationDocument(preview)); err != nil {
+						return err
+					}
+					if !dry && leavesRecords(preview) {
+						return errLeftRecords
+					}
+					return nil
 				}
 				// --force answers the question, as -y does; never the hooks' consent.
 				if yes || force {
 					break
 				}
 				show := func(w io.Writer, s style) { printMigration(w, s, preview) }
-				err = a.confirm(cmd, nil, "Migrate?", Nav{Back: answered > 0, Answered: answered}, preview, show)
+				err = a.confirm(cmd, nil, "Migrate?", Nav{Back: answered > 0, Answered: answered}, migrationDocument(preview), show)
 				if errors.Is(err, ErrBack) {
 					continue // the last mapping question again, every answer kept
 				}
@@ -147,8 +153,11 @@ func (a *app) migrateCmd() *cobra.Command {
 				return err
 			}
 			res.Remap = remap
-			if emitErr := a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, res) }, res); emitErr != nil {
+			if emitErr := a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, res) }, migrationDocument(res)); emitErr != nil {
 				return emitErr
+			}
+			if err == nil && leavesRecords(res) {
+				return errLeftRecords
 			}
 			return err
 		},
@@ -336,13 +345,28 @@ func destColumn(d *migrate.DestResult) string {
 	return d.Root
 }
 
-// leavesRecords reports whether r, a run with nothing to install, still has records or files to
-// report as left as they are.
+// errLeftRecords ends a run that finished with records left as they are: Execute maps it to
+// exitPartial and prints nothing, the report having said what stays.
+var errLeftRecords = errors.New("records left as they are")
+
+// migrationDocument is r as --json prints it: its top-level unmappable and not_migrated list every
+// left record, those nested in a destination too, which keep their own copy. Human and --plain
+// output print r itself, each record once under its destination.
+func migrationDocument(r *migrate.Result) *migrate.Result {
+	doc := *r
+	doc.Unmappable = append([]migrate.Unmapped{}, r.Unmappable...)
+	doc.NotMigrated = append([]migrate.Item{}, r.NotMigrated...)
+	for _, d := range r.Destinations {
+		doc.Unmappable = append(doc.Unmappable, d.Unmappable...)
+		doc.NotMigrated = append(doc.NotMigrated, d.NotMigrated...)
+	}
+	return &doc
+}
+
+// leavesRecords reports whether r has records lola-go cannot migrate, which stay in the Python
+// lola's installed.yml. Files of a migrated record that stay (r.NotMigrated) do not count.
 func leavesRecords(r *migrate.Result) bool {
-	return r.Summary.Left > 0 || len(r.Unmappable) > 0 || len(r.NotMigrated) > 0 ||
-		slices.ContainsFunc(r.Destinations, func(d *migrate.DestResult) bool {
-			return len(d.Unmappable) > 0 || len(d.NotMigrated) > 0
-		})
+	return r.Summary.Left > 0
 }
 
 // printMigration renders a migration: per destination what is installed, replaced, moved,

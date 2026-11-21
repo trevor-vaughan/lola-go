@@ -37,6 +37,9 @@ const (
 	exitNeedsAnswer = 3
 	// exitDeclined: the user declined or cancelled (a No, q in a picker or form, Ctrl+C).
 	exitDeclined = 4
+	// exitPartial: the run finished and printed its report, but left records as they are
+	// (errLeftRecords), as lola migrate does for those it cannot migrate.
+	exitPartial = 5
 )
 
 // ErrAborted means the user declined or cancelled a prompt: exit 4, "✗ cancelled — nothing was
@@ -295,7 +298,7 @@ func StartupError(w io.Writer, err error, args []string) int {
 
 // Execute runs root and maps the outcome to an exit code: 0 on success, 3 on a refusal that
 // needs the user's answer (errs.ErrNeedsAnswer; printed per the output contract), 4 on a declined
-// or cancelled prompt, 1 on any other error (printed likewise), and 128 plus the signal's number on
+// or cancelled prompt, 5 on a run that finished with records left (errLeftRecords; printed nothing), 1 on any other error (printed likewise), and 128 plus the signal's number on
 // an error after a signal cancelled root's context (NotifyContext), printing nothing but the
 // error of an update that wrote profiles it did not apply.
 func Execute(root *cobra.Command) int {
@@ -330,6 +333,8 @@ func Execute(root *cobra.Command) int {
 	case errors.Is(err, ErrAborted):
 		fmt.Fprintln(root.ErrOrStderr(), style{}.bad((&quitError{}).Error()))
 		return exitDeclined
+	case errors.Is(err, errLeftRecords):
+		return exitPartial
 	case root.Context() != nil && errors.As(context.Cause(root.Context()), &sig):
 		if u, ok := errors.AsType[*updateError](err); ok && u.doc.UpdatedText() != "" {
 			writeError(root.ErrOrStderr(), err, asJSON, width)

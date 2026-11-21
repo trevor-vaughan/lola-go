@@ -688,7 +688,8 @@ var _ = Describe("NewPlan", func() {
 			Expect(p.Destinations).To(HaveLen(2))
 			Expect(p.Destinations[0].Unmappable[0].Hints).To(Equal([]string{"install claude-code and rerun lola migrate, or rerun it with --map-target claude-code=<assistant> " +
 				"to install for one you have (claude-code=claude-code installs for claude-code anyway)"}))
-			Expect(p.Destinations[1].Unmappable[0].Hints).To(ContainElement("to install its modules for an assistant you have instead, rerun lola migrate with --map-target cursor=<assistant>"))
+			Expect(p.Destinations[1].Unmappable[0].Hints).To(Equal([]string{"its files stay exactly as the Python lola wrote them; remove them by hand when you no longer need them",
+				"to install its modules for an assistant you have instead, rerun lola migrate with --map-target cursor=agents (agents takes skills only: the record's commands and agents are skipped)"}))
 		})
 
 		It("installs for an assistant set up where the record goes, though it is not on your PATH, as lola tidy counts it", func() {
@@ -717,7 +718,7 @@ var _ = Describe("NewPlan", func() {
 			h.install(at(projA, "cursor"))
 			p := plan()
 			Expect(p.TargetSuggestions).To(ConsistOf(HaveField("Old", "cursor")))
-			Expect(p.Destinations[0].Unmappable[0].Hints).To(ContainElement("to install its modules for an assistant you have instead, rerun lola migrate with --map-target cursor=gemini-cli,opencode"))
+			Expect(p.Destinations[0].Unmappable[0].Hints).To(ContainElement("to install its modules for an assistant you have instead, rerun lola migrate with --map-target cursor=gemini-cli,opencode,agents (agents takes skills only: the record's commands and agents are skipped)"))
 
 			p = planWith(migrate.Options{Targets: map[string][]string{"cursor": {"opencode"}}})
 			Expect(p.Destinations[0].Installs).To(HaveLen(1))

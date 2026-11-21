@@ -415,7 +415,7 @@ var _ = Describe("migrate paths", func() {
 		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n- {module: review, assistant: cursor, scope: user}\n"})
 		p := &scripted{}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(5), r.err)
 		Expect(p.calls).To(BeEmpty())
 		Expect(r.out).To(HavePrefix("nothing more to migrate"))
 		Expect(home).To(BeADirectory())
@@ -565,7 +565,7 @@ var _ = Describe("migrate paths", func() {
 		fromAnotherMachine()
 		p := &scripted{roots: []string{filepath.Join(tmp, "home")}, mapTargets: [][]string{{"opencode"}, {}}, confirmBacks: 1, confirm: []bool{true}}
 		r := lolaP(p, "migrate")
-		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.code).To(Equal(5), r.err)
 		Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice", "migrate-targets:claude-code", "confirm:Migrate?",
 			"migrate-targets:claude-code", "confirm:Migrate?"}))
 		Expect(p.confirmNavs[0]).To(Equal(cli.Nav{Back: true, Answered: 2}), "Esc has the mapping questions to go back to")

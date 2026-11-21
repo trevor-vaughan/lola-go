@@ -481,8 +481,12 @@ func (d *Destination) mapRecord(e *engine.Engine, st *State, targets map[string]
 		mapped, has := targets[rec.Assistant]
 		shown := untrusted.Text(rec.Assistant, untrusted.MaxName)
 		flag := "--map-target " + shown + "=<assistant>"
-		if len(d.detected) > 0 {
-			flag = errs.ShellJoin([]string{"--map-target", shown + "=" + strings.Join(d.detected, ",")})
+		suggested := suggestedTargets(e, rec.Assistant, d.detected)
+		if len(suggested) > 0 {
+			flag = errs.ShellJoin([]string{"--map-target", shown + "=" + strings.Join(suggested, ",")})
+			if slices.Contains(suggested, "agents") {
+				flag += skillsOnlyNote
+			}
 		}
 		switch {
 		case has:
