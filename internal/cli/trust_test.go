@@ -151,7 +151,7 @@ var _ = Describe("typed --trust", func() {
 		Entry("install", func() []string { return []string{"install", kit, "-C", proj, "--trust=entries,hooks"} },
 			"lola install never asks for entries trust; it takes --trust=scripts,hooks,runtime-hooks", "lola install KIT --root PROJ --trust=hooks"),
 		Entry("migrate", func() []string { return []string{"migrate", "--trust=entries,profiles,hooks", "-n"} },
-			"lola migrate never asks for entries or profiles trust; it takes --trust=scripts,hooks,runtime-hooks", "lola migrate --dry-run --trust=hooks"),
+			"lola migrate never asks for profiles trust; it takes --trust=entries,scripts,hooks,runtime-hooks", "lola migrate --dry-run --trust=entries,hooks"),
 		Entry("profile --add", func() []string {
 			return []string{"profile", "go", "--add", "https://example.com/profiles.git", "--user", "--trust=entries"}
 		}, "lola profile --add never asks for entries trust; it takes --trust=profiles", "lola profile go --add https://example.com/profiles.git --user"),
@@ -189,15 +189,15 @@ var _ = Describe("typed --trust", func() {
 		Expect(lola("sync", "kit", "-C", proj, "--trust", "--", "hooks").err).NotTo(ContainSubstring("is a kind of trust"))
 	})
 
-	It("help shows --trust[=entries,profiles] where bare --trust grants them, and --trust=<kinds> where it is refused", func() {
+	It("help shows --trust[=entries,profiles] where bare --trust grants them (migrate: --trust[=entries]), and --trust=<kinds> where it is refused", func() {
 		for _, c := range []string{"sync", "update", "profile"} {
 			Expect(lola(c, "--help").out).To(ContainSubstring("--trust[=entries,profiles]"), c)
 		}
-		for _, c := range []string{"install", "migrate"} {
-			out := lola(c, "--help").out
-			Expect(out).To(ContainSubstring("--trust=<kinds>"), c)
-			Expect(out).NotTo(ContainSubstring("[=entries,profiles]"), c)
-		}
+		out := lola("install", "--help").out
+		Expect(out).To(ContainSubstring("--trust=<kinds>"))
+		Expect(out).NotTo(ContainSubstring("[=entries,profiles]"))
+		out = lola("migrate", "--help").out
+		Expect(out).To(ContainSubstring("--trust[=entries]"), "bare --trust grants what never runs code, within what migrate asks")
 		Expect(lola("help").out).NotTo(ContainSubstring("\x00"), "the bare value never shows")
 	})
 

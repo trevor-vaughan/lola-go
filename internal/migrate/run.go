@@ -36,6 +36,10 @@ type Options struct {
 	KeepPython bool
 	Roots      []RootMap
 	Targets    map[string][]string
+	// AcceptChanged is the user's yes to installing content that changed upstream since the
+	// Python lola installed it (Install.Changed), asked on a terminal; --trust=entries grants it
+	// without asking.
+	AcceptChanged bool
 	// Progress is told what a long step is working on, for a caller that shows it; it changes
 	// no result.
 	Progress func(string)
@@ -142,6 +146,9 @@ type InstallItem struct {
 	Path          string   `json:"path,omitempty"`
 	Targets       []string `json:"targets"`
 	Status        string   `json:"status"` // install or already-migrated
+	// ChangedUpstream lists, as kind/name, the components the install brings that differ from, or
+	// are absent in, the Python lola's copy of the module, when its source can move.
+	ChangedUpstream []string `json:"changed_upstream"`
 }
 
 // Moved is a recorded path replaced by lola-go or moved to the trash. Trash is "" on a dry run.
@@ -253,6 +260,9 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	if opts.DryRun || rep.Nothing {
 		return rep, nil
 	}
+	if err = changedGate(p, opts); err != nil {
+		return nil, err
+	}
 	if err = r.consent(p); err != nil {
 		return nil, err
 	}
@@ -308,6 +318,41 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	}
 	return rep, &engine.TrustedError{Err: errs.WithHints(fmt.Errorf("lola migrate did not finish: %s", strings.Join(why, "; ")), hints...),
 		Trusted: rep.Trusted}
+}
+
+// ChangedError refuses a run that would install content that changed upstream since the Python
+// lola installed it, or that the Python lola's copy does not hold, without your trust: Changed
+// lists each as "module kind/name". Nothing was written.
+type ChangedError struct{ Changed []string }
+
+func (e *ChangedError) Error() string {
+	return "lola migrate installs what changed upstream since the Python lola installed it only with your trust (--trust=entries): " +
+		strings.Join(e.Changed, ", ")
+}
+
+// Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer).
+func (e *ChangedError) Is(target error) bool { return target == errs.ErrNeedsAnswer }
+
+// changedGate refuses, before anything is written anywhere, an install of components that changed
+// upstream (Install.Changed) in any destination, unless opts trusts entries or the user answered
+// yes (AcceptChanged). A source that cannot move has none.
+func changedGate(p *Plan, opts Options) error {
+	if opts.AcceptChanged || opts.Trust.Covers(engine.TrustEntries) {
+		return nil
+	}
+	var changed []string
+	for _, d := range p.Destinations {
+		for _, in := range d.Installs {
+			for _, c := range in.Changed {
+				changed = append(changed, untrusted.Text(strings.Join(in.PythonModules, ",")+" "+c, 2*untrusted.MaxName))
+			}
+		}
+	}
+	if len(changed) == 0 {
+		return nil
+	}
+	slices.Sort(changed)
+	return &ChangedError{Changed: slices.Compact(changed)}
 }
 
 // consent runs every destination's install up to its receipt, so the install and runtime hook
@@ -515,8 +560,13 @@ func newDestResult(d *Destination) *DestResult {
 }
 
 func installItem(in Install, status string) InstallItem {
+	changed := []string{}
+	for _, c := range in.Changed {
+		changed = append(changed, untrusted.Text(c, untrusted.MaxName))
+	}
 	return InstallItem{Module: in.Module, PythonModules: in.PythonModules, Source: untrusted.Text(in.Source, untrusted.MaxName),
-		Ref: untrusted.Text(in.Ref, untrusted.MaxName), Path: untrusted.Text(in.Path, untrusted.MaxName), Targets: in.Targets, Status: status}
+		Ref: untrusted.Text(in.Ref, untrusted.MaxName), Path: untrusted.Text(in.Path, untrusted.MaxName), Targets: in.Targets, Status: status,
+		ChangedUpstream: changed}
 }
 
 // installSpec is d's install: every module on its records' targets, with the recorded paths that

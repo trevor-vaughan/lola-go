@@ -1302,6 +1302,8 @@ Esc there stays; so is the ssh question when the run asked no name.
 the mapping questions (`askMappings`): where each missing root is, then which assistants stand in
 for each missing one. It plans from the answers (`migrate.NewPlan`, `internal/migrate`), fetching
 the modules' sources into the cache, shows the plan and asks `Migrate?` through `app.confirm`, then
+asks `Install them?` (a yes/no question, default No, not answered by `-y` or `--force`) when the plan marks
+components that changed upstream and `--trust=entries` is not given, then
 migrates each destination (`migrate.Migrate`), asking the
 [hook and script consent](#hook-and-script-consent) questions and the receipt
 ([Trust question](#trust-question)) as it installs.

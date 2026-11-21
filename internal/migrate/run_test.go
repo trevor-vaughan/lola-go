@@ -130,7 +130,7 @@ var _ = Describe("Migrate", func() {
 		d := res.Destinations[0]
 		Expect(d.Status).To(Equal(migrate.StatusMigrated))
 		Expect(d.Installs).To(Equal([]migrate.InstallItem{{Module: "review", PythonModules: []string{"review"}, Source: src,
-			Targets: []string{"claude-code"}, Status: migrate.InstallNew}}))
+			Targets: []string{"claude-code"}, Status: migrate.InstallNew, ChangedUpstream: []string{}}}))
 
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(ContainSubstring("Ship $ARGUMENTS"))
 		Expect(read(filepath.Join(proj, ".claude/skills/review/SKILL.md"))).To(ContainSubstring("Review it."))

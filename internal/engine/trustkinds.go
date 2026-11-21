@@ -208,8 +208,10 @@ func CommandTrust(command string) TrustKinds {
 		return TrustAll
 	case "profile --add":
 		return TrustProfiles
-	case "install", "migrate":
+	case "install":
 		return TrustScripts | TrustHooks | TrustRuntimeHooks
+	case "migrate":
+		return TrustEntries | TrustScripts | TrustHooks | TrustRuntimeHooks // entries: content changed upstream since the Python lola installed it
 	}
 	return 0
 }

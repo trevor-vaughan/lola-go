@@ -402,6 +402,24 @@ func checkout(ctx context.Context, spec Spec, scratch string) ([]string, error) 
 	return execs, err
 }
 
+// Moving reports whether the content spec names can differ tomorrow from today's: a git source
+// at a branch or at its default branch, or an archive at a URL, which has no ref to pin. A git
+// tag or a full commit SHA, and a folder or archive on this machine (your own files), do not
+// move. It asks a git remote which kind of ref spec.Ref is, as a fetch does.
+func Moving(ctx context.Context, spec Spec) (bool, error) {
+	switch {
+	case IsLocal(spec.Kind, spec.Location):
+		return false, nil
+	case spec.Kind != KindGit:
+		return true, nil
+	}
+	name, err := remoteRef(ctx, spec)
+	if err != nil {
+		return false, err
+	}
+	return name == "" || strings.HasPrefix(name, "refs/heads/"), nil
+}
+
 // remoteRef names what spec's ref is on its repository: "" for the default branch (ref ""), ref
 // itself for a full commit SHA, which is always that commit and never looked up as a branch or
 // tag of that name, so a pin cannot be moved by pushing a branch named like it, or

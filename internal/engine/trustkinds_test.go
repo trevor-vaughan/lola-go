@@ -211,7 +211,7 @@ var _ = Describe("typed trust", func() {
 		Entry("profile --add", "profile --add", engine.TrustProfiles, "--trust=profiles"),
 		Entry("install", "install", engine.TrustScripts|engine.TrustHooks|engine.TrustRuntimeHooks, "--trust=scripts,hooks,runtime-hooks"),
 		Entry("update", "update", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
-		Entry("migrate", "migrate", engine.TrustScripts|engine.TrustHooks|engine.TrustRuntimeHooks, "--trust=scripts,hooks,runtime-hooks"),
+		Entry("migrate", "migrate", engine.TrustEntries|engine.TrustScripts|engine.TrustHooks|engine.TrustRuntimeHooks, "--trust=entries,scripts,hooks,runtime-hooks"),
 	)
 
 	DescribeTable("off a terminal an uncovered run refuses, hinting the run with exactly the missing kinds and its own flags",

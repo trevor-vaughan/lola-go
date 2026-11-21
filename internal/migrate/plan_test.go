@@ -197,7 +197,7 @@ var _ = Describe("NewPlan", func() {
 			{PythonModules: []string{"review"}, Kind: source.KindGit, Source: url + "/review.git", Ref: "v2",
 				Path: "plugins/review", Targets: []string{"claude-code"}},
 			{PythonModules: []string{"other"}, Kind: source.KindGit, Source: url + "/other.git", Ref: "main", Path: ".",
-				Targets: []string{"claude-code"}},
+				Targets: []string{"claude-code"}, Changed: []string{"command/ship"}}, // a branch, and the Python lola kept no copy
 		}), `"/" is the repository's top, not the module/ lola-go would find there`)
 	})
 
