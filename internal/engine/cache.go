@@ -45,16 +45,54 @@ func NotStored(name string, display ...string) error {
 // source…. Adding to the cache installs nothing. display is the run's output flags, which its
 // hints keep.
 func (e *Engine) AddSource(ctx context.Context, cwd, arg, ref, path string, display []string) (store.Version, error) {
-	spec, ok, err := source.Parse(arg, cwd)
+	spec, err := sourceSpec(cwd, arg, ref, path)
 	if err != nil {
 		return store.Version{}, err
 	}
+	return e.Fetch(ctx, spec)
+}
+
+// sourceSpec parses arg as a source read at ref and path, refusing an argument that is not one.
+func sourceSpec(cwd, arg, ref, path string) (source.Spec, error) {
+	spec, ok, err := source.Parse(arg, cwd)
+	if err != nil {
+		return source.Spec{}, err
+	}
 	if !ok {
-		return store.Version{}, fmt.Errorf("%q is not a source; sources are %s", arg, source.AcceptedForms)
+		return source.Spec{}, fmt.Errorf("%q is not a source; sources are %s", arg, source.AcceptedForms)
 	}
 	spec.Ref, spec.Path = ref, path
-	v, err := e.Fetch(ctx, spec)
-	return v, err
+	return spec, nil
+}
+
+// PreviewSource is AddSource for lola cache add -n: it fetches the source into a run directory
+// that it removes, so a remote source is read as the real add would read it, and returns the
+// module as the add would show it. Nothing is cached.
+func (e *Engine) PreviewSource(ctx context.Context, cwd, arg, ref, path string) (_ ModuleView, err error) {
+	spec, err := sourceSpec(cwd, arg, ref, path)
+	if err != nil {
+		return ModuleView{}, err
+	}
+	run, done, err := e.runDir()
+	if err != nil {
+		return ModuleView{}, err
+	}
+	defer func() { err = errors.Join(err, done()) }()
+	req, err := e.fetchRequest(ctx, spec, "", "", run)
+	if err != nil {
+		return ModuleView{}, err
+	}
+	st, err := e.Store.Prepare(req)
+	if err != nil {
+		return ModuleView{}, err
+	}
+	return previewView(st.Version, spec), nil
+}
+
+// previewView is v, fetched from spec and not cached, as lola cache add shows it: a module with
+// no heads.
+func previewView(v store.Version, spec source.Spec) ModuleView {
+	return NewModuleView(v, store.Origin{Source: spec.Location, Type: string(spec.Kind), Path: spec.Path})
 }
 
 // Current returns a stored module's origin and the version used for its metadata: the

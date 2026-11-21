@@ -260,3 +260,36 @@ var _ = Describe("FetchFile", func() {
 		Expect(left).To(HaveLen(1), "only the download that succeeded is left, for its caller to remove")
 	})
 })
+
+var _ = Describe("A download refused for its certificate", func() {
+	const sslHint = "trust your certificate authority: set SSL_CERT_FILE=<path to its PEM>"
+	ctx := context.Background()
+	var tlsURL, staging string
+	BeforeEach(func() {
+		staging = filepath.Join(testenv.Isolate(), "staging")
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("x")) }))
+		DeferCleanup(srv.Close)
+		tlsURL = srv.URL
+	})
+
+	It("hints SSL_CERT_FILE for an archive", func() {
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindArchive, Location: tlsURL + "/m.tar.gz"}, staging)
+		Expect(err).To(MatchError(ContainSubstring("certificate")))
+		Expect(errs.Hints(err)).To(Equal([]string{sslHint}))
+	})
+
+	It("hints SSL_CERT_FILE for a catalog, which has no other hint", func() {
+		_, err := source.FetchFile(ctx, tlsURL+"/m.json", staging, 1<<10)
+		Expect(err).To(MatchError(ContainSubstring("certificate")))
+		Expect(errs.Hints(err)).To(Equal([]string{sslHint}))
+	})
+
+	It("keeps the network hint for a server that is not there", func() {
+		srv := httptest.NewServer(http.NotFoundHandler())
+		url := srv.URL
+		srv.Close()
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindArchive, Location: url + "/m.tar.gz"}, staging)
+		Expect(err).To(HaveOccurred())
+		Expect(errs.Hints(err)).To(Equal([]string{"check the URL and your network"}))
+	})
+})

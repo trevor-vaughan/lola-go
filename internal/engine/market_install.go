@@ -339,6 +339,32 @@ func (e *Engine) AddEntry(ctx context.Context, arg, ref, path string, display []
 	return v, err
 }
 
+// PreviewEntry is AddEntry for lola cache add -n: the entry is fetched into a run directory that
+// is removed, and shown as the add would show it. Nothing is cached.
+func (e *Engine) PreviewEntry(ctx context.Context, arg, ref, path string, display []string) (_ ModuleView, err error) {
+	reqs := []InstallRequest{{Arg: arg, Ref: ref, Path: path}}
+	unlock, err := e.resolveMarkets(reqs, true, display)
+	if err != nil {
+		return ModuleView{}, err
+	}
+	defer unlock()
+	p := reqs[0].market
+	if p == nil {
+		return ModuleView{}, fmt.Errorf("%s is not a marketplace address, @<marketplace>/<module>", untrusted.Text(arg, untrusted.MaxName))
+	}
+	run, done, err := e.runDir()
+	if err != nil {
+		return ModuleView{}, err
+	}
+	defer func() { err = errors.Join(err, done()) }()
+	spec, commit := p.spec(ref)
+	st, err := e.prepareEntry(ctx, p, spec, commit, run)
+	if err != nil {
+		return ModuleView{}, err
+	}
+	return previewView(st.Version, spec), nil
+}
+
 // addEntry is AddEntry, which also returns the ref the version was cached under and the commit
 // the catalog pins it at ("" for none: --ref replaces the catalog's pin, and a catalog may give
 // none), which lola info's next step installs by.

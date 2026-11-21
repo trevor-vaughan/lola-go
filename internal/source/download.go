@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -45,6 +46,10 @@ const CatalogEntry = "a catalog entry"
 // downloadHint coaches an archive download the server or the archive's size made fail.
 const downloadHint = "download the archive yourself and install the file"
 
+// untrustedCertHint coaches a server whose certificate no trusted authority signed: Go reads the
+// PEM bundle SSL_CERT_FILE names as the trusted roots. It coaches a catalog download too.
+const untrustedCertHint = "trust your certificate authority: set SSL_CERT_FILE=<path to its PEM>"
+
 // hints is hs when w coaches, else none.
 func (w downloaded) hints(hs ...string) []string {
 	if !w.coach {
@@ -67,7 +72,10 @@ func download(ctx context.Context, rawURL, dest string, limit int64, w downloade
 	resp, err := client.Do(req)
 	if err != nil {
 		hints := errs.Hints(err) // checkRedirect's
+		_, unknownCA := errors.AsType[x509.UnknownAuthorityError](err)
 		switch {
+		case unknownCA:
+			hints = []string{untrustedCertHint}
 		case timedOut(err):
 			hints = w.hints("the server did not send the archive in time; " + downloadHint)
 		case len(hints) == 0:
@@ -76,7 +84,11 @@ func download(ctx context.Context, rawURL, dest string, limit int64, w downloade
 		if ue, ok := errors.AsType[*url.Error](err); ok {
 			err = ue.Err // the *url.Error repeats the URL of the failing hop, query and all
 		}
-		return errs.WithHints(fmt.Errorf("downloading %s: %s", shown, untrusted.Text(err.Error(), untrusted.MaxName)), hints...)
+		failure := fmt.Errorf("downloading %s: %s", shown, untrusted.Text(err.Error(), untrusted.MaxName))
+		if unknownCA {
+			failure = &UntrustedCertError{failure.Error()}
+		}
+		return errs.WithHints(failure, hints...)
 	}
 	defer func() { err = errors.Join(err, resp.Body.Close()) }()
 	if resp.StatusCode != http.StatusOK {
@@ -100,6 +112,13 @@ func download(ctx context.Context, rawURL, dest string, limit int64, w downloade
 	}
 	return nil
 }
+
+// UntrustedCertError is a download refused because its server's certificate was signed by an
+// authority the system does not trust. Its hint, untrustedCertHint, is the one a marketplace keeps
+// although it is no command.
+type UntrustedCertError struct{ msg string }
+
+func (e *UntrustedCertError) Error() string { return e.msg }
 
 // timedOut reports whether err, or an error it wraps, is a timeout: the client's own, or the
 // caller's deadline.
