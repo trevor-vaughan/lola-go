@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -349,7 +350,8 @@ func (h *huhForms) multi(title, desc string, opts []huh.Option[string], value *[
 
 // Scope offers Project, User and Other directory…, preselecting exactly st.Preselect. It is a
 // multi-select even when st.One, so nothing is chosen until the user ticks it (a select would
-// answer Project on Enter); the form refuses an empty answer.
+// answer Project on Enter); the form refuses an empty answer. With st.One the picker holds one
+// tick: a second is refused until the first is unticked.
 func (h *huhForms) Scope(st ScopeStep) ([]string, error) {
 	project, user := "Project ("+st.ProjectRoot+")", "User (~)"
 	if st.ProjectContext != "" {
@@ -368,7 +370,13 @@ func (h *huhForms) Scope(st ScopeStep) ([]string, error) {
 		desc = "pick one"
 	}
 	var chosen []string
-	err := h.run(st.Nav, h.described(desc, h.required(h.multi(st.Step.title(0, st.Question), desc, opts, &chosen)))...)
+	ms := h.multi(st.Step.title(0, st.Question), desc, opts, &chosen)
+	pick := h.required(ms)
+	if st.One {
+		ms.Limit(1)
+		pick.one = true
+	}
+	err := h.run(st.Nav, h.described(desc, pick)...)
 	return chosen, err
 }
 
@@ -400,6 +408,44 @@ func (h *huhForms) nothingSelected() string {
 type requiredPick struct {
 	*huh.MultiSelect[string]
 	entered bool
+	one     bool // a pick-one picker: Limit(1) holds it to one tick
+}
+
+// KeyBinds is the multi-select's, and for a pick-one picker names space beside x: the key help the
+// empty-pick refusal points to ("space selects") is then in the footer.
+func (r *requiredPick) KeyBinds() []key.Binding {
+	binds := r.MultiSelect.KeyBinds()
+	if r.one {
+		for i, b := range binds {
+			if b.Help().Key == "x" {
+				binds[i] = key.NewBinding(key.WithKeys(b.Keys()...), key.WithHelp("space/x", b.Help().Desc))
+			}
+		}
+	}
+	return binds
+}
+
+// RunAccessible is the multi-select's, but for a pick-one picker it drops huh's "Select up to 1
+// options." line, which contradicts the "pick one" note above the picker.
+func (r *requiredPick) RunAccessible(w io.Writer, in io.Reader) error {
+	if r.one {
+		w = withoutLine{w, "Select up to 1 options.\n"}
+	}
+	return r.MultiSelect.RunAccessible(w, in)
+}
+
+// withoutLine is a writer that drops a write that is exactly line; huh prints each of its lines in
+// one write.
+type withoutLine struct {
+	io.Writer
+	line string
+}
+
+func (d withoutLine) Write(p []byte) (int, error) {
+	if string(p) == d.line {
+		return len(p), nil
+	}
+	return d.Writer.Write(p)
 }
 
 // Update records whether msg is Enter before huh handles it, and returns the wrapper, which the
@@ -418,7 +464,7 @@ func (r *requiredPick) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 // ended (Ctrl+C included) the validator accepts: huh's accessible MultiSelect asks again for as
 // long as it refuses, and at end of input every ask answers 0, so refusing would never end; run
 // then cancels.
-func (h *huhForms) required(ms *huh.MultiSelect[string], also ...*[]string) huh.Field {
+func (h *huhForms) required(ms *huh.MultiSelect[string], also ...*[]string) *requiredPick {
 	r := &requiredPick{MultiSelect: ms}
 	ms.Validate(func(picked []string) error {
 		if len(picked) > 0 || slices.ContainsFunc(also, func(v *[]string) bool { return len(*v) > 0 }) || h.in.eof || !h.accessible && !r.entered {

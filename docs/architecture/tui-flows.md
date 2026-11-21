@@ -620,7 +620,7 @@ every command: Esc there stays, its key help saying `first step — q quits`.
 
 | state     | what the user sees                                                                                                                                                      | asked when                                                 |
 |-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
-| scope     | the command's question (Project (`<root>`) with its context, User (~) with its context, Other directory…), nothing ticked; `pick one` below it where one scope is taken | no `--scope`, `--user`, `--project` or `-C`, on a terminal |
+| scope     | the command's question (Project (`<root>`) with its context, User (~) with its context, Other directory…), nothing ticked; `pick one` below it where one scope is taken, which holds one tick (a second is refused until the first is unticked) and offers no `ctrl+a`; its key help lists `space/x toggle` | no `--scope`, `--user`, `--project` or `-C`, on a terminal |
 | directory | `Other directory` (a path input; `~` and `~/` are your home directory)                                                                                                  | Other directory… is ticked                                 |
 
 Project is the project with `.lola/` found at or above the current directory, else the current
@@ -1804,7 +1804,7 @@ Enter alone; *invalid* is any other line a prompt refuses.
 
 | state  | what the user sees                                                                                                               | asked when                                       |
 |--------|----------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
-| pick   | the title, `Select up to N options.`, the options numbered (`[x]` before the ticked ones), and `Enter a number between 0 and N:` | a picker (huh's MultiSelect)                     |
+| pick   | the title, `Select up to N options.` (not for a pick-one picker), the options numbered (`[x]` before the ticked ones), and `Enter a number between 0 and N:` | a picker (huh's MultiSelect)                     |
 | choose | the title, the options numbered, and `Enter a number between 1 and N:`                                                           | a menu or a question with options (huh's Select) |
 | line   | the title as the prompt                                                                                                          | a text question (huh's Input)                    |
 | yesno  | the question's text, then `<question> [y/N]` and a space                                                                         | a yes or no question (`Ask`)                     |

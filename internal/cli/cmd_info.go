@@ -259,14 +259,14 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 				fmt.Fprintln(w, hintLine("    ", h, s.width))
 			}
 		}
+		inner := s // each line is indented two more: so is the width its notices and hints wrap to
+		inner.width = max(s.width-2, 0)
 		for _, n := range in.Notices {
-			fmt.Fprintln(w, "  "+noticeLine(s, n))
+			fmt.Fprintln(w, "  "+strings.ReplaceAll(noticeLine(inner, n), "\n", "\n  "))
 		}
 		for _, st := range in.Steps {
 			fmt.Fprintln(w, "  "+stepLine(s, st))
 		}
-		inner := s // each line is indented two more: so is the width its hints wrap to
-		inner.width = max(s.width-2, 0)
 		for _, f := range in.Findings {
 			if line := findingLine(inner, f); line != "" && worthShowing(f) {
 				fmt.Fprintln(w, "  "+strings.ReplaceAll(line, "\n", "\n  "))

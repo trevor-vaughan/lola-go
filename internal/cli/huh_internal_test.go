@@ -217,6 +217,24 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("3.   Other directory…\n"))
 	})
 
+	It("says a pick-one scope picker takes one, not up to three, and a multi-select scope picker still says up to three", func() {
+		_, err := accessible(&out, "2", "0").Scope(ScopeStep{Question: "Render where?", ProjectRoot: "/src/api", One: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(ContainSubstring("pick one"))
+		Expect(out.String()).NotTo(ContainSubstring("Select up to"))
+
+		out.Reset()
+		_, err = accessible(&out, "2", "0").Scope(ScopeStep{Question: "Install where?", ProjectRoot: "/src/api"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(ContainSubstring("Select up to 3 options."))
+	})
+
+	It("refuses a second pick in a pick-one scope picker in accessible mode", func() {
+		got, err := accessible(&out, "1", "2", "1", "2", "0").Scope(ScopeStep{ProjectRoot: "/src/api", One: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{ScopeUser}), "1 ticked Project, 2 was refused, 1 unticked it, 2 ticked User")
+	})
+
 	It("resolves no scope from empty input: it asks again, and end of input cancels, never Project", func() {
 		got, err := accessible(&out, "0").Scope(ScopeStep{Question: "Render where?", ProjectRoot: "/src/api", One: true})
 		Expect(err).To(MatchError(errInputEnded))

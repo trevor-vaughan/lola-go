@@ -410,8 +410,10 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 				fmt.Fprintln(w, "  "+line)
 			}
 		}
+		inner := s // each line is indented two more: so is the width its notices wrap to
+		inner.width = max(s.width-2, 0)
 		for _, n := range d.Notices {
-			fmt.Fprintln(w, "  "+noticeLine(s, n))
+			fmt.Fprintln(w, "  "+strings.ReplaceAll(noticeLine(inner, n), "\n", "\n  "))
 		}
 		switch d.Status {
 		case migrate.StatusMigrated:

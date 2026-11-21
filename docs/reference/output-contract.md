@@ -110,9 +110,10 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
 - A notice in JSON is `level`, `text` and `class`, and `hints` when it has commands that act on it
   (a list, absent otherwise, such as the one for an assistant with versions that is not installed).
   - Human output prints each hint under it as a `hint:` line.
-  - When stdout and stderr are both a terminal, a hint wider than it wraps at spaces, but a
+  - When stdout and stderr are both a terminal, a hint or a `⚠`/`→` notice wider than it wraps at
+    spaces (a notice's continuation lines sit under its first word), but a
     `lola …` command in it is never broken (one wider than the terminal gets a line of its own); a
-    pipe or a file gets each hint on one line.
+    pipe or a file gets each hint and notice on one line.
   - A `--plain` notice row is `notice<TAB>level<TAB>text`; in a `sync` or `install` of
     `--scope both` it ends with the scope it is for (`project` or `user`).
 - Scope commands (`install`, `uninstall`, `sync`, `update`, `list`, `info`, `check` when it reads
