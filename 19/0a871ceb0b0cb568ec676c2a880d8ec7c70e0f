@@ -1,0 +1,29 @@
+docs/architecture/tui-flows.md
+  s_8e40a7060352db::t_51f9a406226ff9 1338,1372-1378,1386-1387,1422
+internal/cli/misc2_paths_test.go
+  s_8e40a7060352db::t_4483251c2c180f 337,349-358,424
+internal/cli/root.go
+  s_8e40a7060352db::t_a04d8a1a85d38c 301-304
+internal/migrate/plan.go
+  s_8e40a7060352db::t_9d6ef8357a4deb 483,488,497
+internal/migrate/plan_test.go
+  s_8e40a7060352db::t_6449224c4d97fb 692,721
+internal/migrate/remap.go
+  s_8e40a7060352db::t_b3c14de7e6ae94 236-237,262,275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "190a871ceb0b0cb568ec676c2a880d8ec7c70e0f",
+  "prompts": {},
+  "sessions": {
+    "s_8e40a7060352db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8afbf1e-2d96-4296-9618-529a50248a6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
