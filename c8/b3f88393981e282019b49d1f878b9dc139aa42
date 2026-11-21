@@ -1,0 +1,47 @@
+docs/guides/install-trust-kinds.md
+  s_8e40a7060352db::t_7469623d603b0b 63-67
+docs/guides/sync-and-trust.md
+  s_8e40a7060352db::t_172ee1864246e1 470
+e2e/team/team.venom.yml
+  s_8e40a7060352db::t_e48373c63d99d7 632-633,681-682
+internal/cli/core_test.go
+  s_8e40a7060352db::t_95f03929607db5 295-297
+internal/cli/migrate_test.go
+  s_8e40a7060352db::t_799fd122325165 153
+internal/cli/misc2_paths_test.go
+  s_8e40a7060352db::t_c047346744d3cc 784
+internal/cli/scripts_test.go
+  s_8e40a7060352db::t_f0d09c80a44e84 61,63
+internal/cli/trust_test.go
+  s_8e40a7060352db::t_38906387515d20 105-106,359,449
+internal/engine/hooks.go
+  s_8e40a7060352db::t_82de83dfc40616 386-387,396-404,407,409,490
+internal/engine/scripts.go
+  s_8e40a7060352db::t_d5c7164a1a509e 609
+internal/engine/scripts_test.go
+  s_8e40a7060352db::t_9f5fe19544940e 511,734
+internal/engine/sources_test.go
+  s_8e40a7060352db::t_cfdeb8b7ba00bf 345-359
+internal/engine/sync_test.go
+  s_8e40a7060352db::t_7845ddb4c55341 2257-2281
+internal/engine/trustkinds.go
+  s_8e40a7060352db::t_ec5b3018daed4d 149-151,157-159,161
+internal/engine/trustkinds_test.go
+  s_8e40a7060352db::t_bb92a745850396 38,40,150,791,819
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c8b3f88393981e282019b49d1f878b9dc139aa42",
+  "prompts": {},
+  "sessions": {
+    "s_8e40a7060352db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8afbf1e-2d96-4296-9618-529a50248a6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
