@@ -781,7 +781,7 @@ var _ = Describe("consent paths", func() {
 		p := &scripted{consent: []bool{false}}
 		r := install(p, kit, "-y")
 		Expect(r.code).To(Equal(4))
-		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: pre.sh (sha256 "))
+		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: pre.sh (hook sha256 "))
 		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola install " + kit))
 		untouched()
 	})

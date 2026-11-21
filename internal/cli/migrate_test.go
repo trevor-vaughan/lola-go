@@ -150,7 +150,7 @@ var _ = Describe("lola migrate", func() {
 		r := lola("migrate", "--force")
 		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("review has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(r.err).To(ContainSubstring("  hint: lola has not shown you this hook; see it with lola migrate --force --trust=hooks -n, then consent to it: lola migrate --force --trust=hooks\n"))
+		Expect(r.err).To(ContainSubstring("  hint: lola has not shown you this hook; add -n to see it first, then consent to it: lola migrate --force --trust=hooks\n"))
 		Expect(r.err).NotTo(ContainSubstring("needs confirmation"), "--force answered Migrate?")
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal("python ship\n"), "nothing was written")
 		Expect(mark).NotTo(BeAnExistingFile())

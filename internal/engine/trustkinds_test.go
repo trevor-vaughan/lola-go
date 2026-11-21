@@ -35,9 +35,9 @@ func consentRun(err error) string {
 }
 
 // unshown is the hints of a refusal of what (this hook, this script) lola has not shown you, in
-// place of "then consent to it: <run>": the dry run that shows it, then run; or run with --unseen.
+// place of "then consent to it: <run>": -n to see it first, then run; or run with --unseen.
 func unshown(what, run string) []string {
-	return []string{"lola has not shown you " + what + "; see it with " + run + " -n, then consent to it: " + run,
+	return []string{"lola has not shown you " + what + "; add -n to see it first, then consent to it: " + run,
 		"or add --unseen to consent without seeing it: " + run + " --unseen"}
 }
 
@@ -147,7 +147,7 @@ var _ = Describe("typed trust", func() {
 		// kit's new version is not in your cache, which a refused run leaves as it was: its folder
 		// shows it.
 		Expect(errs.Hints(err)).To(HaveExactElements("review it: lola info --project ./mods/kit --target claude-code",
-			MatchRegexp(`^lola has not shown you this hook; see it with lola sync --project --trust=entries,profiles,hooks --at kit=sha256:[0-9a-f]{64} -n, then consent to it: `),
+			MatchRegexp(`^lola has not shown you this hook; add -n to see it first, then consent to it: `),
 			MatchRegexp(`^or add --unseen to consent without seeing it: lola sync --project --trust=entries,profiles,hooks --at kit=sha256:[0-9a-f]{64} --unseen$`)), "the consent pins the version shown")
 		Expect(ran()).To(BeNil())
 		Expect(trusts("kit")).To(BeFalse())
@@ -788,7 +788,7 @@ var _ = Describe("typed trust", func() {
 				return e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: filepath.Join(proj, "mods", "kit")}}, o)
 			}
 			_, err := install(opts)
-			Expect(err).To(MatchError(MatchRegexp(`^kit has a pre-install hook lola had not shown you: pre-install: hooks/pre\.sh \(sha256 [0-9a-f]{64}\)$`)))
+			Expect(err).To(MatchError(MatchRegexp(`^kit has a pre-install hook lola had not shown you: pre-install: hooks/pre\.sh \(hook sha256 [0-9a-f]{64}\)$`)))
 			Expect(errs.Hints(err)).To(ContainElements(
 				HavePrefix("lola has not shown you this hook; see it with lola install --project "),
 				HavePrefix("or add --unseen to consent without seeing it: lola install --project ")))
@@ -816,7 +816,7 @@ var _ = Describe("typed trust", func() {
 			Expect(os.Chmod(filepath.Join(proj, "ci", "pre.sh"), 0o755)).To(Succeed())
 			trust := engine.Options{Trust: engine.TrustEntries | engine.TrustScripts}
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: trust})
-			Expect(err).To(MatchError(MatchRegexp(`pre-install script ci/pre\.sh \(sha256 [0-9a-f]{64}\) of this project`)))
+			Expect(err).To(MatchError(MatchRegexp(`pre-install script ci/pre\.sh \(script sha256 [0-9a-f]{64}\) of this project`)))
 			Expect(errs.Hints(err)).To(ContainElements(
 				MatchRegexp(`^lola has not shown you this script; see it with lola sync --project --trust=entries,scripts( --at kit=sha256:[0-9a-f]{64})? -n, then run this again$`),
 				HavePrefix("or add --unseen to consent without seeing it: lola sync --project --trust=entries,scripts")))

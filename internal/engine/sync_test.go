@@ -2254,6 +2254,31 @@ var _ = Describe("Sync", func() {
 			Expect(sources).To(Equal([]string{b, a}), "the moved folder is an origin of its own, the old one stays")
 		})
 
+		It("a pulled folder source moved to a folder with other content refuses off a terminal, hinting the digest it read, which the hinted run accepts", func() {
+			a, b := filepath.Join(proj, "mods", "a", "example"), filepath.Join(proj, "mods", "b", "example")
+			writeTree(a, exampleModule)
+			writeTree(b, exampleModule)
+			writeTree(b, map[string]string{"commands/ship.md": "Ship it differently\n"})
+			install(sc, engine.InstallRequest{Arg: a})
+			manPath := filepath.Join(proj, ".lola", "project.yml")
+			man, err := os.ReadFile(manPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(manPath, []byte(strings.Replace(string(man), a, b, 1)), 0o600)).To(Succeed())
+
+			_, err = sync(engine.SyncRequest{})
+			Expect(err).To(HaveOccurred())
+			var digest string
+			for _, h := range errs.Hints(err) {
+				if m := regexp.MustCompile(`^then accept them: lola sync --project --trust=entries --at example=(sha256:[0-9a-f]{64})$`).FindStringSubmatch(h); m != nil {
+					digest = m[1]
+				}
+			}
+			Expect(digest).NotTo(BeEmpty(), "the hint pins the moved folder's digest: %v", errs.Hints(err))
+
+			_, err = sync(engine.SyncRequest{Trust: yes, At: map[string]string{"example": digest}})
+			Expect(err).NotTo(HaveOccurred(), "the hinted run installs the version the refusal showed")
+		})
+
 		It("an unknown target names the file and the line of the entry", func() {
 			install(sc, engine.InstallRequest{Arg: src})
 			manPath := filepath.Join(proj, ".lola", "project.yml")

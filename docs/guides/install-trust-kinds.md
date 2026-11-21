@@ -60,9 +60,11 @@ hint: or add --unseen to consent without seeing it: lola sync --trust=hooks --un
 A dry run prints every hook and project script the same run would want consent for, a
 project's post-install script with nothing to install too, so its `trusted` list is what that
 run grants. A refusal without `--trust` of a hook or script lola has not shown you hints the same
-dry run first (`see it with … -n, then consent to it: …`). The report of a run lists the runtime hooks
-and post-install hooks it declined in full, so the same command works the next time. A hook
-changed since you saw it is new content, and is declined or refused again until it is shown.
+dry run first (`add -n to see it first, then consent to it: …`). The refusal labels each hash:
+`pre-install: setup.sh (hook sha256 …); module digest sha256:…` (`script sha256` for a project
+script), the module digest being what `--at` pins (a git module shows `module commit`). The report
+of a run lists the runtime hooks and post-install hooks it declined in full, so the same
+command works the next time. A hook changed since you saw it is new content, and is declined or refused again until it is shown.
 
 `--unseen` widens the consent kinds `--trust` names to content lola has not shown you: use it in
 CI and on a fresh machine, where no one reads the output first. Given without a consent kind in

@@ -292,8 +292,9 @@ var _ = Describe("core commands", func() {
 		r := lola("install", mod, "-C", proj)
 		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("error: example has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(r.err).To(MatchRegexp(regexp.QuoteMeta("hint: review it: lola info -C "+proj+" "+mod+" --target claude-code\n  hint: lola has not shown you this hook; see it with lola install "+mod+" --root "+proj+
-			" --trust=hooks --at example=sha256:")+`[0-9a-f]{64} -n, then consent to it: `), "the consent pins the version shown")
+		Expect(r.err).To(MatchRegexp(regexp.QuoteMeta("hint: review it: lola info -C "+proj+" "+mod+" --target claude-code\n  hint: lola has not shown you this hook; add -n to see it first, then consent to it: lola install "+mod+" --root "+proj+
+			" --trust=hooks --at example=sha256:")+`[0-9a-f]{64}\n`), "the consent pins the version shown, and is named once")
+		Expect(r.err).To(MatchRegexp(`pre-install: scripts/setup\.sh \(hook sha256 [0-9a-f]{64}\), post-install: scripts/done\.sh \(hook sha256 [0-9a-f]{64}\); module digest sha256:[0-9a-f]{64}\n`), "each hash says what it is")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 
 		r = lola("install", mod, "-C", proj, "--dry-run")

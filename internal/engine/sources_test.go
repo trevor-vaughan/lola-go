@@ -342,6 +342,21 @@ var _ = Describe("Engine with git and archive sources", func() {
 			return "version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: " + url + "\n    ref: main\n    commit: " + v1 + "\n    digest: " + d1 + "\n"
 		}
 
+		It("labels each hash in the refusal: the hook's sha256, and the module's commit when it is a git module", func() {
+			opts := engine.Options{Targets: []string{"claude-code"}, PinRun: func(engine.TrustKinds, ...string) string { return "run" }}
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, opts)
+			Expect(err).To(MatchError(MatchRegexp(`^kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: setup\.sh \(hook sha256 [0-9a-f]{64}\); module commit ` + v1 + `$`)))
+		})
+
+		It("labels the module's digest when it is a folder module", func() {
+			folder := filepath.Join(tmp, "folder-kit")
+			writeTree(folder, map[string]string{"lola.yml": "name: fkit\nhooks: {pre-install: setup.sh}\n", "setup.sh": hook("f"), "commands/ship.md": "Ship\n"})
+			Expect(os.Chmod(filepath.Join(folder, "setup.sh"), 0o755)).To(Succeed())
+			opts := engine.Options{Targets: []string{"claude-code"}, PinRun: func(engine.TrustKinds, ...string) string { return "run" }}
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: folder}}, opts)
+			Expect(err).To(MatchError(MatchRegexp(`^fkit has a pre-install hook, and lola runs hooks only with your consent: pre-install: setup\.sh \(hook sha256 [0-9a-f]{64}\); module digest sha256:[0-9a-f]{64}$`)))
+		})
+
 		DescribeTable("names exactly the version the refused run would install, which lola info shows from the cache",
 			func(run func() error, want func() (ref, digest string), tail string) {
 				err := run()

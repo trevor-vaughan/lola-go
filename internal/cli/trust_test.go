@@ -102,8 +102,8 @@ var _ = Describe("typed --trust", func() {
 			Expect(consent()).To(BeEmpty())
 		},
 		Entry("sync: entries covered, the hook refused", 3, []string{"sync", "-C", "PROJ", "--trust"},
-			"kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: hooks/pre.sh (sha256 ",
-			[]string{"lola has not shown you this hook; see it with lola sync -C PROJ --trust=entries,profiles,hooks --at kit=sha256:DIGEST -n, then consent to it: lola sync -C PROJ --trust=entries,profiles,hooks --at kit=sha256:DIGEST"}),
+			"kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: hooks/pre.sh (hook sha256 ",
+			[]string{"lola has not shown you this hook; add -n to see it first, then consent to it: lola sync -C PROJ --trust=entries,profiles,hooks --at kit=sha256:DIGEST"}),
 		Entry("install: bare --trust grants none of its kinds", 1, []string{"install", "KIT", "-C", "PROJ", "--trust"},
 			"lola install never asks for entries or profiles trust; it takes --trust=scripts,hooks,runtime-hooks",
 			[]string{"lola install KIT --root PROJ"}),
@@ -356,7 +356,7 @@ var _ = Describe("typed --trust", func() {
 			return []string{"profile", "go", "--on", "-C", proj, "--no-pager"}
 		}, "then accept them: lola profile -C PROJ project:go --on --trust=profiles --no-pager"),
 		Entry("hooks", func() []string { pull("kit"); return []string{"sync", "-C", proj, "--trust=entries"} },
-			"lola has not shown you this hook; see it with lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST -n, then consent to it: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
+			"lola has not shown you this hook; add -n to see it first, then consent to it: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
 		Entry("entries+hooks", func() []string { pull("kit"); return []string{"sync", "-C", proj} },
 			"then accept them: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
 		Entry("remote --add", func() []string {
@@ -446,7 +446,7 @@ var _ = Describe("typed --trust", func() {
 		Expect(r.err).To(ContainSubstring("; -y confirms removals only; accept them with --trust=entries,hooks\n"))
 		r = lola("install", kit, "--user", "-t", "claude-code", "-y", "--force")
 		Expect(r.code).To(Equal(3))
-		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: hooks/pre.sh (sha256 "))
+		Expect(r.err).To(ContainSubstring("error: kit has a pre-install hook, and lola runs hooks only with your consent: pre-install: hooks/pre.sh (hook sha256 "))
 		Expect(mark).NotTo(BeAnExistingFile())
 		Expect(consent()).To(BeEmpty())
 	})
