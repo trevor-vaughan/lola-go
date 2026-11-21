@@ -1,0 +1,23 @@
+README.md
+  s_8e40a7060352db::t_43f68dfba3dd79 6-7,123-124
+docs/usage.md
+  s_8e40a7060352db::t_b9ed35f4c12fa8 560-561
+internal/cli/cmd_store.go
+  s_8e40a7060352db::t_280b7096e371bc 559-560
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "339b28808ae1cd011bcd4c8ca3ce6c0fbcbbfead",
+  "prompts": {},
+  "sessions": {
+    "s_8e40a7060352db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8afbf1e-2d96-4296-9618-529a50248a6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
