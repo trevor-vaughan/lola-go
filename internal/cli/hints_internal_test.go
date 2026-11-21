@@ -10,7 +10,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/migrate"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -130,5 +134,55 @@ var _ = Describe("a hint line", func() {
 	It("does not wrap on a line too narrow to hold the hint's lead and some text", func() {
 		h := "see them: lola sync --project -n --json --trust=entries"
 		Expect(hintLine("        ", h, 24)).To(Equal("        hint: " + h))
+	})
+})
+
+var _ = Describe("a notice line", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("wraps a warning wider than the terminal at spaces, under its first word, and keeps its hints", func() {
+		n := engine.Notice{Level: engine.LevelWarn, Text: "my-module comes from /tmp/work/my-module, outside the project: a teammate's sync will refuse it", Hints: []string{"lola sync -n"}}
+		Expect(noticeLine(style{width: 50}, n)).To(Equal("" +
+			"⚠ my-module comes from /tmp/work/my-module,\n" +
+			"  outside the project: a teammate's sync will\n" +
+			"  refuse it\n" +
+			"    hint: lola sync -n"))
+	})
+
+	It("wraps an informational notice the same way and prints one that fits, or with no width, on one line", func() {
+		n := engine.Notice{Level: engine.LevelInfo, Text: "one two three four five six seven eight"}
+		Expect(noticeLine(style{width: 30}, n)).To(Equal("→ one two three four five six\n  seven eight"))
+		Expect(noticeLine(style{width: 41}, n)).To(Equal("→ " + n.Text))
+		Expect(noticeLine(style{}, n)).To(Equal("→ " + n.Text))
+	})
+
+	It("wraps a notice that names lola in passing, which is prose and no command", func() {
+		n := engine.Notice{Level: engine.LevelWarn, Text: "git is not on PATH, so lola could not check that git does not track the files it wrote"}
+		Expect(noticeLine(style{width: 40}, n)).To(Equal("" +
+			"⚠ git is not on PATH, so lola could not\n" +
+			"  check that git does not track the\n" +
+			"  files it wrote"))
+	})
+
+	It("indents every line of a notice under lola info and lola migrate, and fits each in the width", func() {
+		text := "one two three four five six seven eight nine ten eleven twelve"
+		notice := []engine.Notice{{Level: engine.LevelWarn, Text: text}}
+		var b strings.Builder
+		printInfo(&b, style{width: 30}, &engine.Info{Install: []engine.InfoInstall{{Scope: "user", Notices: notice}}})
+		printMigration(&b, style{width: 30}, &migrate.Result{Destinations: []*migrate.DestResult{{Notices: notice}}})
+		var wrapped int
+		for line := range strings.SplitSeq(b.String(), "\n") {
+			if strings.Contains(line, "one two") || strings.Contains(line, "seven") || strings.Contains(line, "twelve") || strings.Contains(line, "nine") {
+				Expect(line).To(HavePrefix("  "))
+				Expect(ansi.StringWidth(line)).To(BeNumerically("<=", 30), line)
+				wrapped++
+			}
+		}
+		Expect(wrapped).To(BeNumerically(">=", 4), b.String())
+	})
+
+	It("never wraps a --plain row", func() {
+		n := engine.Notice{Level: engine.LevelWarn, Text: "one two three four five six seven eight"}
+		Expect(noticeLine(style{plain: true, width: 30}, n)).To(Equal("notice\twarn\t" + n.Text))
 	})
 })

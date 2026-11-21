@@ -301,9 +301,10 @@ func (e *Engine) marketSource(name, src, ref, p string, hosts []string, dry bool
 
 // unhinted is err without the advice the source, file and lock layers attach as hints: a
 // marketplace's hints are commands only, and the message still says what failed.
-// A source.AccessError keeps its hints, which are commands.
+// A source.AccessError keeps its hints, which are commands, and so does an untrusted
+// certificate's, which names the variable that fixes it.
 func unhinted(err error) error {
-	if err == nil || len(errs.Hints(err)) == 0 || errors.As(err, new(*source.AccessError)) {
+	if err == nil || len(errs.Hints(err)) == 0 || errors.As(err, new(*source.AccessError)) || errors.As(err, new(*source.UntrustedCertError)) {
 		return err
 	}
 	return errors.New(err.Error())

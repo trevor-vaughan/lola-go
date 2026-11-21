@@ -620,7 +620,7 @@ every command: Esc there stays, its key help saying `first step — q quits`.
 
 | state     | what the user sees                                                                                                                                                      | asked when                                                 |
 |-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
-| scope     | the command's question (Project (`<root>`) with its context, User (~) with its context, Other directory…), nothing ticked; `pick one` below it where one scope is taken | no `--scope`, `--user`, `--project` or `-C`, on a terminal |
+| scope     | the command's question (Project (`<root>`) with its context, User (~) with its context, Other directory…), nothing ticked; `pick one` below it where one scope is taken, which holds one tick (a second is refused until the first is unticked) and offers no `ctrl+a`; its key help lists `space/x toggle` | no `--scope`, `--user`, `--project` or `-C`, on a terminal |
 | directory | `Other directory` (a path input; `~` and `~/` are your home directory)                                                                                                  | Other directory… is ticked                                 |
 
 Project is the project with `.lola/` found at or above the current directory, else the current
@@ -1302,6 +1302,8 @@ Esc there stays; so is the ssh question when the run asked no name.
 the mapping questions (`askMappings`): where each missing root is, then which assistants stand in
 for each missing one. It plans from the answers (`migrate.NewPlan`, `internal/migrate`), fetching
 the modules' sources into the cache, shows the plan and asks `Migrate?` through `app.confirm`, then
+asks `Install them?` (a yes/no question, default No, not answered by `-y` or `--force`) when the plan marks
+components that changed upstream and `--trust=entries` is not given, then
 migrates each destination (`migrate.Migrate`), asking the
 [hook and script consent](#hook-and-script-consent) questions and the receipt
 ([Trust question](#trust-question)) as it installs.
@@ -1333,7 +1335,7 @@ stateDiagram-v2
 
   dryRun: dry run
   [*] --> root: a missing root
-  [*] --> targets: a missing assistant, one on your PATH
+  [*] --> targets: a missing assistant, one to offer
   [*] --> confirm: no mapping question
   [*] --> done: -y, nothing to migrate
   [*] --> dryRun: -n, after the mapping questions
@@ -1367,13 +1369,13 @@ mapping question was asked.
 
 ### States
 
-| state   | what the user sees                                                                                                                                                                                                 | asked when                                                                                                                                                            |
-|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| root    | `<old> not found on this machine — new root (empty skips):`, `N project path(s) of the Python lola start with it`, pre-filled with your home, or the last answer when asked again                                  | a root that missing project paths and local sources share, which `--map-root` does not map; on a terminal, without `-y` or `--json`, and under `-n` and `--force` too |
-| targets | `<old> is not installed here — install its module(s) for:` (`… has no lola target …`), `choosing none leaves them as they are`: the assistants on your PATH, every one ticked, or the last answer when asked again | an assistant the records name that this machine lacks, which `--map-target` does not map, with one on your PATH; after the roots, on the same terms                   |
-| confirm | the plan, then `Migrate?` under it, inline or in the viewer (default No)                                                                                                                                           | something to migrate, without `-y`, `--force` or `-n`, on a terminal, also under `--json`                                                                             |
-| consent | the [consent questions](#hook-and-script-consent) of what it installs                                                                                                                                              | a hook or script without your consent, after a yes                                                                                                                    |
-| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question))                                                                                                                                     | `--trust` covers something, after a yes, without `-y`                                                                                                                 |
+| state   | what the user sees                                                                                                                                                                                                                                                      | asked when                                                                                                                                                            |
+|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| root    | `<old> not found on this machine — new root (empty skips):`, `N project path(s) of the Python lola start with it`, pre-filled with your home, or the last answer when asked again                                                                                       | a root that missing project paths and local sources share, which `--map-root` does not map; on a terminal, without `-y` or `--json`, and under `-n` and `--force` too |
+| targets | `<old> is not installed here — install its module(s) for:` (`… has no lola target …`), `choosing none leaves them as they are`: the assistants on your PATH, and agents for a Cursor, Copilot or OpenClaw record, every one ticked, or the last answer when asked again | an assistant the records name that this machine lacks, which `--map-target` does not map, with one to offer; after the roots, on the same terms                       |
+| confirm | the plan, then `Migrate?` under it, inline or in the viewer (default No)                                                                                                                                                                                                | something to migrate, without `-y`, `--force` or `-n`, on a terminal, also under `--json`                                                                             |
+| consent | the [consent questions](#hook-and-script-consent) of what it installs                                                                                                                                                                                                   | a hook or script without your consent, after a yes                                                                                                                    |
+| receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question))                                                                                                                                                                                          | `--trust` covers something, after a yes, without `-y`                                                                                                                 |
 
 ### Transitions
 
@@ -1381,8 +1383,8 @@ mapping question was asked.
 |---------|--------------|----------------------------------------|-----------|-----------------------------------------------------------------------------------------------------|
 | start   | run          |                                        | confirm   | the plan on stderr first; the sources are fetched into the cache, where a No leaves them            |
 | start   | run          | a missing root                         | root      |                                                                                                     |
-| start   | run          | a missing assistant, one on your PATH  | targets   |                                                                                                     |
-| start   | run          | a missing assistant, none on your PATH | confirm   | not asked: its records are left, `… is not installed here`                                          |
+| start   | run          | a missing assistant, one to offer      | targets   | one on your PATH, or agents for a Cursor, Copilot or OpenClaw record                                |
+| start   | run          | a missing assistant, none to offer     | confirm   | not asked: its records are left, `… is not installed here`                                          |
 | start   | run          | --map-root or --map-target             | confirm   | what they map is not asked                                                                          |
 | start   | run          | -n                                     | dry run   | the mapping questions are asked, then the plan is printed; nothing written                          |
 | start   | run          | -y                                     | done      | asks nothing but consent                                                                            |
@@ -1417,7 +1419,7 @@ mapping question was asked.
 
 | exit      | when                                          | on disk                                                                                                                                                                                       | output, exit code                      |
 |-----------|-----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
-| done      | a yes, `-y`, `--force`, or nothing to migrate | each destination's modules installed with lola; the Python lola's files copied or moved into a trash run; its home moved to the trash when nothing is left in it; its marketplaces registered | the report; 0                          |
+| done      | a yes, `-y`, `--force`, or nothing to migrate | each destination's modules installed with lola; the Python lola's files copied or moved into a trash run; its home moved to the trash when nothing is left in it; its marketplaces registered | the report; 0, or 5 if any left        |
 | dry run   | `-n`                                          | nothing but the sources in the cache                                                                                                                                                          | the plan; 0                            |
 | failed    | a destination fails                           | the other destinations, migrated                                                                                                                                                              | the report, then `error: …`; 1         |
 | cancelled | No, Ctrl+C, q                                 | nothing but the sources in the cache                                                                                                                                                          | `✗ cancelled — nothing was changed`; 4 |
@@ -1802,7 +1804,7 @@ Enter alone; *invalid* is any other line a prompt refuses.
 
 | state  | what the user sees                                                                                                               | asked when                                       |
 |--------|----------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
-| pick   | the title, `Select up to N options.`, the options numbered (`[x]` before the ticked ones), and `Enter a number between 0 and N:` | a picker (huh's MultiSelect)                     |
+| pick   | the title, `Select up to N options.` (not for a pick-one picker), the options numbered (`[x]` before the ticked ones), and `Enter a number between 0 and N:` | a picker (huh's MultiSelect)                     |
 | choose | the title, the options numbered, and `Enter a number between 1 and N:`                                                           | a menu or a question with options (huh's Select) |
 | line   | the title as the prompt                                                                                                          | a text question (huh's Input)                    |
 | yesno  | the question's text, then `<question> [y/N]` and a space                                                                         | a yes or no question (`Ask`)                     |

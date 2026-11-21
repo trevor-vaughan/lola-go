@@ -541,10 +541,17 @@ func printFileFolds(w io.Writer, s style, rep report) {
 		printStepFolds(w, s, r.Steps, rep.More)
 	}
 	once := excludedOnce(r)
+	hint := ""
 	for _, m := range r.Modules {
 		if label, ok := once(m); ok {
 			printExcluded(w, s, label, m.Skipped, m.SkippedIn, m.NotInOnly, m.OnlyIn, m.Summary, r.DryRun)
 		}
+		if !rep.Sync && hint == "" { // a teammate's sync reads project.yml and the project's profiles, never your selections.yaml
+			hint = m.ShareHint
+		}
+	}
+	if hint != "" {
+		fmt.Fprintln(w, noticeLine(s, engine.Notice{Level: engine.LevelInfo, Text: hint}))
 	}
 }
 

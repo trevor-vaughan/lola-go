@@ -16,7 +16,9 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
+	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -100,7 +102,7 @@ type queued struct {
 // source as lola install takes it, the targets of the Python records it replaces, and their
 // module names. Module is the lola-go name when it is known, from the manifest. Version is
 // the cached version the plan resolved the source to, which the run installs (unset for an
-// install found already migrated).
+// install found already migrated); Changed is what of it the Python lola's copy lacks.
 type Install struct {
 	Module        string
 	PythonModules []string
@@ -110,6 +112,10 @@ type Install struct {
 	Path          string
 	Targets       []string
 	Version       *engine.VersionRef
+	// Changed lists, as kind/name, the components of Version that differ from, or are absent in,
+	// the Python lola's copy of the module, for a source that can move (source.Moving); every one
+	// when the copy is missing.
+	Changed []string
 }
 
 // Recorded is a path the Python lola wrote for a record and recorded in installed.yml:
@@ -265,7 +271,12 @@ type planned struct {
 type resolved struct {
 	ref        engine.VersionRef
 	components map[string]bool
-	err        error
+	// moving is whether the source can serve other content than it does now (source.Moving); the
+	// version's module and content directory are kept for it, to compare with the Python lola's copy.
+	moving bool
+	mod    *module.Module
+	dir    string
+	err    error
 }
 
 // plan decides each of d's records: unmappable, already migrated, or installed. The
@@ -276,6 +287,10 @@ type resolved struct {
 // would replace under a record left behind.
 func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State, opts Options) error {
 	targets := opts.Targets
+	var ids []string // the targets a module's components may name, to read the Python lola's copy
+	for _, t := range e.Targets {
+		ids = append(ids, t.ID())
+	}
 	var list []planned
 	for _, q := range d.pending {
 		list = append(list, d.mapRecord(e, st, targets, q)...)
@@ -313,6 +328,9 @@ func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State, opt
 				continue
 			}
 			pl.in.Version = &v.ref
+			if v.moving {
+				pl.in.Changed = changedComponents(v.mod, v.dir, pythonContent(filepath.Join(st.Home, "modules", pl.rec.Module), st.Sources[pl.rec.Module].ContentDirname), ids)
+			}
 		}
 		verified = append(verified, pl)
 	}
@@ -370,6 +388,19 @@ func (d *Destination) resolve(ctx context.Context, e *engine.Engine, list []plan
 		}
 		ref := ch.Versions[0]
 		v := resolved{ref: ref, components: map[string]bool{}}
+		if v.moving, err = source.Moving(ctx, source.Spec{Kind: pl.in.Kind, Location: pl.in.Source, Ref: pl.in.Ref}); err == nil && v.moving {
+			var ver store.Version
+			if ver, err = e.Store.Load(ref.Name, ref.ID); err == nil {
+				v.mod, v.dir = ver.Module, ver.ContentDir
+			}
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			out[k] = resolved{err: err}
+			continue
+		}
 		if mc := ch.Module(ref.Name); mc != nil && mc.ID == ref.ID {
 			for _, c := range mc.Components {
 				v.components[c.String()] = true
@@ -449,9 +480,13 @@ func (d *Destination) mapRecord(e *engine.Engine, st *State, targets map[string]
 	if !ok || !d.here[id] {
 		mapped, has := targets[rec.Assistant]
 		shown := untrusted.Text(rec.Assistant, untrusted.MaxName)
-		flag := "--map-target " + shown + "=<assistant>"
-		if len(d.detected) > 0 {
-			flag = errs.ShellJoin([]string{"--map-target", shown + "=" + strings.Join(d.detected, ",")})
+		flag, note := "--map-target "+shown+"=<assistant>", ""
+		suggested := suggestedTargets(e, rec.Assistant, d.detected)
+		if len(suggested) > 0 {
+			flag = errs.ShellJoin([]string{"--map-target", shown + "=" + strings.Join(suggested, ",")})
+			if slices.Contains(suggested, "agents") {
+				note = skillsOnlyNote
+			}
 		}
 		switch {
 		case has:
@@ -459,7 +494,7 @@ func (d *Destination) mapRecord(e *engine.Engine, st *State, targets map[string]
 		case !ok:
 			d.Unmappable = append(d.Unmappable, unmapped(rec, "lola-go has no target for "+shown,
 				"its files stay exactly as the Python lola wrote them; remove them by hand when you no longer need them",
-				"to install its modules for an assistant you have instead, rerun lola migrate with "+flag))
+				"to install its modules for an assistant you have instead, rerun lola migrate with "+flag+note))
 			return nil
 		default:
 			d.Unmappable = append(d.Unmappable, unmapped(rec, shown+" is not installed here",
@@ -625,6 +660,11 @@ func merge(list []Install, in Install) []Install {
 			for _, t := range in.Targets {
 				if !slices.Contains(c.Targets, t) {
 					c.Targets = append(c.Targets, t)
+				}
+			}
+			for _, ch := range in.Changed {
+				if !slices.Contains(c.Changed, ch) {
+					c.Changed = append(c.Changed, ch)
 				}
 			}
 			if c.Module == "" {

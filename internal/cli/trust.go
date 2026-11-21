@@ -76,7 +76,7 @@ func addTrustFlag(cmd *cobra.Command, t *trustFlag, command, usage string) {
 	cmd.Flags().Lookup("trust").NoOptDefVal = engine.TrustBareValue
 	shown := "=<kinds>"
 	if bare := engine.CommandTrust(command) & engine.TrustBare; bare != 0 {
-		shown = "[=" + engine.TrustBare.String() + "]"
+		shown = "[=" + bare.String() + "]"
 	}
 	_ = cmd.Flags().SetAnnotation("trust", trustShownKey, []string{shown}) // the flag was just added
 	_ = cmd.RegisterFlagCompletionFunc("trust", completeTrust(command))

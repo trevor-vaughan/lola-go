@@ -233,7 +233,8 @@ func Suggest(e *engine.Engine, st *State, opts Options) ([]RootSuggestion, []Tar
 
 // suggestTargets groups by assistant, in order, the records of recs without a problem whose
 // assistant lola has no target for, or is neither on your PATH nor set up where the record goes,
-// and which targets does not map; each with the assistants on your PATH. It does
+// and which targets does not map; each with the assistants on your PATH, and agents for an
+// assistant whose skills it holds (suggestedTargets). It does
 // not check that the record's source can be installed. mapped names each assistant of targets
 // that such a record has.
 func suggestTargets(e *engine.Engine, recs []Record, targets map[string][]string) (out []TargetSuggestion, mapped map[string]bool) {
@@ -258,12 +259,30 @@ func suggestTargets(e *engine.Engine, recs []Record, targets map[string][]string
 		n, ok := at[rec.Assistant]
 		if !ok {
 			n, at[rec.Assistant] = len(out), len(out)
-			out = append(out, TargetSuggestion{Old: rec.Assistant, Detected: slices.Clone(detected)})
+			out = append(out, TargetSuggestion{Old: rec.Assistant, Detected: suggestedTargets(e, rec.Assistant, detected)})
 		}
 		out[n].Records = append(out[n].Records, rec)
 	}
 	slices.SortFunc(out, func(a, b TargetSuggestion) int { return strings.Compare(a.Old, b.Old) })
 	return out, mapped
+}
+
+// skillsOnlyAssistants are the Python lola's assistants whose skills the agents target can hold: it
+// takes skills only, so a record's commands and agents are skipped.
+var skillsOnlyAssistants = []string{"cursor", "copilot-cli", "copilot-vscode", "openclaw"}
+
+// skillsOnlyNote tells a hint that offers the agents target what it leaves out.
+const skillsOnlyNote = ". agents takes skills only: the record's commands and agents are skipped"
+
+// suggestedTargets are the targets a hint maps assistant's records to: those on your PATH
+// (detected) and, for an assistant whose skills the agents target holds, agents.
+func suggestedTargets(e *engine.Engine, assistant string, detected []string) []string {
+	out := slices.Clone(detected)
+	if slices.Contains(skillsOnlyAssistants, assistant) && !slices.Contains(out, "agents") &&
+		slices.ContainsFunc(e.Targets, func(t target.Target) bool { return t.ID() == "agents" }) {
+		out = append(out, "agents")
+	}
+	return out
 }
 
 // installedHere is, by target, whether its assistant is on your PATH or set up at sc (its
@@ -333,6 +352,11 @@ func ParseRootMaps(args []string) ([]RootMap, error) {
 		trimmed := strings.TrimRight(old, `/\`)
 		if movesEverything(trimmed) {
 			return nil, fmt.Errorf("--map-root %q would move every path: name the directory the Python lola's project paths start with, such as /Users/alice", shown)
+		}
+		if slices.ContainsFunc(out, func(m RootMap) bool { return m.Old == trimmed }) {
+			name := untrusted.Text(trimmed, untrusted.MaxName)
+			return nil, fmt.Errorf("--map-root names %s twice: give it once, with where it is on this machine after =, such as --map-root %s=%s",
+				name, name, untrusted.Text(filepath.Clean(to), untrusted.MaxName))
 		}
 		out = append(out, RootMap{Old: trimmed, New: filepath.Clean(to)})
 	}

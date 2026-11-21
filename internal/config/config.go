@@ -88,6 +88,16 @@ func ParseAge(s string) (Age, bool) {
 	return Age{N: n, Weeks: unit == "w"}, true
 }
 
+// AgeBelowMinimum reports whether s is zero days or weeks, which ParseAge refuses, and the least age
+// in that unit ("1d", "1w"): a refusal says that, since zero is a whole number.
+func AgeBelowMinimum(s string) (least string, ok bool) {
+	num, unit := s[:max(len(s)-1, 0)], s[max(len(s)-1, 0):]
+	if unit != "d" && unit != "w" || num == "" || strings.Trim(num, "0") != "" {
+		return "", false
+	}
+	return "1" + unit, true
+}
+
 // Covers reports whether a version unused for days whole days is unused for at least a; never
 // for none or never.
 func (a Age) Covers(days int) bool {
@@ -218,6 +228,9 @@ func (d doc) age(n *yaml.Node, at string, dst *Age) error {
 		return d.fail(n, at, "must be an age, not "+kindName(n)+"; "+AgeForms)
 	}
 	age, ok := ParseAge(n.Value)
+	if least, zero := AgeBelowMinimum(n.Value); zero {
+		return d.fail(n, at, fmt.Sprintf("%q must be at least %s; %s", untrusted.Text(n.Value, untrusted.MaxName), least, AgeForms))
+	}
 	if !ok {
 		return d.fail(n, at, fmt.Sprintf("%q is not an age; %s", untrusted.Text(n.Value, untrusted.MaxName), AgeForms))
 	}

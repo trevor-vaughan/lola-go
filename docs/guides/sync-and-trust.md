@@ -467,7 +467,7 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
     has not yet consented to, even when it installs nothing, so a pulled `project.yml` that adds one, or
     a pulled edit of the script, asks before anything runs it.
   - Off a terminal an untrusted `pre_install` refuses: `lola sync needs your trust for the
-    pre-install script ci/check.sh (sha256 <digest>) of this project (new), and there is no terminal to ask on`,
+    pre-install script ci/check.sh (script sha256 <digest>) of this project (new), and there is no terminal to ask on`,
     hinting `lola info` of a module it installs, then your run with `--trust=scripts`.
   - An untrusted `post_install` is skipped with a warning and stays pending on the modules it
     would have wrapped; `lola sync <module> --trust=scripts` runs it alone in their copies.

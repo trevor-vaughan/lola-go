@@ -606,7 +606,7 @@ func (e *Engine) refuseScript(sc Scope, s installScript, jobs []*hookJob, copies
 	// names it but does not show it, so it records nothing.
 	unseen := opts.Trust.Covers(TrustScripts) && !held
 	declined := false
-	msg := fmt.Sprintf("%s needs your trust for the %s script %s (sha256 %s) of this project (%s), ", run, s.event, s.shown, s.sha256, change)
+	msg := fmt.Sprintf("%s needs your trust for the %s script %s (script sha256 %s) of this project (%s), ", run, s.event, s.shown, s.sha256, change)
 	switch {
 	case unseen:
 		msg += "and lola had not shown it to you"

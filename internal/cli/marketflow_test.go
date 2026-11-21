@@ -114,6 +114,13 @@ var _ = Describe("installing from marketplaces on and off a terminal", func() {
 			"  hint: lola install @acme/formatter --scope project --target claude-code\n"))
 	})
 
+	It("says an entry the marketplace does not list before it asks which assistant to install for", func() {
+		r := lola("install", "@acme/nope", "-y", "--scope", "project")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: marketplace acme lists no nope"))
+		Expect(r.err).NotTo(ContainSubstring("assistant"))
+	})
+
 	It("offers each marketplace as a group after the cache, and installs a pick with where it came from", func() {
 		p := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("@acme/linter")}, review: []string{cli.ReviewApply}}
 		r := lolaP(p, "install", "--scope", "project", "-t", "claude-code")

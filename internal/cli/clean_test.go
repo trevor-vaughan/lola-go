@@ -67,6 +67,7 @@ var _ = Describe("lola cache clean", func() {
 			Expect(r.err).To(Equal("error: " + strings.Replace(want, "PATH", p.Config, 1) + "; write a whole number of days or weeks, such as 30d or 2w, or never\n"))
 		},
 		Entry("flag", "", []string{"--unused-for", "3x"}, `--unused-for "3x" is not an age`),
+		Entry("flag, zero", "", []string{"--unused-for", "0d"}, `--unused-for "0d" must be at least 1d`),
 		Entry("flag given empty, which never falls back to config.yaml's age", "version: 1\ncache_unused_for: 1d\n", []string{"--unused-for="},
 			`--unused-for "" is not an age`),
 		Entry("config.yaml, with its line", "version: 1\npager: true\ncache_unused_for: 3x\n", nil,

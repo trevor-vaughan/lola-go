@@ -45,6 +45,9 @@ func (a *app) trashCmd() *cobra.Command {
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: a.completeTrash,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := coachTrashVerb(cmd, args); err != nil {
+				return err
+			}
 			act, err := trashAction(cmd, args)
 			if err != nil {
 				return err
@@ -94,6 +97,34 @@ func (a *app) trashCmd() *cobra.Command {
 	// Aliases for muscle memory; additive and stable. The published table is pinned in store_test.go.
 	aliasFlags(cmd, map[string][]string{"restore": {"undo", "recover"}, "empty": {"purge", "clear"}})
 	return cmd
+}
+
+// coachTrashVerb refuses lola trash restore and lola trash empty, which read as verbs: the action
+// is a flag. Its hint is the run that works, with the flags it takes; with no run named, the
+// listing, since --empty alone would delete every run.
+func coachTrashVerb(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 || !slices.Contains(trashActions, args[0]) {
+		return nil
+	}
+	verb, runs := args[0], args[1:]
+	err := fmt.Errorf("%s is not a lola trash verb: the action is a flag: lola trash <run> --%s", verb, verb)
+	if len(runs) == 0 && verb == "empty" && cmd.Flags().Changed("older-than") {
+		// --older-than bounds what --empty deletes, so the run that keeps it never deletes every run.
+		return errs.WithHints(err, runWithout(cmd, nil, "restore", "empty", "force", "yes")+" --empty")
+	}
+	if len(runs) == 0 {
+		return errs.WithHints(err, "see the runs: "+runWithout(cmd, nil, "restore", "empty", "force", "yes", "older-than", "dry-run"))
+	}
+	// The action flags go, and the flags the other action takes alone, which the run would refuse.
+	drop := slices.Clone(trashActions)
+	for _, other := range trashActions {
+		for _, f := range trashFlags[other] {
+			if !slices.Contains(trashFlags[verb], f) {
+				drop = append(drop, f)
+			}
+		}
+	}
+	return errs.WithHints(err, runWithout(cmd, runs, drop...)+" --"+verb)
 }
 
 // trashAction is the run's action ("" to list or show), refusing two actions and a flag the action

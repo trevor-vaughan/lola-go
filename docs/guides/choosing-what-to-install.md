@@ -343,6 +343,16 @@ When that empties an `only:` list, the module installs every component again, an
 so: `<module>: only: in <section> is now empty, so <module> installs all its N components → lola
 install … <module> --only <selector>`.
 
+When the picks leave a module no component, the install asks `Install <module> with no components?`
+as the component page does; No changes nothing (exit 4). Off a terminal it is refused (exit 3)
+with your run plus `-y`, which answers yes; `--force` does not, and `-n` asks nothing.
+
+After a project install saves picks to `selections.yaml`, the run adds one line saying they are
+yours alone. When the project has exactly one project profile, the line is the working command that
+moves the module into it (`lola profile --move <module> --to project:<profile>`, with your scope
+flags); otherwise it names `<project>/.lola/profiles`, where a project profile is a file you write,
+and the `lola profile` run that lists the profiles you can use.
+
 All three repeat, and always save (except under `--dry-run`), saying
 `→ saved to <path>`: to the profile entry the install writes when a profile provides the module
 (`only:` and `skip:` of the entry; the global `skip:` of `selections.yaml` still applies, its
@@ -575,7 +585,9 @@ Every answer has a flag, so scripts and CI never need a terminal. Off one (or wi
 lola never asks; a missing answer is an error whose hint names the flag: no module →
 `lola install <source|name>`; no scope → your run with each scope flag (see [Choosing a
 scope](#choosing-a-scope)); no assistant found, or none of your installed ones set up here → your
-run with `-t` and each assistant (every one lola knows, or the installed ones). Copy the
+run with `-t` and each assistant (every one lola knows, or the installed ones); an `@market/entry`
+the marketplace does not list is said first; picks that skip every component of a module → your
+run with `-y`. Copy the
 equivalent commands from an interactive run to repeat it.
 
 ## Install scripts

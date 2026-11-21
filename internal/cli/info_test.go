@@ -87,6 +87,65 @@ var _ = Describe("lola info", func() {
 		Expect(r.out).NotTo(ContainSubstring("\x1b"))
 	})
 
+	It("info of an installed module lists the MCP servers it runs and says they are installed", func() {
+		r := lola("install", kit, "-C", proj, "-t", "claude-code", "--trust=hooks,runtime-hooks", "--unseen")
+		Expect(r.code).To(Equal(0), r.err)
+		r = lola("info", "kit", "-C", proj, "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("  MCP server tools, already installed, run by claude-code, runs: tools-mcp --stdio\n"))
+		Expect(r.out).NotTo(ContainSubstring("runs code: nothing"))
+		r = lola("info", "kit", "-C", proj, "-t", "claude-code", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var doc struct {
+			Runs struct {
+				MCPServers []map[string]any `json:"mcp_servers"`
+			} `json:"runs"`
+		}
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
+		Expect(doc.Runs.MCPServers).To(Equal([]map[string]any{{"name": "tools", "target": "claude-code", "command": "tools-mcp",
+			"args": []any{"--stdio"}, "url": "", "installed": true}}))
+	})
+
+	It("info of an installed module whose cache entry was cleaned names the recorded source and hints lola cache add", func() {
+		Expect(lola("install", kit, "-C", proj, "-t", "claude-code", "--trust=hooks,runtime-hooks", "--unseen").code).To(Equal(0))
+		Expect(lola("cache", "clean", "--all", "-y").code).To(Equal(0))
+		r := lola("info", "kit", "-C", proj, "-t", "claude-code", "--plain")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal(`error: "kit" is installed in this scope from ` + kit + ` but your cache no longer holds it` + "\n" +
+			"  hint: lola cache add " + kit + " --plain\n"))
+		Expect(runHint("lola cache add " + kit).code).To(Equal(0))
+		Expect(lola("info", "kit", "-C", proj, "-t", "claude-code").code).To(Equal(0))
+	})
+
+	It("info of a name no cache holds says why a scope's records could not be read, beside the refusal", func() {
+		Expect(lola("install", kit, "-C", proj, "-t", "claude-code", "--trust=hooks,runtime-hooks", "--unseen").code).To(Equal(0))
+		Expect(lola("cache", "clean", "--all", "-y").code).To(Equal(0))
+		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte("modules: [unclosed\n"), 0o600)).To(Succeed())
+		r := lola("info", "kit", "-C", proj, "-t", "claude-code", "--plain")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(`"kit" is neither a module in your cache nor a source`))
+		Expect(r.err).To(ContainSubstring("project.yml"), "the scope's unreadable record is named")
+		Expect(strings.Count(r.err, "hint: cached modules: lola cache list --plain")).To(Equal(1))
+	})
+
+	It("info of an unknown name with a corrupt project manifest says the name may be recorded in a scope lola could not read", func() {
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o700)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte("modules: [unclosed\n"), 0o600)).To(Succeed())
+		r := lola("info", "nosuchmod", "-C", proj, "-t", "claude-code", "--plain")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(`"nosuchmod" is neither a module in your cache nor a source`))
+		Expect(r.err).To(ContainSubstring("it may be recorded in a scope lola could not read"))
+		Expect(r.err).To(ContainSubstring("project.yml"), "the underlying read error is named")
+		Expect(r.err).NotTo(ContainSubstring("\x1b"))
+	})
+
+	It("info of an unknown name with every scope readable does not claim a scope could not be read", func() {
+		r := lola("info", "nosuchmod", "-C", proj, "-t", "claude-code", "--plain")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(`"nosuchmod" is neither a module in your cache nor a source`))
+		Expect(r.err).NotTo(ContainSubstring("could not read"))
+	})
+
 	It("info's hint installs with exactly the kinds needed and keeps the run's flags", func() {
 		r := lola("info", kit, "-C", proj, "-t", "claude-code", "--json")
 		Expect(r.code).To(Equal(0), r.err)

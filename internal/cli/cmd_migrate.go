@@ -36,9 +36,11 @@ func (a *app) migrateCmd() *cobra.Command {
 			"last. From another machine, --map-root and --map-target say where its projects and\n" +
 			"assistants are now.\n" +
 			"\n" +
-			"lola migrate shows the plan and asks (default No); off a terminal it needs -y. Hook consent is\n" +
-			"asked on a terminal; --trust=<kinds> answers it. --force also overwrites other files in the way\n" +
-			"and moves files git tracks; it answers the question as -y does, never hook consent.",
+			"lola migrate shows the plan and asks (default No); off a terminal it needs -y. A branch or\n" +
+			"unpinned source installs at its current head: what changed there since the Python lola installed\n" +
+			"it is marked in the plan, and installed only on a yes on a terminal or with --trust=entries. Hook\n" +
+			"consent is asked on a terminal; --trust=<kinds> answers it. --force also overwrites other files in\n" +
+			"the way and moves files git tracks; it answers the question as -y does, never consent.",
 		Example: "  lola migrate --dry-run\n  lola migrate\n  lola migrate -y --keep-python\n" +
 			"  lola migrate --map-root /Users/alice=/home/alice --map-target claude-code=opencode",
 		GroupID: groupAdditional,
@@ -80,7 +82,7 @@ func (a *app) migrateCmd() *cobra.Command {
 			flags := opts // as the flags map, before any answer
 			var mapped mapAnswers
 			var p *migrate.Plan
-			var remap string
+			var remap, changed string // changed: what the plan installs that changed upstream, one per line
 			for back := false; ; back = true {
 				opts = flags
 				var answered int // the mapping questions answered, which q at Migrate? asks before dropping
@@ -99,17 +101,24 @@ func (a *app) migrateCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				changed = changedUpstream(preview)
 				opts.Progress = nil // the run's questions and hooks draw on the same line
 				preview.Remap = remap
 				if dry || preview.Nothing {
-					return a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, preview)
+					if err := a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, migrationDocument(preview)); err != nil {
+						return err
+					}
+					if !dry && leavesRecords(preview) {
+						return errLeftRecords
+					}
+					return nil
 				}
 				// --force answers the question, as -y does; never the hooks' consent.
 				if yes || force {
 					break
 				}
 				show := func(w io.Writer, s style) { printMigration(w, s, preview) }
-				err = a.confirm(cmd, nil, "Migrate?", Nav{Back: answered > 0, Answered: answered}, preview, show)
+				err = a.confirm(cmd, nil, "Migrate?", Nav{Back: answered > 0, Answered: answered}, migrationDocument(preview), show)
 				if errors.Is(err, ErrBack) {
 					continue // the last mapping question again, every answer kept
 				}
@@ -118,16 +127,37 @@ func (a *app) migrateCmd() *cobra.Command {
 				}
 				break
 			}
+			if changed != "" && !kinds.Covers(engine.TrustEntries) && !yes && pr.Interactive() {
+				// -y and --force never answer this: only --trust=entries or a yes here does.
+				show := func(w io.Writer, _ style) {
+					fmt.Fprint(w, "These changed upstream since you installed them, or the Python lola never had them:\n"+changed)
+				}
+				ok, err := askYes(pr, Question{Show: show, Prompt: "Install them?", Trust: engine.TrustEntries})
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return ErrAborted
+				}
+				opts.AcceptChanged = true
+			}
 			opts.DryRun = false
 			opts.Receipt, opts.Rerun = a.receipt(cmd, kinds, yes), trustRun(cmd, nil) // --force never answers consent
 			a.hookOptions(cmd, &opts.Options)
 			res, err := migrate.Migrate(cmd.Context(), eng, p, opts)
+			if ce, ok := errors.AsType[*migrate.ChangedError](err); ok {
+				return errs.WithHints(ce, "see what changed: "+fixedRun(cmd, nil, 0, "dry-run", "yes")+" -n",
+					"migrate it, trusting what changed: "+fixedRun(cmd, nil, kinds|engine.TrustEntries))
+			}
 			if res == nil {
 				return err
 			}
 			res.Remap = remap
-			if emitErr := a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, res) }, res); emitErr != nil {
+			if emitErr := a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, res) }, migrationDocument(res)); emitErr != nil {
 				return emitErr
+			}
+			if err == nil && leavesRecords(res) {
+				return errLeftRecords
 			}
 			return err
 		},
@@ -136,13 +166,27 @@ func (a *app) migrateCmd() *cobra.Command {
 	f.BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	f.BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	f.BoolVar(&force, "force", false, "replace files in the way, move git-tracked ones (trashed); never answers consent")
-	addTrustFlag(cmd, &trust, "migrate", "trust without asking: scripts, hooks, runtime-hooks, all")
+	addTrustFlag(cmd, &trust, "migrate", "trust without asking: entries, scripts, hooks, runtime-hooks, all")
 	f.BoolVar(&keep, "keep-python", false, "install and replace with backup, but move nothing else to the trash")
 	f.StringArrayVar(&mapRoots, "map-root", nil, "find missing paths below OLD at the same place below NEW (OLD=NEW; repeatable)")
 	f.StringArrayVar(&mapTargets, "map-target", nil, "install OLD's modules for NEW instead: OLD=NEW[,NEW] (repeatable)")
 	_ = cmd.RegisterFlagCompletionFunc("map-root", cobra.NoFileCompletions)
 	_ = cmd.RegisterFlagCompletionFunc("map-target", cobra.NoFileCompletions)
 	return cmd
+}
+
+// changedUpstream lists what r's installs bring that changed upstream since the Python lola
+// installed it (migrate.Install.Changed), one "  module kind/name" line each; "" for none.
+func changedUpstream(r *migrate.Result) string {
+	var b strings.Builder
+	for _, d := range r.Destinations {
+		for _, in := range d.Installs {
+			for _, c := range in.ChangedUpstream {
+				fmt.Fprintf(&b, "  %s %s\n", strings.Join(in.PythonModules, ","), c)
+			}
+		}
+	}
+	return b.String()
 }
 
 // mapAnswers are askMappings' answers, kept from one run of it to the next: the roots it asks
@@ -301,13 +345,28 @@ func destColumn(d *migrate.DestResult) string {
 	return d.Root
 }
 
-// leavesRecords reports whether r, a run with nothing to install, still has records or files to
-// report as left as they are.
+// errLeftRecords ends a run that finished with records left as they are: Execute maps it to
+// exitPartial and prints nothing, the report having said what stays.
+var errLeftRecords = errors.New("records left as they are")
+
+// migrationDocument is r as --json prints it: its top-level unmappable and not_migrated list every
+// left record, those nested in a destination too, which keep their own copy. Human and --plain
+// output print r itself, each record once under its destination.
+func migrationDocument(r *migrate.Result) *migrate.Result {
+	doc := *r
+	doc.Unmappable = append([]migrate.Unmapped{}, r.Unmappable...)
+	doc.NotMigrated = append([]migrate.Item{}, r.NotMigrated...)
+	for _, d := range r.Destinations {
+		doc.Unmappable = append(doc.Unmappable, d.Unmappable...)
+		doc.NotMigrated = append(doc.NotMigrated, d.NotMigrated...)
+	}
+	return &doc
+}
+
+// leavesRecords reports whether r has records lola-go cannot migrate, which stay in the Python
+// lola's installed.yml. Files of a migrated record that stay (r.NotMigrated) do not count.
 func leavesRecords(r *migrate.Result) bool {
-	return r.Summary.Left > 0 || len(r.Unmappable) > 0 || len(r.NotMigrated) > 0 ||
-		slices.ContainsFunc(r.Destinations, func(d *migrate.DestResult) bool {
-			return len(d.Unmappable) > 0 || len(d.NotMigrated) > 0
-		})
+	return r.Summary.Left > 0
 }
 
 // printMigration renders a migration: per destination what is installed, replaced, moved,
@@ -340,11 +399,15 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 				line = "install " + line
 			}
 			fmt.Fprintln(w, "  "+line)
+			for _, c := range in.ChangedUpstream {
+				fmt.Fprintln(w, "    "+s.warn(c+" changed upstream since you installed it"))
+			}
 		}
 		for _, st := range d.Steps {
 			fmt.Fprintln(w, "    "+stepLine(s, st))
 		}
 		printMigrationRuns(w, s, d)
+		printMCPServers(w, d.Modules, nil)
 		for _, m := range d.Replaced {
 			where := "the trash"
 			if m.Trash != "" {
@@ -371,8 +434,10 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 				fmt.Fprintln(w, "  "+line)
 			}
 		}
+		inner := s // each line is indented two more: so is the width its notices wrap to
+		inner.width = max(s.width-2, 0)
 		for _, n := range d.Notices {
-			fmt.Fprintln(w, "  "+noticeLine(s, n))
+			fmt.Fprintln(w, "  "+strings.ReplaceAll(noticeLine(inner, n), "\n", "\n  "))
 		}
 		switch d.Status {
 		case migrate.StatusMigrated:
@@ -588,6 +653,9 @@ func printMigrationPlain(w io.Writer, s style, r *migrate.Result) {
 				kind = "already-migrated"
 			}
 			row(kind, at, in.Module, strings.Join(in.Targets, ","), in.Source)
+			for _, c := range in.ChangedUpstream {
+				row("changed-upstream", at, in.Module, c)
+			}
 		}
 		for _, st := range d.Steps {
 			row("step", at, stepLine(style{plain: true}, st))

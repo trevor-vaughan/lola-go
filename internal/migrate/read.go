@@ -77,7 +77,8 @@ const homeHint = "lola reads the Python lola's state from $LOLA_HOME, else ~/.lo
 
 // Home is the Python lola's home: $LOLA_HOME when it is set, else ~/.lola. An empty
 // $LOLA_HOME counts as unset; a relative one is refused, since lola cannot know which
-// directory the Python lola resolved it against.
+// directory the Python lola resolved it against, and so is one that does not exist: a typo is
+// not the absence of a Python lola.
 func Home(getenv func(string) string, userHome string) (string, error) {
 	h := getenv("LOLA_HOME")
 	switch {
@@ -86,6 +87,10 @@ func Home(getenv func(string) string, userHome string) (string, error) {
 	case !filepath.IsAbs(h):
 		return "", errs.WithHints(fmt.Errorf("LOLA_HOME must be an absolute path, not %q", untrusted.Text(h, untrusted.MaxName)),
 			"set LOLA_HOME to the absolute path of the Python lola's home, or unset it to use ~/.lola")
+	}
+	if _, err := os.Stat(h); errors.Is(err, fs.ErrNotExist) {
+		return "", errs.WithHints(fmt.Errorf("LOLA_HOME=%s does not exist", untrusted.Text(h, untrusted.MaxName)),
+			"unset LOLA_HOME to use ~/.lola, or set it to the Python lola's home")
 	}
 	return filepath.Clean(h), nil
 }

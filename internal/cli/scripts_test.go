@@ -58,10 +58,9 @@ var _ = Describe("install scripts off a terminal", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\npre_install: ci/check.sh\n", "ci/check.sh": "#!/bin/sh\nexit 0\n"})
 		r := lola("install", mod, "-C", proj, "-t", "claude-code", "--json")
 		Expect(r.code).To(Equal(3))
-		Expect(r.err).To(MatchRegexp(`^`+regexp.QuoteMeta(`{`+projectWriteContextJSON(proj)+`"error":"lola install needs your trust for the pre-install script ci/check.sh (sha256 `)+`[0-9a-f]{64}`+regexp.QuoteMeta(`) of this project (new), and there is no terminal to ask on",`+
+		Expect(r.err).To(MatchRegexp(`^`+regexp.QuoteMeta(`{`+projectWriteContextJSON(proj)+`"error":"lola install needs your trust for the pre-install script ci/check.sh (script sha256 `)+`[0-9a-f]{64}`+regexp.QuoteMeta(`) of this project (new), and there is no terminal to ask on",`+
 			`"hints":["review it: lola info -C `+proj+` `+mod+` --target claude-code --json",`+
-			`"lola has not shown you this script; see it with lola install `+mod+` --json --root `+proj+` --target claude-code --trust=scripts --at example=sha256:`)+
-			`[0-9a-f]{64}`+regexp.QuoteMeta(` -n, then consent to it: lola install `+mod+` --json --root `+proj+` --target claude-code --trust=scripts --at example=sha256:`)+
+			`"lola has not shown you this script; add -n to see it first, then consent to it: lola install `+mod+` --json --root `+proj+` --target claude-code --trust=scripts --at example=sha256:`)+
 			`[0-9a-f]{64}",`+regexp.QuoteMeta(`"or add --unseen to consent without seeing it: `)+`[^"]* --unseen"\]\}\n$`),
 			"the consent pins the version shown")
 
