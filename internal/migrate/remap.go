@@ -233,7 +233,8 @@ func Suggest(e *engine.Engine, st *State, opts Options) ([]RootSuggestion, []Tar
 
 // suggestTargets groups by assistant, in order, the records of recs without a problem whose
 // assistant lola has no target for, or is neither on your PATH nor set up where the record goes,
-// and which targets does not map; each with the assistants on your PATH. It does
+// and which targets does not map; each with the assistants on your PATH, and agents for an
+// assistant whose skills it holds (suggestedTargets). It does
 // not check that the record's source can be installed. mapped names each assistant of targets
 // that such a record has.
 func suggestTargets(e *engine.Engine, recs []Record, targets map[string][]string) (out []TargetSuggestion, mapped map[string]bool) {
@@ -258,7 +259,7 @@ func suggestTargets(e *engine.Engine, recs []Record, targets map[string][]string
 		n, ok := at[rec.Assistant]
 		if !ok {
 			n, at[rec.Assistant] = len(out), len(out)
-			out = append(out, TargetSuggestion{Old: rec.Assistant, Detected: slices.Clone(detected)})
+			out = append(out, TargetSuggestion{Old: rec.Assistant, Detected: suggestedTargets(e, rec.Assistant, detected)})
 		}
 		out[n].Records = append(out[n].Records, rec)
 	}
@@ -271,7 +272,7 @@ func suggestTargets(e *engine.Engine, recs []Record, targets map[string][]string
 var skillsOnlyAssistants = []string{"cursor", "copilot-cli", "copilot-vscode", "openclaw"}
 
 // skillsOnlyNote tells a hint that offers the agents target what it leaves out.
-const skillsOnlyNote = " (agents takes skills only: the record's commands and agents are skipped)"
+const skillsOnlyNote = ". agents takes skills only: the record's commands and agents are skipped"
 
 // suggestedTargets are the targets a hint maps assistant's records to: those on your PATH
 // (detected) and, for an assistant whose skills the agents target holds, agents.

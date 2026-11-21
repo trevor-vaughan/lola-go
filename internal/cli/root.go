@@ -298,9 +298,10 @@ func StartupError(w io.Writer, err error, args []string) int {
 
 // Execute runs root and maps the outcome to an exit code: 0 on success, 3 on a refusal that
 // needs the user's answer (errs.ErrNeedsAnswer; printed per the output contract), 4 on a declined
-// or cancelled prompt, 5 on a run that finished with records left (errLeftRecords; printed nothing), 1 on any other error (printed likewise), and 128 plus the signal's number on
-// an error after a signal cancelled root's context (NotifyContext), printing nothing but the
-// error of an update that wrote profiles it did not apply.
+// or cancelled prompt, 5 on a run that finished with records left (errLeftRecords; nothing more
+// is printed), 1 on any other error (printed likewise), and 128 plus the signal's number on an
+// error after a signal cancelled root's context (NotifyContext), printing nothing but the error
+// of an update that wrote profiles it did not apply.
 func Execute(root *cobra.Command) int {
 	err := root.Execute()
 	// "json" is registered on the root by NewRootCmd, so GetBool only fails if that registration

@@ -334,7 +334,7 @@ var _ = Describe("migrate paths", func() {
 		Expect(read(filepath.Join(moved, ".claude/commands/ship.md"))).To(Equal("python ship\n"))
 	})
 
-	It("migrate: start --run (a missing assistant, one on your PATH)--> targets", func() {
+	It("migrate: start --run (a missing assistant, one to offer)--> targets", func() {
 		fakeAssistant(tmp, "opencode", "1.0.0")
 		userRecords("claude-code")
 		p := &scripted{mapTargets: [][]string{{cancelRun}}}
@@ -346,7 +346,16 @@ var _ = Describe("migrate paths", func() {
 		Expect(home).To(BeADirectory())
 	})
 
-	It("migrate: start --run (a missing assistant, none on your PATH)--> confirm", func() {
+	It("offers agents for a Cursor record when no assistant is on your PATH", func() {
+		userRecords("cursor")
+		p := &scripted{mapTargets: [][]string{{cancelRun}}}
+		r := lolaP(p, "migrate")
+		Expect(r.code).To(Equal(4), r.err)
+		Expect(p.calls).To(Equal([]string{"migrate-targets:cursor"}))
+		Expect(p.mapTargetSteps[0]).To(Equal(cli.MigrateTargetStep{Old: "cursor", Supported: false, Modules: 1, Options: []string{"agents"}}))
+	})
+
+	It("migrate: start --run (a missing assistant, none to offer)--> confirm", func() {
 		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n" +
 			"- {module: review, assistant: claude-code, scope: project, project_path: " + proj + ", commands: [ship]}\n" +
 			"- {module: review, assistant: claude-code, scope: user, commands: [ship]}\n"})
@@ -412,7 +421,7 @@ var _ = Describe("migrate paths", func() {
 	})
 
 	It("migrate: start --run (nothing to migrate)--> done", func() {
-		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n- {module: review, assistant: cursor, scope: user}\n"})
+		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n- {module: review, assistant: claude-code, scope: user}\n"})
 		p := &scripted{}
 		r := lolaP(p, "migrate")
 		Expect(r.code).To(Equal(5), r.err)

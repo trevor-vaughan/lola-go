@@ -480,12 +480,12 @@ func (d *Destination) mapRecord(e *engine.Engine, st *State, targets map[string]
 	if !ok || !d.here[id] {
 		mapped, has := targets[rec.Assistant]
 		shown := untrusted.Text(rec.Assistant, untrusted.MaxName)
-		flag := "--map-target " + shown + "=<assistant>"
+		flag, note := "--map-target "+shown+"=<assistant>", ""
 		suggested := suggestedTargets(e, rec.Assistant, d.detected)
 		if len(suggested) > 0 {
 			flag = errs.ShellJoin([]string{"--map-target", shown + "=" + strings.Join(suggested, ",")})
 			if slices.Contains(suggested, "agents") {
-				flag += skillsOnlyNote
+				note = skillsOnlyNote
 			}
 		}
 		switch {
@@ -494,7 +494,7 @@ func (d *Destination) mapRecord(e *engine.Engine, st *State, targets map[string]
 		case !ok:
 			d.Unmappable = append(d.Unmappable, unmapped(rec, "lola-go has no target for "+shown,
 				"its files stay exactly as the Python lola wrote them; remove them by hand when you no longer need them",
-				"to install its modules for an assistant you have instead, rerun lola migrate with "+flag))
+				"to install its modules for an assistant you have instead, rerun lola migrate with "+flag+note))
 			return nil
 		default:
 			d.Unmappable = append(d.Unmappable, unmapped(rec, shown+" is not installed here",
