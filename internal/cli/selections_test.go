@@ -102,6 +102,40 @@ var _ = Describe("selections.yaml in list, check and sync", func() {
 		Expect(r.out).NotTo(ContainSubstring("skipped in"), "default's entry picks are not the project's")
 	})
 
+	It("says once that a project install's picks are yours alone, and names the profile file when the project has none", func() {
+		r := lola("install", mod, "-C", proj, "--skip", "command/test")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(strings.Count(r.out, "these picks are yours alone")).To(Equal(1))
+		Expect(r.out).To(ContainSubstring("→ these picks are yours alone; to share them, put the module in a project profile, a file in " +
+			filepath.Join(proj, ".lola", "profiles") + "; the profiles you can use: lola profile "))
+		Expect(r.out).NotTo(ContainSubstring("<"), "no placeholder in a hint")
+	})
+
+	It("names the move into the project's one profile, and the listing when it has several", func() {
+		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\nmodules: []\n"})
+		r := lola("install", mod, "-C", proj, "--skip", "command/test")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(MatchRegexp(`→ these picks are yours alone; to share them, move the module into the project's profile: lola profile .*--move example --to project:team\n`))
+		Expect(r.out).NotTo(ContainSubstring("<"))
+
+		writeTree(proj, map[string]string{".lola/profiles/docs.yml": "version: 1\nmodules: []\n"})
+		r = lola("install", mod, "-C", proj, "--skip", "command/test")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("put the module in a project profile"))
+	})
+
+	It("says nothing of sharing at user scope or when nothing is skipped", func() {
+		r := lola("install", mod, "--user", "-t", "claude-code", "--skip", "command/test")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).NotTo(ContainSubstring("yours alone"), "user scope has no teammates to share with")
+
+		other := filepath.Join(tmp, "plain")
+		writeTree(other, map[string]string{"commands/a.md": "A\n"})
+		r = lola("install", other, "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).NotTo(ContainSubstring("yours alone"), "nothing was skipped")
+	})
+
 	It("reports an invalid selections.yaml with its key path and a hint", func() {
 		Expect(os.WriteFile(selections, []byte("version: 1\nglobal: [x]\n"), 0o600)).To(Succeed())
 		r := lola("ls", "-C", proj)

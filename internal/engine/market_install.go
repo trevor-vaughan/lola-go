@@ -71,6 +71,18 @@ func (e *Engine) resolveMarkets(reqs []InstallRequest, dry bool, display []strin
 	return unlock, nil
 }
 
+// CheckMarketArgs refuses a marketplace address among reqs that resolveMarket refuses (an entry
+// the catalog does not list, a marketplace you lack), so a run says so before it asks where to
+// install; it writes nothing and takes the markets lock only while it looks.
+func (e *Engine) CheckMarketArgs(reqs []InstallRequest, display []string) error {
+	unlock, err := e.resolveMarkets(slices.Clone(reqs), true, display)
+	if err != nil {
+		return err
+	}
+	unlock()
+	return nil
+}
+
 // resolveMarket resolves addr against your registration of its marketplace and the catalog you
 // have cached, never fetching the catalog; the caller holds the markets lock. A
 // marketplace you do not have, or have not fetched, an entry its catalog skips or does not list

@@ -183,7 +183,7 @@ func (a *app) installCmd() *cobra.Command {
 	}
 	a.addTargetFlag(cmd, &f.targets, "assistants to install for; <id>@<version> also picks the version")
 	cmd.Flags().StringSliceVar(&f.skips, "skip", nil, "do not install these components (kind/name or module:kind/name; repeatable)")
-	cmd.Flags().StringSliceVar(&f.onlys, "only", nil, "install only these components of each module that has them (repeatable)")
+	cmd.Flags().StringSliceVar(&f.onlys, "only", nil, "only these components; a later version's new ones come too unless --exact")
 	cmd.Flags().StringSliceVar(&f.unskips, "unskip", nil, "install these skipped components again (repeatable)")
 	cmd.Flags().BoolVar(&f.global, "global", false, "save --skip, --only and --unskip globally, for every scope")
 	cmd.Flags().BoolVar(&f.exact, "exact", false, "with --only: save an only: list, so a later version's new components stay out")

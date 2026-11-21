@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
@@ -663,6 +664,61 @@ var _ = Describe("core commands", func() {
 		b, err := os.ReadFile(filepath.Join(proj, ".lola/project.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).To(ContainSubstring("source: ../example"))
+	})
+
+	It("says in --only's help that a later version's new components come too unless --exact", func() {
+		Expect(lola("install", "--help").out).To(ContainSubstring("a later version's new ones come too unless --exact"))
+	})
+
+	Describe("flags that skip every component of a module", func() {
+		var skipAll, onTerminal []string
+		BeforeEach(func() {
+			skipAll = []string{"install", mod, "-C", proj, "--skip", "command/*", "--skip", "mcp/*"}
+			onTerminal = append(slices.Clone(skipAll), "-t", "claude-code", "--scope", "project")
+		})
+
+		It("are refused off a terminal without -y, with the run plus -y", func() {
+			r := lola(skipAll...)
+			Expect(r.code).To(Equal(3))
+			Expect(r.err).To(ContainSubstring("error: these picks skip every component of example, so installing it would write nothing; lola asks first"))
+			Expect(r.err).To(ContainSubstring("hint: lola install " + mod + " --root " + proj + " --skip 'command/*' --skip 'mcp/*' -y"))
+			Expect(filepath.Join(proj, ".lola", "project.yml")).NotTo(BeAnExistingFile())
+		})
+
+		It("are not answered by --force, which answers no consent question", func() {
+			Expect(lola(append(skipAll, "--force")...).code).To(Equal(3))
+		})
+
+		It("ask nothing under -n, which writes nothing", func() {
+			r := lola(append(skipAll, "-n")...)
+			Expect(r.code).To(Equal(0), r.err)
+		})
+
+		It("install with -y, as they did before", func() {
+			Expect(lola(append(skipAll, "-y")...).code).To(Equal(0))
+		})
+
+		It("ask on a terminal before the review, and a No changes nothing", func() {
+			p := &scripted{empty: []bool{false}, review: []string{cli.ReviewApply}}
+			r := lolaP(p, onTerminal...)
+			Expect(p.calls).To(ContainElement("empty:example"))
+			Expect(p.review).To(HaveLen(1), "the question came before the review's Apply")
+			Expect(r.code).To(Equal(4))
+			Expect(filepath.Join(proj, ".lola", "project.yml")).NotTo(BeAnExistingFile())
+		})
+
+		It("install on a terminal after a Yes", func() {
+			p := &scripted{empty: []bool{true}, review: []string{cli.ReviewApply}}
+			r := lolaP(p, onTerminal...)
+			Expect(r.code).To(Equal(0), r.err)
+		})
+
+		It("are no question when a pick leaves a component", func() {
+			fresh := filepath.Join(tmp, "fresh")
+			Expect(os.MkdirAll(filepath.Join(fresh, ".claude"), 0o755)).To(Succeed())
+			r := lola("install", mod, "-C", fresh, "--skip", "command/*")
+			Expect(r.code).To(Equal(0), r.err)
+		})
 	})
 
 	It("hints the run with -t and each installed assistant when none is set up here, else each one lola knows", func() {
