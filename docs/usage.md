@@ -557,7 +557,8 @@ fails it. `lola info <module>` lists each executable with the libraries it loads
 | `$XDG_STATE_HOME/lola/trash/`                | What `lola migrate` backed up or moved and what `lola tidy` moved, one directory per run with `manifest.txt`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Yours; [`lola trash`](reference/trash.md#lola-trash) lists, restores and empties it                                         |
 
 lola owns `.lola/.gitignore` and rewrites it if it changes. The lock lola holds while it
-changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
+changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`. Lock files
+there are safe to delete when no lola command is running.
 
 ## Removing lola
 

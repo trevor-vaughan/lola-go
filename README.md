@@ -3,7 +3,8 @@
 lola is a package manager for AI-assistant context: skills, slash commands, subagents, MCP
 servers and always-on rules. You install a module once; lola renders it into each
 assistant's native layout and records exactly what it wrote, so it can render again or
-uninstall cleanly: it removes only what it wrote, and the directories that leaves empty.
+uninstall cleanly: it removes only what it wrote, and the empty directories that leaves
+inside an assistant's directory. The assistant's root (`.claude/`) and `.lola/` stay.
 
 Already using [LobsterTrap/lola](https://github.com/LobsterTrap/lola)? `lola migrate` installs
 what it installed and moves its files to a trash you can restore from with `lola trash`
@@ -119,7 +120,8 @@ release that fixes a reachable standard-library vulnerability; Go fetches it aut
 unless `GOTOOLCHAIN=local` is set, as some distribution packages do (`go env -w
 GOTOOLCHAIN=auto` re-enables it). `task lint` and `task vuln` build their pinned
 golangci-lint and govulncheck into `.tools/bin` with the Go on your PATH the first time they
-run (a minute or so), so a newer Go works too.
+run (a minute or so). `task vuln` passes on Go 1.26.11, or 1.27.4 and later; an earlier 1.27
+reports a standard-library vulnerability fixed in 1.27.4.
 
 The clone lands in a `lola-go` directory:
 

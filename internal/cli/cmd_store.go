@@ -556,7 +556,8 @@ func (a *app) initCmd() *cobra.Command {
 		Long: "Scaffold a module named after the directory. The default format is an Agent Plugins package:\n" +
 			"plugin.json, a portable skill and a dev.getlola command. --format lola writes the native layout:\n" +
 			"lola.yml, one skill and one command.\n" +
-			"With no dir, lola init asks before scaffolding the current directory; -y answers yes.",
+			"lola init <dir> creates a new directory without asking. With no dir, lola\n" +
+			"init asks before scaffolding the current directory; -y answers yes.",
 		Example:           "  lola init my-module\n  lola init my_module --format lola\n  lola init -y\n  lola install ./my-module -t claude-code",
 		GroupID:           groupCore,
 		Args:              cobra.MaximumNArgs(1),
