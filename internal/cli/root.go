@@ -205,6 +205,10 @@ func NewRootCmd(getenv func(string) string, opts ...Option) (*cobra.Command, err
 	)
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		hints := []string{"see: " + cmd.CommandPath() + " --help"}
+		// pflag: "unknown shorthand flag: 'V' in -V"; the version flag has no shorthand.
+		if cmd == cmd.Root() && strings.HasPrefix(err.Error(), "unknown shorthand flag: 'V' in") {
+			hints = append([]string{"lola has no -V; the flag is --version: lola --version"}, hints...)
+		}
 		// pflag: "flag needs an argument: --add" (or "'a' in -a" for a shorthand).
 		if name, ok := strings.CutPrefix(err.Error(), "flag needs an argument: --"); ok {
 			if f := cmd.Flags().Lookup(name); f != nil {

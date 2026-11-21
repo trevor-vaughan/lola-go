@@ -127,6 +127,9 @@ func (e *Engine) cleanAge(flag string) (config.Age, error) {
 // ParseUnusedFor reads --unused-for's value, refusing one that is not an age, "" included.
 func ParseUnusedFor(flag string) (config.Age, error) {
 	age, ok := config.ParseAge(flag)
+	if least, zero := config.AgeBelowMinimum(flag); zero {
+		return config.Age{}, fmt.Errorf("--unused-for %q must be at least %s; %s", untrusted.Text(flag, untrusted.MaxName), least, config.AgeForms)
+	}
 	if !ok {
 		return config.Age{}, fmt.Errorf("--unused-for %q is not an age; %s", untrusted.Text(flag, untrusted.MaxName), config.AgeForms)
 	}

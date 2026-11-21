@@ -125,6 +125,16 @@ var _ = Describe("help, errors and output contract", func() {
 		Expect(r.err).To(Equal("error: unknown command \"verzion\" for \"lola\"\n  hint: did you mean: lola version\n  hint: see: lola --help\n"))
 	})
 
+	It("coaches -V with the long flag, and other unknown flags with --help", func() {
+		r := lola("-V")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("hint: lola has no -V; the flag is --version: lola --version\n"))
+		Expect(lola("--version").code).To(Equal(0))
+		r = lola("-Z")
+		Expect(r.err).To(ContainSubstring("hint: see: lola --help\n"))
+		Expect(r.err).NotTo(ContainSubstring("--version"))
+	})
+
 	It("prints errors as one JSON line under --json", func() {
 		r := lola("verzion", "--json")
 		Expect(r.code).To(Equal(1))

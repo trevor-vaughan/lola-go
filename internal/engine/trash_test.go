@@ -372,6 +372,8 @@ var _ = Describe("lola trash: listing, restoring and emptying the trash", func()
 
 	It("refuses an age that is none, and a run the trash does not hold", func() {
 		Expect(engine.ParseOlderThan("")).Error().To(MatchError(ContainSubstring(`--older-than ""`)))
+		Expect(engine.ParseOlderThan("0d")).Error().To(MatchError(`--older-than "0d" must be at least 1d`))
+		Expect(engine.ParseOlderThan("00w")).Error().To(MatchError(`--older-than "00w" must be at least 1w`))
 		for _, age := range []string{"never", "3", "-1d", "1y"} {
 			_, err := e.PlanTrashEmpty(engine.TrashEmptyRequest{OlderThan: age})
 			Expect(err).To(MatchError(ContainSubstring("--older-than")), age)

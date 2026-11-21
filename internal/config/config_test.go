@@ -183,7 +183,8 @@ var _ = Describe("config.yaml", func() {
 		},
 		Entry("no unit", "30", `"30" is not an age`),
 		Entry("another unit", "3m", `"3m" is not an age`),
-		Entry("zero", "0d", `"0d" is not an age`),
+		Entry("zero", "0d", `"0d" must be at least 1d`),
+		Entry("zero weeks", "0w", `"0w" must be at least 1w`),
 		Entry("a sign", "+3d", `"+3d" is not an age`),
 		Entry("too large to count", "99999999999999999999d", `"99999999999999999999d" is not an age`),
 		Entry("empty", "", "must be an age, not empty"),
@@ -216,7 +217,7 @@ var _ = Describe("config.yaml", func() {
 			Expect(err).To(MatchError(path + ":3: cache_fresh_for: " + msg + "; write a whole number of days or weeks, such as 30d or 2w, or never"))
 		},
 		Entry("hours", "1h", `"1h" is not an age`),
-		Entry("zero", "0d", `"0d" is not an age`),
+		Entry("zero", "0d", `"0d" must be at least 1d`),
 		Entry("a word", "x", `"x" is not an age`),
 		Entry("empty", "", "must be an age, not empty"),
 	)

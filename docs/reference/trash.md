@@ -108,8 +108,11 @@ Refusals:
 - `lola trash restores nothing over what is there: <paths> exist`, hinting the run with `--force`.
 - `trash run <id> holds <a> and <b>, which one restore cannot both put back; restore one at a
   time`, when two entries share an original or one lies inside the other.
-- `--older-than "<age>" is not an age; …`, hinting the run with `--older-than 30d` in its place and
+- `--older-than "<age>" is not an age; …` (`must be at least 1d` for a zero age), hinting the run with `--older-than 30d` in its place and
   without `-y`: a hint never drops the age, which would delete every run.
+- `restore is not a lola trash verb: the action is a flag: lola trash <run> --restore` (likewise
+  `empty`), hinting that command with your other flags, or the listing when you named no run
+  (`lola trash --empty --older-than 30d` when `empty` came with `--older-than`).
 - `--restore needs the run to restore from`; `--force applies to --restore only`; `--yes` and
   `--older-than` apply to `--empty` only; `--restore and --empty cannot be combined`. Each hints
   the run without the flag.
