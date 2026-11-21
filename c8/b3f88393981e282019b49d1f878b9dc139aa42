@@ -1,9 +1,13 @@
 docs/guides/install-trust-kinds.md
   s_8e40a7060352db::t_7469623d603b0b 63-67
+  s_d4c2e393b2d338::t_69cbe1df866222 66-67
+  s_d4c2e393b2d338::t_862e04a5739ae0 63-65
 docs/guides/sync-and-trust.md
   s_8e40a7060352db::t_172ee1864246e1 470
+  s_d4c2e393b2d338::t_9e4a6af32fa419 470
 e2e/team/team.venom.yml
   s_8e40a7060352db::t_e48373c63d99d7 632-633,681-682
+  s_d4c2e393b2d338::t_9e4a6af32fa419 632,681
 internal/cli/core_test.go
   s_8e40a7060352db::t_95f03929607db5 295-297
 internal/cli/migrate_test.go
@@ -12,22 +16,35 @@ internal/cli/misc2_paths_test.go
   s_8e40a7060352db::t_c047346744d3cc 784
 internal/cli/scripts_test.go
   s_8e40a7060352db::t_f0d09c80a44e84 61,63
+  s_d4c2e393b2d338::t_ea829755cb1532 61
 internal/cli/trust_test.go
   s_8e40a7060352db::t_38906387515d20 105-106,359,449
 internal/engine/hooks.go
   s_8e40a7060352db::t_82de83dfc40616 386-387,396-404,407,409,490
 internal/engine/scripts.go
   s_8e40a7060352db::t_d5c7164a1a509e 609
+  s_d4c2e393b2d338::t_9e4a6af32fa419 609
 internal/engine/scripts_test.go
   s_8e40a7060352db::t_9f5fe19544940e 511,734
+  s_d4c2e393b2d338::t_9e4a6af32fa419 511,734
 internal/engine/sources_test.go
   s_8e40a7060352db::t_cfdeb8b7ba00bf 345-359
+  s_d4c2e393b2d338::t_f73d1dab0b9e62 345-359
 internal/engine/sync_test.go
   s_8e40a7060352db::t_7845ddb4c55341 2257-2281
+  s_d4c2e393b2d338::t_0e191dcc738893 477,479
+  s_d4c2e393b2d338::t_5a6d4fdac23aba 2257-2281
 internal/engine/trustkinds.go
   s_8e40a7060352db::t_ec5b3018daed4d 149-151,157-159,161
 internal/engine/trustkinds_test.go
   s_8e40a7060352db::t_bb92a745850396 38,40,150,791,819
+  s_d4c2e393b2d338::t_9e4a6af32fa419 819
+internal/engine/marketinstall_test.go
+  s_d4c2e393b2d338::t_0e191dcc738893 553
+internal/cli/update_test.go
+  s_d4c2e393b2d338::t_0e191dcc738893 326,335,342,345
+internal/engine/sync.go
+  s_d4c2e393b2d338::t_547fea2cc68d59 1301,2236,3191-3192
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -39,6 +56,14 @@ internal/engine/trustkinds_test.go
       "agent_id": {
         "tool": "claude",
         "id": "d8afbf1e-2d96-4296-9618-529a50248a6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_d4c2e393b2d338": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "027fc7b5-938e-4ff8-837a-5fc9dc181fb4",
         "model": "claude-opus-5-5"
       },
       "human_author": "LLM (riotbox) <llm@riotbox>"
