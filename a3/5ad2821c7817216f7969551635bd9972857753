@@ -1,0 +1,19 @@
+internal/cli/info_test.go
+  s_c77f84b6e87512::t_1e6efbafbb6688 131-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "a35ad2821c7817216f7969551635bd9972857753",
+  "prompts": {},
+  "sessions": {
+    "s_c77f84b6e87512": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfdd3950-226e-4dbe-98f5-54556d67c795",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
