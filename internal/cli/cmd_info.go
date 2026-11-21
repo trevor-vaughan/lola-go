@@ -412,7 +412,9 @@ func printRuns(w io.Writer, r engine.InfoRuns, planned bool) {
 			runs = "connects to: " + m.URL
 		}
 		as := ""
-		if !planned {
+		if m.Installed {
+			as = ", already installed"
+		} else if !planned {
 			as = ", as declared"
 		}
 		fmt.Fprintf(w, "  MCP server %s%s, run by %s, %s\n", m.Name, as, m.Target, runs)
