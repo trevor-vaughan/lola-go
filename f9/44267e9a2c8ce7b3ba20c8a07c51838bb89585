@@ -2,8 +2,10 @@ internal/cli/migrate_changed_test.go
   s_8e40a7060352db::t_68b0adff342b16 188-189
 internal/engine/ops.go
   s_8e40a7060352db::t_9f1e9dc9e3a5fb 2482-2483,2498-2507
+  s_d4c2e393b2d338::t_e8c841a9fcf806 2483,2499-2506
 internal/engine/sources_test.go
   s_8e40a7060352db::t_9a9bad93b87cc2 1364-1385
+  s_d4c2e393b2d338::t_58984f3ccc6182 1377-1385
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -15,6 +17,14 @@ internal/engine/sources_test.go
       "agent_id": {
         "tool": "claude",
         "id": "d8afbf1e-2d96-4296-9618-529a50248a6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_d4c2e393b2d338": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "027fc7b5-938e-4ff8-837a-5fc9dc181fb4",
         "model": "claude-opus-5-5"
       },
       "human_author": "LLM (riotbox) <llm@riotbox>"
