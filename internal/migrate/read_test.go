@@ -21,9 +21,17 @@ var _ = Describe("Home", func() {
 	}
 
 	It("is $LOLA_HOME when it is absolute, else ~/.lola", func() {
-		Expect(migrate.Home(env(map[string]string{"LOLA_HOME": "/srv/lola/"}), "/home/u")).To(Equal("/srv/lola"))
+		dir := GinkgoT().TempDir()
+		Expect(migrate.Home(env(map[string]string{"LOLA_HOME": dir + "/"}), "/home/u")).To(Equal(dir))
 		Expect(migrate.Home(env(map[string]string{}), "/home/u")).To(Equal("/home/u/.lola"))
 		Expect(migrate.Home(env(map[string]string{"LOLA_HOME": ""}), "/home/u")).To(Equal("/home/u/.lola"))
+	})
+
+	It("refuses a $LOLA_HOME that does not exist, saying so, with a hint to unset or fix it", func() {
+		missing := filepath.Join(GinkgoT().TempDir(), "typo")
+		_, err := migrate.Home(env(map[string]string{"LOLA_HOME": missing}), "/home/u")
+		Expect(err).To(MatchError("LOLA_HOME=" + missing + " does not exist"))
+		Expect(errs.Hints(err)).To(ContainElement("unset LOLA_HOME to use ~/.lola, or set it to the Python lola's home"))
 	})
 
 	It("refuses a relative $LOLA_HOME with a hint naming it", func() {

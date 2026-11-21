@@ -2,6 +2,8 @@ package cli_test
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,6 +61,59 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("format:       claude-plugin"))
 		Expect(strings.Count(r.out, "lspServers is not supported")).To(Equal(1))
+	})
+
+	It("cache add -n shows what it would add and caches nothing", func() {
+		r := lola("cache", "add", mod, "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("example 1.2.0"))
+		Expect(r.out).To(ContainSubstring("would cache example; nothing was written"))
+		Expect(r.out).NotTo(ContainSubstring("✓ cached"))
+		Expect(lola("cache", "list", "--json").out).NotTo(ContainSubstring("example"))
+
+		r = lola("cache", "add", mod, "--dry-run", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var got struct {
+			WouldAdd struct {
+				Name, Version string
+				Heads         []any
+			} `json:"would_add"`
+		}
+		Expect(json.Unmarshal([]byte(r.out), &got)).To(Succeed(), r.out)
+		Expect(got.WouldAdd.Name).To(Equal("example"))
+		Expect(got.WouldAdd.Version).To(Equal("1.2.0"))
+		Expect(got.WouldAdd.Heads).To(BeEmpty())
+		Expect(lola("cache", "list", "--json").out).NotTo(ContainSubstring("example"))
+	})
+
+	It("cache add -n --plain marks its row would-cache, and the real add's row has no action word", func() {
+		r := lola("cache", "add", mod, "-n", "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(HavePrefix("would-cache\texample\t1.2.0\t"))
+		Expect(lola("cache", "list", "--json").out).NotTo(ContainSubstring("example"))
+
+		r = lola("cache", "add", mod, "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(HavePrefix("example\t1.2.0\t"))
+	})
+
+	It("cache add -n of a source that is not there fails and caches nothing", func() {
+		r := lola("cache", "add", filepath.Join(tmp, "missing"), "-n")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error:"))
+	})
+
+	It("names SSL_CERT_FILE when a download's certificate is not trusted", func() {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("x")) }))
+		DeferCleanup(srv.Close)
+		const hint = "  hint: trust your certificate authority: set SSL_CERT_FILE=<path to its PEM>\n"
+		for _, args := range [][]string{{"cache", "add", srv.URL + "/kit.tar.gz"}, {"market", "--add", srv.URL + "/general.yml"}} {
+			r := lola(args...)
+			Expect(r.code).To(Equal(1), strings.Join(args, " "))
+			Expect(r.err).To(ContainSubstring("certificate"), strings.Join(args, " "))
+			Expect(r.err).To(HaveSuffix(hint), strings.Join(args, " "))
+			Expect(r.err).NotTo(ContainSubstring("check the URL and your network"), strings.Join(args, " "))
+		}
 	})
 
 	It("adds, lists, shows, updates and removes stored modules", func() {

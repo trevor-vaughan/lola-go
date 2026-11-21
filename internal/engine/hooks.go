@@ -383,6 +383,8 @@ type hookConsentError struct {
 	module  string
 	scripts []HookScript
 	unseen  bool
+	// at is the module version a consent hint pins with --at, a digest or a git commit; "" for none.
+	at string
 	// declined: the user was asked and said no, which is a decline (ErrConsentDeclined), not a refusal
 	// for want of an answer.
 	declined bool
@@ -391,12 +393,20 @@ type hookConsentError struct {
 func (e *hookConsentError) Error() string {
 	var shown []string
 	for _, s := range e.scripts {
-		shown = append(shown, s.Event+": "+s.Script+" (sha256 "+s.SHA256+")")
+		shown = append(shown, s.Event+": "+s.Script+" (hook sha256 "+s.SHA256+")")
+	}
+	list := strings.Join(shown, ", ")
+	if e.at != "" {
+		label := "module commit "
+		if strings.HasPrefix(e.at, "sha256:") {
+			label = "module digest "
+		}
+		list += "; " + label + e.at
 	}
 	if e.unseen {
-		return e.module + " has a pre-install hook lola had not shown you: " + strings.Join(shown, ", ")
+		return e.module + " has a pre-install hook lola had not shown you: " + list
 	}
-	return e.module + " has a pre-install hook, and lola runs hooks only with your consent: " + strings.Join(shown, ", ")
+	return e.module + " has a pre-install hook, and lola runs hooks only with your consent: " + list
 }
 
 // Is marks the refusal as one only the user's answer lifts (errs.ErrNeedsAnswer), or, when the
@@ -477,6 +487,7 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, unasked 
 				// has not shown are hinted the dry run that shows them first, since --trust alone
 				// would be refused for them; unseen is --trust covering them all the same.
 				refusal := &hookConsentError{module: c.name, scripts: scripts, unseen: opts.Trust.Covers(TrustHooks) && !held, declined: opts.Ask != nil}
+				_, refusal.at, _ = strings.Cut(c.at, "=")
 				if k := slices.IndexFunc(scripts, func(s HookScript) bool { return s.Withheld != "" }); k >= 0 {
 					hints = withheldInstead(hints, "this hook", scripts[k].Withheld, scripts[k].file)
 				} else if !held {

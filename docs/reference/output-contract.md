@@ -110,9 +110,10 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
 - A notice in JSON is `level`, `text` and `class`, and `hints` when it has commands that act on it
   (a list, absent otherwise, such as the one for an assistant with versions that is not installed).
   - Human output prints each hint under it as a `hint:` line.
-  - When stdout and stderr are both a terminal, a hint wider than it wraps at spaces, but a
+  - When stdout and stderr are both a terminal, a hint or a `⚠`/`→` notice wider than it wraps at
+    spaces (a notice's continuation lines sit under its first word), but a
     `lola …` command in it is never broken (one wider than the terminal gets a line of its own); a
-    pipe or a file gets each hint on one line.
+    pipe or a file gets each hint and notice on one line.
   - A `--plain` notice row is `notice<TAB>level<TAB>text`; in a `sync` or `install` of
     `--scope both` it ends with the scope it is for (`project` or `user`).
 - Scope commands (`install`, `uninstall`, `sync`, `update`, `list`, `info`, `check` when it reads
@@ -224,6 +225,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   | `2`     | unused, kept for usage errors                                                                                                                                                                                          |
   | `3`     | lola changed nothing because the run needs something only you can give: `--trust` kinds, consent, `-y`, or `--force` over a conflict, or you gave none, such as end of input; rerunning with the hint's flags proceeds |
   | `4`     | you declined or cancelled (a `n` answer, `q` in a picker or form, Ctrl+C in a form or question)                                                                                                                        |
+  | `5`     | the run finished and printed its report, but `lola migrate` left records as they are                                                                                                                                   |
   | `128+n` | killed by signal `n`, unchanged                                                                                                                                                                                        |
 
   - A conflict `--force` cannot override (a file another module owns: uninstall that module first)

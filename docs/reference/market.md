@@ -68,6 +68,9 @@ shows them (`ssh hosts`, `via ssh at <host>`). Every other source must still be 
 
 Refusals:
 
+- A catalog file at an https URL whose certificate no trusted authority signed, hinting `trust your
+  certificate authority: set SSL_CERT_FILE=<path to its PEM>` (the only hint a download failure
+  carries here).
 - An unknown name: `you have no marketplace nope`, hinting `lola market`.
 - Three or more names without an action: `lola market <name> <entry> shows one entry, and 2
   were given: formatter, linter`, hinting `lola market acme formatter` and `lola market acme

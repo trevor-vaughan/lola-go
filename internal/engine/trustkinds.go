@@ -146,19 +146,19 @@ func (r *Result) ShownKeys() []string {
 }
 
 // unseenHints are the hints of an item lola has not shown the user, named what ("this hook", "these
-// hooks"; it or them after): run, the run that consents to it, as a dry run, which shows it, then
-// run itself, which is the user's own run when again (its --trust covers the item); or run with
-// --unseen. Without a run ("") they say so in words.
+// hooks"; it or them after): run, the run that consents to it, said once, with -n named in prose as
+// the way to see it first; or, when again (run is the user's own run, whose --trust covers the
+// item), its dry run, then run again; and run with --unseen. Without a run ("") they say so in words.
 func unseenHints(run, what, it string, again bool) []string {
 	if run == "" {
 		return []string{"lola has not shown you " + what + "; see " + it + " with a dry run (-n), then run this again",
 			"or add --unseen to consent without seeing " + it}
 	}
-	then := "then run this again"
-	if !again {
-		then = "then consent to " + it + ": " + run
+	if again {
+		return []string{"lola has not shown you " + what + "; see " + it + " with " + run + " -n, then run this again",
+			"or add --unseen to consent without seeing " + it + ": " + run + " --unseen"}
 	}
-	return []string{"lola has not shown you " + what + "; see " + it + " with " + run + " -n, " + then,
+	return []string{"lola has not shown you " + what + "; add -n to see " + it + " first, then consent to " + it + ": " + run,
 		"or add --unseen to consent without seeing " + it + ": " + run + " --unseen"}
 }
 
@@ -208,8 +208,10 @@ func CommandTrust(command string) TrustKinds {
 		return TrustAll
 	case "profile --add":
 		return TrustProfiles
-	case "install", "migrate":
+	case "install":
 		return TrustScripts | TrustHooks | TrustRuntimeHooks
+	case "migrate":
+		return TrustEntries | TrustScripts | TrustHooks | TrustRuntimeHooks // entries: content changed upstream since the Python lola installed it
 	}
 	return 0
 }

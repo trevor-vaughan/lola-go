@@ -44,7 +44,9 @@ installing the cached name afterwards fetches nothing. It prints:
    - each MCP server with the command line or URL the assistant would run, for each assistant
      that can express it.
    - Without a plan (no scope, no assistant, or a refusal) they are shown as the module declares
-     them, `${CLAUDE_PLUGIN_ROOT}` and its kin unexpanded. Author text is shown on one line.
+     them, `${CLAUDE_PLUGIN_ROOT}` and its kin unexpanded. A scope that already holds the version
+     has no plan to render, so its MCP servers are shown the same way, marked `already installed`
+     (`installed` in `--json`). Author text is shown on one line.
    - Then the [install scripts](../guides/install-scripts.md) that would wrap the module's install, in the order they run, each
      with its source and sha256 and whether it needs your trust (a project's): without a scope,
      only your own from `config.yaml`.
@@ -126,7 +128,10 @@ format, kind, architectures joined by commas, OS, linkage, sha256.
 
 Refusals: no argument: `lola info needs a module or source`, hinting `cached modules: lola cache
 list`; an argument that is neither: `"./nope" is neither a module in your cache nor a source;
-sources are …`, hinting `cached modules: lola cache list`; `--path` with `@market/module`; and a
+sources are …`, hinting `cached modules: lola cache list`; the name of a module installed in the scope whose cache
+entry `lola cache clean` removed: `"kit" is installed in this scope from <source> but your cache
+no longer holds it`, hinting `lola cache add <source>` (with the entry's `--ref` and `--path`);
+`--path` with `@market/module`; and a
 fetch failure, as `lola cache add`'s. A source whose module name your cache already holds from another
 source is read without being cached, so info shows a fork beside the module it forks; installing it
 is what the cache refuses.
@@ -144,7 +149,7 @@ others in its text (`component`, `mentions`, both `kind/name`; `[]` when none), 
 
 Then `runs`: `install_hooks` (each `event`,
 `script`, `sha256`, `first_lines`), `runtime_hooks` (as `lola install` reports them) and
-`mcp_servers` (each `name`, `target`, `command`, `args`, `url`) and `scripts` (each `event`,
+`mcp_servers` (each `name`, `target`, `command`, `args`, `url`, `installed`) and `scripts` (each `event`,
 `source`, `path`, `sha256`, `needs_trust`).
 
 Then `install`, one element per

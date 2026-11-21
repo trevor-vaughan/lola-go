@@ -2479,7 +2479,8 @@ func (e *Engine) pinCommit(run *StagedRun, v store.Version, ref string) (string,
 }
 
 // headCommit is pinCommit's commit without the refusal: git reports whether v is a git
-// version, and commit is "" for one no head for ref records a commit for. run is read as
+// version, and commit is "" for one no head for ref records a commit for, unless ref is a full
+// commit SHA that a head holding v's content fetched. run is read as
 // Engine.origin reads it.
 func (e *Engine) headCommit(run *StagedRun, v store.Version, ref string) (commit string, git bool, err error) {
 	o, found, err := e.origin(run, v.Name)
@@ -2492,6 +2493,16 @@ func (e *Engine) headCommit(run *StagedRun, v store.Version, ref string) (commit
 	for _, h := range o.Heads {
 		if h.Digest == v.ID && h.Commit != "" && h.Ref == ref {
 			commit = h.Commit
+		}
+	}
+	if commit == "" && source.IsFullCommit(ref) {
+		// A full SHA names its commit, but only a head that fetched that commit and holds v's
+		// content proves v came from it: a version cached from another ref's fetch is that
+		// commit's content only when this head says so.
+		for _, h := range o.Heads {
+			if h.Commit == ref && h.Digest == v.ID {
+				commit = ref
+			}
 		}
 	}
 	return commit, true, nil

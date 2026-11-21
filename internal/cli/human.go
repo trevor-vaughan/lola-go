@@ -158,9 +158,11 @@ func noticeLine(s style, n engine.Notice) string {
 	if s.plain {
 		return "notice\t" + n.Level + "\t" + n.Text
 	}
-	line := s.info(n.Text)
+	// The marker is two columns, so the text wraps under a two-space lead and s.info or s.warn adds it.
+	text := strings.TrimPrefix(wrapAt("  ", n.Text, s.width, true), "  ")
+	line := s.info(text)
 	if n.Level == engine.LevelWarn {
-		line = s.warn(n.Text)
+		line = s.warn(text)
 	}
 	for _, h := range n.Hints {
 		line += "\n" + hintLine("    ", h, s.width)

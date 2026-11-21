@@ -37,6 +37,15 @@ consents to a hook; `--trust=<kinds>` does.
    git source), on the same assistants. A module lola already has there stays at the version it
    has. An archive's content directory below `/` cannot be mapped (the Python lola looked it up
    below the module it found in the archive); install such a module yourself with `--path`.
+
+   A branch, or a source with no ref, migrates at its current head, not at the commit the Python
+   lola installed; a tag or a full commit SHA migrates at that ref. Each component (skill, command,
+   agent, MCP server or rule) of a branch or remote archive source that differs from, or is
+   absent in, the Python lola's own copy (`modules/<name>` in its home) is marked `changed upstream since you
+   installed it` in the plan, and the plan shows the command each new MCP server runs. Installing
+   those needs `--trust=entries`, or a yes on a terminal; `-y` and `--force` alone exit 3 and
+   write nothing. A copy the Python lola no longer holds marks every component. A folder or archive on your own
+   machine is never marked.
 5. **Cleans up**, as below.
 
 ### What happens to each file

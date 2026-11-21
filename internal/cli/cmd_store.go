@@ -122,7 +122,8 @@ func printModuleView(w io.Writer, s style, mv engine.ModuleView) {
 
 func (a *app) cacheAddCmd() *cobra.Command {
 	var ref, path string
-	g := argGuide{noun: "source", find: source.AcceptedForms + ", or @market/module", usage: "lola cache add <source|@market/module> [--ref ref] [--path dir]",
+	var dry bool
+	g := argGuide{noun: "source", find: source.AcceptedForms + ", or @market/module", usage: "lola cache add <source|@market/module> [--ref ref] [--path dir] [-n]",
 		examples: []string{"lola cache add ./my-module", "lola cache add ./monorepo --path plugins/review",
 			"lola cache add git@github.com:acme/review.git --ref main", "lola cache add https://example.com/review-1.2.0.zip",
 			"lola cache add @acme/formatter"}}
@@ -134,6 +135,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			"--ref picks a git branch, tag or full commit SHA; --path picks the module root inside\n" +
 			"the source. @market/module fetches an entry of one of your marketplaces as lola install\n" +
 			"would, its commit pin checked against its ref (--path is refused: the catalog gives it).\n" +
+			"-n fetches it into a scratch directory and shows what would be cached, caching nothing.\n" +
 			"lola cache update fetches every cached module from its source again.",
 		Example:           g.example(),
 		Args:              cobra.MatchAll(g.args(1), cobra.MaximumNArgs(1)),
@@ -153,6 +155,26 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			}
 			if isAddr && path != "" {
 				return errs.WithHints(fmt.Errorf("--path does not apply to %s: its catalog gives the path", addr), runWithout(cmd, args, "path"))
+			}
+			if dry {
+				var mv engine.ModuleView
+				if isAddr {
+					mv, err = eng.PreviewEntry(cmd.Context(), args[0], ref, path, outputFlags(cmd))
+				} else {
+					mv, err = eng.PreviewSource(cmd.Context(), cwd, args[0], ref, path)
+				}
+				if err != nil {
+					return coachSource(strings.Fields(cmd.CommandPath()), cmd, args, err)
+				}
+				return a.emit(cmd, func(w io.Writer, s style) {
+					if s.plain {
+						fmt.Fprint(w, "would-cache\t")
+					}
+					printModuleView(w, s, mv)
+					if !s.plain {
+						fmt.Fprintln(w, "would cache "+mv.Name+"; nothing was written")
+					}
+				}, map[string]any{"would_add": mv})
 			}
 			var v store.Version
 			if isAddr {
@@ -178,6 +200,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
 	cmd.Flags().StringVar(&path, "path", "", "module root inside the source (monorepos)")
+	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "show what would be cached and cache nothing")
 	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
 	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
 	return cmd
@@ -533,7 +556,8 @@ func (a *app) initCmd() *cobra.Command {
 		Long: "Scaffold a module named after the directory. The default format is an Agent Plugins package:\n" +
 			"plugin.json, a portable skill and a dev.getlola command. --format lola writes the native layout:\n" +
 			"lola.yml, one skill and one command.\n" +
-			"With no dir, lola init asks before scaffolding the current directory; -y answers yes.",
+			"lola init <dir> creates a new directory without asking. With no dir, lola\n" +
+			"init asks before scaffolding the current directory; -y answers yes.",
 		Example:           "  lola init my-module\n  lola init my_module --format lola\n  lola init -y\n  lola install ./my-module -t claude-code",
 		GroupID:           groupCore,
 		Args:              cobra.MaximumNArgs(1),

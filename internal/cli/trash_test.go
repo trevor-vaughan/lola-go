@@ -230,6 +230,28 @@ var _ = Describe("lola trash", func() {
 			"use an age: lola trash --empty --older-than 30d"),
 		Entry("--restore without a run", []string{"trash", "--restore"}, "--restore needs the run to restore from", "see the runs: lola trash"),
 		Entry("two runs to show", []string{"trash", "a", "b"}, "lola trash shows one run at a time", "show one: lola trash a"),
+		Entry("--older-than 0d", []string{"trash", "--empty", "--older-than", "0d"}, `--older-than "0d" must be at least 1d`,
+			"use an age: lola trash --empty --older-than 30d"),
+		Entry("--older-than 0w", []string{"trash", "--empty", "--older-than", "0w"}, `--older-than "0w" must be at least 1w`,
+			"use an age: lola trash --empty --older-than 30d"),
+	)
+
+	DescribeTable("coaches a verb-shaped trash command with the action flag form, keeping the other flags",
+		func(args []string, refusal, hint string) {
+			r := lola(args...)
+			Expect(r.code).To(Equal(1))
+			Expect(r.err).To(ContainSubstring("error: " + refusal + "\n"))
+			Expect(r.err).To(ContainSubstring("hint: " + hint + "\n"))
+			Expect(r.err).NotTo(ContainSubstring("restore those from"))
+		},
+		Entry("restore a run", []string{"trash", "restore", "x"}, "restore is not a lola trash verb: the action is a flag: lola trash <run> --restore", "lola trash x --restore"),
+		Entry("restore a run, with -y, which restore does not take", []string{"trash", "restore", "x", "-y"}, "restore is not a lola trash verb: the action is a flag: lola trash <run> --restore", "lola trash x --restore"),
+		Entry("restore originals, dry", []string{"trash", "restore", "x", "a.md", "-n"}, "restore is not a lola trash verb: the action is a flag: lola trash <run> --restore", "lola trash x a.md --dry-run --restore"),
+		Entry("restore with no run", []string{"trash", "restore"}, "restore is not a lola trash verb: the action is a flag: lola trash <run> --restore", "see the runs: lola trash"),
+		Entry("empty a run", []string{"trash", "empty", "x"}, "empty is not a lola trash verb: the action is a flag: lola trash <run> --empty", "lola trash x --empty"),
+		Entry("empty a run, with -y", []string{"trash", "empty", "x", "-y"}, "empty is not a lola trash verb: the action is a flag: lola trash <run> --empty", "lola trash x --yes --empty"),
+		Entry("empty with no run, whose hint never deletes every run", []string{"trash", "empty"}, "empty is not a lola trash verb: the action is a flag: lola trash <run> --empty", "see the runs: lola trash"),
+		Entry("empty with no run, older than 30d, whose hint keeps the age", []string{"trash", "empty", "--older-than", "30d", "-n"}, "empty is not a lola trash verb: the action is a flag: lola trash <run> --empty", "lola trash --dry-run --older-than 30d --empty"),
 	)
 
 	DescribeTable("hints a bad --older-than corrected, never without it, and never with -y",

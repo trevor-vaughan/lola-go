@@ -196,6 +196,22 @@ var _ = Describe("the form keys' transitions", func() {
 		Expect(got).To(Equal([]string{"a"}), "the second ctrl+a unticked both, and x ticked a")
 	})
 
+	It("refuses a second tick in a pick-one scope picker", func() {
+		got, err := onTerminal("xjx\x01\r").Scope(ScopeStep{ProjectRoot: "/p", One: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{ScopeProject}), "the second tick was refused and ctrl+a ticked nothing")
+
+		got, err = onTerminal("xjxkxjx\r").Scope(ScopeStep{ProjectRoot: "/p", One: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{ScopeUser}), "the second tick was refused, and once Project was unticked User could be ticked")
+	})
+
+	It("still ticks every row of a multi-select scope picker with ctrl+a", func() {
+		got, err := onTerminal("\x01\r").Scope(ScopeStep{ProjectRoot: "/p"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(ConsistOf(ScopeProject, ScopeUser, ScopeOther))
+	})
+
 	It("keys: filtered --q--> cancelled", func() {
 		st := two
 		st.Nav = Nav{Back: true}

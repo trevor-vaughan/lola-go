@@ -79,6 +79,7 @@ testcases:
           doc, dry = json.loads(err), json.load(open("/tmp/g1-dry.json"))
           assert doc.pop("error") == "lola migrate needs confirmation, and there is no terminal to ask on", doc
           assert doc.pop("hints") == ["lola migrate --json -y"], doc
+          assert doc.pop("remap") == dry.pop("remap").replace(" --dry-run", "", 1), (doc, dry)
           assert doc == dry, (doc, dry)
           def nulls(v, at):
               if v is None:
@@ -101,7 +102,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} migrate -y --json > /tmp/result.json'"
         assertions:
-          - result.code ShouldEqual 0
+          - result.code ShouldEqual 5
       - type: exec
         script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/check.py /tmp/before.json /tmp/result.json --home-action keep --untouched /work/proj/.cursor --untouched /work/proj/.claude/skills/lint --untouched /work/proj/.claude/commands/deploy.md --untouched /work/proj/.lola/modules/kit"
         assertions:
@@ -140,7 +141,7 @@ testcases:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} migrate -y"
         assertions:
-          - result.code ShouldEqual 0
+          - result.code ShouldEqual 5
           - result.systemout ShouldContainSubstring "nothing more to migrate"
           - result.systemout ShouldContainSubstring "owned by lola-go module review"
           - result.systemout ShouldContainSubstring "2 record(s) lola-go cannot migrate are still in installed.yml"

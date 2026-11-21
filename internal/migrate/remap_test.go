@@ -18,6 +18,11 @@ var _ = Describe("ParseRootMaps", func() {
 		Expect(got).To(Equal([]migrate.RootMap{{Old: "/Users/alice", New: "/home/alice/x"}, {Old: `C:\Users\bob`, New: "/home/bob"}}))
 	})
 
+	It("refuses a root named twice, as --map-target does, showing the later answer", func() {
+		_, err := migrate.ParseRootMaps([]string{"/Users/alice=/home/alice", "/Users/alice/=/home/alice2"})
+		Expect(err).To(MatchError("--map-root names /Users/alice twice: give it once, with where it is on this machine after =, such as --map-root /Users/alice=/home/alice2"))
+	})
+
 	DescribeTable("refuses a map it cannot read, saying exactly what is wrong",
 		func(arg, want string) {
 			_, err := migrate.ParseRootMaps([]string{arg})

@@ -16,6 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Layer is one file of module entries a scope wants: the scope's base (project.yml, or default at
@@ -418,6 +419,30 @@ func (e *Engine) layers(sc Scope, man *manifest.Manifest, led *ledger.Ledger) ([
 		return nil, nil, err
 	}
 	return pl.assemble(e.baseLayer(sc, man, pl), led.Profile), pl.notices, nil
+}
+
+// sharePicksHint says that picks kept in selections.yaml for module at project scope sc are the
+// user's alone, and how a teammate gets them: moving the module into the project's one profile when
+// it has exactly one, else the command that lists the profiles sc can use, for a project profile
+// is a file the user writes in <project>/.lola/profiles.
+func (e *Engine) sharePicksHint(sc Scope, module string, display []string) (string, error) {
+	infos, _, err := e.visible(sc)
+	if err != nil {
+		return "", err
+	}
+	var project []string
+	for _, i := range infos {
+		if i.Kind == profile.KindProject {
+			project = append(project, i.Name)
+		}
+	}
+	if len(project) == 1 {
+		return "these picks are yours alone; to share them, move the module into the project's profile: " +
+			e.Command(sc, "profile", append([]string{"--move", module, "--to", "project:" + project[0]}, display...)...), nil
+	}
+	return "these picks are yours alone; to share them, put the module in a project profile, a file in " +
+		untrusted.Text(filepath.Join(sc.ProjectDir, profile.ProjectDir), untrusted.MaxName) + "; the profiles you can use: " +
+		e.Command(sc, "profile", display...), nil
 }
 
 // visible is the profiles sc can use, by name: the user's, with default at user scope

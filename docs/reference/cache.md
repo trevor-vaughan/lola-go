@@ -12,7 +12,7 @@ as `lola cache list` does. Removing a module from the cache does not touch insta
 ## `lola cache add`
 
 ```
-lola cache add <source|@market/module>
+lola cache add <source|@market/module> [--ref <ref>] [--path <dir>] [-n]
 ```
 
 Alias: `get`. Fetch a module into your cache without installing it. `@market/module` fetches an
@@ -23,6 +23,7 @@ ref (`--path` is refused: the catalog gives it).
 |----------------|--------------------------------------------------|
 | `--ref <ref>`  | The git branch, tag or full commit SHA to fetch. |
 | `--path <dir>` | The module root inside the source (monorepos).   |
+| `-n`, `--dry-run` | Show what would be cached and cache nothing: a remote source is fetched into a scratch directory that lola removes, and the module is shown as the add would show it, ending `would cache <name>; nothing was written`; under `--plain` the row is the add's, led by a `would-cache` column. |
 
 Refusals: no source: `lola cache add needs a source`.
 
@@ -33,7 +34,12 @@ entry in `project.yml` or a profile always uses its own. `lola cache rm <name>` 
 source's copy.
 
 JSON: the module's identity and contents, as [`lola info`](info.md#lola-info) starts its document, with
-`path` when `--path` gave one.
+`path` when `--path` gave one. With `-n`, the same object under `would_add`.
+
+A download whose server's certificate no trusted authority signed (a self-signed or private-CA
+https URL, here and for `lola market --add`) is refused with the hint `trust your certificate
+authority: set SSL_CERT_FILE=<path to its PEM>`; any other download failure hints
+`check the URL and your network`.
 
 ## `lola cache rm`
 

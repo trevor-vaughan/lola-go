@@ -462,6 +462,9 @@ type TrashEmptyRequest struct {
 // weeks, "" and never included.
 func ParseOlderThan(flag string) (int, error) {
 	age, ok := config.ParseAge(flag)
+	if least, zero := config.AgeBelowMinimum(flag); zero {
+		return 0, fmt.Errorf("--older-than %q must be at least %s", untrusted.Text(flag, untrusted.MaxName), least)
+	}
 	if !ok || age.Never {
 		return 0, fmt.Errorf("--older-than %q is not an age; write a whole number of days or weeks, such as 30d or 2w",
 			untrusted.Text(flag, untrusted.MaxName))

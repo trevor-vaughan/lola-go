@@ -109,6 +109,27 @@ var _ = Describe("the pickers' theme", func() {
 		Expect(g.Footer()).To(ContainSubstring("\x1b[38;2;228;228;228mx\x1b[m"), "keys in the dark theme's text color, #E4E4E4")
 	})
 
+	It("lists space beside x and no ctrl+a under a pick-one picker, and ctrl+a under a multi-select one", func() {
+		footer := func(one bool) string {
+			var v []string
+			h := onTerminal("")
+			ms := h.multi("Pick", "", []huh.Option[string]{huh.NewOption("a", "a"), huh.NewOption("b", "b")}, &v)
+			pick := h.required(ms)
+			if one {
+				ms.Limit(1)
+				pick.one = true
+			}
+			g := huh.NewGroup(pick)
+			huh.NewForm(g).WithTheme(huh.ThemeFunc(func(bool) *huh.Styles { return lolaTheme(true) })).Init()
+			return ansi.Strip(g.Footer())
+		}
+		Expect(footer(true)).To(ContainSubstring("space/x toggle"))
+		Expect(footer(true)).NotTo(ContainSubstring("ctrl+a"))
+		Expect(footer(false)).To(ContainSubstring("x toggle"))
+		Expect(footer(false)).NotTo(ContainSubstring("space/x"))
+		Expect(footer(false)).To(ContainSubstring("ctrl+a select all"))
+	})
+
 	It("draws forms in lola's theme for the background it resolves once per prompter, and plainly without color", func() {
 		var out bytes.Buffer
 		asked := 0

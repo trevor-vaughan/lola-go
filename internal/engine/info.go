@@ -268,13 +268,15 @@ type InfoHook struct {
 }
 
 // InfoMCPServer is a module MCP server as an assistant would run it: the command line, or the URL
-// it connects to.
+// it connects to. Installed says the scope already holds it, so no plan renders it: it is shown as the
+// module declares it.
 type InfoMCPServer struct {
-	Name    string   `json:"name"`
-	Target  string   `json:"target"`
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
-	URL     string   `json:"url"`
+	Name      string   `json:"name"`
+	Target    string   `json:"target"`
+	Command   string   `json:"command"`
+	Args      []string `json:"args"`
+	URL       string   `json:"url"`
+	Installed bool     `json:"installed"`
 }
 
 // InfoInstall is what installing the module at one scope would do: the plan lola install -n
@@ -488,6 +490,17 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	refused := false
 	for _, in := range info.Install {
 		info.Runs.add(in.runtimeHooks, in.mcpServers)
+		if in.current && in.Refusal == nil {
+			// The plan of a scope that holds the version writes nothing, so renders no server: what runs there is what the module declares.
+			ids := slices.Compact(slices.Sorted(slices.Values(in.Targets)))
+			if len(ids) == 0 {
+				ids = e.targetIDs()
+			}
+			for _, srv := range e.mcpServers(v.Module, ids) {
+				srv.Installed = true
+				info.Runs.add(nil, []InfoMCPServer{srv})
+			}
+		}
 		info.Runs.shown = append(info.Runs.shown, in.shown...)
 		if in.Refusal != nil {
 			refused, refusedIDs = true, append(refusedIDs, in.Targets...)
@@ -657,7 +670,7 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run *StagedRu
 		if err != nil {
 			return store.Version{}, store.Origin{}, installBy{}, err
 		} else if !ok {
-			return store.Version{}, store.Origin{}, installBy{}, notASource(req.Arg, req.Display)
+			return store.Version{}, store.Origin{}, installBy{}, e.notCachedOrSource(req)
 		}
 		// A git source at a full commit SHA the cache holds for it is shown from the cache, hashed
 		// again in run, as install takes it: a review hint names one.
@@ -693,6 +706,55 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run *StagedRu
 	}
 	by.shownRef = shownRef
 	return v, o, by, nil
+}
+
+// notCachedOrSource refuses req.Arg, which is no module in the cache and no source: when a scope the
+// run resolves records it as installed, the refusal says so and hints lola cache add of the source
+// recorded there (a folder or archive relative to a project made absolute, the entry's ref and path
+// kept), as a cleaned cache no longer holds the module; otherwise it is notASource.
+func (e *Engine) notCachedOrSource(req InfoRequest) error {
+	sreq := req.Scope
+	sreq.Cwd, sreq.Interactive, sreq.Both, sreq.Command, sreq.Run = req.Cwd, false, true, "info", ""
+	res, err := e.ResolveScope(sreq)
+	if err != nil {
+		return notASource(req.Arg, req.Display) // no scope resolved: nothing records the name
+	}
+	var unread []error // scopes whose records could not be read: no plan runs here to report them
+	for _, c := range res.Scopes {
+		man, led, _, err := e.load(c.Scope, true)
+		if err != nil {
+			unread = append(unread, untrusted.CleanErr(err))
+			continue
+		}
+		layers, _, err := e.layers(c.Scope, man, led)
+		if err != nil {
+			unread = append(unread, untrusted.CleanErr(err))
+			continue
+		}
+		want, _ := desired(layers)
+		w := find(want, req.Arg)
+		if w == nil {
+			continue
+		}
+		location := w.Source
+		if spec, ok, err := source.Parse(w.Source, root(c.Scope)); err == nil && ok && spec.Kind != source.KindGit {
+			location = spec.Location
+		}
+		run := []string{"lola", "cache", "add", untrusted.Text(location, untrusted.MaxName)}
+		if w.Ref != "" {
+			run = append(run, "--ref", untrusted.Text(w.Ref, untrusted.MaxName))
+		}
+		if w.Path != "" {
+			run = append(run, "--path", untrusted.Text(w.Path, untrusted.MaxName))
+		}
+		return errs.WithHints(fmt.Errorf("%q is installed in this scope from %s but your cache no longer holds it", req.Arg,
+			untrusted.Text(location, untrusted.MaxName)), errs.ShellJoin(append(run, req.Display...)))
+	}
+	refusal := notASource(req.Arg, req.Display)
+	if len(unread) == 0 {
+		return refusal
+	}
+	return fmt.Errorf("%w; it may be recorded in a scope lola could not read: %w", refusal, errors.Join(unread...))
 }
 
 // pinEntryRef is by, an install of the cached git module v by its name at a head's ref, pinned

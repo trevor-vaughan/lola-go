@@ -844,6 +844,9 @@ func (fl *installFlow) run() error {
 		if err != nil {
 			return err
 		}
+		if err := fl.confirmEmpty(spec, planned.Result); err != nil { // before the review asks to apply it
+			return err
+		}
 		summary := &reportBuf{}
 		fl.summaryShown = nil
 		if err := fl.printSummary(summary, spec, pv, planned); err != nil {
@@ -864,6 +867,11 @@ func (fl *installFlow) run() error {
 		} else if done {
 			fl.reviewShown = planned.Result
 			break
+		}
+	}
+	if fl.reviewShown == nil { // no review ran, so none asked
+		if err := fl.confirmEmpty(spec, nil); err != nil {
+			return err
 		}
 	}
 	gone, err := fl.askDrop(fl.dropped())
@@ -2086,7 +2094,13 @@ func (fl *installFlow) ensureAssistants() error {
 		}
 		inst, marked, only := choice.Installed, choice.SetUp, choice.SetUpOnly
 		choice.Manifest = nil // the pickers' fixed targets decided above
-		switch why := choice.NoneHere(); {
+		why := choice.NoneHere()
+		if why != "" && !fl.ask { // the entry that does not exist is the first thing to say
+			if err := fl.eng.CheckMarketArgs(fl.requests(), outputFlags(fl.cmd)); err != nil {
+				return err
+			}
+		}
+		switch {
 		case len(inst) == 0 && len(only) == 0:
 			hints, err := withTarget(c.Scope, fl.eng.Registry.IDs())
 			if err != nil {
@@ -2437,6 +2451,47 @@ func (fl *installFlow) ensureComponents() error {
 	for _, name := range fl.modules {
 		if fl.asked[name] {
 			fl.shown[ReviewComponents] = true
+		}
+	}
+	return nil
+}
+
+// confirmEmpty asks, before an install whose --skip, --only or --unskip flags leave a module no
+// component writes nothing of it, whether to install it so, as the component page asks (flags
+// skip the page). -y answers yes (--force is no consent answer, as everywhere); off a terminal the
+// run is refused, and -n asks nothing, for it writes nothing. planned is the dry run of spec the
+// review made, nil when none ran and the question plans its own.
+func (fl *installFlow) confirmEmpty(spec engine.InstallSpec, planned *engine.Result) error {
+	if fl.cmd.Name() != "install" || len(fl.edits) == 0 || fl.f.yes || fl.f.dry {
+		return nil
+	}
+	if planned == nil {
+		dry := spec
+		dry.Options.DryRun = true
+		dry.Options.Rerun, dry.Options.Display = consentRun(fl.cmd, fl.hintArgs(fl.args)), outputFlags(fl.cmd)
+		res, err := fl.eng.InstallAll(fl.cmd.Context(), dry)
+		if err != nil {
+			return err
+		}
+		planned = res.Result
+	}
+	var empty []string
+	for _, m := range planned.Modules {
+		if name := untrusted.Text(m.Name, untrusted.MaxName); m.Empty && !slices.Contains(empty, name) {
+			empty = append(empty, name)
+		}
+	}
+	for _, name := range empty {
+		if !fl.ask {
+			return errs.WithHints(errs.NeedsAnswer(fmt.Errorf("these picks skip every component of %s, so installing it would write nothing; lola asks first, and there is no terminal to ask on", name)),
+				runWithout(fl.cmd, fl.hintArgs(fl.args))+" -y")
+		}
+		ok, err := askYes(fl.p, Question{Prompt: "Install " + name + " with no components?"})
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrAborted
 		}
 	}
 	return nil

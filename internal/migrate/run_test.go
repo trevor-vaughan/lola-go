@@ -130,7 +130,7 @@ var _ = Describe("Migrate", func() {
 		d := res.Destinations[0]
 		Expect(d.Status).To(Equal(migrate.StatusMigrated))
 		Expect(d.Installs).To(Equal([]migrate.InstallItem{{Module: "review", PythonModules: []string{"review"}, Source: src,
-			Targets: []string{"claude-code"}, Status: migrate.InstallNew}}))
+			Targets: []string{"claude-code"}, Status: migrate.InstallNew, ChangedUpstream: []string{}}}))
 
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(ContainSubstring("Ship $ARGUMENTS"))
 		Expect(read(filepath.Join(proj, ".claude/skills/review/SKILL.md"))).To(ContainSubstring("Review it."))
@@ -672,10 +672,41 @@ var _ = Describe("Migrate", func() {
 			res, err := run(migrate.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Destinations[0].NotMigrated).To(ContainElement(migrate.Item{What: migrate.ItemMCP, Module: "review",
-				Path: filepath.Join(userHome, ".mcp.json"), Marker: "/mcpServers/lola-gh", Hints: []string{"it keeps working; remove the entry by hand when you no longer need it"}}))
+				Path: filepath.Join(userHome, ".mcp.json"), Marker: "/mcpServers/lola-gh", Hints: []string{"Claude Code reads ~/.mcp.json only for sessions started in ~; lola wrote the server to ~/.claude.json, which every session reads. Remove the old entry from ~/.mcp.json"}}))
 			Expect(read(filepath.Join(userHome, ".claude.json"))).To(ContainSubstring("lola-gh"), "lola-go writes its own entry")
 			Expect(res.Home.Action).To(Equal(migrate.HomeKeep))
 			Expect(res.Home.Reason).To(HavePrefix("referenced by MCP server lola-gh in " + filepath.Join(userHome, ".mcp.json")))
+		})
+
+		Describe("the hint for an MCP entry left in ~/.mcp.json", func() {
+			generic := "it keeps working; remove the entry by hand when you no longer need it"
+			BeforeEach(func() {
+				writeTree(userHome, map[string]string{
+					".mcp.json": `{"mcpServers":{"lola-gh":{"command":"gh-mcp","env":{"PLUGIN_DATA":"` + h.dir + `/plugin-data/review"}}}}`,
+				})
+				h.install(rec{"module": "review", "assistant": "claude-code", "scope": "user", "mcps": []string{"lola-gh"}})
+			})
+			hint := func(res *migrate.Result) string {
+				Expect(res.Destinations[0].NotMigrated).To(ContainElement(HaveField("What", migrate.ItemMCP)))
+				for _, it := range res.Destinations[0].NotMigrated {
+					if it.What == migrate.ItemMCP {
+						return strings.Join(it.Hints, "\n")
+					}
+				}
+				return ""
+			}
+
+			It("says lola wrote the server to ~/.claude.json when the run did", func() {
+				res, err := run(migrate.Options{})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hint(res)).To(ContainSubstring("lola wrote the server to ~/.claude.json"))
+			})
+
+			It("does not on a dry run, which writes nothing", func() {
+				res, err := run(migrate.Options{Options: engine.Options{DryRun: true}})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hint(res)).To(Equal(generic))
+			})
 		})
 
 		It("refuses an install that would replace a module copy no record it migrates accounts for, writing nothing", func() {

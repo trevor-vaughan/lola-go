@@ -249,16 +249,21 @@ func writeError(w io.Writer, err error, asJSON bool, width int) {
 	}
 }
 
-// minHintText is how many columns a wrapped hint keeps for its text after "hint: ": on a narrower
-// terminal the hint prints as one line, which the terminal wraps.
+// minHintText is how many columns a wrapped hint or notice keeps for its text after its lead: on a
+// narrower terminal it prints as one line, which the terminal wraps.
 const minHintText = 20
 
-// hintLine is the "hint:" line for h after indent, wrapped at spaces to width columns (0 for no
-// limit), each continuation under the hint's first word. A command in h, from a word "lola" to a
-// word ending in ";" outside single quotes or to the end, is never broken, so it runs as copied;
-// one wider than the line gets a line of its own, wider than width.
+// hintLine is the "hint:" line for h after indent, wrapped to width columns (wrapAt).
 func hintLine(indent, h string, width int) string {
-	lead := indent + "hint: "
+	return wrapAt(indent+"hint: ", h, width, false)
+}
+
+// wrapAt is lead then text, wrapped at spaces to width columns (0 for no limit), each continuation
+// under the text's first word. Unless prose, a command in text, from a word "lola" to a word ending
+// in ";" outside single quotes or to the end, is never broken, so it runs as copied; one wider than
+// the line gets a line of its own, wider than width. Prose, which a notice is, names lola in
+// passing and has no such command.
+func wrapAt(lead, h string, width int, prose bool) string {
 	if width == 0 || ansi.StringWidth(lead+h) <= width || width < len(lead)+minHintText {
 		return lead + h
 	}
@@ -268,7 +273,7 @@ func hintLine(indent, h string, width int) string {
 		switch {
 		case cmd == "" && word == "":
 			continue
-		case cmd == "" && word != "lola":
+		case cmd == "" && (prose || word != "lola"):
 			units = append(units, word)
 			continue
 		case cmd == "":

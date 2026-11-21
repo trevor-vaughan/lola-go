@@ -508,7 +508,7 @@ var _ = Describe("install scripts", func() {
 			projectYML("targets: [claude-code]\npre_install: ci/check.sh\n")
 			opts := engine.Options{Display: []string{"--json"}, Run: "lola install", Rerun: func(k engine.TrustKinds) string { return "lola install " + src + " " + k.Arg() }}
 			_, err := install(opts)
-			Expect(err).To(MatchError(MatchRegexp(`^lola install needs your trust for the pre-install script ci/check.sh \(sha256 [0-9a-f]{64}\) of this project \(new\), and there is no terminal to ask on$`)))
+			Expect(err).To(MatchError(MatchRegexp(`^lola install needs your trust for the pre-install script ci/check.sh \(script sha256 [0-9a-f]{64}\) of this project \(new\), and there is no terminal to ask on$`)))
 			Expect(errs.Hints(err)).To(Equal(append([]string{"review it: lola info --project " + src + " --target claude-code --json"},
 				unshown("this script", "lola install "+src+" --trust=scripts")...)))
 			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
@@ -731,7 +731,7 @@ var _ = Describe("install scripts", func() {
 			projectYML("targets: [claude-code]\npre_install: ci/check.sh\nmodules:\n  - {name: example, source: ./mods/example}\n")
 			req := engine.SyncRequest{Scope: sc, Display: []string{"--json"}, Options: engine.Options{Run: "lola sync", Display: []string{"--json"}}}
 			_, err = e.Sync(ctx, req)
-			Expect(err).To(MatchError(MatchRegexp(`^lola sync needs your trust for the pre-install script ci/check.sh \(sha256 [0-9a-f]{64}\) of this project \(new\), and there is no terminal to ask on$`)))
+			Expect(err).To(MatchError(MatchRegexp(`^lola sync needs your trust for the pre-install script ci/check.sh \(script sha256 [0-9a-f]{64}\) of this project \(new\), and there is no terminal to ask on$`)))
 			Expect(errs.Hints(err)).To(Equal(append([]string{"review it: lola info --project example --json"}, unshown("this script", "lola sync --project --trust=scripts --json")...)))
 			dry, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: true}})
 			Expect(err).NotTo(HaveOccurred())

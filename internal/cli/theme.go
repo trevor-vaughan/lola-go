@@ -156,8 +156,18 @@ func (a *app) darkBackground(cmd *cobra.Command) (bool, error) {
 		query = terminalBackground
 	}
 	// A terminal that does not answer is not an error: lola asks instead. A query can also
-	// succeed without a color (a terminal that answers DA1 but not OSC 11).
-	if bg, err := query(cmd); err == nil && bg != nil {
+	// succeed without a color (a terminal that answers DA1 but not OSC 11). lipgloss waits a fixed
+	// time for the answer, which lola cannot shorten, so on a terminal a status line says what the
+	// pause is and is erased once the query ends.
+	tty := interactive(cmd)
+	if tty {
+		fmt.Fprint(cmd.ErrOrStderr(), "checking your terminal's colors…")
+	}
+	bg, qerr := query(cmd)
+	if tty {
+		fmt.Fprint(cmd.ErrOrStderr(), clearLine)
+	}
+	if qerr == nil && bg != nil {
 		return contrastRatio(bg, color.White) > contrastRatio(bg, color.Black), nil
 	}
 	var p Prompter

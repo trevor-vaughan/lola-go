@@ -338,6 +338,8 @@ type ModuleResult struct {
 	NotInOnly    []string      `json:"not_in_only"`          // those of Skipped the only: list in force alone leaves out
 	OnlyIn       string        `json:"only_in,omitempty"`    // where that only: list lives (excludedWhere)
 	Summary      *PicksSummary `json:"-"`                    // Skipped shown as the picks they leave, when they are that (summarizePicks)
+	Empty        bool          `json:"-"`                    // the picks skip every component, so the install writes none of the module's
+	ShareHint    string        `json:"-"`                    // at project scope, with picks in selections.yaml: they are yours alone, and how to share them (sharePicksHint)
 	SavedTo      string        `json:"saved_to"`             // the file this install saved the module's picks to: selections.yaml, or the profile it wrote; "" for none
 	// Market is the marketplace an install through @<market>/<entry> records, through
 	// untrusted.Text; absent otherwise.
@@ -1220,6 +1222,12 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		return nil, nil, nil, mr, err
 	}
 	mr.Summary = resolvedSummary(x, v.Module, ment.RulesOn(), r.skipped)
+	mr.Empty = len(r.skipped) > 0 && len(components(m)) == 0
+	if sc.Kind == target.Project && len(r.skipped) > 0 && (strings.Contains(mr.SkippedIn, "selections.yaml") || mr.OnlyIn == "selections.yaml") {
+		if mr.ShareHint, err = e.sharePicksHint(sc, m.Name, opts.Display); err != nil {
+			return nil, nil, nil, mr, err
+		}
+	}
 	if err := e.checkVars(sc, m, ment, opts.entryFrom, v.Meta.Digest, opts.Display); err != nil {
 		return nil, nil, nil, mr, err
 	}

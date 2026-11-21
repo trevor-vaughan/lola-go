@@ -71,6 +71,18 @@ func (e *Engine) resolveMarkets(reqs []InstallRequest, dry bool, display []strin
 	return unlock, nil
 }
 
+// CheckMarketArgs refuses a marketplace address among reqs that resolveMarket refuses (an entry
+// the catalog does not list, a marketplace you lack), so a run says so before it asks where to
+// install; it writes nothing and takes the markets lock only while it looks.
+func (e *Engine) CheckMarketArgs(reqs []InstallRequest, display []string) error {
+	unlock, err := e.resolveMarkets(slices.Clone(reqs), true, display)
+	if err != nil {
+		return err
+	}
+	unlock()
+	return nil
+}
+
 // resolveMarket resolves addr against your registration of its marketplace and the catalog you
 // have cached, never fetching the catalog; the caller holds the markets lock. A
 // marketplace you do not have, or have not fetched, an entry its catalog skips or does not list
@@ -325,6 +337,32 @@ func resolvedLine(addr string, ent manifest.Entry, commit string) string {
 func (e *Engine) AddEntry(ctx context.Context, arg, ref, path string, display []string) (store.Version, error) {
 	v, _, _, err := e.addEntry(ctx, arg, ref, path, display)
 	return v, err
+}
+
+// PreviewEntry is AddEntry for lola cache add -n: the entry is fetched into a run directory that
+// is removed, and shown as the add would show it. Nothing is cached.
+func (e *Engine) PreviewEntry(ctx context.Context, arg, ref, path string, display []string) (_ ModuleView, err error) {
+	reqs := []InstallRequest{{Arg: arg, Ref: ref, Path: path}}
+	unlock, err := e.resolveMarkets(reqs, true, display)
+	if err != nil {
+		return ModuleView{}, err
+	}
+	defer unlock()
+	p := reqs[0].market
+	if p == nil {
+		return ModuleView{}, fmt.Errorf("%s is not a marketplace address, @<marketplace>/<module>", untrusted.Text(arg, untrusted.MaxName))
+	}
+	run, done, err := e.runDir()
+	if err != nil {
+		return ModuleView{}, err
+	}
+	defer func() { err = errors.Join(err, done()) }()
+	spec, commit := p.spec(ref)
+	st, err := e.prepareEntry(ctx, p, spec, commit, run)
+	if err != nil {
+		return ModuleView{}, err
+	}
+	return previewView(st.Version, spec), nil
 }
 
 // addEntry is AddEntry, which also returns the ref the version was cached under and the commit

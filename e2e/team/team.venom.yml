@@ -629,8 +629,8 @@ testcases:
           {{.runtime}} exec {{.container}} python3 -c '
           import json, re
           doc = json.load(open("/tmp/t16.err"))
-          assert re.fullmatch(r"lola sync needs your trust for the pre-install script ci/check\.sh \(sha256 [0-9a-f]{64}\) of this project \(new\), and there is no terminal to ask on", doc["error"]), doc["error"]
-          assert doc["hints"][1] == "lola has not shown you this script; see it with lola sync -C /work/proj4 --trust=scripts --json -n, then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
+          assert re.fullmatch(r"lola sync needs your trust for the pre-install script ci/check\.sh \(script sha256 [0-9a-f]{64}\) of this project \(new\), and there is no terminal to ask on", doc["error"]), doc["error"]
+          assert doc["hints"][1] == "lola has not shown you this script; add -n to see it first, then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
           assert doc["hints"][2] == "or add --unseen to consent without seeing it: lola sync -C /work/proj4 --trust=scripts --json --unseen", doc["hints"]
           print("ok")'
         assertions:
@@ -678,8 +678,8 @@ testcases:
           {{.runtime}} exec {{.container}} python3 -c '
           import json, re
           doc = json.load(open("/tmp/t16b.err"))
-          assert re.fullmatch(r"lola sync needs your trust for the pre-install script ci/check\.sh \(sha256 [0-9a-f]{64}\) of this project \(changed\), and there is no terminal to ask on", doc["error"]), doc["error"]
-          assert doc["hints"][1] == "lola has not shown you this script; see it with lola sync -C /work/proj4 --trust=scripts --json -n, then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
+          assert re.fullmatch(r"lola sync needs your trust for the pre-install script ci/check\.sh \(script sha256 [0-9a-f]{64}\) of this project \(changed\), and there is no terminal to ask on", doc["error"]), doc["error"]
+          assert doc["hints"][1] == "lola has not shown you this script; add -n to see it first, then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
           assert doc["hints"][2] == "or add --unseen to consent without seeing it: lola sync -C /work/proj4 --trust=scripts --json --unseen", doc["hints"]
           print("ok")'
         assertions:
