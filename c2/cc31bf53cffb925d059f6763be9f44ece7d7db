@@ -1,0 +1,49 @@
+docs/architecture/tui-flows.md
+  s_8e40a7060352db::t_5b99c0f77ac520 1305-1306
+docs/guides/migrating.md
+  s_8e40a7060352db::t_5ebdb541518d39 40-48
+docs/reference/migrate.md
+  s_8e40a7060352db::t_bce70674314620 18,37-44,53
+internal/cli/cmd_migrate.go
+  s_8e40a7060352db::t_ee28098a8a9b14 39-43,85,104,124-137,142-145,160,169-182,378-380,386,630-632
+internal/cli/migrate_changed_test.go
+  s_8e40a7060352db::t_6cf5753a547659 1-195
+internal/cli/trust.go
+  s_8e40a7060352db::t_6ddc7e3a7070a4 79
+internal/cli/trust_test.go
+  s_8e40a7060352db::t_cbc8f96c0fc17d 154,192,196-200
+internal/engine/trustkinds.go
+  s_8e40a7060352db::t_d038f51ba668ee 211,213-214
+internal/engine/trustkinds_test.go
+  s_8e40a7060352db::t_97188062f15183 214
+internal/migrate/changed.go
+  s_8e40a7060352db::t_0f42d0cdd18815 1-136
+internal/migrate/changed_test.go
+  s_8e40a7060352db::t_2bacde7e944125 1-224
+internal/migrate/plan.go
+  s_8e40a7060352db::t_24d5027512a131 19,21,105,115-118,274-279,290-293,331-333,391-403,661-665
+internal/migrate/plan_test.go
+  s_8e40a7060352db::t_78bc6df09c4ec5 200
+internal/migrate/run.go
+  s_8e40a7060352db::t_9c1e4ce5985fb0 39-42,149-151,263-265,323-357,563-566,568-569
+internal/migrate/run_test.go
+  s_8e40a7060352db::t_037176ac6ac4eb 133
+internal/source/git.go
+  s_8e40a7060352db::t_4734bad65618d9 405-422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c2cc31bf53cffb925d059f6763be9f44ece7d7db",
+  "prompts": {},
+  "sessions": {
+    "s_8e40a7060352db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8afbf1e-2d96-4296-9618-529a50248a6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
