@@ -1,0 +1,37 @@
+docs/guides/choosing-what-to-install.md
+  s_8e40a7060352db::t_135042845b3af3 346-355,588-590
+internal/cli/cmd_core.go
+  s_8e40a7060352db::t_4cef8b91b58af7 186
+internal/cli/core_test.go
+  s_8e40a7060352db::t_290e8b9c721025 17,669-723
+internal/cli/flow.go
+  s_8e40a7060352db::t_6175561b21352a 847-849,872-876,2097-2103,2459-2499
+internal/cli/marketflow_test.go
+  s_8e40a7060352db::t_ef8395ab901186 117-123
+internal/cli/report.go
+  s_8e40a7060352db::t_ec469d8d2ca01d 544,549-554
+internal/cli/selections_test.go
+  s_8e40a7060352db::t_b255fb5938ba0f 105-138
+internal/engine/engine.go
+  s_8e40a7060352db::t_75ffe2db9b3a54 341-342,1225-1230
+internal/engine/market_install.go
+  s_8e40a7060352db::t_0a21d951db3e94 74-85
+internal/engine/profile.go
+  s_8e40a7060352db::t_4c545735354e68 19,424-447
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "39aae67918598d2156b1e53ffb6aa4cc4233810c",
+  "prompts": {},
+  "sessions": {
+    "s_8e40a7060352db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8afbf1e-2d96-4296-9618-529a50248a6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
