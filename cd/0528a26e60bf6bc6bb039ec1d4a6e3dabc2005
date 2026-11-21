@@ -1,0 +1,19 @@
+internal/cli/theme.go
+  s_8e40a7060352db::t_a570559b0ede44 159-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "cd0528a26e60bf6bc6bb039ec1d4a6e3dabc2005",
+  "prompts": {},
+  "sessions": {
+    "s_8e40a7060352db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8afbf1e-2d96-4296-9618-529a50248a6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
