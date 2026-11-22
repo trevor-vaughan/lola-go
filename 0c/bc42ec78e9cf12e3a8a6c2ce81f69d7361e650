@@ -1,0 +1,57 @@
+docs/architecture/marketplaces.md
+  s_5e119d313ddff5::t_edd36ea2ed69cf 189-197
+internal/cli/market_output.go
+  s_5e119d313ddff5::t_9573432ed284e3 444
+  s_5e119d313ddff5::t_83c91319f24182 15,389-443,445-459
+internal/cli/store_test.go
+  s_5e119d313ddff5::t_59a5ed4817bca8 571
+  s_5e119d313ddff5::t_13703d11046994 570
+internal/engine/market_test.go
+  s_5e119d313ddff5::t_07b89a2898a7fd 1364,1438-1460,1462-1488
+  s_5e119d313ddff5::t_ee4f0cc10391bc 1339,1358,1375,1382,1394,1397,1402,1404,1410,1422,1494
+  s_5e119d313ddff5::t_8c22eed92d1b11 1461
+  s_5e119d313ddff5::t_25b32ad6ea0afe 1489
+README.md
+  s_5e119d313ddff5::t_0ecff8028d2470 107-109
+internal/cli/market_known_test.go
+  s_5e119d313ddff5::t_83c91319f24182 159
+  s_5e119d313ddff5::t_48cfb86f98515d 216
+  s_5e119d313ddff5::t_6dfa9500f6aa91 1-157,160-167,169-186,188-212,214-215,217-237,239-241
+  s_5e119d313ddff5::t_9573432ed284e3 158,168,187,213,238
+docs/reference/market.md
+  s_5e119d313ddff5::t_68575391b58d4f 6,9,19-20,66-67,69,137-164
+  s_5e119d313ddff5::t_82774f04703c1f 136
+internal/cli/market_test.go
+  s_5e119d313ddff5::t_05b5de9985ba15 174-175,177,509,903,905-907,965
+internal/engine/market_known.go
+  s_5e119d313ddff5::t_2dedec672793f2 52-73,79-82,99,104-114
+internal/cli/cmd_market.go
+  s_5e119d313ddff5::t_8c22eed92d1b11 155,256,258
+  s_5e119d313ddff5::t_023c6f698b9640 19-25,27,36-37,45-46,134,136,173,215-218,254-255,257,259,262,343,345,349-355
+  s_5e119d313ddff5::t_b520606a2a7a27 140,154,162-163,558-651,653
+  s_5e119d313ddff5::t_a77000cf2b6091 652
+internal/cli/root.go
+  s_5e119d313ddff5::t_856f76e6c3c3e8 100-101
+  s_5e119d313ddff5::t_b520606a2a7a27 23,114-119,250
+  s_5e119d313ddff5::t_384d1a7cddae38 102
+docs/guides/marketplaces.md
+  s_5e119d313ddff5::t_42c9d59bee3fea 24-25,485-505
+docs/usage.md
+  s_5e119d313ddff5::t_8c2f300a612221 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0cbc42ec78e9cf12e3a8a6c2ce81f69d7361e650",
+  "prompts": {},
+  "sessions": {
+    "s_5e119d313ddff5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d77a83a-6e5e-4b48-a706-076f4b78351f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
