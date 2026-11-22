@@ -1,0 +1,25 @@
+internal/cli/market_known_test.go
+  s_5e119d313ddff5::t_80b94556e8bdb6 203
+  s_5e119d313ddff5::t_dce4be7c41b123 104-111,202,244-251
+  s_5e119d313ddff5::t_5e5bd67502e4dd 252
+internal/cli/market_output.go
+  s_5e119d313ddff5::t_cbb6302196a72c 390,396,406,408,418,434,443,454
+internal/cli/cmd_market.go
+  s_5e119d313ddff5::t_cbb6302196a72c 12,174-179,269-279,357-374,378,384,390,594-602,631,643,680-682
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "81b29dd22d33043b5b73a7f4d6722b577a2ab6c0",
+  "prompts": {},
+  "sessions": {
+    "s_5e119d313ddff5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d77a83a-6e5e-4b48-a706-076f4b78351f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
