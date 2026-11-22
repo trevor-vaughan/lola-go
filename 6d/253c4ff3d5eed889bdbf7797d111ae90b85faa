@@ -1,0 +1,23 @@
+internal/market/lolayaml.go
+  s_5e119d313ddff5::t_2480e221e0fa2d 183-188,193
+internal/market/market_test.go
+  s_5e119d313ddff5::t_2480e221e0fa2d 28,56,100,167,182,190,201,215,226,229,235,244,247,278,282,285,287,320,336,351,366,372,378,405,453,463,506,537
+docs/architecture/marketplaces.md
+  s_5e119d313ddff5::t_2480e221e0fa2d 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "6d253c4ff3d5eed889bdbf7797d111ae90b85faa",
+  "prompts": {},
+  "sessions": {
+    "s_5e119d313ddff5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d77a83a-6e5e-4b48-a706-076f4b78351f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
