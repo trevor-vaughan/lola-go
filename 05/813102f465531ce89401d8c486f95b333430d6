@@ -1,0 +1,38 @@
+internal/cli/market_picker_lines_internal_test.go
+  s_208a4a1bb3ffe0::t_932ecda3f4020c 220,224,536
+  s_208a4a1bb3ffe0::t_240a12fb70f11b 547-548
+  s_208a4a1bb3ffe0::t_077aade48ec51e 7,198-201,204-219,221,223,225-231,244,431,475-529,531-534,537-546,549-580
+  s_208a4a1bb3ffe0::t_b52e9ae37336d3 530
+  s_208a4a1bb3ffe0::t_88c48f254f2a90 222,236,535
+internal/cli/market_picker_preview.go
+  s_208a4a1bb3ffe0::t_f843d5cfb5f2e6 146
+internal/cli/market_picker.go
+  s_208a4a1bb3ffe0::t_f843d5cfb5f2e6 784-785,799,801,804,876-878,890,902,904,937,958-959,968-972,974,990,1020-1069,1071,1074-1075,1077,1085,1096
+internal/cli/market_picker_entries.go
+  s_208a4a1bb3ffe0::t_f843d5cfb5f2e6 216-217,404-406,411,413-415,445-446,448,459
+internal/cli/market_picker_preview_internal_test.go
+  s_208a4a1bb3ffe0::t_1015c9fc5bbf43 50,236,399
+docs/reference/market.md
+  s_208a4a1bb3ffe0::t_42796f64c23592 294-301
+docs/architecture/tui-flows.md
+  s_208a4a1bb3ffe0::t_42796f64c23592 1482-1487
+internal/cli/market_picker_internal_test.go
+  s_208a4a1bb3ffe0::t_8c539a62943cc4 1272,1274,1282,1291
+  s_208a4a1bb3ffe0::t_1015c9fc5bbf43 780,848,918,937,1209,1237,1260,1349
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "05813102f465531ce89401d8c486f95b333430d6",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
