@@ -1,0 +1,27 @@
+internal/cli/market_picker_internal_test.go
+  s_208a4a1bb3ffe0::t_ef2cbf041fe39b 675
+  s_208a4a1bb3ffe0::t_1987ad0eff912e 759-935
+internal/cli/market_picker.go
+  s_208a4a1bb3ffe0::t_ef2cbf041fe39b 632
+  s_208a4a1bb3ffe0::t_73349397c63706 39-42,47-49,52-55,58-59,61-63,77-79,82-83,110-119,155,160,185-186,242,246-248,281,293,427-429,525-527,587-589,609-611,653
+  s_208a4a1bb3ffe0::t_1a3f6054e60d5d 26-31
+internal/cli/market_picker_entries.go
+  s_208a4a1bb3ffe0::t_d44195b9df8ea8 23,172,176
+  s_208a4a1bb3ffe0::t_3d78e86ffc55c5 1-22,24-171,173-175,177-291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "4ac22bc40190ff8bd170037091c1f35702375da2",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
