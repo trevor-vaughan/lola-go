@@ -1,0 +1,33 @@
+docs/reference/market.md
+  s_208a4a1bb3ffe0::t_173d14fddc2778 299
+  s_208a4a1bb3ffe0::t_85a9aa9dc96e99 314
+internal/source/git.go
+  s_208a4a1bb3ffe0::t_b239f045a8fba0 48-49,54-55
+  s_208a4a1bb3ffe0::t_b90f3ecb65eea6 41-43
+internal/cli/market_picker_preview_internal_test.go
+  s_208a4a1bb3ffe0::t_d2fa4b02368528 296-307
+internal/cli/market_picker_preview.go
+  s_208a4a1bb3ffe0::t_0202b64c92900e 94-98
+docs/architecture/marketplaces.md
+  s_208a4a1bb3ffe0::t_85a9aa9dc96e99 205-215
+docs/architecture/tui-flows.md
+  s_208a4a1bb3ffe0::t_85a9aa9dc96e99 1525
+internal/source/git_internal_test.go
+  s_208a4a1bb3ffe0::t_6ab43ae5c03fb8 31-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "3879d2b54fc6bbae68e00dcd81f8c4dcbf5d4239",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
