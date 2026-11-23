@@ -1,0 +1,40 @@
+internal/cli/browser.go
+  s_208a4a1bb3ffe0::t_7e23122f0b6a01 8,13-15,19-21,31-33,35-38,57-58,65
+internal/cli/browser_other.go
+  s_208a4a1bb3ffe0::t_7e23122f0b6a01 1-9
+internal/cli/market_picker_internal_test.go
+  s_208a4a1bb3ffe0::t_f022b9aa83df67 976,980,1009-1014,1059-1073
+  s_208a4a1bb3ffe0::t_fae853ac27fc3f 1074-1075
+docs/reference/market.md
+  s_208a4a1bb3ffe0::t_c35ab73613f468 242,264-265,267-268
+internal/cli/market_picker_entries.go
+  s_208a4a1bb3ffe0::t_7e23122f0b6a01 164,357-359,361,363-366,368,373,375
+internal/engine/market_weburl.go
+  s_208a4a1bb3ffe0::t_7e23122f0b6a01 20-22,53
+  s_208a4a1bb3ffe0::t_9973fc92b1aa2d 54-55
+internal/cli/browser_unix.go
+  s_208a4a1bb3ffe0::t_7e23122f0b6a01 1-12
+docs/architecture/tui-flows.md
+  s_208a4a1bb3ffe0::t_c35ab73613f468 1340,1343,1430,1432
+  s_208a4a1bb3ffe0::t_7e23122f0b6a01 1513,1526
+internal/engine/market_weburl_test.go
+  s_208a4a1bb3ffe0::t_f022b9aa83df67 41-45
+internal/cli/misc2_paths_test.go
+  s_208a4a1bb3ffe0::t_f022b9aa83df67 99-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "571870ada0adc6ffd7286fe875bf08fa51b79684",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
