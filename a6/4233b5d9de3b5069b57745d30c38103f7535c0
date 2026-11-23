@@ -1,0 +1,35 @@
+internal/cli/market_picker_readable_internal_test.go
+  s_208a4a1bb3ffe0::t_4ff2662ec64d48 195,218,245
+internal/cli/market_picker_internal_test.go
+  s_208a4a1bb3ffe0::t_4ff2662ec64d48 773,829,843,848,1188,1196,1379,1388
+internal/engine/marketinstall_test.go
+  s_208a4a1bb3ffe0::t_653be5f83bb94a 478
+internal/engine/market_weburl_test.go
+  s_208a4a1bb3ffe0::t_3ff499384a551b 53-56,59-61,64
+  s_208a4a1bb3ffe0::t_982ea67f10d781 49-52,57-58,62-63,65-66
+docs/architecture/tui-flows.md
+  s_208a4a1bb3ffe0::t_4ff2662ec64d48 1472
+internal/engine/market_browse.go
+  s_208a4a1bb3ffe0::t_4ff2662ec64d48 36,40-48
+  s_208a4a1bb3ffe0::t_6ac1d70f181ddc 26-28,99
+internal/cli/market_picker_entries.go
+  s_208a4a1bb3ffe0::t_4ff2662ec64d48 390-391
+docs/reference/market.md
+  s_208a4a1bb3ffe0::t_d9180796a4fcf3 251,253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "a64233b5d9de3b5069b57745d30c38103f7535c0",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
