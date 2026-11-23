@@ -1,0 +1,43 @@
+internal/engine/market_picker.go
+  s_208a4a1bb3ffe0::t_f851d06473c9aa 114-115,117
+internal/engine/market_picker_test.go
+  s_208a4a1bb3ffe0::t_f851d06473c9aa 31,55-57,121-123,130-138
+internal/cli/market_picker_internal_test.go
+  s_208a4a1bb3ffe0::t_d0dbe066dd067f 674,707
+internal/cli/market_picker.go
+  s_208a4a1bb3ffe0::t_d0dbe066dd067f 89,697
+  s_55b8a582466a51::t_fb824b88e4830f 813
+internal/cli/market_picker_readable_internal_test.go
+  s_208a4a1bb3ffe0::t_1fa7b7e9ad6561 136
+  s_208a4a1bb3ffe0::t_34a0aa1812346a 167,173
+docs/architecture/tui-flows.md
+  s_55b8a582466a51::t_4cb837d63ea408 1456,1464,1478
+docs/reference/market.md
+  s_55b8a582466a51::t_eaf16e6d8a3e17 210,299,308
+internal/cli/market_picker_lines_internal_test.go
+  s_55b8a582466a51::t_12afce5252ebe8 444,447
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e74f3e67db763d063b0e8084c820b8f806f650a1",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_55b8a582466a51": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9a824d03d724db5b",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
