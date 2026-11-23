@@ -1,0 +1,32 @@
+internal/source/detach_other.go
+  s_11d31ec52a229c::t_8618005db17ec9 7-8
+  s_11d31ec52a229c::t_6fe001c3d8a284 1-6,9
+internal/source/git_linux_test.go
+  s_11d31ec52a229c::t_70ce30efe874d9 1-42,44-45,47,49-70
+  s_11d31ec52a229c::t_5a07735073dc9e 43
+  s_11d31ec52a229c::t_0d5b2fe4a74142 46,48
+internal/source/git.go
+  s_11d31ec52a229c::t_597b44eab99cfb 480
+  s_11d31ec52a229c::t_73701868b7c73e 127-131
+  s_11d31ec52a229c::t_40ce6c1462b2c8 479,481-483,490-494
+internal/source/detach_unix.go
+  s_11d31ec52a229c::t_ef7c0843611ebc 1-24
+internal/source/git_test.go
+  s_11d31ec52a229c::t_7f94a166320cc2 629-643
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "80799e0cfe811e30dd549de741082b235c18b355",
+  "prompts": {},
+  "sessions": {
+    "s_11d31ec52a229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d5169b7-2a8d-4eb2-b2bd-bff4a5ba5e6f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
