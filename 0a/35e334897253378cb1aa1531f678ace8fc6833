@@ -1,0 +1,56 @@
+internal/cli/cmd_market.go
+  s_208a4a1bb3ffe0::t_f3f697488bafe4 841
+  s_208a4a1bb3ffe0::t_95934c792fa9ea 824
+internal/cli/market_picker_internal_test.go
+  s_208a4a1bb3ffe0::t_8d3a2c98b2c077 6,8,925-963,965-976,981-989,998-1011,1013-1017,1023,1025-1035,1037-1041,1045-1055,1057-1061
+  s_208a4a1bb3ffe0::t_7cab52aaf5fa9f 9
+  s_208a4a1bb3ffe0::t_fc5091d41b4736 977-980,990-997,1018-1021
+  s_208a4a1bb3ffe0::t_cd01e7d10f4ce9 1012,1024,1036,1056
+  s_208a4a1bb3ffe0::t_9bfa41dc6baef5 767
+  s_208a4a1bb3ffe0::t_cb3ce9b2a9eade 764-766,770,1109
+  s_208a4a1bb3ffe0::t_07e0313fc5443c 768-769,1062-1108,1110-1117
+  s_208a4a1bb3ffe0::t_92e58ae84124a2 856,964,1042-1044
+  s_208a4a1bb3ffe0::t_47c0a0907892ec 844-855,857-924
+  s_208a4a1bb3ffe0::t_cb540b2739a721 1022
+  s_208a4a1bb3ffe0::t_5c22a227528350 1118
+internal/cli/browser.go
+  s_208a4a1bb3ffe0::t_41d985d80d3e0f 1-58
+internal/cli/marketflow_test.go
+  s_208a4a1bb3ffe0::t_190cfa3848aaa1 661-669
+  s_208a4a1bb3ffe0::t_fc5091d41b4736 670-678
+internal/cli/market_picker.go
+  s_208a4a1bb3ffe0::t_d9d912afdf415a 106-111
+  s_208a4a1bb3ffe0::t_f3f697488bafe4 42-44,58-63,68-69,74
+  s_208a4a1bb3ffe0::t_f92aea3c2bbb06 52-54,167,187-188
+  s_208a4a1bb3ffe0::t_8db02be7bbe0f0 256-259,313
+  s_208a4a1bb3ffe0::t_d649c7ff1c554d 314
+docs/architecture/tui-flows.md
+  s_208a4a1bb3ffe0::t_fc5091d41b4736 1325-1327,1329-1330,1335-1345,1383,1386-1389,1391-1394,1430,1432-1433,1487-1489,1505-1515,1523-1528,1531-1534
+internal/cli/market_picker_entries.go
+  s_208a4a1bb3ffe0::t_8db02be7bbe0f0 42-43,55-57,87,108,112-115,125-127,132-137,139,142,145,149-150,172-173,190-193,209,348-349,358-364,369-370
+  s_208a4a1bb3ffe0::t_d9d912afdf415a 4-5,10,116-119,146-148,151-171,174-189,353-355,357,368
+  s_208a4a1bb3ffe0::t_5c3388d77228d3 294-296,336-342
+internal/cli/misc2_paths_test.go
+  s_208a4a1bb3ffe0::t_fc5091d41b4736 85-99
+docs/reference/market.md
+  s_208a4a1bb3ffe0::t_6af8349cfb90a3 216,236-242,244-267
+  s_208a4a1bb3ffe0::t_f62e2d9824eb17 243
+internal/cli/browser_internal_test.go
+  s_208a4a1bb3ffe0::t_7365568c1450ea 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0a35e334897253378cb1aa1531f678ace8fc6833",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
