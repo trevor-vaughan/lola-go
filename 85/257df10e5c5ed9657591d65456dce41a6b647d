@@ -1,0 +1,24 @@
+internal/engine/market_picker.go
+  s_11d31ec52a229c::t_7dfa02cf37c975 10-11
+  s_11d31ec52a229c::t_04692432f01597 72
+internal/engine/market_picker_test.go
+  s_11d31ec52a229c::t_3eb1f2b3c43320 134
+  s_11d31ec52a229c::t_c7ac999c001d22 90
+  s_11d31ec52a229c::t_e8a6f46d67f68d 127-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "85257df10e5c5ed9657591d65456dce41a6b647d",
+  "prompts": {},
+  "sessions": {
+    "s_11d31ec52a229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d5169b7-2a8d-4eb2-b2bd-bff4a5ba5e6f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
