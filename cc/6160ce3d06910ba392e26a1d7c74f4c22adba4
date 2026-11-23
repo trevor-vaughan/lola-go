@@ -1,0 +1,21 @@
+internal/engine/marketinstall_test.go
+  s_208a4a1bb3ffe0::t_a4b62b72513573 440-463
+internal/engine/market_entries.go
+  s_208a4a1bb3ffe0::t_ab0d98fdc02efb 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "cc6160ce3d06910ba392e26a1d7c74f4c22adba4",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
