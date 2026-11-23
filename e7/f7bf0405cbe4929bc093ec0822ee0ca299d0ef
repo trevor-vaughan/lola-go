@@ -1,0 +1,50 @@
+internal/cli/cmd_market.go
+  s_208a4a1bb3ffe0::t_cbe4ea25a320b7 825-828
+  s_208a4a1bb3ffe0::t_78aa0247667bfd 5
+docs/reference/market.md
+  s_208a4a1bb3ffe0::t_c5305c1d3ea632 213-214,216,288-313
+  s_208a4a1bb3ffe0::t_febb0b23e6fd5c 314
+internal/cli/market_picker_preview.go
+  s_208a4a1bb3ffe0::t_f40d22402c4cbe 1-53,55-72,75-83,85-120,127-134
+  s_208a4a1bb3ffe0::t_b2a448caca3840 54,73-74,84
+  s_208a4a1bb3ffe0::t_040d3406f7c667 121-126
+internal/cli/misc2_paths_test.go
+  s_208a4a1bb3ffe0::t_b9d74512a3dde8 78,91,106-117
+internal/cli/huh.go
+  s_208a4a1bb3ffe0::t_208a1b17bff4ad 1124
+internal/cli/market_picker.go
+  s_208a4a1bb3ffe0::t_b2a448caca3840 148
+  s_208a4a1bb3ffe0::t_17020b0dab1113 55-59,140-147,149-151,187-188,210-211
+  s_208a4a1bb3ffe0::t_2bb1f88535cdd8 280-283,289-292,296-300,383,386,682-684,686
+  s_208a4a1bb3ffe0::t_dfd51d5a06bbd5 95-98
+docs/architecture/marketplaces.md
+  s_208a4a1bb3ffe0::t_e4ed94b797b21d 198-209
+  s_208a4a1bb3ffe0::t_c89510f72dc823 210
+internal/cli/market_picker_preview_internal_test.go
+  s_208a4a1bb3ffe0::t_7279a695c9102b 1-76,78-179,181-209,226-227,230-303
+  s_208a4a1bb3ffe0::t_6272f6b6ef385b 180
+  s_208a4a1bb3ffe0::t_bb70a1ee978dfd 228-229
+  s_208a4a1bb3ffe0::t_4558bc42d7b989 210-225
+  s_208a4a1bb3ffe0::t_ae0598f13f59e1 77
+internal/cli/market_picker_entries.go
+  s_208a4a1bb3ffe0::t_f5d81fb8c6be23 268
+  s_208a4a1bb3ffe0::t_b40c50f7febc79 32,61-68,127-130,145,161-163,205-206,209-210,263-267,269-270,384-387
+docs/architecture/tui-flows.md
+  s_208a4a1bb3ffe0::t_34e0cf1ac21db8 1346-1362,1400-1407,1430,1438,1454,1456,1510-1512,1516,1523-1530,1540-1543
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e7f7bf0405cbe4929bc093ec0822ee0ca299d0ef",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
