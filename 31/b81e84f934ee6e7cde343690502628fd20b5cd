@@ -1,0 +1,64 @@
+internal/cli/market_picker_readable_internal_test.go
+  s_208a4a1bb3ffe0::t_2c88b6be85b06f 1-160,162-257
+  s_208a4a1bb3ffe0::t_1b8201353522a5 161
+internal/cli/market_picker.go
+  s_208a4a1bb3ffe0::t_66b7f7b48fda1e 932
+  s_208a4a1bb3ffe0::t_e6761a16bfed30 547-548
+  s_208a4a1bb3ffe0::t_6c8ebd7b183a40 1029
+  s_208a4a1bb3ffe0::t_20f860860836be 4
+  s_208a4a1bb3ffe0::t_624c925fc9baa3 272-273
+  s_208a4a1bb3ffe0::t_09b670a14522e0 554-556,558
+  s_208a4a1bb3ffe0::t_288ece2a79a527 865-880
+  s_208a4a1bb3ffe0::t_7466cf4bd82042 89
+  s_208a4a1bb3ffe0::t_5d51e4518b4ae0 813,818-820
+  s_208a4a1bb3ffe0::t_db371f47940fda 697
+  s_208a4a1bb3ffe0::t_f77ad9db8e46af 56
+  s_208a4a1bb3ffe0::t_4aaf34af51da6d 821
+  s_208a4a1bb3ffe0::t_73af726b6c5ffe 881-883
+internal/cli/market_picker_entries.go
+  s_208a4a1bb3ffe0::t_b62a09a7158b2c 352-353
+  s_208a4a1bb3ffe0::t_4a79699af7509b 30-32
+  s_208a4a1bb3ffe0::t_df1d7a4a9b1fe0 387,389,396,399,402-404,408-410,413,416-419
+  s_208a4a1bb3ffe0::t_bfdcea3a7cd0ac 181-184,186-189,192,197-211
+  s_208a4a1bb3ffe0::t_5c01f069241bd6 405-407,412,415
+  s_208a4a1bb3ffe0::t_d6eed692bb1f5b 362-363
+  s_208a4a1bb3ffe0::t_35b9b4b5bd3558 133
+  s_208a4a1bb3ffe0::t_b62f55a88d18b0 167
+  s_208a4a1bb3ffe0::t_81098747294355 212
+  s_208a4a1bb3ffe0::t_f1a152f8ae5d48 414
+internal/cli/market_picker_internal_test.go
+  s_208a4a1bb3ffe0::t_86ad01a9d74a0d 674
+  s_f5c130f1863beb::t_ecba478c37a8e6 135,138,662,705,707
+internal/cli/market_picker_lines_internal_test.go
+  s_f5c130f1863beb::t_b84b3a3ed15680 439,442,536
+docs/architecture/tui-flows.md
+  s_208a4a1bb3ffe0::t_b4ec6c90fcde21 1458,1464,1466,1472,1536-1539,1621
+docs/reference/market.md
+  s_208a4a1bb3ffe0::t_fda0b80e8c5688 176-180,213,235,252-253,261-262,294,303
+internal/cli/misc2_paths_test.go
+  s_208a4a1bb3ffe0::t_6fe59466cdc754 37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "31b81e84f934ee6e7cde343690502628fd20b5cd",
+  "prompts": {},
+  "sessions": {
+    "s_208a4a1bb3ffe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4aaeb7d5-5679-466d-b2da-e173331e7c10",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_f5c130f1863beb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a42f4ed2bfbe9d229",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
