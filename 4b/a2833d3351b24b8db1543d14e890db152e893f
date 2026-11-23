@@ -1,0 +1,48 @@
+internal/cli/market_picker_internal_test.go
+  s_11d31ec52a229c::t_aefa3a5674d34d 437-450
+internal/cli/cmd_market.go
+  s_11d31ec52a229c::t_7c0db6a0d30e44 739-929
+  s_11d31ec52a229c::t_6047bee06c4cc4 176-179,181-183
+  s_11d31ec52a229c::t_8e2f6e14d7ec38 196
+  s_11d31ec52a229c::t_40592ce3bed72a 16
+  s_11d31ec52a229c::t_bf015468e8292e 4-5
+  s_11d31ec52a229c::t_7c85ca1e44398d 252-256
+  s_11d31ec52a229c::t_b13c71099f767b 257-258
+internal/cli/marketflow_test.go
+  s_11d31ec52a229c::t_9814a1dcb8b4c4 496,502
+  s_11d31ec52a229c::t_1ac6e77f0d2e12 268-490,493-495,497-498,500-501,504-529
+  s_11d31ec52a229c::t_59026807f206bd 499
+  s_11d31ec52a229c::t_ff5f1ed9b63b1a 503
+  s_11d31ec52a229c::t_5a734e85fabd83 491-492
+  s_11d31ec52a229c::t_7e13ac66a500e3 4-6,9,14,20-21
+internal/cli/huh.go
+  s_11d31ec52a229c::t_244fe09563912b 1086-1092,1097-1098
+  s_11d31ec52a229c::t_dfc342341c5f94 1093-1096
+internal/cli/huh_internal_test.go
+  s_11d31ec52a229c::t_8d57ff990bee6a 140-147
+internal/cli/market_test.go
+  s_11d31ec52a229c::t_23b38b6827aa1a 179
+internal/cli/flow_test.go
+  s_11d31ec52a229c::t_9cac13ac0677e1 267-280
+  s_11d31ec52a229c::t_c49225275b3739 57
+internal/cli/prompter.go
+  s_11d31ec52a229c::t_5a7683099d8442 64-66
+  s_11d31ec52a229c::t_fb295d222230c5 506-508
+  s_11d31ec52a229c::t_27a263dc40ff76 187-190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "4ba2833d3351b24b8db1543d14e890db152e893f",
+  "prompts": {},
+  "sessions": {
+    "s_11d31ec52a229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d5169b7-2a8d-4eb2-b2bd-bff4a5ba5e6f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
