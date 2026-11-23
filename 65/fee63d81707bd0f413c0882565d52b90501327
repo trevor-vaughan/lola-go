@@ -1,0 +1,44 @@
+internal/cli/cmd_market.go
+  s_11d31ec52a229c::t_77f473edd23882 185-188
+  s_11d31ec52a229c::t_2cad89895383de 230-241
+  s_11d31ec52a229c::t_c790c310dcab28 137,157,247,277-280
+internal/config/config_test.go
+  s_11d31ec52a229c::t_cc2f388aab6517 68-89
+internal/cli/market_test.go
+  s_11d31ec52a229c::t_aab6d3c6e50d6d 120-156,159-182,184-193
+  s_11d31ec52a229c::t_21119c5c6f0034 157-158
+  s_11d31ec52a229c::t_c9592735a9336f 183
+internal/config/config.go
+  s_11d31ec52a229c::t_cc2f388aab6517 45,125,151-155
+  s_11d31ec52a229c::t_5e8231ba16e2e4 156
+internal/cli/market_output.go
+  s_bc1350cc641bb4::t_6e70be836d7271 45,48-53,59-64,69-73
+internal/engine/market_picker.go
+  s_bc1350cc641bb4::t_4414715e6a76dc 162-186
+docs/guides/marketplaces.md
+  s_11d31ec52a229c::t_d6dd33dacf8939 17,196-200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "65fee63d81707bd0f413c0882565d52b90501327",
+  "prompts": {},
+  "sessions": {
+    "s_11d31ec52a229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d5169b7-2a8d-4eb2-b2bd-bff4a5ba5e6f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_bc1350cc641bb4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae2ad0c2e99e0ef5a",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
