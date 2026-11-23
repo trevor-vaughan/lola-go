@@ -1,0 +1,25 @@
+docs/reference/market.md
+  s_11d31ec52a229c::t_d774bdd13ca8e5 71
+internal/cli/market_test.go
+  s_11d31ec52a229c::t_ff5de2cd350dd5 223-239
+internal/cli/cmd_market.go
+  s_11d31ec52a229c::t_2d085752cdf076 179-183,188-189,207
+  s_11d31ec52a229c::t_e4d3c03ea60a48 205-206
+  s_11d31ec52a229c::t_ae126c235ffcce 190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f60eaea6ab579999768039cdc45cf1138344d2f8",
+  "prompts": {},
+  "sessions": {
+    "s_11d31ec52a229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d5169b7-2a8d-4eb2-b2bd-bff4a5ba5e6f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
