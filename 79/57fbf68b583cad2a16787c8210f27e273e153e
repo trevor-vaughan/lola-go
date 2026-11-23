@@ -1,0 +1,57 @@
+docs/architecture/tui-flows.md
+  s_11d31ec52a229c::t_01c6810095b342 1301-1304,1314-1337,1339-1340,1346-1360,1362-1366,1373-1377,1381-1385,1387-1390,1452-1454,1461-1463,1466,1470
+  s_11d31ec52a229c::t_22318682375fec 1305-1313,1338,1341-1345,1361,1367-1372,1378-1380,1386,1391-1451,1455-1460,1464-1465,1467-1469
+  s_11d31ec52a229c::t_d0fa6c293e3dee 56-57
+  s_11d31ec52a229c::t_4a3473e93276cf 26-27
+internal/cli/misc2_paths_test.go
+  s_11d31ec52a229c::t_4e9b6ac6a59d76 3-4,25,28-32,34-36,56,62-75
+  s_11d31ec52a229c::t_e8e5df89e53fbf 5-7
+  s_11d31ec52a229c::t_0430dba1d7431a 26-27,33,37-55,57-61
+scripts/tuiflows/main.go
+  s_11d31ec52a229c::t_64abaacce6734e 36
+AGENTS.md
+  s_11d31ec52a229c::t_6448e97057e99e 101-103
+  s_11d31ec52a229c::t_d5e76c62448165 88-89
+internal/cli/cmd_market.go
+  s_11d31ec52a229c::t_d42933e2761dc5 144-146,148,155-158
+  s_11d31ec52a229c::t_03c6c489c55ff6 149-154
+docs/architecture/marketplaces.md
+  s_11d31ec52a229c::t_f7719ccc74c0c5 198-215,218-219,226-227
+  s_11d31ec52a229c::t_225f0b80cd4c61 220-225
+  s_11d31ec52a229c::t_08ad07db1fbe8e 216-217
+docs/guides/config-and-selections.md
+  s_11d31ec52a229c::t_4f3d5dfab33003 18
+README.md
+  s_11d31ec52a229c::t_facd4fba3b41a4 104
+docs/reference/market.md
+  s_11d31ec52a229c::t_f43810274d767a 190-191
+  s_11d31ec52a229c::t_8a5723d4ca5a98 226
+  s_11d31ec52a229c::t_54759d5353f033 128
+  s_11d31ec52a229c::t_2c41f09abc145b 154-163,170-189,192-194,197-201,206-209,212-213,215-218,224
+  s_11d31ec52a229c::t_43653b34b147de 6,9-10,12-15,70-71,117-119,126-127,245-246
+  s_11d31ec52a229c::t_d68e879e5c9082 16,148-153,164-169,195-196,202-205,210-211,214,219-223,225
+docs/architecture/install-flow.md
+  s_11d31ec52a229c::t_6d38c977a2e652 9
+docs/usage.md
+  s_11d31ec52a229c::t_4469dc108c3912 544
+docs/guides/marketplaces.md
+  s_11d31ec52a229c::t_044ff6b141b105 197-203
+  s_11d31ec52a229c::t_27c4a1f7bbb396 16-17,194-196,204-206,529
+  s_11d31ec52a229c::t_688faa57fc773d 526-528
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "7957fbf68b583cad2a16787c8210f27e273e153e",
+  "prompts": {},
+  "sessions": {
+    "s_11d31ec52a229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d5169b7-2a8d-4eb2-b2bd-bff4a5ba5e6f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
