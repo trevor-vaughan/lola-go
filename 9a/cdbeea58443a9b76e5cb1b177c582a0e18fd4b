@@ -1,0 +1,31 @@
+internal/market/registry.go
+  s_11d31ec52a229c::t_6e2d466b6fa0dc 211-238
+internal/engine/market_known.go
+  s_11d31ec52a229c::t_f02420fabf9852 122-195
+internal/engine/market_test.go
+  s_11d31ec52a229c::t_35c03631dfcfb0 1466-1472
+  s_11d31ec52a229c::t_a2fb858db08f0a 1377,1398,1409
+  s_11d31ec52a229c::t_7663af58791d65 1369-1376,1378-1397,1399-1408,1410-1465,1473-1485
+internal/engine/market_sync.go
+  s_11d31ec52a229c::t_d77c6a6ae663ee 97
+internal/market/market_test.go
+  s_11d31ec52a229c::t_274fb92db03f3d 802-824
+internal/engine/market.go
+  s_11d31ec52a229c::t_d77c6a6ae663ee 1352-1364,1442-1446,1454-1458,1502-1504,1513-1517,1549,1552-1561
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9acdbeea58443a9b76e5cb1b177c582a0e18fd4b",
+  "prompts": {},
+  "sessions": {
+    "s_11d31ec52a229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d5169b7-2a8d-4eb2-b2bd-bff4a5ba5e6f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
