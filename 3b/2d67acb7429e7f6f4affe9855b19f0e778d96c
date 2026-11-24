@@ -1,0 +1,123 @@
+docs/architecture/marketplaces.md
+  s_5e119d313ddff5::t_edd36ea2ed69cf 189-197
+internal/cli/market_output.go
+  s_5e119d313ddff5::t_9573432ed284e3 441
+  s_5e119d313ddff5::t_83c91319f24182 388-389,391-392,393-395,397-405,407,409-417,419-433,435-440,442,444-453,455-456
+  s_5e119d313ddff5::t_cbb6302196a72c 390,396,406,408,418,434,443,454
+internal/cli/store_test.go
+  s_5e119d313ddff5::t_59a5ed4817bca8 571
+  s_5e119d313ddff5::t_13703d11046994 570
+internal/engine/market_test.go
+  s_5e119d313ddff5::t_07b89a2898a7fd 1382,1456-1478,1480-1506
+  s_5e119d313ddff5::t_ee4f0cc10391bc 1339,1376,1393,1400,1412,1415,1420,1422,1428,1440,1512
+  s_5e119d313ddff5::t_8c22eed92d1b11 1479
+  s_5e119d313ddff5::t_25b32ad6ea0afe 1507
+  s_5e119d313ddff5::t_4dcb428894304e 1399
+  s_5e119d313ddff5::t_911c217d26480d 1351-1368
+README.md
+  s_5e119d313ddff5::t_0ecff8028d2470 107-109
+internal/cli/market_known_test.go
+  s_5e119d313ddff5::t_83c91319f24182 167
+  s_5e119d313ddff5::t_48cfb86f98515d 225
+  s_5e119d313ddff5::t_6dfa9500f6aa91 1-103,112-165,168-175,177-194,196-201,204-221,223-224,226-243,253-255,257-259
+  s_5e119d313ddff5::t_9573432ed284e3 166,176,195,222,256
+  s_5e119d313ddff5::t_80b94556e8bdb6 203
+  s_5e119d313ddff5::t_dce4be7c41b123 104-111,202,244-251
+  s_5e119d313ddff5::t_5e5bd67502e4dd 252
+docs/reference/market.md
+  s_5e119d313ddff5::t_68575391b58d4f 6,9,19,66-67,69,137-147,150,152-164
+  s_5e119d313ddff5::t_82774f04703c1f 136
+  s_5e119d313ddff5::t_4457a428139566 20,148-149,151
+internal/cli/market_test.go
+  s_5e119d313ddff5::t_05b5de9985ba15 174-175,177,509,903,905-907,965
+internal/engine/market_known.go
+  s_5e119d313ddff5::t_2dedec672793f2 52-73,79-82,99,104-114
+  s_5e119d313ddff5::t_e888f734eb0c0f 20-21,31,83
+internal/cli/cmd_market.go
+  s_5e119d313ddff5::t_8c22eed92d1b11 156,262,264
+  s_5e119d313ddff5::t_023c6f698b9640 20-26,28,37-38,46-47,135,137,221-224,260-261,263,265,268,380,385-389
+  s_5e119d313ddff5::t_b520606a2a7a27 141,155,163,593,603-630,632-642,644-679,683-700,702
+  s_5e119d313ddff5::t_a77000cf2b6091 701
+  s_5e119d313ddff5::t_cbb6302196a72c 12,174-179,269-279,357-374,378,384,390,594-602,631,643,680-682
+  s_5e119d313ddff5::t_4457a428139566 164
+internal/cli/root.go
+  s_5e119d313ddff5::t_856f76e6c3c3e8 100-101
+  s_5e119d313ddff5::t_b520606a2a7a27 23,114-119,250
+  s_5e119d313ddff5::t_384d1a7cddae38 102
+docs/guides/marketplaces.md
+  s_5e119d313ddff5::t_42c9d59bee3fea 24,485-497,501-507
+  s_5e119d313ddff5::t_c20edd33f43553 498-500
+  s_5e119d313ddff5::t_4457a428139566 25
+docs/usage.md
+  s_5e119d313ddff5::t_8c2f300a612221 53
+internal/market/known_test.go
+  s_5e119d313ddff5::t_dfbdc24d97d1e6 53-58,90-91,99,127
+scripts/release-bump.sh
+  s_5e119d313ddff5::t_d2c64d6a421d34 2
+internal/market/known.yaml
+  s_5e119d313ddff5::t_a1dc8ce5a93612 3-4,6-10,12-15,17-20,22-26,28-32
+  s_5e119d313ddff5::t_019c5783fca0e0 11,16,21,27,33
+  s_5e119d313ddff5::t_60c38222140edf 34-49
+internal/engine/market_known_seed_test.go
+  s_5e119d313ddff5::t_14e1bf69e206d4 1-26
+.taskfiles/release.yml
+  s_5e119d313ddff5::t_7ee12bab75aeae 34-39
+docs/release.md
+  s_5e119d313ddff5::t_b67704841f26eb 60-67
+scripts/known-markets-refresh.sh
+  s_5e119d313ddff5::t_a50d357ba7dd26 1-7,9-13,22-38,40-51,53-61
+  s_5e119d313ddff5::t_019c5783fca0e0 8,14-21,39,52
+docs/maintainers/known-markets.md
+  s_5e119d313ddff5::t_ad1dcd9dfebe36 1-12,14-24,27,33-39,44-46,51-65,68
+  s_5e119d313ddff5::t_019c5783fca0e0 13
+  s_5e119d313ddff5::t_c20edd33f43553 40-43
+  s_5e119d313ddff5::t_60c38222140edf 25-26,28-32,47-50,66-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "3b2d67acb7429e7f6f4affe9855b19f0e778d96c",
+  "prompts": {},
+  "sessions": {
+    "s_00dea189f54a87": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a984233e1cafa09e3",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_11d31ec52a229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d5169b7-2a8d-4eb2-b2bd-bff4a5ba5e6f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_5e119d313ddff5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d77a83a-6e5e-4b48-a706-076f4b78351f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_bc1350cc641bb4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae2ad0c2e99e0ef5a",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_f3756b4ad64b32": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0217753382d5fc70",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}

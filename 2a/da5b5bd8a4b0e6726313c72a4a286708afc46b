@@ -1,0 +1,83 @@
+internal/source/git_internal_test.go
+  s_5e119d313ddff5::t_d5f33890955384 107
+  s_5e119d313ddff5::t_b50a6b78a99525 102-106,108-113
+internal/source/git.go
+  s_5e119d313ddff5::t_7fe773f0a7d934 152-154
+internal/market/claude.go
+  s_5e119d313ddff5::t_07c076f1c6a916 345-356,601-607
+  s_5e119d313ddff5::t_5d758ad25a407e 608-609
+  s_5e119d313ddff5::t_73051bdf448168 308-310
+  s_5e119d313ddff5::t_1d26add38ae36b 239
+  s_5e119d313ddff5::t_59168180a045c7 323-324,327-328
+docs/guides/marketplaces.md
+  s_5e119d313ddff5::t_dc94ac4816f5b1 240-244
+  s_5e119d313ddff5::t_9a9ce5a13cf522 275-277
+  s_5e119d313ddff5::t_2b4414b2be7d24 78-79,82-84
+  s_5e119d313ddff5::t_323e2e0f967f9e 80-81
+internal/market/market_test.go
+  s_5e119d313ddff5::t_7cbaf4fd9a3cea 340-350,352-361,384
+  s_5e119d313ddff5::t_f754dabc27e168 289-290
+  s_5e119d313ddff5::t_b8b90d1fd292b5 299-304,324-334
+  s_5e119d313ddff5::t_1902c82ff0b309 362-365,367-371,373-377,379-383
+  s_5e119d313ddff5::t_525a8fa5b1e4a9 513,531-533,536-537
+  s_5e119d313ddff5::t_2480e221e0fa2d 28,56,100,167,182,190,201,215,226,229,235,244,247,278,282,285,287,320,336,351,366,372,378,405,453,463,506,543
+  s_5e119d313ddff5::t_5b4f8649338ead 512,514-530,534-535
+internal/market/lolayaml.go
+  s_5e119d313ddff5::t_07c076f1c6a916 106-117
+  s_5e119d313ddff5::t_755ecf88ed71f2 189,192-193,195
+  s_5e119d313ddff5::t_8bac5171d06a8d 203
+  s_5e119d313ddff5::t_2480e221e0fa2d 183-186,194
+  s_5e119d313ddff5::t_8d25e64191bf7d 187-188,190-191
+internal/market/market.go
+  s_5e119d313ddff5::t_07c076f1c6a916 73
+  s_5e119d313ddff5::t_3f5f2121dee6fd 232,245-246
+  s_5e119d313ddff5::t_5d05842c799bf6 210-213,215-216
+  s_5e119d313ddff5::t_886f21dc428efe 229-231,233-244
+  s_5e119d313ddff5::t_5a36865f348eab 214
+  s_5e119d313ddff5::t_3b9b7276e545c1 268-270,272-274,276
+docs/reference/market.md
+  s_5e119d313ddff5::t_96b2f1585ab22c 74-79
+  s_5e119d313ddff5::t_bc7f9c74e905ef 46
+  s_5e119d313ddff5::t_2b4414b2be7d24 34-36,40-46
+  s_5e119d313ddff5::t_323e2e0f967f9e 39
+  s_5e119d313ddff5::t_ac30bcbf938169 37-38
+  s_5e119d313ddff5::t_a5fec008efcfb5 32
+internal/engine/market.go
+  s_5e119d313ddff5::t_ac89913696525f 397,901
+  s_5e119d313ddff5::t_c8d921adbfc0cc 612
+  s_5e119d313ddff5::t_a6cbe1c6cf8b02 712-718,723-726,728-730,732
+  s_5e119d313ddff5::t_a0a516c7c00f01 585-586,660-662,679,727,857-859,863,891,925,1130-1138,1266,1269-1271,1273-1276,1491
+  s_5e119d313ddff5::t_1dcd0a9b31a886 593-597,602,610,614,616,618,639,645,656-659,672-678,680-688,690,693,699,707-711,720-721,733,734-735
+  s_5e119d313ddff5::t_8842d700ba0e2c 736-737
+  s_5e119d313ddff5::t_323e2e0f967f9e 703-706,719,722,731
+  s_5e119d313ddff5::t_211c5f59c99951 663-669,852-853,1267-1268,1272
+internal/engine/market_ssh.go
+  s_5e119d313ddff5::t_e0fde1bc415d1a 118
+internal/engine/market_test.go
+  s_5e119d313ddff5::t_0c4b15053d0fc0 469,471-472
+  s_5e119d313ddff5::t_2989598915c591 511-514
+  s_5e119d313ddff5::t_39d714584f1ec1 451-468,470,475-483,486-490,515-517,539-561
+  s_5e119d313ddff5::t_1e4625456b03f0 491-498,502-504,506-509
+  s_5e119d313ddff5::t_23b4054c93875b 505
+  s_5e119d313ddff5::t_a9044d0b8dea0e 473-474,484-485,499-501
+  s_5e119d313ddff5::t_fdd50efbfc6e41 510
+  s_5e119d313ddff5::t_14b2814caea17e 518-538
+docs/architecture/marketplaces.md
+  s_5e119d313ddff5::t_2480e221e0fa2d 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "2ada5b5bd8a4b0e6726313c72a4a286708afc46b",
+  "prompts": {},
+  "sessions": {
+    "s_5e119d313ddff5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d77a83a-6e5e-4b48-a706-076f4b78351f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
