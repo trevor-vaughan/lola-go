@@ -1,0 +1,39 @@
+internal/cli/cmd_trash.go
+  s_b1af89ea0dd45d::t_1f1dce48b9ef0f 64
+internal/cli/nouns.go
+  s_b1af89ea0dd45d::t_1f1dce48b9ef0f 11,74-112
+  s_b1af89ea0dd45d::t_3c2b7328075e63 113
+internal/cli/context.go
+  s_b1af89ea0dd45d::t_1f1dce48b9ef0f 160-226
+internal/cli/cmd_profile.go
+  s_b1af89ea0dd45d::t_1f1dce48b9ef0f 228
+internal/cli/output.go
+  s_b1af89ea0dd45d::t_1f1dce48b9ef0f 127-129,141-144,159
+internal/cli/root.go
+  s_b1af89ea0dd45d::t_1f1dce48b9ef0f 106
+internal/cli/profile_test.go
+  s_b1af89ea0dd45d::t_f922fba122f8a8 485-494,498-507
+  s_b1af89ea0dd45d::t_6e7ab57a291b67 495-497
+internal/cli/cmd_market.go
+  s_b1af89ea0dd45d::t_1f1dce48b9ef0f 119
+  s_b1af89ea0dd45d::t_3fff86a3c5fc81 159,465,470
+internal/cli/notices_internal_test.go
+  s_b1af89ea0dd45d::t_63cbb3a91a4ba3 72-76,78-96
+  s_b1af89ea0dd45d::t_4d4ae906c546d1 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "02c624aa59b4639dc9144ad715386dafc48eb372",
+  "prompts": {},
+  "sessions": {
+    "s_b1af89ea0dd45d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86d15ce2-2882-4ded-82be-d18f2ba8f3f4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
