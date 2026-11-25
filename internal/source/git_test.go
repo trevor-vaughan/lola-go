@@ -199,6 +199,22 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(errs.Hints(err)).To(ContainElement("use --ref with a branch or tag that contains the commit"))
 	})
 
+	It("says a commit the server does not have was not served", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "old"})
+		missing := strings.Repeat("1", 40)
+		_, err := fetch(r.url, missing, "")
+		Expect(err).To(MatchError(ContainSubstring("did not serve commit " + missing)))
+		Expect(errs.Hints(err)).To(ContainElement("use --ref with a branch or tag that contains the commit"))
+	})
+
+	It("says a host it could not reach could not be fetched from, with git's reason and no claim about the commit", func() {
+		_, err := fetch("http://127.0.0.1:1/x.git", strings.Repeat("1", 40), "")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(And(HavePrefix("could not fetch http://127.0.0.1:1/x.git: "), ContainSubstring("127.0.0.1"), Not(ContainSubstring("did not serve")),
+			Not(ContainSubstring("protocol v0")), Not(ContainSubstring("exit status"))))
+		Expect(strings.Count(err.Error(), "\n")).To(BeZero())
+	})
+
 	It("refuses a ref that names both a branch and a tag", func() {
 		r := newRemote(tmp, map[string]string{"commands/a.md": "A"})
 		git(r.work, "branch", "dup")
@@ -557,5 +573,88 @@ var _ = Describe("Fetch of a git source", func() {
 		GinkgoT().Setenv("PATH", filepath.Join(tmp, "bin"))
 		_, err := fetch("https://example.invalid/r.git", "", "")
 		Expect(errs.Hints(err)).To(ContainElement("install git"))
+	})
+})
+
+var _ = Describe("RemoteTip of a git source", func() {
+	var tmp string
+	ctx := context.Background()
+	BeforeEach(func() { tmp = testenv.Isolate() })
+	tip := func(url, ref string) (string, error) {
+		return source.RemoteTip(ctx, source.Spec{Kind: source.KindGit, Location: url, Ref: ref})
+	}
+
+	It("returns the commit the default branch, a named branch and a tag point to", func() {
+		r := newRemote(tmp, map[string]string{"a.md": "v1"})
+		git(r.work, "tag", "v1")
+		git(r.work, "checkout", "-q", "-b", "feature")
+		feature := r.commit(map[string]string{"a.md": "feature"})
+		git(r.work, "checkout", "-q", "main")
+		main := r.commit(map[string]string{"a.md": "main"})
+		git(r.work, "push", "-q", "--tags", r.bare)
+		for ref, want := range map[string]string{"": main, "main": main, "feature": feature, "v1": r.rev("v1")} {
+			got, err := tip(r.url, ref)
+			Expect(err).NotTo(HaveOccurred(), ref)
+			Expect(got).To(Equal(want), ref)
+		}
+	})
+
+	It("returns the commit of an annotated tag, not the tag object", func() {
+		r := newRemote(tmp, map[string]string{"a.md": "A"})
+		commit := r.rev("HEAD")
+		git(r.work, "tag", "-a", "-m", "release", "v1")
+		git(r.work, "push", "-q", "--tags", r.bare)
+		Expect(r.rev("v1")).NotTo(Equal(commit))
+		got, err := tip(r.url, "v1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(commit))
+	})
+
+	It("returns the default branch's tip for a commit SHA ref", func() {
+		r := newRemote(tmp, map[string]string{"a.md": "old"})
+		old := r.rev("HEAD")
+		head := r.commit(map[string]string{"a.md": "new"})
+		got, err := tip(r.url, old)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(head))
+	})
+
+	It("fails, but not as unreachable, for a ref the remote does not have", func() {
+		r := newRemote(tmp, map[string]string{"a.md": "A"})
+		_, err := tip(r.url, "nope")
+		Expect(err).To(HaveOccurred())
+		var unreachable *source.UnreachableError
+		Expect(errors.As(err, &unreachable)).To(BeFalse(), "%v", err)
+	})
+
+	It("is UnreachableError for a path that is not a repository", func() {
+		_, err := tip(filepath.Join(tmp, "nowhere.git"), "")
+		var unreachable *source.UnreachableError
+		Expect(errors.As(err, &unreachable)).To(BeTrue(), "%v", err)
+	})
+
+	It("returns an error soon after the caller's deadline", func() {
+		r := newRemote(tmp, map[string]string{"a.md": "A"})
+		short, cancel := context.WithTimeout(ctx, time.Millisecond)
+		defer cancel()
+		start := time.Now()
+		_, err := source.RemoteTip(short, source.Spec{Kind: source.KindGit, Location: r.url})
+		Expect(err).To(HaveOccurred())
+		Expect(time.Since(start)).To(BeNumerically("<", 2*time.Second))
+	})
+
+	It("runs no askpass program for a remote that asks for credentials", func() {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="r"`)
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer srv.Close()
+		askpass, asked := filepath.Join(tmp, "askpass"), filepath.Join(tmp, "asked")
+		Expect(os.WriteFile(askpass, []byte("#!/bin/sh\ntouch '"+asked+"'\necho secret\n"), 0o700)).To(Succeed())
+		GinkgoT().Setenv("GIT_ASKPASS", askpass)
+		GinkgoT().Setenv("SSH_ASKPASS", askpass)
+		_, err := tip(srv.URL+"/r.git", "")
+		Expect(err).To(HaveOccurred())
+		Expect(asked).NotTo(BeAnExistingFile())
 	})
 })

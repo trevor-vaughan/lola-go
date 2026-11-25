@@ -38,18 +38,21 @@ var scrubbedGitVars = map[string]bool{"GIT_DIR": true, "GIT_WORK_TREE": true, "G
 var shortSHARE = regexp.MustCompile(`^[0-9a-f]{4,39}$`)
 
 // gitEnv is environ for a git command lola runs on a source: prompts and
-// user-chosen protocols off, optional locks off, and the repository-selecting variables
-// removed. Everything else, credential helpers and the ssh agent included, passes through.
+// user-chosen protocols off, optional locks off, the repository-selecting variables removed and
+// the locale pinned to English. Everything else, credential helpers and the ssh
+// agent included, passes through.
 func gitEnv(environ []string) []string {
 	out := make([]string, 0, len(environ)+3)
 	for _, kv := range environ {
 		k, _, _ := strings.Cut(kv, "=")
-		if scrubbedGitVars[k] || strings.HasPrefix(k, "GIT_CONFIG_KEY_") || strings.HasPrefix(k, "GIT_CONFIG_VALUE_") {
+		if scrubbedGitVars[k] || strings.HasPrefix(k, "GIT_CONFIG_KEY_") || strings.HasPrefix(k, "GIT_CONFIG_VALUE_") ||
+			k == "LC_ALL" || k == "LC_MESSAGES" || k == "LANGUAGE" {
 			continue
 		}
 		out = append(out, kv)
 	}
-	return append(out, "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0")
+	// lola reads git's messages (a missing commit, a repository not found), so git speaks English.
+	return append(out, "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "LANGUAGE=")
 }
 
 // GitCommand builds a git invocation over an UNTRUSTED repository, in dir when dir is set: a
@@ -124,6 +127,11 @@ func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 func runGitEnv(ctx context.Context, env []string, dir string, args ...string) ([]byte, error) {
 	cmd := GitCommand(ctx, dir, args...)
 	cmd.Env = append(cmd.Env, env...)
+	return runGitCmd(ctx, cmd, args)
+}
+
+// runGitCmd runs cmd, a GitCommand of args, as runGit does.
+func runGitCmd(ctx context.Context, cmd *exec.Cmd, args []string) ([]byte, error) {
 	stderr := &headWriter{limit: maxStderr + 1}
 	cmd.Stderr = stderr
 	out, err := cmd.Output()
@@ -149,7 +157,9 @@ func runGitEnv(ctx context.Context, env []string, dir string, args ...string) ([
 		return nil, denied
 	}
 	if msg != "" {
-		err = fmt.Errorf("%w: %s", err, untrusted.Text(msg, maxStderr))
+		// ssh and git end lines with CR LF (and progress with a lone CR); untrusted.Text would print each as "?".
+		lines := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(msg)
+		err = fmt.Errorf("%w: %s", err, untrusted.Text(lines, maxStderr))
 	}
 	return nil, fmt.Errorf("git %s failed: %w", sub, err)
 }
@@ -464,6 +474,65 @@ func remoteRef(ctx context.Context, spec Spec) (string, error) {
 	return "", errs.WithHints(fmt.Errorf("%s has no branch or tag named %s", shown, shownRef), hints...)
 }
 
+// RemoteTip is the full commit SHA spec's ref points at on its repository, learned without
+// fetching: HEAD for the default branch (ref "") or for a full commit SHA, else the commit of the
+// one branch or tag named ref (an annotated tag's peeled commit, not the tag object). It fails as
+// remoteRef does: *UnreachableError when the remote does not answer, another error for a ref the
+// remote lacks or a name that is both a branch and a tag. It runs only as long as ctx allows.
+//
+// It never prompts, since the marketplace picker runs it while it owns the terminal: git runs detached from
+// the terminal (detach), and with no askpass program, its own (GIT_ASKPASS, core.askPass and
+// SSH_ASKPASS, which git falls back to and GIT_TERMINAL_PROMPT does not stop) or ssh's. A remote
+// that needs a passphrase, a host key accepted or credentials no helper holds fails instead.
+func RemoteTip(ctx context.Context, spec Spec) (string, error) {
+	url, ref := spec.Location, spec.Ref
+	refs := []string{"HEAD"}
+	if _, ok := CommitRef(ref); !ok && ref != "" {
+		refs = []string{"refs/heads/" + ref, "refs/tags/" + ref, "refs/tags/" + ref + "^{}"}
+	}
+	args := remoteArgs(spec, append([]string{"ls-remote", "--", url}, refs...)...)
+	cmd := GitCommand(ctx, "", args...)
+	cmd.Env = append(cmd.Env, "GIT_ASKPASS=", "SSH_ASKPASS_REQUIRE=never") // an empty GIT_ASKPASS outranks the other two
+	detach(cmd)
+	out, err := runGitCmd(ctx, cmd, args)
+	switch {
+	case err == nil:
+	case errors.Is(err, errNoGit) || errors.Is(ctx.Err(), context.Canceled):
+		return "", err // lola's own failure, or the run stopping: not the source's
+	default:
+		return "", &UnreachableError{Err: err}
+	}
+	tips := map[string]string{}
+	for line := range strings.Lines(string(out)) {
+		sha, name, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if ok {
+			tips[name] = sha
+		}
+	}
+	shown, shownRef := untrusted.Text(url, untrusted.MaxName), untrusted.Text(ref, untrusted.MaxName)
+	if len(refs) == 1 {
+		if tip := tips["HEAD"]; tip != "" {
+			return tip, nil
+		}
+		return "", fmt.Errorf("%s has no HEAD commit", shown)
+	}
+	branch, tag := tips[refs[0]], tips[refs[2]]
+	if tag == "" {
+		tag = tips[refs[1]] // a lightweight tag has no peeled line
+	}
+	switch {
+	case branch != "" && tag != "":
+		return "", errs.WithHints(fmt.Errorf("%s has both a branch and a tag named %s; lola does not guess which you mean", shown, shownRef),
+			"pin the commit you want with --ref <full commit SHA>")
+	case branch != "":
+		return branch, nil
+	case tag != "":
+		return tag, nil
+	}
+	return "", errs.WithHints(fmt.Errorf("%s has no branch or tag named %s", shown, shownRef),
+		"list them: "+errs.ShellJoin([]string{"git", "ls-remote", "--heads", "--tags", shown}))
+}
+
 // checkoutCommit fetches the one commit spec.Ref (a full SHA) into a new repository at scratch and
 // checks it out at spec.Path, the module path, as for prepareCheckout. A checkout whose HEAD is
 // any other commit is refused.
@@ -480,6 +549,9 @@ func checkoutCommit(ctx context.Context, spec Spec, scratch string) ([]string, e
 	_, err := runGit(ctx, scratch, remoteArgs(spec, "fetch", "-q", "--depth", "1", "--", url, ref)...)
 	if errors.As(err, new(*AccessError)) {
 		return nil, err
+	}
+	if err != nil && !missingRef(err) {
+		return nil, fmt.Errorf("could not fetch %s: %s", shown, lastLine(err))
 	}
 	if err != nil {
 		return nil, errs.WithHints(fmt.Errorf("%s did not serve commit %s; servers using git protocol v0 refuse a commit "+
@@ -503,6 +575,33 @@ func checkoutCommit(ctx context.Context, spec Spec, scratch string) ([]string, e
 		return nil, fmt.Errorf("%s served commit %s for %s; lola installs only the commit asked for", shown, untrusted.Text(got, untrusted.MaxName), shownRef)
 	}
 	return execs, nil
+}
+
+// missingRef reports whether a failed fetch of a commit says the server lacks it, in the words git
+// prints for one: "not our ref" (a server that serves no commit no ref points to), "Server does
+// not allow request for unadvertised object" (protocol v0) and "couldn't find remote ref".
+func missingRef(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "not our ref") || strings.Contains(msg, "unadvertised object") ||
+		strings.Contains(msg, "couldn't find remote ref")
+}
+
+// lastLine is the last line of err's text that says something, after git's "fatal: " or "error: "
+// lead: the reason a git run failed, which runGit's text ends with.
+func lastLine(err error) string {
+	lines := strings.Split(strings.TrimSpace(err.Error()), "\n")
+	for _, line := range slices.Backward(lines) {
+		if l := strings.TrimSpace(line); l != "" {
+			// runGit's text is "git fetch failed: exit status N: <git's output>".
+			for _, lead := range []string{"fatal: ", "error: "} {
+				if _, rest, ok := strings.Cut(l, lead); ok {
+					return rest
+				}
+			}
+			return l
+		}
+	}
+	return err.Error()
 }
 
 // prepareCheckout readies the repository at scratch for checking out rev: it writes

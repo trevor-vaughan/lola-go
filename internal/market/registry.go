@@ -208,6 +208,36 @@ func SetSSHHosts(b []byte, name string, hosts []string) ([]byte, error) {
 	return nil, fmt.Errorf("marketplace %s is not in markets.yaml", name)
 }
 
+// SetRef is b, a markets.yaml ParseRegistry read, with the marketplace name's ref replaced by ref
+// (added when it had none). Comments and order are kept.
+func SetRef(b []byte, name, ref string) ([]byte, error) {
+	d, err := yamldoc.Decode(b)
+	if err != nil {
+		return nil, err
+	}
+	var seq *yaml.Node
+	if root := yamldoc.Root(d); root != nil {
+		seq = yamldoc.Value(root, "markets")
+	}
+	if seq == nil || seq.Kind != yaml.SequenceNode {
+		return nil, fmt.Errorf("marketplace %s is not in markets.yaml", name)
+	}
+	for _, m := range seq.Content {
+		if n := yamldoc.Value(m, "name"); n == nil || n.Value != name {
+			continue
+		}
+		if v := yamldoc.Value(m, "ref"); v != nil {
+			head, line, foot := v.HeadComment, v.LineComment, v.FootComment
+			*v = *yamldoc.Str(ref)
+			v.HeadComment, v.LineComment, v.FootComment = head, line, foot
+		} else {
+			m.Content = append(m.Content, yamldoc.Str("ref"), yamldoc.Str(ref))
+		}
+		return yamldoc.Encode(d)
+	}
+	return nil, fmt.Errorf("marketplace %s is not in markets.yaml", name)
+}
+
 // RemoveRegistration is b, a markets.yaml ParseRegistry read, without the marketplace name, its
 // comments and the order of the others kept; found says it was there.
 func RemoveRegistration(b []byte, name string) (_ []byte, found bool, _ error) {

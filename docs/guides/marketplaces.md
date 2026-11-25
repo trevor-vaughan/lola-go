@@ -13,7 +13,9 @@ lola market acme --add https://github.com/acme/plugins       # fetch its catalog
 lola market --add https://github.com/acme/plugins            # named by the catalog's own name
 lola market --add https://raw.githubusercontent.com/acme/market/main/general.yml   # a catalog file
 lola market mine --add ./my-marketplace                      # a folder you are authoring
-lola market                                                  # list them
+lola market                                                  # on a terminal, the picker; else list them
+lola market --no-interactive                                 # list them, never the picker
+lola market --check                                          # list them with each git source's upstream status
 lola market acme                                             # its source, pin, entries and skips
 lola market acme formatter                                   # one entry, as lola info @acme/formatter
 lola market acme --update                                    # fetch it again, report what changed
@@ -21,6 +23,8 @@ lola market acme --update --ssh-host git.example.com         # also let its ssh 
 lola market acme --ssh-host git.example.com --remove         # stop allowing that host
 lola market --update --all                                   # every marketplace
 lola market acme --remove                                    # forget it; asks (-y)
+lola market --known                                          # the marketplaces this lola ships
+lola market --enable superpowers                              # register one of them, at its pin; asks (-y)
 ```
 
 - **Adding.** `lola market [<name>] --add <source>` (alias `--get`) fetches the source, your own
@@ -75,6 +79,13 @@ lola market acme --remove                                    # forget it; asks (
     `marketplace.yml` and `marketplace.yaml` at its root, or in the directory `--path` names
     (`--path` may name the catalog file itself); two of them are refused with one `--path` command
     per file.
+  - Cursor's `.cursor-plugin/marketplace.json` and GitHub Copilot's `.github/plugin/marketplace.json`
+    are never read unasked. With no catalog found, a source holding one is refused with the
+    `--path` command that reads it; a source laid out as a module (`SKILL.md`, `skills/*/SKILL.md`,
+    `commands/*.md`, `agents/*.md`, `rules/*.md`, `mcps.json`) is refused as a module, not a catalog, hinting
+    `lola install <source>`. With a catalog found and an alternate beside it, `--add` adds a notice
+    naming the alternate and the command that adds it as a second marketplace, as the two may list
+    different entries.
   - The marketplace is named as you name it, else by the catalog's own `name`.
   - For a catalog name that cannot name a marketplace (such as `Lola General Marketplace`), a
     terminal asks for a name, pre-filled with a free slug of it (`lola-general-marketplace`).
@@ -180,9 +191,31 @@ lola market acme --remove                                    # forget it; asks (
   your marketplaces close to it (`you have no marketplace acmee; close names: acme`), with the run
   for each as a hint (`lola market acme`, keeping `--update` and `-n`; a `--remove` hint never
   carries `-y`), then the listing.
+- **The picker.** On a terminal, bare `lola market` opens a picker over your marketplaces and the
+  known ones you have not enabled ([the picker](../reference/market.md#the-picker) has its keys).
+  - Tick rows with `x`, filter with `/`; Enter on one of yours opens its entries, and Enter on an
+    entry its detail, where `i` installs it and `d` uninstalls it with their usual questions (the
+    picker then reopens on that entry; installed is read for the scope the context line shows). Enter
+    on a known one enables it; `m`, or Enter with rows ticked, asks what to do with yours (browse their
+    entries, update, remove); `a` adds a source; Esc or `q` leaves, and `q` leaves from any page.
+  - Nothing contacts a host until you press `u` (the ticked rows, or the cursor's) or `U` (every
+    row). Each git source's row shows its upstream status as it comes in: `up to date`, `update
+    available`, `upstream moved` (a marketplace registered at a commit: `--update` cannot move it, `u` moves it
+    after a confirmation) or `unreachable`, with
+    what to do (`u` retries, `--remove` forgets it). Then the footer asks once whether to update
+    those of yours that need it (`update acme? ⏎/y yes · esc/n no`). When most checks fail, one
+    banner says to check your network connection instead, and nothing is offered.
+  - `--json`, `--plain`, `--no-pager` and `--no-interactive` list instead, as does
+    `market_picker: false` in your [`config.yaml`](config-and-selections.md) for every run. A piped
+    stdout does not: scripts should pass `--plain` or `--json`.
 - **Listing and showing.** Neither fetches nor asks.
   - `lola market` lists `NAME`, `FORMAT` (`claude` or `lola-yaml`), `ENTRIES`, `SKIPPED`,
     `FETCHED` (`2 days ago`, or `not fetched` with the `--update` that fetches it) and `SOURCE`.
+  - `lola market --check` adds `STATUS` (a `"status"` key in `--json`, a last column in `--plain`): for each git
+    source with a fetched catalog, whether its remote's tip is still your cached commit (`up to date`), has moved
+    (`update available`; for a marketplace registered at a commit, `upstream moved`) or could not be asked
+    (`unreachable`); other sources show `-` (`""` in `--json`). It asks each remote for its tip, 8 at a time, 10 seconds
+    each, and fetches no catalog. It takes no name, entry or action.
   - `lola market <name>` shows the source, ref, commit, catalog file, fetch time, owner, version, description and any
     ssh hosts,
     every entry, by name, with its version, source kind, source, path, ref, commit and
@@ -230,7 +263,11 @@ lola market acme --remove                                    # forget it; asks (
     - a name that fails the module-name rule, two entries of one name (both), and a key given
       twice or in another case (`Source`);
     - a description or source over 4096 bytes, more than 64 tags, and skills, commands and
-      agents lists naming more than 1024 paths.
+      agents lists naming more than 1024 paths;
+    - an entry whose text holds a line break or a control or invisible character, in a key or in
+      any field lola reads (a description written as a YAML block or with `\n` in JSON, for
+      example). It is listed under its name, or under `plugins[N]` (`modules[N]` in a YAML
+      catalog) when its name is the unprintable text. lola never rewrites a catalog's text.
   - An allowed ssh host relaxes only that rule:
     - Every other source still has to be `https://`.
     - An allowed host is still given by name, never an address.
@@ -261,7 +298,9 @@ lola market acme --remove                                    # forget it; asks (
     - is nested deeper than 64;
     - holds more than 262144 JSON values, or more than 131072 YAML nodes;
     - has a top-level key given twice or in another case;
-    - has a control or invisible character in any key or field lola reads.
+    - has a line break or a control or invisible character in a key of the catalog, in its
+      `owner` or `metadata`, or in its own `name`, `description` or `version` (an entry's text
+      only skips that entry).
 - **Installing.** `lola install @acme/formatter` installs the entry `formatter` of your
   marketplace `acme`, as its cached catalog lists it (`lola market acme --update` fetches it
   again). `@acme/formatter` is a marketplace address: `@`, one of your marketplaces, `/`, and an
@@ -467,3 +506,31 @@ lola market acme --remove                                    # forget it; asks (
   - A wiped cache loses nothing you chose and costs a `lola market --update --all`.
   - A cached catalog is written before its registration, so a failed write leaves at worst a
     cache directory that listings ignore.
+
+## Known marketplaces
+
+lola ships a short list of public marketplaces its maintainers curate. `lola market --known` lists
+what this lola ships, and `lola market --known <id>` shows one: where it comes from, the commit it
+is pinned to, the day it was reviewed and why it is listed. If this lola ships none, it says so.
+
+- **Nothing is enabled until you ask.** Listing registers nothing and fetches nothing. `lola market
+  --enable <id>` registers one, under its id or the name you give (`lola market mine --enable
+  <id>`); it fetches the pinned catalog, shows what it holds (its entries, and how many lola
+  skips) and asks, as `--remove` does. `-y` answers; off a terminal without `-y` it refuses and
+  writes nothing. `-n` previews.
+- **Every entry is pinned to a commit.** `--enable` registers that commit, never the head of a
+  branch, so the catalog and the entries it keeps in the same repository are what you read when
+  you answer; an entry whose source is another repository is fetched at the ref the catalog names
+  for it, which may be a branch. The catalog is a stranger's input as
+  any other: lola skips what it cannot use and runs nothing from it.
+- **`--update` stays on the pin.** `lola market <name> --update` of an enabled one fetches the same
+  commit again. A newer pin ships with a newer lola; update lola, then `lola market --known <id>`
+  shows the commit it now names. To follow a branch instead, add the source yourself with
+  `--add` and a `--ref`.
+- **The picker can move past the pin.** In the picker, `u` on an enabled known marketplace whose
+  remote has moved on reads `upstream moved` and offers the update, as for any marketplace
+  registered at a commit. Taking it shows the catalog
+  changes and asks `Update past the commit it is registered at?`; yes registers the remote's tip, a full commit SHA, as its ref and fetches it. The row then reads
+  `ahead of pin`, and later `--update` runs stay at that commit.
+- **The list is lola's.** There is no file of yours to edit and no remote directory; your own
+  marketplaces are `--add`.

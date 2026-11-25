@@ -34,7 +34,7 @@ const (
 	maxDescription = 1024 // a catalog's
 	// An entry's description: real catalogs hold ones over 1024 bytes.
 	maxEntryDescription = 4096
-	maxText             = untrusted.MaxName // a catalog's name, owner and version, and an entry's version
+	maxText             = untrusted.MaxName // a catalog's name, owner and version, and an entry's version and license
 	// What decoding may allocate, which the byte cap alone does not bound: JSON
 	// values, YAML bytes (a node costs about 120 bytes decoded) and YAML nodes. Over these refuses
 	// the whole catalog.
@@ -70,6 +70,7 @@ var kindPlurals = map[string]string{
 	"entry declaring components":                   "entries declaring components",
 	"entry with headers":                           "entries with headers",
 	"entry with headersHelper":                     "entries with headersHelper",
+	"entry with unprintable text":                  "entries with unprintable text",
 	"invalid name":                                 "invalid names",
 	"local or private source":                      "local or private sources",
 	"malformed entry":                              "malformed entries",
@@ -106,6 +107,7 @@ func CountKind(n int, kind string) string {
 type Entry struct {
 	Name                 string
 	Description, Version string
+	License              string // as the catalog states it, "" when it does not
 	Tags                 []string
 	Source               manifest.Entry
 	Kind                 string
@@ -206,6 +208,13 @@ func FreeName(base string, start int, taken func(string) bool) string {
 // a real catalog.
 func CatalogFallbackFiles() []string { return []string{"lola.yml", "lola.yaml"} }
 
+// AlternateCatalogFiles are catalogs other tools publish that lola never reads unasked: Cursor's
+// and GitHub Copilot's. A source that holds one is coached to read it with --path, and one read
+// from the default location is told of them, as they can hold a different list.
+func AlternateCatalogFiles() []string {
+	return slices.Clone(repoRootCatalogs)
+}
+
 // CatalogFiles is where lola looks for a catalog at a marketplace's root, in order (the Python
 // lola's lookup minus its single-YAML guess): Claude Code's file, then the Python lola's,
 // <name>.yml and .yaml for the marketplace's name (none when name is ""), then marketplace.yml and
@@ -216,6 +225,24 @@ func CatalogFiles(name string) []string {
 		out = append(out, name+".yml", name+".yaml")
 	}
 	return append(out, "marketplace.yml", "marketplace.yaml")
+}
+
+// repoRootCatalogs are the catalog files, relative to the repository root, of tools that write a
+// plugin's source without "./" ("teaching", "plugins/x"), meaning a directory under that root.
+var repoRootCatalogs = []string{".cursor-plugin/marketplace.json", ".github/plugin/marketplace.json"}
+
+// repoRootOf is the repository root, "" for the tree's root, of file when it is one of
+// repoRootCatalogs under that root: "foo" for "foo/.github/plugin/marketplace.json".
+func repoRootOf(file string) (string, bool) {
+	for _, c := range repoRootCatalogs {
+		if file == c {
+			return "", true
+		}
+		if root, ok := strings.CutSuffix(file, "/"+c); ok {
+			return root, true
+		}
+	}
+	return "", false
 }
 
 // FormatOf is the format of a catalog file by its name: FormatClaude for .json, FormatYAML for
@@ -239,9 +266,13 @@ func FormatName(format string) string {
 }
 
 // Root is the marketplace root of the catalog at file, a slash path in the fetched tree: the
-// directory holding .claude-plugin/ for Claude Code's file, else the file's directory; "" for the
-// tree's root. Claude relative sources are joined to it.
+// directory holding .claude-plugin/ for Claude Code's file, the repository root for one of
+// repoRootCatalogs, else the file's directory; "" for the tree's root. Claude relative sources are
+// joined to it.
 func Root(file string) string {
+	if root, ok := repoRootOf(file); ok {
+		return root
+	}
 	dir := path.Dir(file)
 	if path.Base(dir) == ".claude-plugin" {
 		dir = path.Dir(dir)

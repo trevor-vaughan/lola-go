@@ -137,6 +137,14 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			_, err := h.MarketName(MarketNameStep{Why: "the catalog calls itself acme, a name you use", Value: "acme-2"})
 			return err
 		}, "the catalog calls itself acme, a name you use", "Name the marketplace", "acme-2"),
+		Entry("MarketSource", func(h *huhForms) error {
+			_, _, err := h.MarketSource(MarketSourceStep{})
+			return err
+		}, "a git repository, https:// archive or catalog file, or folder", "Marketplace source", "src", ""),
+		Entry("MarketSource's ref", func(h *huhForms) error {
+			_, _, err := h.MarketSource(MarketSourceStep{})
+			return err
+		}, "a git branch, tag or commit", "Ref (optional)", "src", ""),
 		Entry("TrashPick", func(h *huhForms) error {
 			_, err := h.TrashPick(TrashPickStep{Options: []TidyOption{{ID: "r1", Label: "run 1"}}})
 			return err

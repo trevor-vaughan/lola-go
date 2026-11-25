@@ -80,6 +80,22 @@ var _ = Describe("marketplaces", func() {
 	}
 	add := func(req engine.MarketAddRequest) (*engine.MarketResult, error) { return e.AddMarket(ctx, req) }
 
+	It("fails, with no statuses, when the run is cancelled while CheckedMarkets checks", func() {
+		url, _ := repo("acme", acme())
+		_, err := add(engine.MarketAddRequest{Source: url})
+		Expect(err).NotTo(HaveOccurred())
+		run, cancel := context.WithCancel(ctx)
+		defer cancel()
+		e.RemoteTip = func(c context.Context, _ source.Spec) (string, error) {
+			cancel()
+			<-c.Done()
+			return "", c.Err()
+		}
+		rows, _, err := e.CheckedMarkets(run, nil)
+		Expect(err).To(MatchError(context.Canceled))
+		Expect(rows).To(BeNil())
+	})
+
 	It("applies the registration's ssh hosts to the cached catalog on every read", func() {
 		url, _ := repo("priv", map[string]string{".claude-plugin/marketplace.json": sshCatalog})
 		_, err := add(engine.MarketAddRequest{Name: "priv", Source: url})
@@ -446,6 +462,117 @@ var _ = Describe("marketplaces", func() {
 		Expect(res.Updates[0].Error).To(Equal("the source has 2 catalogs under path two, two/.claude-plugin/marketplace.json and " +
 			"two/marketplace.yml; set path: in markets.yaml to the one to read"))
 		Expect(res.Updates[0].Hints).To(BeEmpty())
+	})
+
+	Describe("a source with no catalog at its root", func() {
+		const noCatalog = "the source has no catalog at the source's root: lola looked for .claude-plugin/marketplace.json, " +
+			"x.yml, x.yaml, marketplace.yml, marketplace.yaml, lola.yml, lola.yaml"
+
+		It("hints the --path of each alternate catalog the tree holds, keeping the run's flags", func() {
+			url, _ := repo("both", map[string]string{".github/plugin/marketplace.json": acmeCatalog, ".cursor-plugin/marketplace.json": acmeCatalog})
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url, Ref: "main", DryRun: true, Display: []string{"--json"}})
+			Expect(err).To(MatchError(noCatalog + "; it has .cursor-plugin/marketplace.json and .github/plugin/marketplace.json, which --path reads"))
+			Expect(errs.Hints(err)).To(Equal([]string{
+				"lola market x --add " + url + " --ref main --path .cursor-plugin/marketplace.json -n --json",
+				"lola market x --add " + url + " --ref main --path .github/plugin/marketplace.json -n --json"}))
+			res, err := add(engine.MarketAddRequest{Name: "x", Source: url, Path: ".github/plugin/marketplace.json"})
+			Expect(err).NotTo(HaveOccurred(), "the hint runs")
+			Expect(res.Markets[0].Path).To(Equal(".github/plugin/marketplace.json"))
+		})
+
+		It("says a source with module layout and no catalog is a module, hinting lola install", func() {
+			for name, files := range map[string]map[string]string{
+				"skillmod":  {"skills/x/SKILL.md": "x"},
+				"rootskill": {"SKILL.md": "x"},
+				"cmdmod":    {"commands/c.md": "x"},
+				"agentmod":  {"agents/a.md": "x"},
+				"rulemod":   {"rules/r.md": "x"},
+				"mcpmod":    {"mcps.json": "{}"},
+			} {
+				url, _ := repo(name, files)
+				_, err := add(engine.MarketAddRequest{Name: "x", Source: url, Ref: "main", Display: []string{"--json"}})
+				Expect(err).To(MatchError(noCatalog+"; this source is a module, not a catalog"), name)
+				Expect(errs.Hints(err)).To(Equal([]string{"lola install " + url + " --ref main --json"}), name)
+			}
+		})
+
+		It("hints nothing for a tree with neither an alternate catalog nor module layout", func() {
+			url, _ := repo("empty", map[string]string{"README.md": "hi", "skills/loose.md": "x", "commands/notes.txt": "x",
+				"skills/.curated/x/SKILL.md": "grouped skills are not a module install reads"})
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url})
+			Expect(err).To(MatchError(noCatalog))
+			Expect(errs.Hints(err)).To(BeEmpty())
+		})
+
+		It("does not offer an alternate that is a directory, and does not fail on one", func() {
+			url, _ := repo("diralt", map[string]string{".github/plugin/marketplace.json/keep": "x", ".cursor-plugin/marketplace.json/keep": "x"})
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url})
+			Expect(err).To(MatchError(noCatalog))
+			Expect(errs.Hints(err)).To(BeEmpty())
+		})
+
+		It("offers an alternate that is a link inside the tree as the file the fetch resolved it to", func() {
+			if runtime.GOOS == "windows" {
+				Skip("symbolic links")
+			}
+			repo("linkalt", map[string]string{"real.json": acmeCatalog, ".cursor-plugin/keep": "x"})
+			Expect(os.Symlink("../real.json", filepath.Join(tmp, "work", "linkalt", ".cursor-plugin", "marketplace.json"))).To(Succeed())
+			url, _ := repo("linkalt", nil)
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url})
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market x --add " + url + " --path .cursor-plugin/marketplace.json"}))
+			_, err = add(engine.MarketAddRequest{Name: "x", Source: url, Path: ".cursor-plugin/marketplace.json"})
+			Expect(err).NotTo(HaveOccurred(), "the hint runs")
+		})
+
+		It("hints the alternate catalog, not lola install, when a tree holds both it and module layout", func() {
+			url, _ := repo("hybrid", map[string]string{".cursor-plugin/marketplace.json": acmeCatalog, "skills/x/SKILL.md": "x"})
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url})
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market x --add " + url + " --path .cursor-plugin/marketplace.json"}))
+		})
+	})
+
+	It("--add offers each alternate catalog under a name of its own", func() {
+		url, _ := repo("trio", map[string]string{".claude-plugin/marketplace.json": acmeCatalog, ".cursor-plugin/marketplace.json": acmeCatalog,
+			".github/plugin/marketplace.json": acmeCatalog, "tools/formatter/skills/f/SKILL.md": "F"})
+		res, err := add(engine.MarketAddRequest{Source: url, DryRun: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElements(
+			engine.Notice{Level: engine.LevelInfo, Text: "the source also has .cursor-plugin/marketplace.json, which lola did not read → lola market acme-2 --add " +
+				url + " --path .cursor-plugin/marketplace.json -n"},
+			engine.Notice{Level: engine.LevelInfo, Text: "the source also has .github/plugin/marketplace.json, which lola did not read → lola market acme-3 --add " +
+				url + " --path .github/plugin/marketplace.json -n"}))
+	})
+
+	It("--add with --path naming a directory that holds a bare marketplace.json hints the file", func() {
+		url, _ := repo("curs", map[string]string{".cursor-plugin/marketplace.json": acmeCatalog, "tools/formatter/skills/f/SKILL.md": "F"})
+		_, err := add(engine.MarketAddRequest{Name: "x", Source: url, Path: ".cursor-plugin"})
+		Expect(err).To(MatchError(ContainSubstring("under --path .cursor-plugin: lola looked for")))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market x --add " + url + " --path .cursor-plugin/marketplace.json"}))
+		_, err = add(engine.MarketAddRequest{Name: "x", Source: url, Path: ".cursor-plugin/marketplace.json"})
+		Expect(err).NotTo(HaveOccurred(), "the hint runs")
+	})
+
+	It("--add names an alternate catalog beside the one it read, with the --path that reads it", func() {
+		url, _ := repo("duo", map[string]string{".claude-plugin/marketplace.json": acmeCatalog, ".cursor-plugin/marketplace.json": acmeCatalog,
+			"tools/formatter/skills/f/SKILL.md": "F"})
+		res, err := add(engine.MarketAddRequest{Source: url, Display: []string{"--json"}, DryRun: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "the source also has .cursor-plugin/marketplace.json, " +
+			"which lola did not read → lola market acme-2 --add " + url + " --path .cursor-plugin/marketplace.json -n --json"}))
+		res, err = add(engine.MarketAddRequest{Source: url})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Markets[0].Path).To(Equal(".claude-plugin/marketplace.json"), "nothing alternate is read")
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "the source also has .cursor-plugin/marketplace.json, " +
+			"which lola did not read → lola market acme-2 --add " + url + " --path .cursor-plugin/marketplace.json"}))
+		_, err = add(engine.MarketAddRequest{Name: "acme-2", Source: url, Path: ".cursor-plugin/marketplace.json"})
+		Expect(err).NotTo(HaveOccurred(), "the hint runs")
+
+		solo, _ := repo("solo", acme())
+		res, err = add(engine.MarketAddRequest{Name: "solo", Source: solo})
+		Expect(err).NotTo(HaveOccurred())
+		for _, n := range res.Notices {
+			Expect(n.Text).NotTo(ContainSubstring("also has"), "no alternate, no notice")
+		}
 	})
 
 	It("reads the original lola's lola.yml only when no other catalog is at the root", func() {
@@ -1208,6 +1335,440 @@ var _ = Describe("marketplaces", func() {
 			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"git.corp.test"}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(show("priv").Skipped).To(ContainElement(And(HaveField("Name", "d"), HaveField("Reason", ContainSubstring("private address 10.0.0.5")))))
+		})
+	})
+	Describe("known marketplaces", func() {
+		var url, pin string
+		known := func(id string) market.KnownMarket {
+			return market.KnownMarket{ID: id, Source: url, Commit: pin, Curated: "2026-11-22", Reason: "a fixture"}
+		}
+		BeforeEach(func() {
+			url, pin = repo("kn", acme())
+			e.KnownSeed = func() ([]market.KnownMarket, error) { return []market.KnownMarket{known("acme")}, nil }
+		})
+
+		It("registers the pinned commit, never a later one on the branch", func() {
+			files := acme()
+			files[".claude-plugin/marketplace.json"] = strings.Replace(acmeCatalog, `{"name": "npmx"`, `{"name": "later", "source": "./later"},{"name": "npmx"`, 1)
+			_, later := repo("kn", files)
+			Expect(later).NotTo(Equal(pin))
+			res, k, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k).To(Equal(known("acme")))
+			Expect(res.Markets).To(ConsistOf(And(HaveField("Name", "acme"), HaveField("Ref", pin), HaveField("Commit", pin))))
+			Expect(res.Updates).To(ConsistOf(HaveField("Outcome", engine.MarketAdded)))
+			v, err := e.ShowMarket("acme", nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(v.Ref).To(Equal(pin))
+			Expect(v.Commit).To(Equal(pin))
+			Expect(v.Entries).To(HaveLen(2), "the catalog at the pin, which has no later entry")
+		})
+
+		Describe("previewing one you have not enabled", func() {
+			sc := func() engine.Scope { return engine.Scope{Kind: target.Project, ProjectDir: filepath.Join(tmp, "proj")} }
+			noRunDir := func() {
+				GinkgoHelper()
+				left, err := os.ReadDir(p.Staging)
+				Expect(err == nil && len(left) == 0 || errors.Is(err, os.ErrNotExist)).To(BeTrue(), "the fetch's run directory is removed")
+			}
+
+			It("reads the catalog at the pin, with the entries as the picker shows them, and writes no registration or cache", func() {
+				files := acme()
+				files[".claude-plugin/marketplace.json"] = strings.Replace(acmeCatalog, `{"name": "npmx"`, `{"name": "later", "source": "./later"},{"name": "npmx"`, 1)
+				_, later := repo("kn", files)
+				Expect(later).NotTo(Equal(pin))
+				pv, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pv.KnownMarket).To(Equal(known("acme")))
+				Expect(pv.Host).To(Equal(source.Host(url)))
+				Expect(pv.Entries).To(HaveExactElements(
+					And(HaveField("Name", "formatter"), HaveField("Install", "@acme/formatter"), HaveField("Installed", false), HaveField("At", ""), HaveField("WebURL", HavePrefix("http"))),
+					And(HaveField("Name", "linter"), HaveField("Install", "@acme/linter"), HaveField("WebURL", "https://lola.test/linter"))))
+				Expect(p.Markets).NotTo(BeAnExistingFile(), "nothing is registered")
+				Expect(p.MarketCache).NotTo(BeADirectory(), "no marketplace cache is written")
+				noRunDir()
+				Expect(pv.Skipped).To(ConsistOf(And(HaveField("Name", "npmx"), HaveField("Reason", ContainSubstring("npm")))),
+					"the npm entry is one lola does not offer, with the reason `--enable -n` gives")
+			})
+
+			It("marks an entry installed in the scope by its module name", func() {
+				mod := filepath.Join(tmp, "formatter")
+				writeTree(mod, map[string]string{"lola.yml": "name: formatter\n", "commands/formatter.md": "f\n"})
+				proj := filepath.Join(tmp, "proj")
+				Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+				_, err := e.Install(ctx, sc(), proj, []engine.InstallRequest{{Arg: mod}}, engine.Options{Targets: []string{"claude-code"}})
+				Expect(err).NotTo(HaveOccurred())
+				pv, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pv.Entries).To(ContainElement(And(HaveField("Name", "formatter"), HaveField("Installed", true), HaveField("At", Not(BeEmpty())))))
+				Expect(pv.Entries).To(ContainElement(And(HaveField("Name", "linter"), HaveField("Installed", false))))
+			})
+
+			It("is not stopped by a marketplace of its id from another source", func() {
+				other, _ := repo("other", map[string]string{".claude-plugin/marketplace.json": `{"name": "mine", "owner": {"name": "Me"}, "plugins": [
+  {"name": "mine-only", "source": {"source": "url", "url": "https://lola.test/mine.git"}}]}`})
+				_, err := e.AddMarket(ctx, engine.MarketAddRequest{Name: "acme", Source: other})
+				Expect(err).NotTo(HaveOccurred())
+				registered, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				cached, err := os.ReadFile(filepath.Join(p.MarketCache, "acme", "catalog.json"))
+				Expect(err).NotTo(HaveOccurred())
+				pv, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pv.Entries).To(HaveEach(Not(HaveField("Name", "mine-only"))))
+				Expect(pv.Entries).To(ConsistOf(HaveField("Name", "formatter"), HaveField("Name", "linter")), "the seed's catalog, not the one registered")
+				Expect(os.ReadFile(p.Markets)).To(Equal(registered))
+				Expect(os.ReadFile(filepath.Join(p.MarketCache, "acme", "catalog.json"))).To(Equal(cached))
+				noRunDir()
+			})
+
+			It("refuses an id the seed lacks, naming the ids it has", func() {
+				_, err := e.PreviewKnown(ctx, "nope", sc(), []string{"--json"})
+				Expect(err).To(MatchError(ContainSubstring("the known ones are acme")))
+				Expect(errs.Hints(err)).To(ContainElement("lola market --known --json"))
+			})
+
+			It("coaches a pin the repository lacks, with the preview and the list as commands", func() {
+				bad := known("acme")
+				bad.Commit = strings.Repeat("a", 40)
+				e.KnownSeed = func() ([]market.KnownMarket, error) { return []market.KnownMarket{bad}, nil }
+				_, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).To(HaveOccurred())
+				Expect(errs.Hints(err)).To(ContainElements("lola market --enable acme -n", "lola market --known"))
+				Expect(p.MarketCache).NotTo(BeADirectory())
+				noRunDir()
+			})
+
+			It("coaches a source that cannot be reached", func() {
+				gone := known("acme")
+				gone.Source = base + "/missing.git"
+				e.KnownSeed = func() ([]market.KnownMarket, error) { return []market.KnownMarket{gone}, nil }
+				_, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).To(HaveOccurred())
+				Expect(errs.Hints(err)).To(ContainElements("lola market --enable acme -n", "lola market --known"))
+			})
+
+			It("coaches a catalog lola cannot read", func() {
+				files := acme()
+				files[".claude-plugin/marketplace.json"] = "{oops"
+				bad := known("acme")
+				bad.Source, bad.Commit = repo("badcat", files)
+				e.KnownSeed = func() ([]market.KnownMarket, error) { return []market.KnownMarket{bad}, nil }
+				_, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).To(HaveOccurred())
+				Expect(errs.Hints(err)).To(ContainElement("lola market --enable acme -n"))
+			})
+
+			It("stops when the run is cancelled, with the cancellation as its error", func() {
+				run, cancel := context.WithCancel(ctx)
+				cancel()
+				_, err := e.PreviewKnown(run, "acme", sc(), nil)
+				Expect(err).To(MatchError(context.Canceled))
+				noRunDir()
+			})
+		})
+
+		It("--update and --update --all keep an enabled known marketplace on its commit", func() {
+			_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			files := acme()
+			files[".claude-plugin/marketplace.json"] = strings.Replace(acmeCatalog, `{"name": "npmx"`, `{"name": "later", "source": "./later"},{"name": "npmx"`, 1)
+			_, later := repo("kn", files)
+			Expect(later).NotTo(Equal(pin))
+			for _, req := range []engine.MarketUpdateRequest{{Names: []string{"acme"}}, {All: true}} {
+				_, err = e.UpdateMarkets(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+				v, err := e.ShowMarket("acme", nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(v.Ref).To(Equal(pin))
+				Expect(v.Commit).To(Equal(pin))
+				Expect(v.Entries).To(HaveLen(2))
+			}
+		})
+
+		Describe("past lola's pin", func() {
+			var later string
+			// movedOn enables acme at its pin, then adds a catalog entry upstream whose commit the
+			// seam reports as the remote tip.
+			movedOn := func() {
+				_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+				Expect(err).NotTo(HaveOccurred())
+				files := acme()
+				files[".claude-plugin/marketplace.json"] = strings.Replace(acmeCatalog, `{"name": "npmx"`, `{"name": "later", "source": {"source": "url", "url": "https://lola.test/later.git"}},{"name": "npmx"`, 1)
+				_, later = repo("kn", files)
+				Expect(later).NotTo(Equal(pin))
+				e.RemoteTip = func(context.Context, source.Spec) (string, error) { return later, nil }
+			}
+			yes := func(*engine.MarketResult) error { return nil }
+
+			It("registers the tip's full commit SHA as the ref and fetches it", func() {
+				movedOn()
+				var preview *engine.MarketResult
+				res, err := e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, func(r *engine.MarketResult) error { preview = r; return nil })
+				Expect(err).NotTo(HaveOccurred())
+				Expect(later).To(MatchRegexp(`^[0-9a-f]{40}$`))
+				b, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(b)).To(ContainSubstring("ref: " + later))
+				Expect(string(b)).NotTo(ContainSubstring(pin))
+				Expect(res.Updates).To(ConsistOf(HaveField("Outcome", engine.MarketUpdated)))
+				Expect(res.Markets).To(ConsistOf(And(HaveField("Ref", later), HaveField("Commit", later))))
+				Expect(preview.DryRun).To(BeTrue())
+				Expect(preview.Updates).To(ConsistOf(HaveField("Outcome", engine.MarketWouldUpdate)))
+				Expect(preview.Changes).To(ContainElement(And(HaveField("Entry", "later"), HaveField("Change", "added"))))
+				v, err := e.ShowMarket("acme", nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(v.Entries).To(HaveLen(3))
+			})
+
+			It("moves a marketplace registered on a branch along that branch, not to the default branch", func() {
+				work := filepath.Join(tmp, "work", "kn")
+				gitIn(work, "checkout", "-q", "-b", "release")
+				repo("kn", map[string]string{"release.txt": "1"})
+				gitIn(work, "checkout", "-q", "main")
+				_, mainTip := repo("kn", map[string]string{"main.txt": "1"})
+				_, err := add(engine.MarketAddRequest{Name: "br", Source: url, Ref: "release"})
+				Expect(err).NotTo(HaveOccurred())
+				gitIn(work, "checkout", "-q", "release")
+				_, releaseTip := repo("kn", map[string]string{"release.txt": "2"})
+				gitIn(work, "checkout", "-q", "main")
+				repo("kn", map[string]string{"main.txt": "2"})
+				Expect(releaseTip).NotTo(Equal(mainTip))
+				res, err := e.UpdateKnownPastPin(ctx, "br", engine.MarketUpdateRequest{}, yes)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(res.Markets).To(ConsistOf(And(HaveField("Name", "br"), HaveField("Ref", releaseTip), HaveField("Commit", releaseTip))))
+				b, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(b)).To(ContainSubstring("ref: " + releaseTip))
+			})
+
+			It("keeps the marketplace on the new commit through a plain --update", func() {
+				movedOn()
+				_, err := e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, yes)
+				Expect(err).NotTo(HaveOccurred())
+				files := acme()
+				files[".claude-plugin/marketplace.json"] = strings.Replace(acmeCatalog, `{"name": "npmx"`, `{"name": "latest", "source": {"source": "url", "url": "https://lola.test/latest.git"}},{"name": "npmx"`, 1)
+				_, latest := repo("kn", files)
+				Expect(latest).NotTo(Equal(later))
+				_, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"acme"}})
+				Expect(err).NotTo(HaveOccurred())
+				v, err := e.ShowMarket("acme", nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(v.Ref).To(Equal(later))
+				Expect(v.Commit).To(Equal(later))
+			})
+
+			It("writes nothing and keeps the cache when confirm refuses", func() {
+				movedOn()
+				before, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, func(*engine.MarketResult) error { return errors.New("declined") })
+				Expect(err).To(MatchError("declined"))
+				Expect(os.ReadFile(p.Markets)).To(Equal(before))
+				v, err := e.ShowMarket("acme", nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(v.Commit).To(Equal(pin))
+				Expect(v.Entries).To(HaveLen(2))
+			})
+
+			It("writes nothing under -n and asks nothing", func() {
+				movedOn()
+				before, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				res, err := e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{DryRun: true}, func(*engine.MarketResult) error {
+					return errors.New("asked")
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(res.DryRun).To(BeTrue())
+				Expect(res.Updates).To(ConsistOf(HaveField("Outcome", engine.MarketWouldUpdate)))
+				Expect(os.ReadFile(p.Markets)).To(Equal(before))
+				v, err := e.ShowMarket("acme", nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(v.Commit).To(Equal(pin))
+			})
+
+			It("refuses a registration that changed while lola was confirming", func() {
+				movedOn()
+				_, err := e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, func(*engine.MarketResult) error {
+					b, err := os.ReadFile(p.Markets)
+					Expect(err).NotTo(HaveOccurred())
+					nb, err := market.SetRef(b, "acme", strings.Repeat("c", 40))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(os.WriteFile(p.Markets, nb, 0o600)).To(Succeed())
+					return nil
+				})
+				Expect(err).To(MatchError(ContainSubstring("acme changed in markets.yaml while lola fetched it")))
+			})
+
+			It("refuses a name you have not registered, and a source that is not git", func() {
+				movedOn()
+				_, err := e.UpdateKnownPastPin(ctx, "nope", engine.MarketUpdateRequest{}, yes)
+				Expect(err).To(MatchError(ContainSubstring("you have no marketplace nope")))
+				b, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				nb, err := market.AddRegistration(b, market.Registration{Name: "flat", Source: "https://example.test/catalog.json"})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(os.WriteFile(p.Markets, nb, 0o600)).To(Succeed())
+				_, err = e.UpdateKnownPastPin(ctx, "flat", engine.MarketUpdateRequest{}, yes)
+				Expect(err).To(MatchError(ContainSubstring("flat is not a git repository")))
+			})
+
+			It("reports a remote that cannot be reached, writing nothing", func() {
+				movedOn()
+				before, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				e.RemoteTip = func(context.Context, source.Spec) (string, error) { return "", errors.New("no route") }
+				_, err = e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, yes)
+				Expect(err).To(MatchError(ContainSubstring("no route")))
+				Expect(os.ReadFile(p.Markets)).To(Equal(before))
+			})
+		})
+
+		It("reads the catalog under the seed's path and registers it as the name given", func() {
+			url, pin = repo("kn", map[string]string{"sub/.claude-plugin/marketplace.json": acmeCatalog})
+			e.KnownSeed = func() ([]market.KnownMarket, error) {
+				k := known("acme")
+				k.Path = "sub"
+				return []market.KnownMarket{k}, nil
+			}
+			res, _, err := e.EnableKnown(ctx, "acme", "mine", engine.MarketAddRequest{}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Markets).To(ConsistOf(And(HaveField("Name", "mine"), HaveField("Path", "sub/.claude-plugin/marketplace.json"))))
+		})
+
+		It("refuses an unknown id, listing the known ids and hinting the list", func() {
+			_, _, err := e.EnableKnown(ctx, "nope", "", engine.MarketAddRequest{Display: []string{"--json"}}, nil)
+			Expect(err).To(MatchError("nope is not a known marketplace; the known ones are acme"))
+			Expect(errs.Hints(err)).To(ConsistOf("lola market --known --json"))
+		})
+
+		It("refuses an entry whose source is an archive, which no commit pins", func() {
+			e.KnownSeed = func() ([]market.KnownMarket, error) {
+				k := known("acme")
+				k.Source = "https://example.com/acme.tar.gz"
+				return []market.KnownMarket{k}, nil
+			}
+			_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+			Expect(err).To(MatchError(HavePrefix("--ref applies to git sources only")))
+			Expect(p.Markets).NotTo(BeAnExistingFile())
+		})
+
+		It("says when lola ships no known marketplaces", func() {
+			e.KnownSeed = func() ([]market.KnownMarket, error) { return []market.KnownMarket{}, nil }
+			_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+			Expect(err).To(MatchError("acme is not a known marketplace; this lola ships none"))
+			list, err := e.Known()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(list).NotTo(BeNil())
+			Expect(list).To(BeEmpty())
+		})
+
+		It("refuses a name another marketplace has, hinting another name for the same id", func() {
+			other, _ := repo("other", acme())
+			_, err := add(engine.MarketAddRequest{Name: "acme", Source: other})
+			Expect(err).NotTo(HaveOccurred())
+			_, _, err = e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+			Expect(err).To(MatchError("acme is already a marketplace, from " + other))
+			Expect(errs.Hints(err)).To(ConsistOf("lola market acme-2 --enable acme"))
+			_, _, err = e.EnableKnown(ctx, "acme", "acme-2", engine.MarketAddRequest{}, nil)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("coaches the update of a marketplace that is already this one", func() {
+			_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			_, _, err = e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+			Expect(err).To(MatchError("acme is already this marketplace"))
+			Expect(errs.Hints(err)).To(ConsistOf("lola market acme --update"))
+		})
+
+		It("writes nothing under -n", func() {
+			res, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{DryRun: true}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.DryRun).To(BeTrue())
+			Expect(res.Updates).To(ConsistOf(HaveField("Outcome", engine.MarketWouldAdd)))
+			Expect(p.Markets).NotTo(BeAnExistingFile())
+			Expect(p.MarketCache).NotTo(BeADirectory())
+		})
+
+		It("lists each known marketplace as enabled once a marketplace of that name and source exists", func() {
+			list, err := e.Known()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(list).To(ConsistOf(And(HaveField("ID", "acme"), HaveField("Enabled", false))))
+			_, _, err = e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			list, err = e.Known()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(list).To(ConsistOf(And(HaveField("ID", "acme"), HaveField("Source", url), HaveField("Enabled", true))))
+		})
+
+		It("does not list a known marketplace as enabled when the name is another source's", func() {
+			other, _ := repo("other", acme())
+			_, err := add(engine.MarketAddRequest{Name: "acme", Source: other})
+			Expect(err).NotTo(HaveOccurred())
+			list, err := e.Known()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(list).To(ConsistOf(HaveField("Enabled", false)))
+		})
+
+		It("shows one known marketplace, and refuses an id the seed lacks naming the ones it has", func() {
+			k, err := e.ShowKnown("acme", nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k).To(And(HaveField("ID", "acme"), HaveField("Commit", pin), HaveField("Enabled", false)))
+			_, err = e.ShowKnown("nope", []string{"--json"})
+			Expect(err).To(MatchError("nope is not a known marketplace; the known ones are acme"))
+			Expect(errs.Hints(err)).To(ConsistOf("lola market --known --json"))
+		})
+
+		Describe("with a confirmation", func() {
+			It("asks with the catalog the pin holds before anything is written, and registers once it says yes", func() {
+				var asked market.KnownMarket
+				var preview *engine.MarketResult
+				confirm := func(k market.KnownMarket, res *engine.MarketResult) error {
+					Expect(p.Markets).NotTo(BeAnExistingFile())
+					Expect(p.MarketCache).NotTo(BeADirectory())
+					asked, preview = k, res
+					return nil
+				}
+				_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, confirm)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(asked.Commit).To(Equal(pin))
+				Expect(preview.DryRun).To(BeTrue())
+				Expect(preview.Markets).To(ConsistOf(And(HaveField("Name", "acme"), HaveField("Entries", BeNumerically(">", 0)))))
+				Expect(p.Markets).To(BeAnExistingFile())
+			})
+
+			It("writes nothing and returns the answer's error when it says no", func() {
+				declined := errors.New("declined by the test")
+				_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, func(market.KnownMarket, *engine.MarketResult) error { return declined })
+				Expect(err).To(MatchError(declined))
+				Expect(p.Markets).NotTo(BeAnExistingFile())
+				Expect(p.MarketCache).NotTo(BeADirectory())
+			})
+
+			It("is not asked under -n, which writes nothing", func() {
+				_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{DryRun: true},
+					func(market.KnownMarket, *engine.MarketResult) error { return errors.New("asked") })
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("refuses a name another marketplace holds before it asks, hinting a free one", func() {
+				other, _ := repo("other", acme())
+				_, err := add(engine.MarketAddRequest{Name: "acme", Source: other})
+				Expect(err).NotTo(HaveOccurred())
+				_, _, err = e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{Rename: func(engine.MarketRename) (string, error) { return "x", nil }},
+					func(market.KnownMarket, *engine.MarketResult) error { return errors.New("asked") })
+				Expect(err).To(MatchError(ContainSubstring("acme is already a marketplace")))
+				Expect(errs.Hints(err)).To(ConsistOf("lola market acme-2 --enable acme"))
+			})
+		})
+
+		It("reports a seed that does not load", func() {
+			e.KnownSeed = func() ([]market.KnownMarket, error) { return nil, errors.New("seed broken") }
+			_, err := e.Known()
+			Expect(err).To(MatchError("seed broken"))
+			_, _, err = e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+			Expect(err).To(MatchError("seed broken"))
 		})
 	})
 })

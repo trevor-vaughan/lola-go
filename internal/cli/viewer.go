@@ -640,9 +640,24 @@ func (a *app) view(cmd *cobra.Command, b *reportBuf, then string) (viewAnswer, e
 // terminal when stdin is not one. Ctrl+C arriving as a signal ends it as Ctrl+C typed does; stdin
 // ending sends it stdinEnded, so it draws its last frame, and returns errStdinEnded.
 func (a *app) runViewer(cmd *cobra.Command, out io.Writer, m viewerModel, width, height int) (viewerModel, error) {
+	final, err := runProgram(cmd.InOrStdin(), out, m, width, height)
+	vm, ok := final.(viewerModel)
+	if !ok {
+		vm = m
+	}
+	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
+		return vm, err
+	}
+	return vm, nil
+}
+
+// runProgram runs m on out, a terminal width columns wide and height rows high, until it quits,
+// and returns its last model (nil when it never ran). Its keys come from in, or from the terminal
+// when in is a stdin that is not one. stdin ending sends m stdinEnded, so it draws its last frame,
+// and is errStdinEnded; Ctrl+C arriving as a signal is tea.ErrInterrupted.
+func runProgram(in io.Reader, out io.Writer, m tea.Model, width, height int) (tea.Model, error) {
 	var ended atomic.Bool
 	var p *tea.Program
-	in := cmd.InOrStdin()
 	if f, ok := in.(*os.File); ok && (f != os.Stdin || isTTY(f)) {
 		in = &eofFile{File: f, ended: func() { ended.Store(true); p.Send(stdinEnded{}) }}
 	}
@@ -652,15 +667,8 @@ func (a *app) runViewer(cmd *cobra.Command, out io.Writer, m viewerModel, width,
 	}
 	p = tea.NewProgram(m, opts...)
 	final, err := p.Run()
-	vm, ok := final.(viewerModel)
-	if !ok {
-		vm = m
+	if ended.Load() {
+		return final, errStdinEnded
 	}
-	switch {
-	case ended.Load():
-		return vm, errStdinEnded
-	case err != nil && !errors.Is(err, tea.ErrInterrupted):
-		return vm, err
-	}
-	return vm, nil
+	return final, err
 }

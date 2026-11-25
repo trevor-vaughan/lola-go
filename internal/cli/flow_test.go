@@ -53,6 +53,8 @@ type scripted struct {
 	trashPick  []func(cli.TrashPickStep) (cli.TrashAnswer, error)
 	versions   []func(cli.VersionStep) (int, error)
 	consent    []bool
+	pickers    []func(cli.MarketPickerStep) (cli.MarketPickerAnswer, error)
+	sources    [][2]string // MarketSource's answers: source and ref
 
 	// the first emptyCancels no-components questions (after emptyBacks) and confirmCancels other
 	// yes/no questions are cancelled, as Ctrl+C does; the first confirmBacks of those, before
@@ -81,6 +83,7 @@ type scripted struct {
 	memberSteps    []cli.MembersStep
 	trashPickSteps []cli.TrashPickStep
 	versionSteps   []cli.VersionStep
+	pickerSteps    []cli.MarketPickerStep
 	asks           []cli.Question // every question Ask was asked
 
 	summaryTo io.Writer // where Review writes the summary, as the huh adapter leaves it on stderr
@@ -256,6 +259,24 @@ func (s *scripted) MarketName(st cli.MarketNameStep) (string, error) {
 func (s *scripted) MarketEntry(st cli.MarketEntryStep) (string, error) {
 	s.calls, s.entrySteps = append(s.calls, "market-entry"), append(s.entrySteps, st)
 	return pop(&s.entries, "market-entry"), nil
+}
+func (s *scripted) MarketPicker(st cli.MarketPickerStep) (cli.MarketPickerAnswer, error) {
+	s.calls, s.pickerSteps = append(s.calls, "market-picker"), append(s.pickerSteps, st)
+	return pop(&s.pickers, "market-picker")(st)
+}
+
+// MarketSource answers the source and ref scripted; cancelRun as the source cancels the run, as
+// Ctrl+C does, and goBack goes back to the picker, as Esc does.
+func (s *scripted) MarketSource(cli.MarketSourceStep) (string, string, error) {
+	s.calls = append(s.calls, "market-source")
+	switch v := pop(&s.sources, "market-source"); v[0] {
+	case cancelRun:
+		return "", "", cli.ErrAborted
+	case goBack:
+		return "", "", cli.ErrBack
+	default:
+		return v[0], v[1], nil
+	}
 }
 func (s *scripted) TidyPick(st cli.TidyPickStep) ([]string, error) {
 	s.calls, s.tidyPickSteps = append(s.calls, "tidy-pick"), append(s.tidyPickSteps, st)

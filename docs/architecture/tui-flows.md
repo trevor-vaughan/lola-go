@@ -23,6 +23,8 @@ what the answers mean.
 - [Init](#init): `lola init` without a directory or `-y`, and the background question that can come
   before any command's first form
 - [Market add](#market-add): the name and ssh host questions of `lola market [<name>] --add <source>`
+- [Market picker](#market-picker): bare `lola market`'s picker on a terminal and the questions its
+  actions ask
 - [Migrate](#migrate): `lola migrate`'s mapping questions, its plan and `Migrate?`
 - [Hook and script consent](#hook-and-script-consent): the consent questions about install hooks,
   Claude Code hooks and a project's install scripts, asked by `lola install`, `sync`, `update`,
@@ -51,8 +53,8 @@ Every transition row is pinned by a spec named `"<surface>: <from> --<input>--> 
 surface's spec file (`internal/cli/flow_paths_test.go` for install,
 `internal/cli/profile_edit_paths_test.go` for profile edit, `internal/cli/scope_paths_test.go`
 for the scope picker and the trust question, `internal/cli/misc_paths_test.go` for tidy, trash
-and cache clean, `internal/cli/misc2_paths_test.go` for init, market add, migrate and hook and
-script consent, `internal/cli/keys_paths_internal_test.go` for the viewer and pager, accessible mode
+and cache clean, `internal/cli/misc2_paths_test.go` for init, market add, market picker, migrate
+and hook and script consent, `internal/cli/keys_paths_internal_test.go` for the viewer and pager, accessible mode
 and form keys), the input followed by its guard in
 parentheses where rows share a *from* and an *input*, or by an existing spec that file lists at its
 top in an `// also pinned (<row>; <row>): <file> "<spec>"` pointer.
@@ -1295,6 +1297,405 @@ Esc there stays; so is the ssh question when the run asked no name.
 | a refused name                                         | the name question, saying why                     | the answer as typed |                  |
 | Esc on ssh after the name question                     | the name question, then ssh for the name answered | the name given      | the hosts ticked |
 | Esc on the name question, or on ssh with no name asked | nothing: a first screen stays                     |                     |                  |
+
+## Market picker
+
+Bare `lola market` on a terminal (`marketPick`, `internal/cli/cmd_market.go`) opens the picker of
+`internal/cli/market_picker.go`, a Bubble Tea model, over `engine.PickerRows`: your marketplaces,
+then the known marketplaces you have not enabled; an enabled known one is among yours, once. It
+opens when stdin and stderr are a terminal, none of `--json`, `--plain`, `--no-pager` and
+`--no-interactive` is given, and `market_picker` in your `config.yaml` is not `false`
+(`marketPickerOpens`); otherwise the run prints the listing. A stdout that is not a terminal does
+not keep it from opening. Opening it contacts no host. `u` and `U` start `engine.CheckMarkets` on
+their rows, which asks each git row's remote for its tip (`git ls-remote`), 8 at a time, 10 seconds
+each; each result fills in its row, and once every result is in the footer offers to update those
+of yours that need it. Each answer runs an action, then the picker opens again with its rows read
+again and no status, until Esc, `q` or Ctrl+C.
+
+Enter on a row of yours with nothing ticked opens that marketplace's entries (`engine.PickerEntries`,
+read from the cached catalogs, contacting no host), and Enter on an entry its detail page; `m`, or Enter
+with rows ticked, keeps the `Do what with these?` menu. The four pages (`picker`, `entries`, `detail`, `skipped`)
+are one Bubble Tea model (`internal/cli/market_picker_entries.go`) and `q` quits from any of them. An
+entry's installed state is read for one scope, the context line's (`--scope user` or `--scope project`,
+`--user`, `--project` or `-C`, else the nearest project with a `.lola/` directory, else user scope; it
+never asks and ignores `default_scope`); `--scope both` is refused before the picker opens, since it
+acts on one scope. An entry counts as installed when that scope's `lock.json` holds a module of its
+name, whichever marketplace it came from.
+
+`i` and `d` on the entries page (the cursor's entry) or the detail page do not install inside the model.
+They end the picker with an answer (`PickerInstall`, `PickerUninstall`, the marketplace and the entry,
+and `FromEntries` when pressed on the entries page), `marketPick` runs the usual
+`lola install @<market>/<entry>` or `lola uninstall <entry>` with their usual questions, and the picker
+opens again where the key was pressed (`PickerResume`, its `OnEntries` set from `FromEntries`): at that
+entry's detail page, or on the entries page with the cursor on it, its installed state read again. The picker
+cannot nest those questions: they are `huh` forms, each a separate Bubble Tea program, and two cannot own
+the terminal at once. A failed action prints its error with its hints before the picker reopens; Ctrl+C
+in the action's own question ends the run.
+
+`o` on the entries page (the cursor's entry) or the detail page opens the entry's web page. The model
+never starts a process in `Update`: it returns a command that calls `MarketPickerStep.OpenURL`
+(`openBrowser` in `internal/cli/browser.go`, `WithBrowser` swaps it for specs) with the address the
+engine derived from the entry's source (`engine.PickerEntry.WebURL`, `""` for a folder, an archive or an
+ssh remote of a host without a known web address). The address is checked first (`checkWebURL`: it
+begins with `http://` or `https://`, names a host of letters, digits, dots and hyphens, has no credentials and holds only printable ASCII without a space, so it
+is never an option, another scheme or a line of control characters); a refused address launches
+nothing. The browser is started directly with the address as its one argument, never through a shell,
+in a session of its own on Linux and macOS (`detach`), so a text browser has no terminal to take. `←` and `→` move up and down the pages (the list, the entries, the detail), where
+Esc only goes back.
+
+Enter or `→` on a known row you have not enabled, with nothing ticked, previews it: the picker
+fetches its catalog at the pinned commit, in a command (`engine.PreviewKnown`; `MarketPickerStep.Preview`,
+`internal/cli/market_picker_preview.go`), and the footer says so while it runs (`fetching <id> at <commit>
+from <host> — nothing is added or installed…`). It is the one place the picker contacts a host on its
+own account. The fetch is the dry run of `lola market --enable <id>`: it writes nothing to
+`markets.yaml` or the marketplace cache, and the tree it fetches lives in a staging directory that is
+removed when the fetch ends. Esc cancels it, and `q` and Ctrl+C quit the picker and cancel it; so does
+opening a row of yours or starting the fetch of another known row. Its entries then open on the same
+`entries` and `detail` pages as a marketplace of yours, kept apart from yours (a known id may equal
+the name of one of yours), with the title `previewing <id> — not added; pinned to <commit>, curated <date>`,
+`m enable` among the keys in place of `i` and `d`, a line `N entries skipped · s shows why` and the key
+`s skipped` when the catalog lists entries lola does not offer (the entries it skips are not in the list;
+`s` opens the `skipped` page), and the notes `not added yet; m enables <id>` for
+those two. `m` there leaves the picker as `m` on the known row does, to its `enable` question. A
+fetch that fails, or whose catalog offers nothing, leaves the list with a note of the reason and a
+command that retries or lists; no empty entries page opens. A preview that was fetched stays for the
+session, so going back and in again fetches nothing. Accessible mode previews the same way
+(`huhForms.previewPage`, `internal/cli/market_picker.go`): the same fetch command and `previewed`
+result, run synchronously under a status line printed first, with Ctrl+C read from the interrupt channel
+the prompts share, so the fetch's context is cancelled and the run aborts without waiting for it.
+
+Every page prints the scope's context line under its title, and the key that acts in that scope names its
+kind (`d uninstall from user`; `MarketPickerStep.ScopeKind`, from the scope the run resolved), so the
+target is stated where the choice is made. `i` names none: `marketEntry` runs the regular install with
+the scope flags `lola market` was given, so the install resolves its scope itself (flag, scope picker,
+project, `default_scope`; its own scope question or no-scope error with hints appears in the hand-off),
+and `i` is offered with no `ScopeKind`; `d` is not, and prints `no scope to read; d is unavailable`. The
+uninstall hand-off is pinned to the scope the picker reads, since it acts on what the picker marks
+installed. An install into another scope leaves the entry `not installed` when the picker opens again.
+A marketplace of yours shows the same line and key from the skipped entries its cached catalog records
+(`engine.PickerSkips`, read with the entries; a preview's come with it, `KnownPreview.Skipped`). Each is
+a name and the reason `lola market <name>` prints, shaped as that command shapes them.
+`entryKeys` is the one list of those keys, read by the TUI's footer and the accessible detail prompt; a
+preview has no `i` or `d`, so names none.
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#2f6dab',
+  'primaryTextColor': '#1e1e1e',
+  'primaryBorderColor': '#7c8ba1',
+  'lineColor': '#7c8ba1',
+  'edgeLabelBackground': '#eef2f8',
+  'tertiaryColor': 'transparent',
+  'tertiaryTextColor': '#7c8ba1',
+  'tertiaryBorderColor': '#7c8ba1',
+  'clusterBkg': 'transparent',
+  'clusterBorder': '#7c8ba1',
+  'titleColor': '#7c8ba1',
+  'noteBkgColor': '#eef2f8',
+  'noteTextColor': '#1e1e1e',
+  'fontFamily': 'system-ui, sans-serif'
+}, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+stateDiagram-v2
+  direction TB
+
+  [*] --> picker: on a terminal, no off switch
+  [*] --> numbers: accessible mode
+  [*] --> list: off a terminal, or an off switch
+  picker --> picker: x, ctrl+a, u, U, checks end
+  picker --> filter: /
+  filter --> picker: Enter
+  picker --> offer: checks end, yours to update
+  offer --> picker: esc or n
+  offer --> move: yes, one registered at a commit
+  offer --> picker: yes, the update run
+  move --> picker
+  picker --> source: a, or Enter on Add a source…
+  source --> picker
+  picker --> enable: Enter, known rows ticked
+  enable --> action: own rows ticked too
+  enable --> picker
+  picker --> action: Enter, own rows ticked, or m
+  picker --> entries: Enter or →, nothing ticked, own row with entries, or a known row already previewed
+  picker --> fetch: Enter or →, nothing ticked, known row not yet previewed
+  fetch --> entries: the catalog has entries
+  fetch --> picker: it failed, has none, or esc
+  fetch --> entries: Enter on a row of yours
+  fetch --> fetch: Enter on another known row
+  entries --> enable: m, a preview
+  detail --> enable: m, a preview
+  entries --> entryfilter: /
+  entryfilter --> entries: Enter
+  entries --> detail: Enter or →
+  entries --> picker: esc or ←
+  detail --> entries: esc or ←
+  entries --> handoff: i or d
+  detail --> handoff: i or d
+  entries --> entries: o
+  entries --> skipped: s, entries were skipped
+  skipped --> entries: esc or ←
+  skipped --> skipped: ↑↓, g, G
+  detail --> detail: o
+  handoff --> entries: begun on the entries
+  handoff --> detail: begun on the detail
+  action --> browse: Browse entries
+  action --> remove: Remove
+  action --> picker: Update, Cancel, esc
+  browse --> picker
+  remove --> picker
+  numbers --> enable
+  numbers --> action
+  numbers --> source
+  numbers --> entries
+  picker --> left: esc, q
+  entries --> left: q
+  skipped --> left: q
+  fetch --> left: q
+  detail --> left: q
+  offer --> left: q
+  left --> [*]
+  list --> [*]
+  cancelled --> [*]
+```
+
+`ctrl+c` goes to `cancelled` from the picker, `fetch`, the entries, the detail page, the skipped page, the offer, Add a source…'s
+questions and `lola market --add`'s ([Market add](#market-add)), `Do what with these?`, the install
+flow and the questions of `handoff`. In a yes/no
+question (`enable`, `remove`, `move`) it reads as No (`app.confirm` cannot tell them apart): the
+question's cancel line, then the picker again. In `filter`, typed keys are filter text (`a`, `o`, `u`,
+`U`, `q` and `x` included), Backspace takes the last one back and Esc drops the filter; the same holds in
+`entryfilter`. An action that fails prints its error with its hints, and the picker opens again.
+
+### States
+
+| state   | what the user sees | asked when |
+|---------|--------------------|------------|
+| picker  | `Marketplaces`, the context line, then `Your marketplaces` and `Known marketplaces`, each row up to three lines: the name or id, its ref (a known row you have not enabled: `pin <commit>`), its entries, `known`, `ahead of pin` and its status; then, dim and indented, its description (the catalog's, else a known row's reason it is listed; none when neither), wrapped to the terminal's width; then, dim and indented the same, its source; then `Add a source…` and, in at most two rows, the keys `u check+update · U all · x tick · / filter · a add · ⏎ open · o web · m menu · q quit` (Esc leaves too, and is not listed), a note above them when a key or a check run has one. A failed check adds its reason and what to do under the row; the network banner `✗ Several sources unreachable; check your network connection` sits under the title. The rows of the marketplaces Add a source… added are ticked | bare `lola market` on a terminal, with no off switch; again after every action |
+| filter  | the picker with `/<text>█` under the title; only the rows whose name, source, reason or catalog description holds it, ignoring case, and `Add a source…`; the keys `⏎ keep filter · esc clear · ↑↓ move` | `/` |
+| offer   | the picker, its statuses shown, with one footer line in place of the keys: `update <name>, <name>? ⏎/y yes · esc/n no`, or `update N marketplaces? …` when the names do not fit | a check run of `u` or `U` ended with rows of yours to update, no banner and no filter being typed |
+| source  | Add a source…'s source, then its optional ref | `a`, or Enter on `Add a source…` |
+| fetch   | the picker, a footer line `fetching <id> at <commit> from <host> — nothing is added or installed…` above its keys; every key of the picker works, and Esc cancels the fetch | Enter or `→` on a known row you have not enabled, nothing ticked, its preview not fetched yet |
+| enable  | `lola market --enable <id>`'s plan, then `Enable known marketplace <id>? [y/N]` | Enter with a known row you have not enabled ticked, one at a time |
+| entries | the marketplace's id (a preview: `previewing <id> — not added; pinned to <commit>, curated <date>`), the context line (`user scope: …` or `project <root>: …`), then each entry as a checkbox (`[ ]` or `[x]`; a preview has none), a name and version, `installed` or `cached`, and, under it and two columns right of its name, its description, wrapped, the cursor on one; the keys `i install` (an entry that is not installed) or `d uninstall from <scope>` (one that is), `<scope>` being `user` or `project`, for the cursor's entry, `x tick`, then `o web` only when the entry has a web page, and `s skipped · ⏎/→ open · ←/esc back · / filter · q quit` (`⏎/→ open` only with an entry under the cursor; `s skipped` only when the catalog skipped entries), with entries ticked the keys start `N ticked` (`N ticked (M hidden)` when the filter hides M of them) and name `i install` when a ticked entry is not installed and `d uninstall from <scope>` when one is, in place of the cursor entry's, above them the line `N entries skipped · s shows why` when it did, and a note when a key has one; in a preview `m enable` replaces `i install` and `d uninstall` | Enter or `→` on a row of yours with nothing ticked and entries cached, or on a known row you have not enabled once its preview is fetched |
+| entryfilter | the entries with `/<text>█` under the context line, only those whose name, description or tag holds the text, ignoring case; the keys `⏎ keep filter · esc clear · ↑↓ move` | `/` on the entries |
+| skipped | the marketplace's id and `N skipped entries` (`entry` for one; a preview's title is not used), the context line, then for each skipped entry its name and, under it, indented two spaces and wrapped with that indent, the reason; the keys `↑↓ scroll · ←/esc back · q quit`; read only, scrolled from its top | `s` on the entries page of a marketplace whose catalog skipped entries |
+| detail  | the marketplace's id and the context line, then the entry's name and version, and under it, indented two spaces and wrapped with that indent, its description, `tags:`, `url:` (the entry's source address, without user info, query or fragment) and `license:` (as its catalog entry states it) when it has them, and `installed` with the commit or digest it was recorded at (a commit's first seven digits), or `not installed`, then `· in your cache` when its source is cached, one blank line between those three blocks as far as the entry has them; the keys `i install to <scope> · o web · ←/esc back · q quit` for an entry that is not installed, `d uninstall from <scope> · o web · ←/esc back · q quit` for one that is (`o web` only when it has a web page) | Enter or `→` on an entry |
+| handoff | the usual questions and output of `lola install @<market>/<entry>` or `lola uninstall <entry>`, the install in the scope flags `lola market` was given or the one `lola install` resolves, the uninstall in the context line's scope; with entries ticked, one call for all of them | `i` or `d` on the entries page or the detail page |
+| action  | `Do what with these?`: Browse entries, Update, Remove, Cancel | Enter or `m` with rows of yours ticked, after any `enable` |
+| browse  | `lola install @<name>...`'s flow, its module picker offering those marketplaces' entries | Browse entries |
+| remove  | `Forget marketplace <name> (<source>) and drop its cached catalog? [y/N]` | Remove, once per marketplace |
+| move    | the catalog changes the move brings, then `Update past the commit it is registered at? [y/N]` | the offer taken with a marketplace of yours registered at a commit in it |
+| numbers | accessible mode: the rows numbered, each with its description and source under its number, no status, `Add a source…` last, then `Choose marketplaces (numbers, comma separated; m1 for the menu; o1 for the web page): ` | bare `lola market` with `LOLA_ACCESSIBLE=1` or `TERM=dumb` |
+
+In accessible mode `entries` and `detail` are numbered line prompts, not screens: the entries list
+under the marketplace's id and the context line, then the keys as lines of the terminal's width, no key
+split (`wrapKeys`): `i<n,n…> install · d<n,n…> uninstall from <scope> · o<n> web · Enter alone goes
+back` (`s skipped` before `o<n> web` when the catalog skipped entries), then the prompt `Choose an entry (number or key above): `. `s` prints the skipped page, the title `<id> — N skipped entries` and each name with its reason indented two spaces under it, and asks again. The detail's lines follow with
+`i install to <scope> · o web · Enter alone goes back: ` (`d uninstall from <scope>` for an
+installed entry; only the letters that apply are named, and any other prints its note and asks again);
+when that line is wider than the terminal its keys print above the prompt `Choose a key above: `, as
+the market prompt's do above `Choose marketplaces: `. A preview names `m enable` in place of install and
+uninstall. They have no filter. Accessible output wraps at spaces only, to the terminal's width less
+one column and not at all when the width is unknown (`wrapSpaces`, `huhForms.sayLead`,
+`internal/cli/market_picker.go`; `ansi.Wrap` and `ansi.Wordwrap` break at hyphens and split long
+words, which would cut an address or a flag), and the TUI's notes use the same helper. Without a
+known scope (`MarketPickerStep.ScopeKind`; the command always sets it) neither `i` nor `d` is offered or
+acts. A Ctrl+C during a fetch ends the run without a blank line under the status. `m<N>` at
+the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews it.
+
+### Transitions
+
+| from    | input                  | guard                                                                 | to        | effects |
+|---------|------------------------|-----------------------------------------------------------------------|-----------|---------|
+| start   | run                    | a terminal                                                            | picker    | reads markets.yaml, the cached catalogs and lola's known list; contacts no host, shows no status and writes nothing |
+| start   | run                    | --json, --plain, --no-pager, --no-interactive or market_picker: false | list      | the listing, as off a terminal; nothing asked |
+| start   | run                    | no terminal                                                           | list      | the listing; nothing asked |
+| start   | run                    | accessible mode                                                       | numbers   |  |
+| start   | run                    | --scope both                                                          | refused   | `the market picker acts on one scope, and --scope both names two`, with hints `lola market --scope project` and `--scope user`; nothing opens |
+| picker  | x                      |                                                                       | picker    | ticks or unticks the cursor's row (`space` too) |
+| picker  | ctrl+a                 |                                                                       | picker    | ticks every row shown, or none when all are |
+| picker  | /                      |                                                                       | filter    |  |
+| filter  | answer                 |                                                                       | picker    | Enter keeps the filter; ticks are kept as the filter changes |
+| filter  | answer                 | an offer waiting                                                      | offer     | a check run that ended while the filter was typed offers once Enter keeps it |
+| picker  | esc                    | a filter kept                                                         | picker    | clears the filter; the ticks stay |
+| picker  | u                      |                                                                       | picker    | checks the ticked rows, else the cursor's: each git row with a fetched catalog, and each known row you have not enabled, reads `checking…` until its result; every other row's status is cleared. A source that is a local path, a `file://` URL, an archive, a folder or a catalog file gets no status |
+| picker  | u                      | nothing ticked, the cursor on Add a source…                           | picker    | `tick a marketplace, or move to one, to update it`; contacts no host |
+| picker  | u                      | a check running                                                       | picker    | cancels it and drops its results; checks again |
+| picker  | u                      | only rows of yours it cannot check                                    | offer     | contacts no host |
+| picker  | u                      | no row it can check or offer                                          | picker    | `nothing to update`; contacts no host |
+| picker  | U                      |                                                                       | picker    | as `u` on every row, ticked or not, whatever the filter shows |
+| picker  | U                      | a check running                                                       | picker    | cancels it and drops its results; checks every row |
+| picker  | checks end             | rows of yours to update                                               | offer     | offers yours that read `update available` or `upstream moved`, and yours it cannot check; never one up to date or unreachable, never a known one you have not enabled |
+| picker  | checks end             | at least two failed, and more than half of those checked              | picker    | the network banner; the failed rows read `not checked`, with no hint; `nothing to update until the checks get through; u checks again`; nothing offered |
+| picker  | checks end             | nothing to update                                                     | picker    | `everything checked is up to date`, `nothing to update; N unreachable`, or `nothing to update; ⏎ enables a known marketplace` |
+| picker  | checks end             | a row of yours failed, no banner                                      | picker    | it reads `unreachable`, its reason under it, then `→ u retries · lola market <name> --remove forgets it` |
+| picker  | checks end             | a known row you have not enabled failed, no banner                    | picker    | it reads `unreachable`, its reason under it, then `→ u checks again` |
+| picker  | checks end             | the only check failed                                                 | picker    | its hint starts `→ check your network connection; ` |
+| offer   | yes                    |                                                                       | picker    | Enter or `y`: updates the rows offered as `lola market <name>... --update` does, then opens again |
+| offer   | yes                    | one registered at a commit                                            | move      | learns the remote's tip and reads the catalog there, writing nothing; the rest of the offer updates after it |
+| offer   | no                     |                                                                       | picker    | Esc or `n`: the statuses stay; nothing written |
+| offer   | u or U                 |                                                                       | picker    | drops the offer and checks again, as in the picker; nothing written |
+| offer   | another key            |                                                                       | offer     | nothing: the ticks and the cursor stay |
+| offer   | q                      |                                                                       | left      |  |
+| offer   | ctrl+c                 |                                                                       | cancelled |  |
+| picker  | Enter                  | known rows ticked                                                     | enable    | the known ones first, one at a time |
+| picker  | Enter                  | rows of yours ticked                                                  | action    |  |
+| picker  | Enter                  | rows of yours and known ones ticked                                   | enable    | then `action` for yours |
+| picker  | Enter                  | nothing ticked, a known row not yet previewed                         | fetch     | starts the fetch of its catalog at the pinned commit in a command; the footer names the commit and host; nothing is added, installed or written |
+| picker  | Enter                  | nothing ticked, a known row already previewed                         | entries   | its preview, kept from the session's earlier fetch; contacts no host |
+| picker  | →                      | nothing ticked, a known row                                           | fetch     | as Enter: the fetch, or the entries when already previewed |
+| picker  | Enter                  | nothing ticked, a row of yours with entries                           | entries   | saves the list's cursor, scroll and filter; the ticks are none |
+| picker  | Enter                  | nothing ticked, a row of yours without entries                        | picker    | the note `<name> has no entries; u fetches its catalog`; contacts no host |
+| picker  | →                      | nothing ticked, a row of yours with entries                           | entries   | as Enter |
+| picker  | →                      | rows ticked, Add a source… or a row without entries                   | picker    | nothing, or the note `<name> has no entries; u fetches its catalog`; never the menu or an action |
+| picker  | ←                      |                                                                       | picker    | nothing: it never leaves |
+| picker  | o                      | the row has a web address                                             | picker    | starts the browser on it, through the step's opener, from a command; the note `opened <address>`, cut to fit |
+| picker  | o                      | the row has no web address                                            | picker    | the note `no web address for <id>`; nothing started |
+| picker  | o                      | the cursor on Add a source…                                           | picker    | the note `nothing to open on Add a source…`; nothing started |
+| picker  | o                      | the address is not a plain http(s) one                                | picker    | the note `refusing to open <id>'s address: it is not a plain http(s) address`; nothing started |
+| picker  | m                      |                                                                       | next step | as Enter with the cursor's row ticked, or the ticked rows: the menu (`enable` for known rows, then `action`), never the entries |
+| picker  | Enter                  | on Add a source…                                                      | source    |  |
+| picker  | a                      |                                                                       | source    |  |
+| picker  | esc or q               |                                                                       | left      | stops a check running |
+| picker  | ctrl+c                 |                                                                       | cancelled | stops a check running |
+| fetch   | result                 | the catalog has entries                                               | entries   | opens the preview; the list's cursor, scroll and filter are saved for Esc |
+| fetch   | result                 | the fetch failed                                                      | picker    | the note `could not fetch <id>: <reason>`, or `<id>: <reason>` when the reason already begins `could not fetch` (up to 1024 bytes, wrapped) and the first hint (a command that retries or checks it); no entries page |
+| fetch   | result                 | the filter is typed or an update is offered                           | picker    | the preview is kept, and the note `<id> fetched; ⏎ opens it`; the screen does not move |
+| fetch   | result                 | the catalog has no entry                                              | picker    | the note `<id> at <commit> offers no entries; m enables it anyway` |
+| fetch   | esc                    |                                                                       | picker    | cancels the fetch: the note `cancelled fetching <id>`; a result that still arrives is dropped |
+| fetch   | Enter                  | the cursor on a row of yours with entries                             | entries   | cancels the fetch |
+| fetch   | Enter                  | the cursor on a row of yours without entries                          | picker    | cancels the fetch: the note `cancelled fetching <id>; <name> has no entries; u fetches its catalog` |
+| fetch   | Enter                  | the cursor on a known row already previewed                           | entries   | cancels the fetch and opens the kept preview; the cancelled fetch's result is dropped |
+| fetch   | Enter                  | the cursor on another known row, nothing ticked                       | fetch     | cancels this fetch and starts that row's |
+| fetch   | q                      |                                                                       | left      | cancels the fetch |
+| fetch   | ctrl+c                 |                                                                       | cancelled | cancels the fetch |
+| source  | answer                 |                                                                       | picker    | runs `lola market --add <source> [--ref <ref>]`, asking its name and ssh host questions when they apply; opens with the new marketplace ticked. An empty source adds nothing |
+| source  | esc                    |                                                                       | picker    |  |
+| source  | ctrl+c                 |                                                                       | cancelled | also on `--add`'s name question; nothing registered |
+| enable  | yes                    |                                                                       | picker    | registers it at lola's pin, as `--enable` does; it opens among yours, marked `known` |
+| enable  | no                     |                                                                       | picker    | `✗ cancelled — nothing was changed`; nothing written |
+| entries | /                      |                                                                       | entryfilter |  |
+| entryfilter | answer             |                                                                       | entries   | Enter keeps the filter; the cursor goes to the first match |
+| entries | esc                    | a filter kept                                                         | entries   | clears the filter |
+| entries | esc                    |                                                                       | picker    | the list's cursor, scroll and filter as they were |
+| entries | i or d                 | a preview                                                             | entries   | the note `not added yet; m enables <id>`; never leaves the picker |
+| entries | m                      | a preview                                                             | enable    | leaves the picker with the known row, as `m` on it does |
+| detail  | i or d                 | a preview                                                             | detail    | the note `not added yet; m enables <id>`; never leaves the picker |
+| detail  | m                      | a preview                                                             | enable    | leaves the picker with the known row, as `m` on it does |
+| entries | Enter                  |                                                                       | detail    | the entry under the cursor; nothing when no entry matches the filter |
+| entries | →                      |                                                                       | detail    | as Enter |
+| entries | ←                      |                                                                       | picker    | as esc with no filter kept: the list's cursor, scroll and filter as they were, whether or not an entries filter is kept |
+| entryfilter | ← or →             |                                                                       | entryfilter | ignored |
+| entries | i                      | not installed                                                         | handoff   | with nothing ticked, runs `lola install @<market>/<entry>` in the context line's scope; nothing when no entry matches the filter |
+| entries | i                      | installed                                                             | entries   | the note `already installed; d uninstalls` |
+| entries | d                      | installed                                                             | handoff   | with nothing ticked, runs `lola uninstall <entry>` in the context line's scope; nothing when no entry matches the filter |
+| entries | d                      | not installed                                                         | entries   | the note `not installed; i installs` |
+| entries | x or space             | not a preview                                                         | entries   | ticks the entry under the cursor, or unticks it: its `[ ]` shows `[x]`; nothing when no entry matches the filter; the ticks last while the marketplace is open, across a filter or an entry's detail |
+| entries | x or space             | a preview                                                             | entries   | ignored: a preview has no checkboxes, since nothing in it can be installed |
+| entries | ctrl+a                 | not a preview                                                         | entries   | ticks every entry the filter shows, or unticks them when all of them are ticked; the entries it hides keep their ticks |
+| entries | i                      | entries ticked, one not installed                                     | handoff   | runs `lola install` of every ticked entry the filter shows, in page order, in one call, in the context line's scope; an installed one is passed too and install leaves it as it was (`already up to date`) |
+| entries | i                      | entries ticked, all installed                                         | entries   | the note `already installed; d uninstalls` |
+| entries | d                      | entries ticked, one installed                                         | handoff   | runs `lola uninstall` of the shown ticked entries that are installed, in one call, in the context line's scope |
+| entries | d                      | entries ticked, none installed                                        | entries   | the note `none of the ticked entries is installed`; nothing runs |
+| entries | i or d              | entries ticked, all hidden by the filter                              | entries   | the note `ticked entries are hidden by the filter; esc clears it`; nothing runs, and the ticks are kept |
+| entries | o                      | the entry has a web page                                              | entries   | starts the browser on its address; the note `opened <address>`, cut to fit |
+| entries | o                      | the entry has no web page                                             | entries   | the note `no web page for this entry`; nothing started |
+| entries | o                      | the address is not a plain http(s) one                                | entries   | the note `refusing to open this entry's address: it is not a plain http(s) address`; nothing started |
+| entries | o                      | the browser does not start                                            | entries   | the note `could not open a browser (<what failed>); the address is <address>`, wrapped whole |
+| entries | s                      | the catalog skipped entries                                           | skipped   | opens the skipped page; the entries page's cursor and scroll are kept for the way back |
+| entries | s                      | the catalog skipped none                                              | entries   | nothing |
+| entries | answer (accessible mode, s) | the catalog skipped entries                                      | entries   | prints the skipped page, then asks `Choose an entry (number or key above): ` again |
+| entries | q                      |                                                                       | left      |  |
+| entries | ctrl+c                 |                                                                       | cancelled |  |
+| skipped | ↑ or ↓                 |                                                                       | skipped   | scrolls a line, never past either end (`j`, `k`, `g`, `G`, `home`, `end`, `pgup`, `pgdown` too) |
+| skipped | esc                    |                                                                       | entries   | the cursor and scroll as they were, the filter kept |
+| skipped | ←                      |                                                                       | entries   | as esc |
+| skipped | q                      |                                                                       | left      |  |
+| skipped | ctrl+c                 |                                                                       | cancelled |  |
+| detail  | i                      | not installed                                                         | handoff   | runs `lola install @<market>/<entry>` in the context line's scope |
+| detail  | i                      | installed                                                             | detail    | the note `already installed; d uninstalls` |
+| detail  | d                      | installed                                                             | handoff   | runs `lola uninstall <entry>` in the context line's scope |
+| detail  | d                      | not installed                                                         | detail    | the note `not installed; i installs` |
+| detail  | esc                    |                                                                       | entries   | the cursor on the entry, the filter kept |
+| detail  | ←                      |                                                                       | entries   | as esc |
+| detail  | →                      |                                                                       | detail    | nothing |
+| detail  | o                      | the entry has a web page                                              | detail    | starts the browser on its address; the note `opened <address>`, cut to fit |
+| detail  | o                      | the entry has no web page                                             | detail    | the note `no web page for this entry`; nothing started |
+| detail  | o                      | the address is not a plain http(s) one                                | detail    | the note `refusing to open this entry's address: it is not a plain http(s) address`; nothing started |
+| detail  | o                      | the browser does not start                                            | detail    | the note `could not open a browser (<what failed>); the address is <address>`, wrapped whole |
+| detail  | q                      |                                                                       | left      |  |
+| detail  | ctrl+c                 |                                                                       | cancelled |  |
+| handoff | answer                 | begun on the detail page                                              | detail    | the install or uninstall ran with its usual questions; the picker opens again at this entry, its installed state read again |
+| handoff | answer                 | begun on the detail page, the action failed                           | detail    | its error and hints are printed first; the entry is as it was |
+| handoff | answer                 | begun on the entries page                                             | entries   | the install or uninstall ran with its usual questions; the picker opens again on the entries, the cursor on this entry (the first, after several), its installed state read again, the ticks dropped |
+| handoff | answer                 | begun on the entries page, the action failed                          | entries   | its error and hints are printed first; the entry is as it was |
+| handoff | ctrl+c                 |                                                                       | cancelled | in the action's own question; what the run's earlier actions wrote stays |
+| action  | Browse entries         |                                                                       | browse    |  |
+| action  | Update                 |                                                                       | picker    | updates them as `lola market <name>... --update` does |
+| action  | Remove                 |                                                                       | remove    |  |
+| action  | Cancel                 |                                                                       | picker    |  |
+| action  | esc                    |                                                                       | picker    |  |
+| action  | ctrl+c                 |                                                                       | cancelled |  |
+| browse  | answer                 |                                                                       | picker    | installs what was picked, as `lola install @<name>` does |
+| browse  | ctrl+c                 |                                                                       | cancelled | nothing installed |
+| remove  | yes                    |                                                                       | picker    | `✓ forgot marketplace <name> and dropped its cached catalog`; the next one is asked |
+| remove  | no                     |                                                                       | picker    | `✗ cancelled — nothing was changed`; it stays |
+| move    | yes                    |                                                                       | picker    | rewrites its registered `ref` to the tip's full commit SHA and fetches it; the row reads `ahead of pin` |
+| move    | no                     |                                                                       | picker    | `✗ cancelled — nothing was changed`; nothing written |
+| numbers | answer                 |                                                                       | next step | as Enter with the rows numbered ticked |
+| numbers | answer                 | refused                                                               | numbers   | says what it takes (`answer numbers from 1 to N, comma separated`, or `Add a source… goes alone: answer its number on its own`) and asks again |
+| numbers | answer                 | one number, a row of yours with entries                               | entries   | numbered entries, the keys line `i<n,n…> install · d<n,n…> uninstall from <scope> · o<n> web · Enter alone goes back`, then `Choose an entry (number or key above): ` |
+| numbers | answer                 | one number, a known row                                               | entries   | prints `fetching <id> at <commit> from <host> — nothing is added or installed…`, then fetches the catalog at the pin; a preview kept from before opens at once, fetching nothing; the entries open under the preview title, `N entries skipped; …` and the catalog's first warning |
+| numbers | answer                 | one number, a known row, the fetch failed                             | numbers   | the note `could not fetch <id>: <reason>`, then `→ ` and its first hint; asks again; nothing is kept |
+| numbers | answer                 | one number, a known row, the catalog has no entry                     | numbers   | the note `<id> at <commit> offers no entries; m enables it anyway`; asks again |
+| numbers | ctrl+c                 | a known row's fetch running                                           | cancelled | cancels the fetch without waiting for it; `✗ cancelled — nothing was changed`; 4 |
+| numbers | answer                 | one number, a row of yours without entries                            | numbers   | says `<name> has no entries; fetch its catalog with m<n> (Update), or lola market <name> --update` and asks again |
+| numbers | o<N>                   |                                                                       | numbers   | as `o` in the picker, with its notes, the address whole; `o` alone, or with more than one number, is refused with `o takes one number: o1`; asks again |
+| numbers | m<N>                   |                                                                       | next step | `m1`, or `m1,2`: the menu for those rows, as `m` in the picker; `m` alone is refused with `m takes numbers: m1, or m1,2` |
+| entries | answer                 | accessible mode, a number from 1 to N                                 | detail    | numbered; any other answer says `answer a number from 1 to N` and asks again |
+| entries | answer                 | accessible mode, i<N> of an entry not installed                       | handoff   | answers install for the entry, as `i` on the entries page does |
+| entries | answer                 | accessible mode, d<N> of an entry installed                           | handoff   | answers uninstall for the entry, as `d` on the entries page does |
+| entries | answer                 | accessible mode, i<N,N…> of entries, one not installed                | handoff   | answers install for the entries, in page order, as `i` does with them ticked |
+| entries | answer                 | accessible mode, i<N,N…> of entries, all installed                    | entries   | the note `already installed; d uninstalls`; asks again |
+| entries | answer                 | accessible mode, d<N,N…> of entries, one installed                    | handoff   | answers uninstall for those that are installed, as `d` does with them ticked |
+| entries | answer                 | accessible mode, d<N,N…> of entries, none installed                   | entries   | the note `none of those entries is installed`; asks again |
+| entries | answer                 | accessible mode, i or d with a list that is empty, has a number out of range or twice | entries   | `i takes entry numbers: i1 or i1,3`, `answer numbers from 1 to N, comma separated` or `name each number once`; asks again |
+| entries | answer                 | accessible mode, a key that does not apply to entry N                 | entries   | the TUI's note (`already installed; d uninstalls`, `not installed; i installs`, `no web page for this entry`); asks again |
+| entries | answer                 | accessible mode, o<N> of an entry with a web page                     | entries   | starts the browser through the step's opener on the checked address; the note `opened <address>`, whole, or the failure with the address; asks again |
+| entries | answer                 | accessible mode, a letter alone, a bad number or another letter       | entries   | `<letter> takes an entry's number: <letter>1`, or `answer a number from 1 to N`; asks again |
+| entries | answer                 | accessible mode, a preview, i<N> or d<N>                              | entries   | the note `not added yet; m enables <id>`; asks again |
+| entries | answer                 | accessible mode, a preview, m                                         | enable    | leaves the picker with the known row, as `m` on it does |
+| entries | empty submit           | accessible mode                                                       | numbers   | a preview is left, as Esc leaves it |
+| detail  | answer                 | accessible mode, i or d                                               | handoff   | the letter that applies is the prompt's (`i install to <scope> · Enter alone goes back: ` or `d uninstall from <scope> · …`); the other prints its note and asks again |
+| detail  | answer                 | accessible mode, o                                                    | detail    | the prompt names it only for an entry with a web page; opens as at the entries prompt, with its notes; asks again |
+| detail  | answer                 | accessible mode, a preview, m                                         | enable    | leaves the picker with the known row; the prompt names `m enable` in place of `i` and `d`, which print `not added yet; m enables <id>` |
+| detail  | empty submit           | accessible mode                                                       | entries   |  |
+| entries | end of input           | accessible mode                                                       | refused   | `error: input ended before the question was answered` |
+| entries | ctrl+c                 | accessible mode                                                       | cancelled | `✗ cancelled — nothing was changed`; 4 |
+| detail  | end of input           | accessible mode                                                       | refused   | `error: input ended before the question was answered` |
+| numbers | Add a source…'s number |                                                                       | source    | asked on line prompts, trimmed |
+| numbers | empty submit           |                                                                       | left      |  |
+| numbers | end of input           |                                                                       | refused   | `error: input ended before the question was answered` |
+
+### Exits
+
+| exit      | when                                     | on disk                              | output, exit code |
+|-----------|------------------------------------------|--------------------------------------|-------------------|
+| left      | Esc or `q` in the picker, `q` at the offer, the entries or the detail page | what the run's actions wrote       | nothing more; 0, even after an action that failed |
+| list      | an off switch, or no terminal            | nothing                              | the listing of `lola market`; 0 |
+| cancelled | Ctrl+C                                   | what the run's earlier actions wrote | `✗ cancelled — nothing was changed`; 4 |
+| refused   | stdin ends in accessible mode            | what the run's earlier actions wrote | `error: …` with `hint:` lines; 3 |
+
+### Re-entry
+
+| way back                                  | asks again                      | keeps                               | drops                                           |
+|-------------------------------------------|---------------------------------|-------------------------------------|-------------------------------------------------|
+| the picker after an action                | the picker, its rows read again | the marketplaces just added, ticked | the ticks, the filter, every status and the banner |
+| Esc on source, or Cancel or Esc on action | the picker                      |                                     | the ticks and the filter                        |
+| Esc or `n` at the offer                   | nothing: the picker stays       | the ticks, the filter and the statuses | the offer                                    |
+| Esc on the entries                        | nothing: the list is read again from the screen | the list's cursor, scroll and filter | the entries' filter                 |
+| Esc on the detail page                    | nothing                         | the entries' cursor on the entry and their filter | the detail page                  |
+| an install or uninstall from the detail page | the install's or uninstall's own questions, then the detail page | nothing but the marketplace and the entry | the ticks, the filters and every status |
+| `u` or `U` again                          | nothing: the rows check again   | the ticks and the filter            | the last run's results                          |
 
 ## Migrate
 

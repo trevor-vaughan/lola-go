@@ -20,6 +20,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
@@ -96,8 +97,9 @@ type app struct {
 	// queryBackground asks the terminal for its background color; nil is terminalBackground.
 	// Specs fake the terminal's answer with it.
 	queryBackground func(*cobra.Command) (color.Color, error)
-	pace            pace          // how the progress line draws (WithProgressPace)
-	line            *progressLine // the progress line app.progress shows, nil when none
+	pace            pace                                 // how the progress line draws (WithProgressPace)
+	line            *progressLine                        // the progress line app.progress shows, nil when none
+	knownSeed       func() ([]market.KnownMarket, error) // the known marketplaces; nil for the ones lola ships
 }
 
 // Option configures the command tree.
@@ -107,6 +109,12 @@ type Option func(*app)
 // with it.
 func WithPrompter(p Prompter) Option {
 	return func(a *app) { a.newPrompter = func(*cobra.Command) Prompter { return p } }
+}
+
+// WithKnownSeed makes lola market list and enable the known marketplaces seed returns, in place of
+// the ones it ships; specs enable a local fixture, which the shipped list's loader would refuse.
+func WithKnownSeed(seed func() ([]market.KnownMarket, error)) Option {
+	return func(a *app) { a.knownSeed = seed }
 }
 
 // WithTerminals makes lola treat stdout and stderr as terminals when out and errw say so, which
@@ -239,6 +247,7 @@ func (a *app) engine() (*engine.Engine, error) {
 		}
 		a.eng = engine.New(p, a.reg)
 		a.eng.Display = a.display
+		a.eng.KnownSeed = a.knownSeed
 	}
 	return a.eng, nil
 }

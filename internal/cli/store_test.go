@@ -567,7 +567,8 @@ var _ = Describe("published alias table", func() {
 			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) "), ContainSubstring("--edit (--pick, --modify) "), ContainSubstring("--move (--mv) strings "), ContainSubstring("--new (--create) "), ContainSubstring("--add (--get) string "),
 			ContainSubstring("--update (--upgrade) "), ContainSubstring("--remove (--rm, --delete, --del, --erase, --uninstall) ")))
 		Expect(lola("help", "market", "--short").out).To(And(ContainSubstring("--add (--get) string "),
-			ContainSubstring("--update (--upgrade, --refresh) "), ContainSubstring("--remove (--rm, --delete, --del, --erase) ")))
+			ContainSubstring("--update (--upgrade, --refresh) "), ContainSubstring("--remove (--rm, --delete, --del, --erase) "),
+			ContainSubstring("--enable string "), ContainSubstring("--known "), Not(ContainSubstring("--enable (")), Not(ContainSubstring("--known ("))))
 		Expect(lola("help", "trash", "--short").out).To(And(ContainSubstring("--restore (--undo, --recover) "),
 			ContainSubstring("--empty (--purge, --clear) ")))
 	})

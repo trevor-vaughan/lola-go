@@ -19,12 +19,14 @@ type MarketGroup struct {
 	Name        string        `json:"name"`
 	Description string        `json:"description"`
 	Entries     []MarketOffer `json:"entries"`
+	webURLs     []string      // each entry's webURL, in step with Entries
+	skipped     []MarketSkip  // the catalog's entries lola does not offer (PickerSkips)
 }
 
 // MarketOffer is one entry a marketplace offers: the address that installs it, its name,
-// version, description and tags, the host its source is fetched from (the marketplace's own for a
-// relative entry; "" for a folder), and whether your cache already holds it, by its name, from
-// the same source and path.
+// version, description, license (as its catalog states it, "" if not) and tags, the host its source is fetched from and that source's address without
+// user info, query or fragment (the marketplace's own for a relative entry; "" for a folder), and
+// whether your cache already holds it, by its name, from the same source and path.
 type MarketOffer struct {
 	Install     string   `json:"install"`
 	Name        string   `json:"name"`
@@ -32,7 +34,18 @@ type MarketOffer struct {
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
 	Host        string   `json:"host"`
+	URL         string   `json:"url"`
+	License     string   `json:"license"`
 	Cached      bool     `json:"cached"`
+}
+
+// entryURL is the address spec's source is fetched from as it may be shown, "" for a folder or a
+// file URL.
+func entryURL(spec source.Spec) string {
+	if source.Host(spec.Location) == "" {
+		return ""
+	}
+	return source.DisplayURL(spec.Location)
 }
 
 // MarketGroups are your marketplaces with a fetched catalog, in markets.yaml's order, each with
@@ -61,25 +74,36 @@ func (e *Engine) MarketGroups(display []string) ([]MarketGroup, []string, error)
 		case c == nil:
 			continue
 		}
-		g := MarketGroup{Name: r.Name, Description: shown(c.cat.Description), Entries: []MarketOffer{}}
-		for _, en := range c.cat.Entries {
-			// A cache record lola cannot read costs that name alone: it browses as not cached.
-			o, found, err := e.Store.Origin(en.Name)
-			if err != nil {
-				warnings = append(warnings, shown(en.Name)+": your cache's record of it cannot be read: "+shown(untrusted.CleanErr(err).Error())+
-					" → "+errs.ShellJoin(append([]string{"lola", "cache", "rm", shown(en.Name)}, display...)))
-				found = false
-			}
-			spec := en.Spec()
-			tags := shownAll(en.Tags)
-			g.Entries = append(g.Entries, MarketOffer{Install: "@" + r.Name + "/" + shown(en.Name), Name: shown(en.Name), Version: shown(en.Version),
-				Description: shown(en.Description), Tags: tags, Host: shown(source.Host(spec.Location)),
-				Cached: found && o.Type == string(spec.Kind) && source.SameLocation(spec.Kind, o.Source, spec.Location) && o.Path == spec.Path &&
-					o.Components.Equal(spec.Components)})
-		}
+		g, warns := e.groupOf(r.Name, c.cat, display)
+		warnings = append(warnings, warns...)
 		groups = append(groups, g)
 	}
 	return groups, warnings, nil
+}
+
+// groupOf is the group of name's catalog cat, and a warning for each entry whose cache record
+// cannot be read, which browses as not cached.
+func (e *Engine) groupOf(name string, cat market.Catalog, display []string) (MarketGroup, []string) {
+	var warnings []string
+	g := MarketGroup{Name: name, Description: shown(cat.Description), Entries: []MarketOffer{}, skipped: marketSkips(cat)}
+	for _, en := range cat.Entries {
+		// A cache record lola cannot read costs that name alone: it browses as not cached.
+		o, found, err := e.Store.Origin(en.Name)
+		if err != nil {
+			warnings = append(warnings, shown(en.Name)+": your cache's record of it cannot be read: "+shown(untrusted.CleanErr(err).Error())+
+				" → "+errs.ShellJoin(append([]string{"lola", "cache", "rm", shown(en.Name)}, display...)))
+			found = false
+		}
+		spec := en.Spec()
+		g.webURLs = append(g.webURLs, webURL(spec))
+		tags := shownAll(en.Tags)
+		g.Entries = append(g.Entries, MarketOffer{Install: "@" + name + "/" + shown(en.Name), Name: shown(en.Name), Version: shown(en.Version),
+			Description: shown(en.Description), Tags: tags, Host: shown(source.Host(spec.Location)), URL: shown(entryURL(spec)),
+			License: shown(en.License),
+			Cached: found && o.Type == string(spec.Kind) && source.SameLocation(spec.Kind, o.Source, spec.Location) && o.Path == spec.Path &&
+				o.Components.Equal(spec.Components)})
+	}
+	return g, warnings
 }
 
 // MarketMeaning is what the install argument name may mean among your marketplaces: when it is a module name your cache does not hold and no source here (cwd), the entries

@@ -25,7 +25,7 @@ func claude(plugins ...string) []byte {
 // parsed is the Claude catalog of plugins, which must load.
 func parsed(plugins ...string) market.Catalog {
 	GinkgoHelper()
-	cat, err := market.Parse(market.FormatClaude, claude(plugins...), nil)
+	cat, err := market.ParseFile("marketplace.json", claude(plugins...), nil)
 	Expect(err).NotTo(HaveOccurred())
 	return cat
 }
@@ -53,7 +53,7 @@ var _ = Describe("catalogs", func() {
 	})
 
 	It("a Claude marketplace.json and a Python YAML catalog load into the same model", func() {
-		cat, err := market.Parse(market.FormatClaude, []byte(`{
+		cat, err := market.ParseFile("marketplace.json", []byte(`{
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "acme", "owner": {"name": "Acme Tools", "email": "tools@acme.example"},
   "metadata": {"description": "Acme's tools", "version": "2.0.0", "pluginRoot": "./plugins"},
@@ -97,7 +97,7 @@ var _ = Describe("catalogs", func() {
 			Path: "tools/local", Commit: commit}), "a relative entry pins the marketplace's own commit")
 		Expect(byName["bare"].Source.Path).To(Equal("plugins/bare"))
 
-		yml, err := market.Parse(market.FormatYAML, []byte(`name: Lola General Marketplace
+		yml, err := market.ParseFile("marketplace.yml", []byte(`name: Lola General Marketplace
 description: General modules
 version: 1.0.0
 modules:
@@ -129,6 +129,36 @@ modules:
 		Expect(yml.Entries[2].Source).To(Equal(manifest.Entry{Name: "bundle", Source: "https://dl.example.com/bundle.tar.gz"}))
 		Expect(yml.Entries[2].Kind).To(Equal("archive"), "an https archive by its URL's suffix")
 		Expect(yml.Entries[3].Notices).To(Equal([]string{"catalog install scripts are ignored"}))
+	})
+
+	It("an entry's license is read as the catalog states it, and a license that would not print is dropped, not the entry, in either format", func() {
+		cat := parsed(`{"name": "mit", "source": "./a", "license": "MIT"}`, `{"name": "none", "source": "./b"}`,
+			`{"name": "nottext", "source": "./c", "license": {"type": "MIT"}}`,
+			`{"name": "wordy", "source": "./d", "license": "`+strings.Repeat("a", 257)+`"}`,
+			`{"name": "line", "source": "./e", "license": "MIT\nGPL"}`,
+			`{"name": "ctrl", "source": "./f", "license": "MIT\u001b[31m"}`)
+		Expect(cat.Skipped).To(BeEmpty())
+		Expect(cat.Entries).To(HaveLen(6))
+		licenses := []string{}
+		for _, e := range cat.Entries {
+			licenses = append(licenses, e.License)
+		}
+		Expect(licenses).To(Equal([]string{"MIT", "", "", "", "", ""}))
+		yml, err := market.ParseFile("marketplace.yml", []byte("name: m\nmodules:\n"+
+			"  - {name: mit, repository: \"https://e.example/a.git\", license: Apache-2.0}\n"+
+			"  - {name: none, repository: \"https://e.example/b.git\"}\n"+
+			"  - {name: wordy, repository: \"https://e.example/c.git\", license: "+strings.Repeat("a", 257)+"}\n"+
+			"  - {name: nottext, repository: \"https://e.example/d.git\", license: {type: MIT}}\n"+
+			"  - {name: line, repository: \"https://e.example/e.git\", license: \"MIT\\nGPL\"}\n"+
+			"  - {name: ctrl, repository: \"https://e.example/f.git\", license: \"MIT\\e[31m\"}\n"), nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(yml.Skipped).To(BeEmpty())
+		Expect(yml.Entries).To(HaveLen(6))
+		licenses = []string{}
+		for _, e := range yml.Entries {
+			licenses = append(licenses, e.License)
+		}
+		Expect(licenses).To(Equal([]string{"Apache-2.0", "", "", "", "", ""}))
 	})
 
 	It("an entry with an unsupported source kind is skipped with its reason and the rest load", func() {
@@ -164,7 +194,7 @@ modules:
 			"s2": "the catalog names the ssh host example.com, which you have not allowed",
 		}))
 
-		yml, err := market.Parse(market.FormatYAML, []byte("name: m\nmodules:\n  - {name: ok, repository: \"https://github.com/acme/ok.git\"}\n"+
+		yml, err := market.ParseFile("marketplace.yml", []byte("name: m\nmodules:\n  - {name: ok, repository: \"https://github.com/acme/ok.git\"}\n"+
 			"  - {name: s, repository: \"git@github.com:acme/s.git\"}\n  - {name: norepo}\n"), nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(yml.Entries).To(HaveLen(1))
@@ -179,7 +209,7 @@ modules:
 		  {"name": "a", "source": {"source": "url", "url": "ssh://git@Git.Corp.Test:2222/a.git"}},
 		  {"name": "b", "source": {"source": "url", "url": "git@git.corp.test:b.git"}},
 		  {"name": "c", "source": {"source": "url", "url": "ssh://git@other.test/c.git"}}]}`
-		cat, err := market.Parse(market.FormatClaude, []byte(c), nil)
+		cat, err := market.ParseFile("marketplace.json", []byte(c), nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cat.Entries).To(BeEmpty())
 		Expect(cat.Skipped).To(ConsistOf(
@@ -187,7 +217,7 @@ modules:
 			market.Skip{Name: "b", Kind: "ssh source", Host: "git.corp.test", Reason: "the catalog names the ssh host git.corp.test, which you have not allowed"},
 			market.Skip{Name: "c", Kind: "ssh source", Host: "other.test", Reason: "the catalog names the ssh host other.test, which you have not allowed"}))
 
-		cat, err = market.Parse(market.FormatClaude, []byte(c), []string{"git.corp.test"})
+		cat, err = market.ParseFile("marketplace.json", []byte(c), []string{"git.corp.test"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cat.Entries).To(HaveLen(2), "port and spelling do not matter: one host")
 		Expect(cat.Entries[0].Source.Source).To(Equal("ssh://git@Git.Corp.Test:2222/a.git"), "the real source is recorded")
@@ -198,7 +228,7 @@ modules:
 		const c = `{"name": "p", "owner": {"name": "P"}, "plugins": [
 		  {"name": "l", "source": {"source": "url", "url": "ssh://git@localhost/l.git"}},
 		  {"name": "i", "source": {"source": "url", "url": "ssh://git@10.0.0.5/i.git"}}]}`
-		cat, err := market.Parse(market.FormatClaude, []byte(c), []string{"localhost", "10.0.0.5"})
+		cat, err := market.ParseFile("marketplace.json", []byte(c), []string{"localhost", "10.0.0.5"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cat.Entries).To(BeEmpty())
 		Expect(cat.Skipped).To(HaveLen(2))
@@ -212,7 +242,7 @@ modules:
 		const c = `{"name": "p", "owner": {"name": "P"}, "plugins": [
 		  {"name": "a", "source": {"source": "url", "url": "git@8.8.8.8:x/y.git"}}]}`
 		for _, allowed := range [][]string{nil, {"8.8.8.8"}} {
-			cat, err := market.Parse(market.FormatClaude, []byte(c), allowed)
+			cat, err := market.ParseFile("marketplace.json", []byte(c), allowed)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cat.Entries).To(BeEmpty())
 			Expect(cat.Skipped).To(ConsistOf(And(HaveField("Kind", "ssh source"), HaveField("Host", ""))))
@@ -223,16 +253,16 @@ modules:
 		const c = `{"name": "p", "owner": {"name": "P"}, "plugins": [
 		  {"name": "a", "source": {"source": "url", "url": "git@git.corp.test.:x/y.git"}},
 		  {"name": "b", "source": {"source": "url", "url": "ssh://git@git.corp.test./x"}}]}`
-		cat, err := market.Parse(market.FormatClaude, []byte(c), nil)
+		cat, err := market.ParseFile("marketplace.json", []byte(c), nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cat.Skipped).To(ConsistOf(HaveField("Host", "git.corp.test"), HaveField("Host", "git.corp.test")))
-		cat, err = market.Parse(market.FormatClaude, []byte(c), []string{"git.corp.test"})
+		cat, err = market.ParseFile("marketplace.json", []byte(c), []string{"git.corp.test"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cat.Entries).To(HaveLen(2))
 	})
 
 	It("offers no host it could not allow", func() {
-		cat, err := market.Parse(market.FormatClaude, []byte(`{"name": "p", "owner": {"name": "P"}, "plugins": [
+		cat, err := market.ParseFile("marketplace.json", []byte(`{"name": "p", "owner": {"name": "P"}, "plugins": [
 		  {"name": "u", "source": {"source": "url", "url": "ssh://git@exämple.test/u.git"}}]}`), nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cat.Skipped).To(ConsistOf(HaveField("Host", "")))
@@ -241,10 +271,10 @@ modules:
 
 	It("gates a Python catalog's ssh repository the same way", func() {
 		const y = "name: m\nmodules:\n  - {name: s, repository: \"git@git.corp.test:acme/s.git\"}\n"
-		cat, err := market.Parse(market.FormatYAML, []byte(y), nil)
+		cat, err := market.ParseFile("marketplace.yml", []byte(y), nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cat.Skipped).To(ConsistOf(HaveField("Host", "git.corp.test")))
-		cat, err = market.Parse(market.FormatYAML, []byte(y), []string{"git.corp.test"})
+		cat, err = market.ParseFile("marketplace.yml", []byte(y), []string{"git.corp.test"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cat.Entries).To(HaveLen(1))
 	})
@@ -275,20 +305,19 @@ modules:
 	It("a crafted catalog refuses at load", func() {
 		deep := strings.Repeat("[", 64) + strings.Repeat("]", 64)
 		// Exactly 64 levels, the root object counted, load.
-		_, err := market.Parse(market.FormatClaude, []byte(`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "x": `+
+		_, err := market.ParseFile("marketplace.json", []byte(`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "x": `+
 			strings.Repeat("[", 63)+strings.Repeat("]", 63)+`}`), nil)
 		Expect(err).NotTo(HaveOccurred())
 		// The byte cap does not bound what decoding allocates: a value budget does, for JSON and YAML.
-		_, err = market.Parse(market.FormatClaude, []byte(`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "pad": [`+
+		_, err = market.ParseFile("marketplace.json", []byte(`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "pad": [`+
 			strings.TrimSuffix(strings.Repeat("0,", 1<<18), ",")+`]}`), nil)
 		Expect(err).To(MatchError("holds more than 262144 JSON values"))
-		_, err = market.Parse(market.FormatYAML, []byte("name: m\nmodules: []\npad: ["+strings.TrimSuffix(strings.Repeat("0,", 1<<18), ",")+"]\n"), nil)
+		_, err = market.ParseFile("marketplace.yml", []byte("name: m\nmodules: []\npad: ["+strings.TrimSuffix(strings.Repeat("0,", 1<<18), ",")+"]\n"), nil)
 		Expect(err).To(MatchError("is larger than 524288 bytes, the most lola reads of a YAML catalog"))
-		_, err = market.Parse(market.FormatYAML, []byte("name: m\nmodules: []\npad: ["+strings.TrimSuffix(strings.Repeat("0,", 200000), ",")+"]\n"), nil)
+		_, err = market.ParseFile("marketplace.yml", []byte("name: m\nmodules: []\npad: ["+strings.TrimSuffix(strings.Repeat("0,", 200000), ",")+"]\n"), nil)
 		Expect(err).To(MatchError("holds more than 131072 YAML nodes"))
-		_, err = market.Parse(market.FormatClaude, claude(`{"name": "x", "source": {"source": "url", "url": "https://e.example/x.git", "`+
-			strings.Repeat("k", 300)+`": "\u0007"}}`), nil)
-		Expect(err).To(MatchError(And(HavePrefix("plugins[0].source.kkk"), ContainSubstring("… holds control or invisible characters"))),
+		longKey := parsed(`{"name": "x", "source": {"source": "url", "url": "https://e.example/x.git", "` + strings.Repeat("k", 300) + `": "\u0007"}}`)
+		Expect(longKey.Skipped).To(ConsistOf(HaveField("Reason", And(HavePrefix("plugins[0].source.kkk"), ContainSubstring("… holds control or invisible characters")))),
 			"a field named after a long key is cut")
 		var many []string
 		for i := range 4097 {
@@ -297,16 +326,12 @@ modules:
 		for in, want := range map[string]string{
 			string(claude(`{"name": "x", "source": "./x", "description": "` + strings.Repeat("a", 8<<20) + `"}`)): "is larger than 8388608 bytes",
 			string(claude(many...)): "lists more than 4096 plugins",
-			`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "x": ` + deep + `}`:                        "nests deeper than 64 levels",
-			string(claude(`{"name": "x", "source": "./x", "description": "a\u0007b"}`)):                         "plugins[0].description holds control or invisible characters",
-			string(claude(`{"name": "x", "source": "./x", "description": "a\u200bb"}`)):                         "plugins[0].description holds control or invisible characters",
-			string(claude(`{"name": "x", "source": {"source": "url", "url": "https://x.example/\u202e.git"}}`)): "plugins[0].source.url holds control or invisible characters",
-			string(claude(`{"name": "x", "source": "./x", "ta\u0000gs": []}`)):                                  "a key of plugins[0] holds control or invisible characters",
-			`{"name": "ac\u001bme", "owner": {"name": "A"}, "plugins": []}`:                                     "name holds control or invisible characters",
-			`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "pa\u0000d": 1}`:                           "a key of the catalog holds control or invisible characters",
-			`{"name": "acme", "owner": {"name": "A\nB"}, "plugins": []}`:                                        "owner.name holds a line break; catalog text is one line",
-			`{"name": "acme", "owner": {"name": "A\rB"}, "plugins": []}`:                                        "owner.name holds a line break; catalog text is one line",
-			`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "p\nad": 1}`:                               "a key of the catalog holds a line break; catalog text is one line",
+			`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "x": ` + deep + `}`: "nests deeper than 64 levels",
+			`{"name": "ac\u001bme", "owner": {"name": "A"}, "plugins": []}`:              "name holds control or invisible characters",
+			`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "pa\u0000d": 1}`:    "a key of the catalog holds control or invisible characters",
+			`{"name": "acme", "owner": {"name": "A\nB"}, "plugins": []}`:                 "owner.name holds a line break; catalog text is one line",
+			`{"name": "acme", "owner": {"name": "A\rB"}, "plugins": []}`:                 "owner.name holds a line break; catalog text is one line",
+			`{"name": "acme", "owner": {"name": "A"}, "plugins": [], "p\nad": 1}`:        "a key of the catalog holds a line break; catalog text is one line",
 			`[]`: "is not a JSON object",
 			`{"name": "` + strings.Repeat("n", 257) + `", "owner": {"name": "A"}, "plugins": []}`:                      "name is longer than 256 bytes",
 			`{"name": "a", "owner": {"name": "` + strings.Repeat("o", 257) + `"}, "plugins": []}`:                      "owner.name is longer than 256 bytes",
@@ -322,26 +347,70 @@ modules:
 			`{"name": "acme", "owner": {"name": "A"}, "plugins": []}]`:                                                 "holds data after its JSON value",
 			"{\"name\": \"a\xff\", \"owner\": {\"name\": \"A\"}, \"plugins\": []}":                                     "holds bytes that are not UTF-8",
 		} {
-			_, err := market.Parse(market.FormatClaude, []byte(in), nil)
+			_, err := market.ParseFile("marketplace.json", []byte(in), nil)
 			Expect(err).To(MatchError(ContainSubstring(want)), want)
 		}
 		for in, want := range map[string]string{
-			"name: m\nmodules:\n  - &a {name: x, repository: \"https://e.example/x.git\"}\n  - *a\n":             "anchors, aliases and merge keys (<<) are not supported",
-			"name: m\nbase: {a: 1}\nmodules:\n  - <<: {name: x}\n":                                               "anchors, aliases and merge keys (<<) are not supported",
-			"name: m\nmodules: []\n---\nname: n\n":                                                               "holds more than one YAML document",
-			"name: m\nname: n\nmodules: []\n":                                                                    "the key name is given twice",
-			"name: \"m\\u0007\"\nmodules: []\n":                                                                  "line 1: name holds control or invisible characters",
-			"name: m\ndescription: >\n  General\n  modules\nmodules: []\n":                                       "line 2: description holds a line break; catalog text is one line, so use a plain or quoted scalar",
-			"name: m\n\"a\\nb\": 1\nmodules: []\n":                                                               "line 2: a key of the catalog holds a line break; catalog text is one line",
-			"name: m\nmodules:\n  - {name: x, repository: \"https://e.example/x.git\", tags: [\"a\\u200eb\"]}\n": "line 3: modules[0].tags holds control or invisible characters",
-			"- a\n":                      "is not a YAML mapping",
-			"name: m\n":                  "has no modules",
-			"modules: []\n":              "has no name",
-			"name: m\nmodules: {a: 1}\n": "modules is not a list",
+			"name: m\nmodules:\n  - &a {name: x, repository: \"https://e.example/x.git\"}\n  - *a\n": "anchors, aliases and merge keys (<<) are not supported",
+			"name: m\nbase: {a: 1}\nmodules:\n  - <<: {name: x}\n":                                   "anchors, aliases and merge keys (<<) are not supported",
+			"name: m\nmodules: []\n---\nname: n\n":                                                   "holds more than one YAML document",
+			"name: m\nname: n\nmodules: []\n":                                                        "the key name is given twice",
+			"name: \"m\\u0007\"\nmodules: []\n":                                                      "line 1: name holds control or invisible characters",
+			"name: m\ndescription: >\n  General\n  modules\nmodules: []\n":                           "line 2: description holds a line break; catalog text is one line, so use a plain or quoted scalar",
+			"name: m\n\"a\\nb\": 1\nmodules: []\n":                                                   "line 2: a key of the catalog holds a line break; catalog text is one line",
+			"- a\n":                                                                                  "is not a YAML mapping",
+			"name: m\n":                                                                              "has no modules",
+			"modules: []\n":                                                                          "has no name",
+			"name: m\nmodules: {a: 1}\n":                                                             "modules is not a list",
 		} {
-			_, err := market.Parse(market.FormatYAML, []byte(in), nil)
+			_, err := market.ParseFile("marketplace.yml", []byte(in), nil)
 			Expect(err).To(MatchError(ContainSubstring(want)), in)
 		}
+
+		// Text that would not print skips its entry, never the catalog; a catalog-level field still refuses.
+		mixed := parsed(`{"name": "one", "source": "./one"}`, `{"name": "two", "source": "./two", "description": "a\nb"}`,
+			`{"name": "three", "source": "./three"}`, `{"name": "four\nx", "source": "./four"}`, `{"name": "five", "source": "./five", "ta\u0000gs": []}`)
+		Expect(mixed.Entries).To(HaveLen(2))
+		Expect(mixed.Skipped).To(ConsistOf(
+			And(HaveField("Name", "two"), HaveField("Kind", "entry with unprintable text"),
+				HaveField("Reason", "plugins[1].description holds a line break; catalog text is one line")),
+			And(HaveField("Name", "plugins[3]"), HaveField("Kind", "entry with unprintable text"),
+				HaveField("Reason", "plugins[3].name holds a line break; catalog text is one line")),
+			And(HaveField("Name", "five"), HaveField("Reason", "a key of plugins[4] holds control or invisible characters")),
+		))
+		ymix, err := market.ParseFile("marketplace.yml", []byte("name: m\nmodules:\n"+
+			"  - {name: one, repository: \"https://e.example/1.git\"}\n"+
+			"  - {name: two, repository: \"https://e.example/2.git\", description: \"a\\nb\"}\n"+
+			"  - {name: \"x\\ny\", repository: \"https://e.example/3.git\"}\n"), nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ymix.Entries).To(HaveLen(1))
+		Expect(ymix.Skipped).To(ConsistOf(
+			And(HaveField("Name", "two"), HaveField("Kind", "entry with unprintable text"),
+				HaveField("Reason", ContainSubstring("modules[1].description holds a line break"))),
+			And(HaveField("Name", "modules[2]"), HaveField("Reason", ContainSubstring("modules[2].name holds a line break"))),
+		))
+		invisible := parsed(`{"name": "inv", "source": "./inv", "description": "a\u200bb"}`)
+		Expect(invisible.Entries).To(BeEmpty())
+		Expect(invisible.Skipped).To(ConsistOf(And(HaveField("Name", "inv"),
+			HaveField("Reason", "plugins[0].description holds control or invisible characters"))))
+		ytags, err := market.ParseFile("marketplace.yml", []byte("name: m\nmodules:\n  - {name: x, repository: \"https://e.example/x.git\", tags: [\"a\\u200eb\"]}\n"), nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ytags.Entries).To(BeEmpty())
+		Expect(ytags.Skipped).To(ConsistOf(And(HaveField("Name", "x"),
+			HaveField("Reason", ContainSubstring("modules[0].tags holds control or invisible characters")))))
+		for _, field := range []string{"description", "version"} {
+			_, err := market.ParseFile("marketplace.json", []byte(`{"name": "acme", "`+field+`": "a\nb", "owner": {"name": "A"}, "plugins": []}`), nil)
+			Expect(err).To(MatchError(field+" holds a line break; catalog text is one line"), "top-level "+field)
+		}
+		allBad := parsed(`{"name": "a", "source": "./a", "description": "x\ny"}`, `{"name": "b\nc", "source": "./b"}`)
+		Expect(allBad.Entries).To(BeEmpty())
+		Expect(allBad.Skipped).To(HaveLen(2))
+		yAllBad, err := market.ParseFile("marketplace.yml", []byte("name: m\nmodules:\n"+
+			"  - {name: a, repository: \"https://e.example/a.git\", description: \"x\\ny\"}\n"+
+			"  - {name: \"b\\nc\", repository: \"https://e.example/b.git\"}\n"), nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(yAllBad.Entries).To(BeEmpty())
+		Expect(yAllBad.Skipped).To(HaveLen(2))
 
 		cat := parsed(`{"name": "dup", "source": "./a", "source": "./b"}`, `{"name": "case", "source": "./a", "Source": "./b"}`,
 			`{"name": "inner", "source": {"source": "url", "url": "https://e.example/x.git", "URL": "https://f.example/y.git"}}`,
@@ -363,7 +432,7 @@ modules:
 			market.Skip{Name: "tag", Reason: "a tag is longer than 64 bytes", Kind: "oversized entry"},
 			market.Skip{Name: "ver", Reason: "version is longer than 256 bytes", Kind: "oversized entry"},
 		))
-		yml, err := market.Parse(market.FormatYAML, []byte("name: m\nmodules:\n"+
+		yml, err := market.ParseFile("marketplace.yml", []byte("name: m\nmodules:\n"+
 			"  - {name: wordy, repository: \"https://e.example/w.git\", description: "+strings.Repeat("a", 4096)+"}\n"+
 			"  - {name: long, repository: \"https://e.example/l.git\", description: "+strings.Repeat("a", 4097)+"}\n"), nil)
 		Expect(err).NotTo(HaveOccurred())
@@ -411,7 +480,7 @@ modules:
 		}
 		Expect(got["gh"]).To(Equal("source.repo ../../etc is not a GitHub owner/name"))
 
-		ycat, err := market.Parse(market.FormatYAML, []byte(yml.String()), nil)
+		ycat, err := market.ParseFile("marketplace.yml", []byte(yml.String()), nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ycat.Entries).To(BeEmpty())
 		got = reasons(ycat)
@@ -421,7 +490,7 @@ modules:
 	})
 
 	It("a relative entry cannot leave the marketplace tree", func() {
-		rooted, err := market.Parse(market.FormatClaude, []byte(`{"name": "a", "owner": {"name": "A"}, "metadata": {"pluginRoot": "./plugins"},
+		rooted, err := market.ParseFile("marketplace.json", []byte(`{"name": "a", "owner": {"name": "A"}, "metadata": {"pluginRoot": "./plugins"},
   "plugins": [{"name": "abs", "source": "/etc"}, {"name": "up", "source": "../x"}, {"name": "ok", "source": "fmt"}]}`), nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(reasons(rooted)).To(Equal(map[string]string{"abs": "source /etc is absolute; it must be relative to the marketplace",
@@ -464,10 +533,36 @@ modules:
 		Expect(reasons(bound)["ok"]).To(Equal("a relative source needs the marketplace's files, and this marketplace is a single catalog file"))
 
 		for _, root := range []string{"../plugins", "/plugins", `plug\ins`} {
-			_, err := market.Parse(market.FormatClaude, []byte(`{"name": "a", "owner": {"name": "A"}, "metadata": {"pluginRoot": `+
+			_, err := market.ParseFile("marketplace.json", []byte(`{"name": "a", "owner": {"name": "A"}, "metadata": {"pluginRoot": `+
 				strings.ReplaceAll(fmt.Sprintf("%q", root), `\\`, `\\`)+`}, "plugins": []}`), nil)
 			Expect(err).To(MatchError(HavePrefix("metadata.pluginRoot ")), root)
 		}
+	})
+
+	It("a Cursor or Copilot catalog's bare sources are relative to the repository root", func() {
+		body := claude(`{"name": "top", "source": "teaching"}`, `{"name": "deep", "source": "third_party/x"}`, `{"name": "dot", "source": "./dot"}`,
+			`{"name": "up", "source": "../up"}`, `{"name": "abs", "source": "/abs"}`, `{"name": "bs", "source": "a\\b"}`)
+		for _, file := range []string{".cursor-plugin/marketplace.json", ".github/plugin/marketplace.json"} {
+			cat, err := market.ParseFile(file, body, nil)
+			Expect(err).NotTo(HaveOccurred(), file)
+			Expect(cat.Entries).To(HaveLen(3), file)
+			Expect([]string{cat.Entries[0].Relative, cat.Entries[1].Relative, cat.Entries[2].Relative}).To(Equal([]string{"teaching", "third_party/x", "dot"}), file)
+			Expect(reasons(cat)).To(Equal(map[string]string{"up": "source ../up leaves the marketplace (..)",
+				"abs": "source /abs is absolute; it must be relative to the marketplace",
+				"bs":  "source a\\b holds a backslash; paths in a marketplace are slash-separated"}), file)
+			Expect(market.RelativeDirs(cat, file)).To(Equal([]string{"teaching", "third_party/x", "dot"}), "the root is the repository: "+file)
+			Expect(market.Root("sub/" + file)).To(Equal("sub"))
+			Expect(market.Root("a/b/" + file)).To(Equal("a/b"))
+		}
+
+		for _, file := range []string{".claude-plugin/marketplace.json", "marketplace.json", "x/.cursor-plugin/other.json", ".github/plugin/other.json",
+			".github/marketplace.json", "plugin/marketplace.json", "x.github/plugin/marketplace.json"} {
+			cat, err := market.ParseFile(file, body, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(reasons(cat)["top"]).To(Equal("relative source teaching does not start with ./ (a bare name needs metadata.pluginRoot)"), file)
+		}
+		Expect(market.Root(".github/plugin/other.json")).To(Equal(".github/plugin"))
+		Expect(market.Root("x.github/plugin/marketplace.json")).To(Equal("x.github/plugin"))
 	})
 
 	It("nothing in a catalog runs a command", func() {
@@ -475,7 +570,7 @@ modules:
 			`{"name": "hh", "source": "./hh", "headersHelper": "touch marker"}`)
 		Expect(cat.Entries).To(BeEmpty())
 		Expect(cat.Skipped).To(HaveLen(2))
-		yml, err := market.Parse(market.FormatYAML, []byte("name: m\nmodules:\n  - name: hooked\n    repository: https://github.com/acme/h.git\n"+
+		yml, err := market.ParseFile("marketplace.yml", []byte("name: m\nmodules:\n  - name: hooked\n    repository: https://github.com/acme/h.git\n"+
 			"    hooks: {pre-install: touch marker, post-install: touch marker}\n"), nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(yml.Entries).To(HaveLen(1), "the entry is kept; its scripts are never run")
@@ -732,6 +827,36 @@ var _ = Describe("names and lookup", func() {
 		Expect(string(out)).NotTo(ContainSubstring("ssh_hosts: []"))
 		_, err = market.SetSSHHosts(out, "nope", []string{"a.test"})
 		Expect(err).To(MatchError(ContainSubstring("nope")))
+	})
+
+	It("replaces ref, keeping comments, order and the other keys, and adds it where there was none", func() {
+		in := []byte("# mine\nversion: 1\nmarkets:\n  - name: p\n    source: https://x.test/p.git\n    ref: " + strings.Repeat("a", 40) + "\n    path: sub # kept\n  - name: q\n    source: https://x.test/q.git\n")
+		out, err := market.SetRef(in, "p", strings.Repeat("b", 40))
+		Expect(err).NotTo(HaveOccurred())
+		out, err = market.SetRef(out, "q", strings.Repeat("1", 40))
+		Expect(err).NotTo(HaveOccurred())
+		reg, err := market.ParseRegistry("markets.yaml", out)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reg.Markets[0].Ref).To(Equal(strings.Repeat("b", 40)))
+		Expect(reg.Markets[0].Path).To(Equal("sub"))
+		Expect(reg.Markets[1].Ref).To(Equal(strings.Repeat("1", 40)), "an all-digit SHA stays a string")
+		Expect(string(out)).To(And(HavePrefix("# mine\n"), ContainSubstring("# kept")))
+		Expect(strings.Index(string(out), "name: p")).To(BeNumerically("<", strings.Index(string(out), "name: q")))
+	})
+
+	It("keeps the comment on the ref line it replaces", func() {
+		in := []byte("version: 1\nmarkets:\n  - name: p\n    source: https://x.test/p.git\n    ref: release # the branch I follow\n")
+		out, err := market.SetRef(in, "p", strings.Repeat("b", 40))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(out)).To(ContainSubstring("ref: " + strings.Repeat("b", 40) + " # the branch I follow"))
+	})
+
+	It("refuses to set the ref of a marketplace markets.yaml lacks", func() {
+		in := []byte("version: 1\nmarkets:\n  - name: p\n    source: https://x.test/p.git\n")
+		_, err := market.SetRef(in, "nope", strings.Repeat("b", 40))
+		Expect(err).To(MatchError("marketplace nope is not in markets.yaml"))
+		_, err = market.SetRef(nil, "p", strings.Repeat("b", 40))
+		Expect(err).To(MatchError("marketplace p is not in markets.yaml"))
 	})
 
 	It("adds a registration with its ssh hosts", func() {

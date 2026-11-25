@@ -85,8 +85,8 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   text and prompt line do not fit; otherwise the text prints and the prompt sits under it.
 - **Surfaces** (ready marker): `lola help <cmd>` / bare `lola` viewer (`━━ lines N–M of T`); `lola install`
   form (`Step 1`, review `Apply these changes? [y/c/n]`); scope pickers on `tidy`, `update`,
-  `sync`, `repair`, `profile … --on/--switch/--move` (`<Verb> where?`); `trash` (`Restore or empty
-  which?`); `cache clean` (`Remove these from your cache?`); `init` without `-y`; `profile <n> --edit
+  `sync`, `repair`, `profile … --on/--switch/--move` (`<Verb> where?`); bare `market` picker
+  (`Add a source…`); `trash` (`Restore or empty which?`); `cache clean` (`Remove these from your cache?`); `init` without `-y`; `profile <n> --edit
   <mod>` (`Step 1 of 3`); trust diff on `sync`/`update` (`Trust these changes?`); yes/no questions
   (`[y/N]`: `uninstall`, `cache rm`, `tidy`'s last step, consent, `Proceed?`) under their text, or in the
   viewer with the question in it when that does not fit (`━━ lines` above the prompt); a viewer before a
@@ -98,7 +98,9 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   answer, and the review has none. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`,
   `tab`/`shift+tab` (fold highlight), `space` (open/close it; pages with none), `esc` (clears the
   highlight, else closes; back in a question), `q`. `ctrl+c` exits 4 with `nothing changed`. After
-  `q` the viewer reprints its content to scrollback.
+  `q` the viewer reprints its content to scrollback. Market picker: the picker keys, plus `a` add,
+  `u` (ticked or cursor rows) / `U` (all) check upstream (`git ls-remote`, so they need network),
+  then the footer offer `⏎/y yes · esc/n no`.
 
 ```bash
 sudo dnf install -y tmux; task build

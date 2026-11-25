@@ -1,0 +1,49 @@
+# Marketplaces the lola maintainers curated, each pinned to one commit.
+# `lola market --known` lists them; `lola market --enable <id>` registers one at its pin.
+# Criteria, and how to add, refresh or drop an entry: docs/maintainers/known-markets.md.
+# `task release:known` checks every pin against the network.
+version: 1
+markets:
+  - id: anthropic-plugins
+    source: https://github.com/anthropics/claude-plugins-official.git
+    commit: 73c8cf3ea7e296057b467990f2f5d61b4c922260
+    curated: 2026-11-22
+    reason: Anthropic's official Claude Code plugin directory
+  - id: superpowers
+    source: https://github.com/obra/superpowers-marketplace.git
+    commit: 5c9072877417873fee42be1805aa776a453ec394
+    curated: 2026-11-22
+    reason: The superpowers author's catalog of workflow plugins and related tools
+  - id: wshobson-agents
+    source: https://github.com/wshobson/agents.git
+    commit: 91ff75307f5668916f3eb77d5ba556266c961376
+    curated: 2026-11-22
+    reason: A catalog of agent, skill and command plugins
+  - id: cursor-plugins
+    source: https://github.com/cursor/plugins.git
+    path: .cursor-plugin/marketplace.json
+    commit: 7a583913eb1b8d1a0ee76753d1a2cf072e7b54f9
+    curated: 2026-11-22
+    reason: Cursor's own plugin catalog, read from its Cursor marketplace file
+  - id: awesome-copilot
+    source: https://github.com/github/awesome-copilot.git
+    path: .github/plugin/marketplace.json
+    commit: f10fdb8b2660ce85c98f220b2f1ca24653768a5c
+    curated: 2026-11-22
+    reason: GitHub's community catalog of Copilot plugins, read from its Copilot marketplace file
+  - id: anthropic-skills
+    source: https://github.com/anthropics/skills.git
+    commit: e4bb5d960d87126ff3b3a8af1a104b7db67560ba
+    curated: 2026-11-22
+    reason: Anthropic's example skills; the repository has no license, each skill carries its own
+  - id: anthropic-code
+    source: https://github.com/anthropics/claude-code.git
+    commit: 1006c2e4f783f016963fb290d3eb4afaa2d448b1
+    curated: 2026-11-22
+    reason: Anthropic's Claude Code example plugins; the repository is proprietary, all rights reserved
+  - id: lola-market
+    source: https://github.com/RedHatProductSecurity/lola-market.git
+    path: general-market.yml
+    commit: 57aa65134f2576d5f4bcb323cd5e2406707c4c1f
+    curated: 2026-11-22
+    reason: The lola project's general marketplace; the repository has no license

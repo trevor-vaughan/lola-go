@@ -30,6 +30,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
+	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
@@ -88,6 +89,12 @@ type Engine struct {
 	// repair hint of Ledger's refusal keeps: Ledger serves every command, outside any request
 	// that carries them. The CLI sets it once per run.
 	Display []string
+	// KnownSeed is where the known marketplaces come from, market.Known when nil; specs replace it
+	// with a seed that names a local repository.
+	KnownSeed func() ([]market.KnownMarket, error)
+	// RemoteTip learns a git source's remote tip for CheckMarkets, source.RemoteTip when nil; specs
+	// replace it to count, delay or redirect the checks.
+	RemoteTip func(ctx context.Context, spec source.Spec) (string, error)
 	// staged is the remote profiles an update in a batch keeps until the command's receipt is
 	// answered (CommitStaged), by path; the layers of the command's syncs read them in place.
 	staged map[string]stagedRemote

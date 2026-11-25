@@ -6,7 +6,7 @@ How selections work and how the install flow runs. It is split out of
 [architecture](../architecture.md).
 
 **Files.** `internal/config` reads `$XDG_CONFIG_HOME/lola/config.yaml` (`default_scope`, `pager`,
-`pre_install`, `post_install`, `cache_unused_for`, `cache_fresh_for`) and `selections.yaml` once per
+`market_picker`, `pre_install`, `post_install`, `cache_unused_for`, `cache_fresh_for`) and `selections.yaml` once per
 command. Both are untrusted: at most 1 MiB, one YAML document, no anchors, aliases or merge keys,
 known keys only, `version: 1`, module names through `ValidateName`, known kinds, valid `path.Match`
 globs (no control or format characters in a selector name, from the file or a flag), no `include` in

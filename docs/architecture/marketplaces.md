@@ -50,7 +50,7 @@ the engine's.
     run's staging, never through the cache. It then:
     - finds the catalog (`catalogIn`: `--path` as a file or a directory, else
       `market.CatalogFiles`; `realPath` refuses a link on the way);
-    - reads it with `fsx.ReadOwn` and parses it (`market.Parse`);
+    - reads it with `fsx.ReadOwn` and parses it (`market.ParseFile`);
     - records in `Pin.Absent` each relative entry whose directory the tree does not hold, and
       each path a content list selects that is not there as its kind needs;
     - binds it (`market.Bind`).
@@ -186,7 +186,64 @@ the engine's.
 - **`CoachMarketVerb`** refuses the Python lola's verbs, which the CLI routes to it whenever
   the first argument is one (`market.Verbs`); the translation is a hint only when it would run:
   a name you do not have gets the listing, one that cannot be a marketplace and a missing
-  operand get none. The hidden `--enable` and `--disable` flags exist only for `set`.
+  operand get none. The hidden `--disable` flag exists only for `set`; `--enable` is the known
+  marketplaces' action and takes an id, so `set <name> --enable` is read as `set --enable <name>`
+  (`marketVerb`) and `set --enable` alone is cobra's missing-value refusal.
+- **`Known`, `ShowKnown` and `EnableKnown`** (`internal/engine/market_known.go`) serve `--known` and
+  `--enable`. `EnableKnown` is `AddMarket` with the seed's source and path and its pinned commit as
+  the ref. Given a `KnownConfirm`, it refuses a taken name first, runs `AddMarket` as a dry run,
+  hands the result to the confirm (the CLI's `app.confirm`: the question, or the refusal that
+  carries the plan under `--json`), and only then adds. The CLI passes none under `-y` or `-n`,
+  and never a `Rename` or `PickSSH`: collisions are refused with the `--enable` under a free name.
+- **`PreviewKnown`** (`internal/engine/market_known.go`) serves the picker's preview of a known
+  marketplace you have not enabled: it fetches the seed's source at its pin through `fetchMarket`,
+  as `AddMarket`'s dry run does, and returns the entries as `PickerEntry` (the same derivation as
+  `PickerEntries`, through `groupOf`, with installed state read for one scope) beside the seed's
+  facts. It is a call of its own, not `EnableKnown` with `DryRun`, for three reasons: `AddMarket`'s
+  result carries counts, not the entries; it takes the markets lock and refuses a name another
+  marketplace has, which a preview, that names and registers nothing, must not care about; and the
+  picker needs a call it can cancel and cache by id. What it leaves on disk, once it returns:
+  nothing. The tree is fetched into the run's staging directory (`runDir`, never the marketplace
+  cache or the module cache) and removed on return. Quitting the picker with `q` or Ctrl+C
+  mid-fetch cancels the fetch, but the process may end before it removes its `run-*` directory,
+  which then stays in staging until the next run's `sweepRuns`. It also returns how many catalog
+  entries lola skips (`KnownPreview.Skipped`), which `--enable -n` reports. Its failures carry the
+  dry-run `--enable` and `--known` as hints, being commands that show the same error; a cancelled
+  context is returned as is. Every git run lola makes has its locale pinned to English
+  (`LC_ALL=C`, `LANGUAGE` empty, `gitEnv`), since lola tells a missing commit and a missing
+  repository from other failures by git's English messages (`checkoutCommit` says `did not serve
+  commit` only for them, else `could not fetch <url>: <git's reason>`).
+- **The picker's rows and `--check`** (`internal/engine/market_picker.go`) never fetch; `PreviewKnown` is the one call of the picker that does.
+  - `PickerRows` is `Markets` split in two: your marketplaces, an enabled known one (the seed's id
+    as its name, the seed's source) marked `Known`, `Enabled` and `AheadOfPin` (registered at a
+    full commit other than the seed's); then the seed entries not enabled, in seed order. A known
+    id at another source is yours alone.
+  - `CheckMarkets` runs `checkRow` for each `Checkable` row (a git form, not a catalog URL, with a
+    fetched catalog or a known row not enabled), 8 at a time, 10 s each, through
+    `Engine.RemoteTip` (`source.RemoteTip`: `git ls-remote` through `runGit`'s scrubbed
+    environment; `HEAD` for no ref or a commit ref). It compares the tip with the cached commit
+    (the seed's pin for a known row not enabled): `up to date`, else `upstream moved` for a row
+    registered at a full commit (`PickerRow.AtCommit`) or a known row not enabled, else `update
+    available`; any error is `unreachable` with its
+    `untrusted.CleanErr` reason. Cancelling the context drops the checks not yet started.
+  - `Classify` is the banner rule: at least two `unreachable` and more than half of the checks.
+  - `CheckedMarkets` serves `--check`: your rows with every check waited for; rows not checked keep
+    `""`.
+  - `UpdateKnownPastPin` (`market_known.go`) moves a git marketplace, known or yours, to its
+    remote's tip: a dry `updateMarkets` at the tip for the confirm, then `market.SetRef` rewrites the
+    registration's `ref` to the full SHA under the markets write lock (refusing a registration
+    that changed meanwhile), then the fetch. Moving the seed's own pin is the maintainers' review
+    ([Refresh a pin](../maintainers/known-markets.md#refresh-a-pin)).
+  - In the CLI, `marketPickerOpens` is the gate, `marketPick` the loop (rows read again, the
+    answer acted on, the picker opened again) and `market_picker.go` the Bubble Tea model: each
+    `u` (its rows) or `U` (every row) starts a numbered run whose results are read one at a time
+    and dropped once another run starts or the picker closes. When the run ends, `endRun` applies
+    `Classify` and, without the banner, offers the run's rows of yours that read `update
+    available` or `upstream moved`, or that are not `Checkable`; the answer is `PickerUpdate`, and
+    `marketPickUpdate` moves each one registered at a commit (`AtCommit`, the rule `checkRow`'s
+    `upstream moved` uses) with `UpdateKnownPastPin` and updates the rest as `--update`. `pickerSaid` prints an action's error or a declined question's
+    cancel line and goes back to the picker; `pickerEnded` ends the run on Ctrl+C. The states are in
+    [TUI flows](tui-flows.md#market-picker).
 - **Hints** are bare commands (`MarketRun`, quoted by `errs.ShellJoin`, every argument through
   `untrusted.Text`), carrying the run's output flags (`--json`, `--plain`, `--no-pager`, as lola
   profile's hints do; `Display`) and exactly these other flags:

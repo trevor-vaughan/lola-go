@@ -18,7 +18,7 @@ func validateEntryName(name string) error { return module.ValidateName("entry", 
 // The fields lola reads in a Python lola catalog and in each of its modules.
 var (
 	yamlTopFields    = []string{"name", "description", "version"}
-	yamlModuleFields = []string{"name", "description", "version", "repository", "path", "ref"}
+	yamlModuleFields = []string{"name", "description", "version", "license", "repository", "path", "ref"}
 )
 
 // scalarAdvice follows a refusal of a line break in a YAML catalog's text.
@@ -75,15 +75,6 @@ func parseYAML(b []byte, ssh []string) (Catalog, error) {
 		return Catalog{}, err
 	}
 	modules := yamldoc.Value(root, "modules")
-	if modules != nil && modules.Kind == yaml.SequenceNode {
-		for i, m := range modules.Content {
-			if m.Kind == yaml.MappingNode {
-				if err := plainYAML(m, fmt.Sprintf("modules[%d]", i), slices.Concat(yamlModuleFields, []string{"tags"})); err != nil {
-					return Catalog{}, err
-				}
-			}
-		}
-	}
 	cat := Catalog{Format: FormatYAML, Entries: []Entry{}, Skipped: []Skip{}}
 	text := func(m *yaml.Node, key string) (string, bool) {
 		v := yamldoc.Value(m, key)
@@ -112,7 +103,18 @@ func parseYAML(b []byte, ssh []string) (Catalog, error) {
 	case len(modules.Content) > maxEntries:
 		return Catalog{}, fmt.Errorf("lists more than %d modules", maxEntries)
 	}
-	for _, m := range modules.Content {
+	for i, m := range modules.Content {
+		if m.Kind == yaml.MappingNode {
+			label := fmt.Sprintf("modules[%d]", i)
+			if err := plainYAML(m, label, slices.Concat(slices.DeleteFunc(slices.Clone(yamlModuleFields), func(f string) bool { return f == "license" }), []string{"tags"})); err != nil {
+				name := ""
+				if nv := yamldoc.Value(m, "name"); nv != nil && nv.Kind == yaml.ScalarNode {
+					name = nv.Value
+				}
+				cat.skipUnprintable(name, label, err)
+				continue
+			}
+		}
 		e, s := yamlEntry(m, text, ssh)
 		cat.add(e, s)
 	}
@@ -139,6 +141,9 @@ func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool), ssh [
 	}
 	vals := map[string]string{}
 	for _, f := range yamlModuleFields {
+		if f == "license" {
+			continue
+		}
 		v, ok := text(m, f)
 		if !ok {
 			return Entry{}, skipped("malformed entry", "line %d: %s is not text", m.Line, f)
@@ -154,6 +159,9 @@ func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool), ssh [
 	e := Entry{Name: vals["name"], Description: vals["description"], Version: vals["version"], Tags: []string{}, Notices: []string{}}
 	if s := checkEntryText(e); s != nil {
 		return e, s
+	}
+	if lv, ok := text(m, "license"); ok {
+		e.License = shownLicense(lv)
 	}
 	if tags := yamldoc.Value(m, "tags"); tags != nil && (tags.Kind != yaml.ScalarNode || tags.Tag != "!!null") {
 		if tags.Kind != yaml.SequenceNode {
@@ -178,11 +186,19 @@ func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool), ssh [
 	return e, mapPython(&e, vals["repository"], vals["ref"], vals["path"], ssh)
 }
 
-// Parse reads b, a catalog in format, into the model: over MaxCatalog bytes, a
-// catalog that does not decode, or one with an ambiguous key or text that would not print as it
-// is refuses whole, saying why; an entry lola cannot use is skipped with its reason. Relative
-// entries are left for Bind.
-func Parse(format string, b []byte, sshHosts []string) (Catalog, error) {
+// ParseFile reads b, the catalog read from file, a slash path in the fetched tree, into the model:
+// its format is FormatOf(file); over MaxCatalog bytes, a catalog that does not decode, or one with
+// an ambiguous key or catalog-level text that would not print as it is refuses whole, saying why;
+// an entry lola cannot use, or whose own text would not print, is skipped with its reason.
+// Relative entries are left for Bind. In Cursor's and Copilot's catalogs (repoRootCatalogs) a bare
+// relative source names a directory under the repository root, as those tools write them.
+func ParseFile(file string, b []byte, sshHosts []string) (Catalog, error) {
+	_, bareFromRoot := repoRootOf(file)
+	return parse(FormatOf(file), bareFromRoot, b, sshHosts)
+}
+
+// parse is ParseFile; bareFromRoot makes a Claude catalog's bare relative sources root-relative.
+func parse(format string, bareFromRoot bool, b []byte, sshHosts []string) (Catalog, error) {
 	if len(b) > MaxCatalog {
 		return Catalog{}, fmt.Errorf("is larger than %d bytes", MaxCatalog)
 	}
@@ -190,7 +206,7 @@ func Parse(format string, b []byte, sshHosts []string) (Catalog, error) {
 	var err error
 	switch format {
 	case FormatClaude:
-		cat, err = parseClaude(b, sshHosts)
+		cat, err = parseClaude(b, bareFromRoot, sshHosts)
 	case FormatYAML:
 		cat, err = parseYAML(b, sshHosts)
 	default:
@@ -208,6 +224,16 @@ func Parse(format string, b []byte, sshHosts []string) (Catalog, error) {
 		}
 	}
 	return cat, nil
+}
+
+// shownLicense is license when lola can print it as it is, else "": a license that is over maxText
+// bytes or holds a line break or control characters is dropped and the entry kept, as the field is
+// decoration.
+func shownLicense(license string) string {
+	if len(license) > maxText || !untrusted.IsPlain(license) {
+		return ""
+	}
+	return license
 }
 
 // checkEntryText skips an entry whose description or version is longer than lola prints.

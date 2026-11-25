@@ -28,7 +28,14 @@ var _ = Describe("git environment and listing", func() {
 			"GIT_REPLACE_REF_BASE=refs/r/", "GIT_PREFIX=sub/", "GIT_SHALLOW_FILE=s",
 			"GIT_CONFIG_GLOBAL=/home/u/.gitconfig", "SSH_AUTH_SOCK=/tmp/agent", "GIT_TERMINAL_PROMPT=1", "HOME=/home/u"})
 		Expect(env).To(Equal([]string{"GIT_CONFIG_GLOBAL=/home/u/.gitconfig", "SSH_AUTH_SOCK=/tmp/agent", "GIT_TERMINAL_PROMPT=1",
-			"HOME=/home/u", "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0"}))
+			"HOME=/home/u", "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "LANGUAGE="}))
+	})
+
+	It("makes git speak English, whatever locale the parent runs in, since lola reads its messages", func() {
+		env := gitEnv([]string{"LC_ALL=de_DE.UTF-8", "LANGUAGE=de", "LC_MESSAGES=fr_FR.UTF-8", "LANG=de_DE.UTF-8", "HOME=/home/u"})
+		Expect(env).To(HaveEach(Not(Or(Equal("LC_ALL=de_DE.UTF-8"), Equal("LANGUAGE=de"), HavePrefix("LC_MESSAGES=")))))
+		Expect(env[len(env)-2:]).To(Equal([]string{"LC_ALL=C", "LANGUAGE="}))
+		Expect(env).To(ContainElement("HOME=/home/u"))
 	})
 
 	It("lists only committed files in a clone", func() {
@@ -97,6 +104,18 @@ var _ = Describe("git's stderr", func() {
 		Expect(allocated(func() { _, _, err = listFiles(context.Background(), GinkgoT().TempDir(), listGit) })).To(BeNumerically("<", 2<<20))
 		Expect(err).To(MatchError(ContainSubstring("git ls-files")))
 		Expect(len(err.Error())).To(BeNumerically("<", 2*maxStderr))
+	})
+
+	It("shows carriage-return line ends as line breaks, and still replaces other control characters", func() {
+		script := "#!/bin/sh\nprintf 'fatal: x\\r\\nHost key verification failed.\\r\\nlone\\rcr\\033[31mred\\a\\n' >&2\nexit 128\n"
+		Expect(os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755)).To(Succeed())
+		_, err := runGit(context.Background(), "", "clone")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(MatchRegexp(`fatal: x\n\s*Host key verification failed\.\n\s*lone\n\s*cr`))
+		Expect(err.Error()).NotTo(ContainSubstring("\r"))
+		Expect(err.Error()).NotTo(ContainSubstring("\x1b"))
+		Expect(err.Error()).NotTo(ContainSubstring("\a"))
+		Expect(err.Error()).To(ContainSubstring("?[31mred?"))
 	})
 
 	It("does not print the directory git ls-files ran in", func() {
