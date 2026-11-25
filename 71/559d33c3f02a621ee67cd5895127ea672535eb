@@ -1,0 +1,44 @@
+docs/architecture/marketplaces.md
+  s_b1af89ea0dd45d::t_c82c92f31c65e8 190-191
+docs/architecture.md
+  s_b1af89ea0dd45d::t_be8c5e15bf25d0 622
+  s_b1af89ea0dd45d::t_f1c183d078d33f 611,632-633
+AGENTS.md
+  s_99ae603199c62c::t_58718e1f75cb4e 94
+docs/architecture/tui-flows.md
+  s_99ae603199c62c::t_7e8585382a30bb 961-963,1003-1008,1031,1041,1049,1271-1272,1280,1573
+docs/guides/migrating.md
+  s_99ae603199c62c::t_d0f9c961ed1484 139-140
+docs/usage.md
+  s_99ae603199c62c::t_fee0624eda5b97 698
+docs/architecture/layers.md
+  s_99ae603199c62c::t_771b31e780dc35 583-586
+docs/architecture/sync.md
+  s_99ae603199c62c::t_14dbdf74eb105b 274,397
+docs/decisions.md
+  s_99ae603199c62c::t_b563756129d1b5 76,112,124-126,133-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "71559d33c3f02a621ee67cd5895127ea672535eb",
+  "prompts": {},
+  "sessions": {
+    "s_99ae603199c62c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a123c933dfd328768",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_b1af89ea0dd45d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86d15ce2-2882-4ded-82be-d18f2ba8f3f4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
