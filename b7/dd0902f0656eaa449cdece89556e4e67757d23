@@ -1,0 +1,104 @@
+internal/engine/engine.go
+  s_b1af89ea0dd45d::t_797290057d511f 108,119,160
+  s_b1af89ea0dd45d::t_2eb184fa2ee9ff 107
+internal/cli/flow.go
+  s_b1af89ea0dd45d::t_3278ef5de1b8b3 55,530
+  s_b1af89ea0dd45d::t_797290057d511f 2676
+internal/cli/prompter.go
+  s_b1af89ea0dd45d::t_3278ef5de1b8b3 312
+internal/engine/remote.go
+  s_b1af89ea0dd45d::t_797290057d511f 29,32,36,57,63-64,68,234,281,454
+internal/engine/pins.go
+  s_b1af89ea0dd45d::t_797290057d511f 67,120,268
+internal/engine/split.go
+  s_b1af89ea0dd45d::t_797290057d511f 65,77
+internal/cli/profile_test.go
+  s_b1af89ea0dd45d::t_77ae9ec101ae2a 441,443
+  s_b1af89ea0dd45d::t_d9c6f781f96c4c 436,444-447,525-526,528-529
+  s_b1af89ea0dd45d::t_9350833cbe60ae 476-479,482-485
+  s_b1af89ea0dd45d::t_7ae63d8c57a660 440
+internal/engine/market_ssh.go
+  s_b1af89ea0dd45d::t_52fad91f06896e 157,161
+internal/engine/market_test.go
+  s_b1af89ea0dd45d::t_52fad91f06896e 1330
+internal/engine/profileview.go
+  s_b1af89ea0dd45d::t_797290057d511f 440
+internal/engine/profile.go
+  s_b1af89ea0dd45d::t_3278ef5de1b8b3 523
+internal/engine/mentions.go
+  s_b1af89ea0dd45d::t_797290057d511f 367
+internal/cli/profile_split.go
+  s_b1af89ea0dd45d::t_797290057d511f 86,123
+internal/engine/restore.go
+  s_b1af89ea0dd45d::t_797290057d511f 197,199
+internal/engine/edits.go
+  s_b1af89ea0dd45d::t_3278ef5de1b8b3 40
+internal/cli/profile_edit.go
+  s_b1af89ea0dd45d::t_171c34febc95c7 69
+  s_b1af89ea0dd45d::t_797290057d511f 349,397
+internal/profile/profile.go
+  s_b1af89ea0dd45d::t_3278ef5de1b8b3 62
+  s_b1af89ea0dd45d::t_797290057d511f 700
+internal/cli/scope.go
+  s_b1af89ea0dd45d::t_797290057d511f 196
+internal/cli/nouns.go
+  s_b1af89ea0dd45d::t_88977351dd9710 132-135
+  s_b1af89ea0dd45d::t_7ae63d8c57a660 17-18,20-24,27-29,35-38
+  s_b1af89ea0dd45d::t_d665acde1e99ca 39,61-64,68-69,116-117,120,140-142,177,212-220,222
+internal/cli/root.go
+  s_b1af89ea0dd45d::t_2eb184fa2ee9ff 240
+  s_b1af89ea0dd45d::t_f385cbb878d0e3 198-200
+internal/engine/profile_edit.go
+  s_b1af89ea0dd45d::t_797290057d511f 149,321
+internal/engine/remote_add.go
+  s_b1af89ea0dd45d::t_797290057d511f 260-261
+internal/profile/split.go
+  s_b1af89ea0dd45d::t_797290057d511f 17
+internal/engine/ops.go
+  s_b1af89ea0dd45d::t_60bbc3a663bbc4 171
+internal/cli/remoteprofile_test.go
+  s_b1af89ea0dd45d::t_fc0963aa344c92 671-692
+internal/engine/sync.go
+  s_b1af89ea0dd45d::t_797290057d511f 98,669
+  s_b1af89ea0dd45d::t_60bbc3a663bbc4 95
+  s_b1af89ea0dd45d::t_3278ef5de1b8b3 3261
+  s_b1af89ea0dd45d::t_2eb184fa2ee9ff 535
+internal/engine/profile_remove.go
+  s_b1af89ea0dd45d::t_797290057d511f 169,280
+  s_b1af89ea0dd45d::t_60bbc3a663bbc4 115
+internal/engine/target.go
+  s_b1af89ea0dd45d::t_3278ef5de1b8b3 68
+  s_b1af89ea0dd45d::t_60bbc3a663bbc4 105,115,627,818
+  s_b1af89ea0dd45d::t_797290057d511f 372
+internal/engine/remote_update.go
+  s_b1af89ea0dd45d::t_60bbc3a663bbc4 864
+  s_b1af89ea0dd45d::t_797290057d511f 147,453,921-922
+internal/cli/cmd_profile.go
+  s_b1af89ea0dd45d::t_ee6ddd32511724 381,385-386
+  s_b1af89ea0dd45d::t_e5a6fb66f178de 474-476
+  s_b1af89ea0dd45d::t_d665acde1e99ca 232
+  s_b1af89ea0dd45d::t_797290057d511f 130,851
+  s_b1af89ea0dd45d::t_7ae63d8c57a660 223-224
+  s_b1af89ea0dd45d::t_171c34febc95c7 177-179,186,520,654
+internal/engine/activate.go
+  s_b1af89ea0dd45d::t_60bbc3a663bbc4 46,59,109-110,280-282
+  s_b1af89ea0dd45d::t_797290057d511f 31,58,107,115,144,191,242,423
+internal/cli/move_test.go
+  s_b1af89ea0dd45d::t_4f0591e4eaf8bb 269-288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b7dd0902f0656eaa449cdece89556e4e67757d23",
+  "prompts": {},
+  "sessions": {
+    "s_b1af89ea0dd45d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86d15ce2-2882-4ded-82be-d18f2ba8f3f4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
