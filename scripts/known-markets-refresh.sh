@@ -40,7 +40,7 @@ entries="$("$lola" market --known --json | jq -r '.known[] | [.id, .source, .com
 # from another URL. A trailing slash or `.git` difference is not a move. The final URL is
 # author-influenced, so control characters are stripped before it is printed.
 redirect_note() {
-  local source="$1" final want got
+  local source="$1" final want got shown
   [[ "$source" =~ ^https?:// ]] || {
     echo "  note: redirects are not checked for a source that is not http(s)"
     return
@@ -55,7 +55,8 @@ redirect_note() {
   want="${source%/}"
   got="${final%/}"
   if [[ "${want%.git}" != "${got%.git}" ]]; then
-    echo "  note: the source redirects to $(tr -d '[:cntrl:]' <<<"$final"); update known.yaml if the move is permanent"
+    shown="$(tr -d '[:cntrl:]' <<<"$final")"
+    echo "  note: the source redirects to $shown; update known.yaml if the move is permanent"
   fi
 }
 
@@ -80,7 +81,7 @@ while IFS=$'\t' read -r id source pin; do
     echo "  ok:   ${out%%$'\n'*}"
   else
     echo "  FAIL the pinned catalog does not enable:"
-    sed 's/^/        /' <<<"$out"
+    echo "        ${out//$'\n'/$'\n        '}"
     failed=1
   fi
 done <<<"$entries"
