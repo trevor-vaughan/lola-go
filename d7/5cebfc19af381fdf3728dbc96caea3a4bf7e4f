@@ -1,0 +1,20 @@
+scripts/known-markets-refresh.sh
+  s_b1af89ea0dd45d::t_3fac436da7e51c 43
+  s_b1af89ea0dd45d::t_3f4e891023e9ff 58-59,84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d75cebfc19af381fdf3728dbc96caea3a4bf7e4f",
+  "prompts": {},
+  "sessions": {
+    "s_b1af89ea0dd45d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86d15ce2-2882-4ded-82be-d18f2ba8f3f4",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
