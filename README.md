@@ -104,7 +104,9 @@ stateDiagram-v2
   in lola's YAML format (the name goes before `--add`, which takes the source). `lola market` lists your marketplaces, `lola market acme` lists one's entries,
   and `lola market acme formatter` shows an entry, as `lola info @acme/formatter` does;
   `lola install @acme/formatter` installs it and records its real source, so a teammate needs
-  no marketplace ([Marketplaces](docs/guides/marketplaces.md#marketplaces)).
+  no marketplace ([Marketplaces](docs/guides/marketplaces.md#marketplaces)). `lola market --known`
+  lists the marketplaces this lola ships, each pinned to a commit, and `lola market --enable <id>`
+  registers one on request ([Known marketplaces](docs/guides/marketplaces.md#known-marketplaces)).
 - **Templating:** a module's `.md.liquid` files render per assistant, with partials, attribute
   files and vars a manifest entry can override ([Templates](docs/guides/templating.md#templates)).
 - **Search:** `lola search` finds modules in your cache and in every marketplace catalog you

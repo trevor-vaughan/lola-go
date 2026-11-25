@@ -186,7 +186,15 @@ the engine's.
 - **`CoachMarketVerb`** refuses the Python lola's verbs, which the CLI routes to it whenever
   the first argument is one (`market.Verbs`); the translation is a hint only when it would run:
   a name you do not have gets the listing, one that cannot be a marketplace and a missing
-  operand get none. The hidden `--enable` and `--disable` flags exist only for `set`.
+  operand get none. The hidden `--disable` flag exists only for `set`; `--enable` is the known
+  marketplaces' action and takes an id, so `set <name> --enable` is read as `set --enable <name>`
+  (`marketVerb`) and `set --enable` alone is cobra's missing-value refusal.
+- **`Known`, `ShowKnown` and `EnableKnown`** (`internal/engine/market_known.go`) serve `--known` and
+  `--enable`. `EnableKnown` is `AddMarket` with the seed's source and path and its pinned commit as
+  the ref. Given a `KnownConfirm`, it refuses a taken name first, runs `AddMarket` as a dry run,
+  hands the result to the confirm (the CLI's `app.confirm`: the question, or the refusal that
+  carries the plan under `--json`), and only then adds. The CLI passes none under `-y` or `-n`,
+  and never a `Rename` or `PickSSH`: collisions are refused with the `--enable` under a free name.
 - **Hints** are bare commands (`MarketRun`, quoted by `errs.ShellJoin`, every argument through
   `untrusted.Text`), carrying the run's output flags (`--json`, `--plain`, `--no-pager`, as lola
   profile's hints do; `Display`) and exactly these other flags:

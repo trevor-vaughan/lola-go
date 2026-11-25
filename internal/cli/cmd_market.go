@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -16,8 +17,15 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
+// marketEnable and marketKnown are the action flags of the known marketplaces: --enable registers
+// one at its pinned commit, --known lists them. (engine.MarketAction names the others.)
+const (
+	marketEnable engine.MarketAction = "enable"
+	marketKnown  engine.MarketAction = "known"
+)
+
 // marketActions are lola market's action flags, canonical names in the order a refusal names them.
-var marketActions = []engine.MarketAction{engine.MarketAdd, engine.MarketUpdate, engine.MarketRemove}
+var marketActions = []engine.MarketAction{engine.MarketAdd, engine.MarketUpdate, engine.MarketRemove, marketEnable, marketKnown}
 
 // marketFlags are the flags each action takes beside the scope and output flags:
 // one an action does not take, or any of them without an action, is refused, since a flag that
@@ -26,6 +34,8 @@ var marketFlags = map[engine.MarketAction][]string{
 	engine.MarketAdd:    {"ref", "path", "ssh-host", "dry-run"},
 	engine.MarketUpdate: {"all", "ssh-host", "dry-run"},
 	engine.MarketRemove: {"yes", "ssh-host", "dry-run"},
+	marketEnable:        {"yes", "ssh-host", "dry-run"},
+	marketKnown:         {},
 }
 
 // marketAction is the one action flag set on cmd, "" for none, checked on canonical names after
@@ -33,10 +43,8 @@ var marketFlags = map[engine.MarketAction][]string{
 // names). A flag the action does not take refuses, naming the actions that do, with the run
 // without it as the hint.
 func marketAction(cmd *cobra.Command, args []string) (engine.MarketAction, error) {
-	for _, f := range []string{"enable", "disable"} {
-		if cmd.Flags().Changed(f) {
-			return "", errors.New("unknown flag: --" + f) // read beside the word set only (marketVerb)
-		}
+	if cmd.Flags().Changed("disable") {
+		return "", errors.New("unknown flag: --disable") // read beside the word set only (marketVerb)
 	}
 	var all []string
 	for _, a := range marketActions {
@@ -124,13 +132,13 @@ func outputFlags(cmd *cobra.Command) []string {
 }
 
 func (a *app) marketCmd() *cobra.Command {
-	var src, ref, path string
+	var src, ref, path, enableID string
 	var targets, sshHosts []string
-	var update, remove, all, dry, yes, enable, disable bool
+	var update, remove, known, all, dry, yes, disable bool
 	cmd := &cobra.Command{
 		Use:     "market [<name> [<entry>]] [flags]",
 		Aliases: []string{"marketplace", "markets"},
-		Short:   "List, add and update the marketplaces whose catalogs you browse",
+		Short:   "List, add and update the marketplaces whose catalogs you browse, and the ones lola knows",
 		Long: "A marketplace is a catalog of modules, each with the source it is fetched from. lola reads\n" +
 			"Claude Code's .claude-plugin/marketplace.json and lola YAML catalogs. Yours are shared by\n" +
 			"every scope, listed in $XDG_CONFIG_HOME/lola/markets.yaml; each fetched catalog is cached in\n" +
@@ -144,14 +152,16 @@ func (a *app) marketCmd() *cobra.Command {
 			"registers it; --update fetches again (--all for every one); --remove forgets one (asks; -y).\n" +
 			"A catalog is a stranger's input: lola skips, with its reason, an entry it cannot use (npm and\n" +
 			"command sources, ssh hosts you did not allow with --ssh-host, declared hooks or MCP servers) and\n" +
-			"runs nothing from it. Install an entry with lola install @<name>/<entry>.",
+			"runs nothing from it. Install an entry with lola install @<name>/<entry>.\n" +
+			"--known lists the marketplaces lola ships, each pinned to a commit; --enable <id> registers one (asks; -y).",
 		Example: "  lola market\n  lola market acme\n  lola market acme formatter -t claude-code\n" +
 			"  lola market acme --add https://github.com/acme/plugins\n" +
 			"  lola market acme --add https://github.com/acme/plugins --ref v1.2 --path catalog\n" +
 			"  lola market --add https://raw.githubusercontent.com/acme/market/main/general.yml\n" +
 			"  lola market acme --update\n  lola market acme beta --update\n" +
 			"  lola market acme --update --ssh-host git.example.com\n" +
-			"  lola market --update --all\n  lola market acme --remove -y",
+			"  lola market --update --all\n  lola market acme --remove -y\n" +
+			"  lola market --known\n  lola market --known superpowers\n  lola market --enable superpowers\n  lola market mine --enable superpowers -y",
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: a.completeMarket,
@@ -161,7 +171,12 @@ func (a *app) marketCmd() *cobra.Command {
 				return err
 			}
 			if len(args) > 0 && slices.Contains(market.Verbs(), args[0]) {
-				return marketVerb(cmd, eng, args, ref, path, sshHosts, dry, yes, all, enable, disable)
+				// --enable takes the next word as its value: -y after it was meant as a flag.
+				enabled, named := cmd.Flags().Changed("enable"), enableID
+				if enabled && flagTaken(cmd, enableID) {
+					named = ""
+				}
+				return marketVerb(cmd, eng, args, ref, path, enabled, named, sshHosts, dry, yes, all, disable)
 			}
 			act, err := marketAction(cmd, args)
 			if err != nil {
@@ -203,6 +218,10 @@ func (a *app) marketCmd() *cobra.Command {
 					return a.marketRevoke(cmd, eng, args, sshHosts, dry, yes)
 				}
 				return a.marketRemove(cmd, eng, args, dry, yes)
+			case marketEnable:
+				return a.marketEnable(cmd, eng, args, enableID, dry, yes, sshHosts)
+			case marketKnown:
+				return a.marketKnown(cmd, eng, args)
 			}
 			if len(args) == 0 {
 				rows, notices, err := eng.Markets(outputFlags(cmd))
@@ -238,12 +257,27 @@ func (a *app) marketCmd() *cobra.Command {
 		"let ssh sources at this host use your keys (repeatable; --remove: revoke)")
 	_ = cmd.RegisterFlagCompletionFunc("ssh-host", cobra.NoFileCompletions)
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "report what the action would do, write nothing")
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "with --remove: forget it without asking")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "with --remove or --enable: do it without asking")
+	cmd.Flags().StringVar(&enableID, string(marketEnable), "",
+		"register the known marketplace with this id, at its pinned commit (asks; -y)")
+	cmd.Flags().BoolVar(&known, string(marketKnown), false,
+		"list the marketplaces lola ships, or show one by id; enables nothing")
+	_ = cmd.RegisterFlagCompletionFunc(string(marketEnable), a.completeKnown)
 	a.addTargetFlag(cmd, &targets, "with <name> <entry>: assistants to plan for, as install's -t")
 	// Read beside the reserved word set only, which is answered with the lola command; hidden.
-	cmd.Flags().BoolVar(&enable, "enable", false, "with set: lola has no disabled state")
+	// (set --enable <name> is read through --enable's value, marketVerb.)
+	// pflag refuses a trailing --enable (set acme --enable) before the verb is read: coach it as the verb.
+	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		if verb := c.Flags().Args(); err.Error() == "flag needs an argument: --enable" && len(verb) > 0 && slices.Contains(market.Verbs(), verb[0]) {
+			eng, eerr := a.engine()
+			if eerr != nil {
+				return eerr
+			}
+			return marketVerb(c, eng, verb, ref, path, true, "", sshHosts, dry, yes, all, disable)
+		}
+		return c.Parent().FlagErrorFunc()(c, err)
+	})
 	cmd.Flags().BoolVar(&disable, "disable", false, "with set: lola has no disabled state")
-	_ = cmd.Flags().MarkHidden("enable")
 	_ = cmd.Flags().MarkHidden("disable")
 	// Aliases for muscle memory: lola profile and lola cache add, dnf and zypper's
 	// --refresh. Additive and stable; the published table is pinned in store_test.go.
@@ -320,16 +354,39 @@ func (a *app) marketAdd(cmd *cobra.Command, eng *engine.Engine, args []string, r
 	return a.emit(cmd, func(w io.Writer, s style) { printMarketResult(w, s, res) }, res)
 }
 
+// flagTaken sets the bool flag v names (-y, --json) and reports true when v is one: --enable took
+// it as its value, as in lola market set acme --enable -y, where it was a flag.
+func flagTaken(cmd *cobra.Command, v string) bool {
+	var f *pflag.Flag
+	switch {
+	case strings.HasPrefix(v, "--"):
+		f = cmd.Flags().Lookup(v[2:])
+	case len(v) == 2 && v[0] == '-':
+		f = cmd.Flags().ShorthandLookup(v[1:])
+	}
+	if f == nil || f.Value.Type() != "bool" {
+		return false
+	}
+	_ = f.Value.Set("true")
+	f.Changed = true
+	return true
+}
+
 // marketVerb answers lola market <verb>, a word lola market reserves, with the lola command:
 // args[0] is the verb and the rest its operands. Beside an action flag the verb would be a
 // marketplace's name, which it cannot be (market.ValidateName).
-func marketVerb(cmd *cobra.Command, eng *engine.Engine, args []string, ref, path string, sshHosts []string, dry, yes, all, enable, disable bool) error {
+func marketVerb(cmd *cobra.Command, eng *engine.Engine, args []string, ref, path string, enable bool, enableID string, sshHosts []string, dry, yes, all, disable bool) error {
 	for _, act := range marketActions {
-		if cmd.Flags().Changed(string(act)) {
+		if act != marketEnable && cmd.Flags().Changed(string(act)) {
 			return market.ValidateName(args[0])
 		}
 	}
-	return eng.CoachMarketVerb(engine.MarketVerb{Verb: args[0], Operands: args[1:], Ref: ref, Path: path, DryRun: dry, Yes: yes, All: all,
+	// set --enable <name> and set <name> --enable are the same run: the name is --enable's value, or not.
+	operands := args[1:]
+	if enableID != "" {
+		operands = append([]string{enableID}, operands...)
+	}
+	return eng.CoachMarketVerb(engine.MarketVerb{Verb: args[0], Operands: operands, Ref: ref, Path: path, DryRun: dry, Yes: yes, All: all,
 		Enable: enable, Disable: disable, SSHHosts: sshHosts, Display: outputFlags(cmd)})
 }
 
@@ -530,6 +587,116 @@ func (a *app) completeMarket(cmd *cobra.Command, args []string, toComplete strin
 		if strings.HasPrefix(n, toComplete) && !slices.Contains(args, n) {
 			out = append(out, untrusted.Text(n, untrusted.MaxName))
 		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
+// cleanKnown is k with every text through untrusted.Text, limits at what the seed loader allows,
+// so it changes nothing a loaded seed holds: the one place lola's known-marketplace text is cleaned
+// for the human, --plain and JSON output alike.
+func cleanKnown(k market.KnownMarket) market.KnownMarket {
+	return market.KnownMarket{ID: untrusted.Text(k.ID, untrusted.MaxName), Source: untrusted.Text(k.Source, 4096),
+		Path: untrusted.Text(k.Path, 4096), Commit: untrusted.Text(k.Commit, untrusted.MaxName),
+		Curated: untrusted.Text(k.Curated, untrusted.MaxName), Reason: untrusted.Text(k.Reason, 2*untrusted.MaxName)}
+}
+
+// knownEnabled is lola market --enable's JSON, the plan a refusal carries too: the run's result and
+// the known marketplace it registers (or would).
+type knownEnabled struct {
+	*engine.MarketResult
+	Known market.KnownMarket `json:"known"`
+}
+
+// marketEnable runs lola market [<name>] --enable <id>: one name at most, the id by default. It
+// asks on a terminal with what the pinned catalog holds, -y answers, and off a terminal without -y
+// it refuses with the run and -y, the plan under --json; -n previews and asks nothing. It never
+// asks for another name or an ssh host: a name another marketplace holds is refused with the run
+// that names a free one, and --ssh-host allows a host.
+func (a *app) marketEnable(cmd *cobra.Command, eng *engine.Engine, args []string, id string, dry, yes bool, sshHosts []string) error {
+	if len(args) > 1 {
+		var hints []string
+		for _, n := range args {
+			hints = append(hints, runWithout(cmd, []string{n}))
+		}
+		return errs.WithHints(errors.New("--enable registers one marketplace; give it one name"), hints...)
+	}
+	name := id
+	if len(args) == 1 {
+		name = args[0]
+	}
+	req := engine.MarketAddRequest{DryRun: dry, Display: outputFlags(cmd), SSHHosts: sshHosts}
+	var confirm engine.KnownConfirm
+	if !dry && !yes {
+		confirm = func(k market.KnownMarket, preview *engine.MarketResult) error {
+			k = cleanKnown(k)
+			show := func(w io.Writer, s style) { printKnownPreview(w, s, k, preview) }
+			return a.confirm(cmd, args, "Enable known marketplace "+untrusted.Text(name, untrusted.MaxName)+"?", Nav{}, knownEnabled{preview, k}, show)
+		}
+	}
+	res, k, err := eng.EnableKnown(cmd.Context(), id, name, req, confirm)
+	if errors.Is(err, ErrAborted) {
+		return ErrAborted
+	}
+	if err != nil {
+		return err
+	}
+	k = cleanKnown(k)
+	return a.emit(cmd, func(w io.Writer, s style) { printKnownEnabled(w, s, k, res) }, knownEnabled{res, k})
+}
+
+// marketKnown runs lola market --known [<id>]: the marketplaces lola ships, or the one whose id
+// is given. Both are the document {known, hints}, known an array (of one for an id).
+func (a *app) marketKnown(cmd *cobra.Command, eng *engine.Engine, args []string) error {
+	display := outputFlags(cmd)
+	if len(args) > 1 {
+		var hints []string
+		for _, id := range args {
+			hints = append(hints, runWithout(cmd, []string{id}))
+		}
+		return errs.WithHints(errors.New("--known shows one marketplace; give it one id"), hints...)
+	}
+	var list []engine.KnownEntry
+	hints := []string{}
+	if len(args) == 1 {
+		e, err := eng.ShowKnown(args[0], display)
+		if err != nil {
+			return err
+		}
+		list = []engine.KnownEntry{e}
+		if e.Enabled {
+			hints = append(hints, engine.MarketRun(append([]string{e.ID}, display...)...))
+		} else {
+			hints = append(hints, engine.MarketRun(append([]string{"--enable", e.ID}, display...)...))
+		}
+	} else {
+		var err error
+		if list, err = eng.Known(); err != nil {
+			return err
+		}
+		if len(list) > 0 {
+			hints = append(hints, engine.MarketRun(append([]string{"--known", list[0].ID}, display...)...))
+		}
+	}
+	for i := range list {
+		list[i].KnownMarket = cleanKnown(list[i].KnownMarket)
+	}
+	return a.emit(cmd, func(w io.Writer, s style) { printKnown(w, s, list, len(args) == 1, hints) },
+		map[string]any{"known": list, "hints": hints})
+}
+
+// completeKnown offers the ids of the known marketplaces.
+func (a *app) completeKnown(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	eng, err := a.engine()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	list, err := eng.Known()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var out []cobra.Completion
+	for _, k := range list {
+		out = append(out, untrusted.Text(k.ID, untrusted.MaxName))
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp
 }

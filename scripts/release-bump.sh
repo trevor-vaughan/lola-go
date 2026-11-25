@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cuts release vX.Y.Z on HEAD (docs/release.md item 7): regenerates CHANGELOG.md with git-cliff,
+# Cuts release vX.Y.Z on HEAD (docs/release.md item 8): regenerates CHANGELOG.md with git-cliff,
 # commits it as chore(release): vX.Y.Z, and tags that commit with an annotated tag whose message
 # holds the release's section of the changelog. The version comes from the argument, or from a
 # prompt whose default is what git-cliff derives from the Conventional Commits since the last

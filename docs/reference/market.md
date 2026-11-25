@@ -3,10 +3,10 @@
 Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
 
 ```
-lola market [<name> [<entry>] | [<name>] --add <source> [--ref <ref>] [--path <file-or-dir>] | <name>... --update | --update --all | <name> --remove]
+lola market [<name> [<entry>] | [<name>] --add <source> [--ref <ref>] [--path <file-or-dir>] | <name>... --update | --update --all | <name> --remove | --known [<id>] | [<name>] --enable <id>]
 ```
 
-Aliases: `marketplace`, `markets`. Four read-only paths, none of which asks:
+Aliases: `marketplace`, `markets`. Five read-only paths, none of which asks:
 
 - `lola market` lists your [marketplaces](../guides/marketplaces.md#marketplaces): format, entries,
   skipped entries, when each was fetched and its source.
@@ -16,6 +16,8 @@ Aliases: `marketplace`, `markets`. Four read-only paths, none of which asks:
 - `lola market acme formatter` shows the entry: it is the same run as `lola info @acme/formatter`,
   with the same flags (a scope, `-t`, the output flags) and the same output, hints included.
 - `lola info @acme/formatter` (see [`lola info`](info.md#lola-info)).
+- `lola market --known` lists the [known marketplaces](../guides/marketplaces.md#known-marketplaces)
+  this lola ships; `lola market --known superpowers` shows one.
 
 `--add <source>` takes the source, so the name goes before it: `lola market acme --add <source>`,
 not `lola market --add acme <source>` (refused, hinting the working order; see Refusals below).
@@ -61,8 +63,10 @@ verbs: each is refused with the lola command to run instead.
 | `--update`                                   | Fetch the named marketplaces' catalogs again and report what changed. Aliases: `--upgrade`, `--refresh`.                                                          |
 | `--all`                                      | With `--update`: every marketplace you have.                                                                                                                      |
 | `--remove`                                   | Forget the named marketplace and drop its cached catalog (asks; `-y`). Aliases: `--rm`, `--delete`, `--del`, `--erase`.                                           |
+| `--known [<id>]`                             | List the marketplaces this lola ships, each pinned to a commit, or show the one whose id you give. Enables nothing. |
+| `--enable <id>`                              | Register the known marketplace `<id>` at its pinned commit, under the name `<name>` (default: the id). Shows what it holds and asks; `-y` skips the question. |
 | `--ssh-host <host>`                          | With `--add` or `--update` (one marketplace): let the catalog's ssh sources at this host name use your ssh keys. Repeatable. With `--remove`: stop allowing it.   |
-| `-y`, `--yes`                                | With `--remove`: forget it without asking.                                                                                                                        |
+| `-y`, `--yes`                                | With `--remove` or `--enable`: do it without asking.                                                                                                                        |
 | `-n`, `--dry-run`                            | Report what the action would do, and write nothing.                                                                                                               |
 | `-t`, `--target <assistant>`                 | With `<name> <entry>`: the assistants to plan for, as `lola info`'s `-t`.                                                                                         |
 | `--scope`, `--user`, `--project`, `-C <dir>` | With `<name> <entry>`: the scope to plan for, as `lola info`'s. With any other action they change nothing, but one naming a scope that cannot be used is refused. |
@@ -129,3 +133,32 @@ JSON:
 Known limitation: a catalog entry's host is judged by the URL's text, as a [remote profile's](../guides/remote-profiles.md) is,
 and never resolved: an entry at a host name that resolves to a loopback or private address is
 mapped and fetched.
+
+## Known marketplaces
+
+`--known` lists what this lola ships: for each, its `id`, whether you have enabled it, the day the
+maintainers reviewed it, the first seven digits of its pin, its source and why it is listed.
+`--known <id>` shows one in full (source, path, the whole pin) and hints the next step: the
+`--enable` that registers it, or `lola market <id>` once enabled. A marketplace counts as enabled
+when one named as the id is registered from that source. An id lola does not ship is refused,
+naming the ids it does, hinting `lola market --known`. With none shipped, `--known` prints
+`no known marketplaces ship with this lola` and exits 0.
+
+`--enable <id>` registers the entry at the commit it is pinned to, never a branch's head, through
+the same fetch as `--add`: the catalog is read as any other and nothing in it runs. The pin covers the catalog and the entries it keeps in the same repository; an entry whose source is another repository is fetched at the ref the pinned catalog names for it, which may be a branch. The name is the
+id, or the one `<name>` gives (`lola market mine --enable superpowers`). It fetches the pinned catalog,
+shows the entry's facts and what the catalog holds (entries, and how many it skips), and asks;
+`-y` answers. Off a terminal without `-y` it refuses, `lola market --enable superpowers -y` as the hint,
+having written nothing; under `--json` the refusal carries the plan, the keys `-n --json` prints.
+`-n` shows the same and writes nothing, cache included. It never asks for another name or an ssh
+host: a name another marketplace holds is refused with `--enable` under a free name as the hint,
+and `--ssh-host` allows a host. `--update` of an enabled one stays on the pin.
+
+`--known` takes no other flag than the output flags, and it, `--enable`, `--add`, `--update` and
+`--remove` are one action per run. `--enable` takes `-y`, `-n` and `--ssh-host`, not `--ref` or
+`--path`: the pin and path are the entry's.
+
+JSON of `--known`: `known`, an array (`[]` for none; one element for an id) of `id`, `source`,
+`path`, `commit`, `curated`, `reason` and `enabled`; and `hints`. JSON of `--enable` is `--add`'s
+(`markets`, `changes`, `updates`, `notices`, `dry_run`) with `known`, the entry enabled, as one
+object.

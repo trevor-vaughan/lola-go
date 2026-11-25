@@ -385,3 +385,72 @@ func printMarketResult(w io.Writer, s style, res *engine.MarketResult) {
 		fmt.Fprintln(w, noticeLine(s, n))
 	}
 }
+
+// printKnown prints lola market --known's list, or with one set the marketplace shown, then the
+// hints. list is already clean (cleanKnown). --plain rows are "known" with the id, enabled, curated day, commit, source, path
+// and reason, then a "hint" row each.
+func printKnown(w io.Writer, s style, list []engine.KnownEntry, one bool, hints []string) {
+	switch {
+	case s.plain:
+		for _, k := range list {
+			fmt.Fprintf(w, "known\t%s\t%t\t%s\t%s\t%s\t%s\t%s\n", k.ID, k.Enabled, k.Curated, k.Commit, k.Source, k.Path, k.Reason)
+		}
+		for _, h := range hints {
+			fmt.Fprintf(w, "hint\t%s\n", h)
+		}
+		return
+	case len(list) == 0:
+		fmt.Fprintln(w, "no known marketplaces ship with this lola; lola market --add <source> adds one of your own")
+		return
+	case one:
+		printKnownFacts(w, "Known marketplace "+list[0].ID, list[0].KnownMarket)
+		if list[0].Enabled {
+			fmt.Fprintln(w, s.info("enabled; lola market "+list[0].ID+" --update stays on its pin"))
+		}
+	default:
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, "ID\tENABLED\tCURATED\tPIN\tSOURCE\tREASON")
+		for _, k := range list {
+			enabled := "no"
+			if k.Enabled {
+				enabled = "yes"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", k.ID, enabled, k.Curated, shortCommit(k.Commit), k.Source, k.Reason)
+		}
+		_ = tw.Flush()
+	}
+	for _, h := range hints {
+		fmt.Fprintln(w, s.info(h))
+	}
+}
+
+// printKnownFacts prints title and what the maintainers recorded of k: its source, path, pin, the
+// day it was curated and why it is listed.
+func printKnownFacts(w io.Writer, title string, k market.KnownMarket) {
+	fmt.Fprintln(w, title)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	for _, f := range [][2]string{{"source", k.Source}, {"path", k.Path}, {"pin", k.Commit}, {"curated", k.Curated}, {"reason", k.Reason}} {
+		if f[1] != "" {
+			fmt.Fprintf(tw, "  %s\t%s\n", f[0], f[1])
+		}
+	}
+	_ = tw.Flush()
+}
+
+// printKnownPreview is the text of lola market --enable's question: what the maintainers recorded
+// of k, then what enabling it would do (the -n result: the entries the catalog offers and skips).
+func printKnownPreview(w io.Writer, s style, k market.KnownMarket, preview *engine.MarketResult) {
+	printKnownFacts(w, "Known marketplace "+k.ID, k)
+	printMarketResult(w, s, preview)
+}
+
+// printKnownEnabled prints what lola market --enable did (or, under -n, would do), and that its
+// --update stays on the pin. --plain prints the result's rows alone.
+func printKnownEnabled(w io.Writer, s style, k market.KnownMarket, res *engine.MarketResult) {
+	printMarketResult(w, s, res)
+	if s.plain || res.DryRun {
+		return
+	}
+	fmt.Fprintln(w, s.info("pinned to "+shortCommit(k.Commit)+", curated "+k.Curated+"; lola market "+
+		res.Markets[0].Name+" --update stays on it"))
+}

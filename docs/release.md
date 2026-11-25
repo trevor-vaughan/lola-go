@@ -57,7 +57,14 @@ mean to tag, with a clean work tree.
      the commands of `Q1` in `e2e/install/install.venom.yml`, and the commands in its teammate
      steps are those of `T1` and `T4` in `e2e/team/team.venom.yml`.
 
-7. **Release.** On the commit every item above passed on, plus item 3's record committed as
+7. **The known marketplaces.** `task release:known` exits 0 (needs network and `jq`): every entry
+   of `internal/market/known.yaml` is still a reachable git repository and its pinned commit
+   still enables. It prints each entry's upstream head and whether it moved; a moved head is
+   yours to judge, and re-pinning, or dropping an entry that no longer meets the criteria, is
+   described in [maintainers/known-markets.md](maintainers/known-markets.md). Not part of
+   `task check`.
+
+8. **Release.** On the commit every item above passed on, plus item 3's record committed as
    `chore(release): …` so it stays out of the notes, cut the release:
 
    ```sh

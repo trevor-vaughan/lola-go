@@ -21,6 +21,8 @@ lola market acme --update --ssh-host git.example.com         # also let its ssh 
 lola market acme --ssh-host git.example.com --remove         # stop allowing that host
 lola market --update --all                                   # every marketplace
 lola market acme --remove                                    # forget it; asks (-y)
+lola market --known                                          # the marketplaces this lola ships
+lola market --enable superpowers                              # register one of them, at its pin; asks (-y)
 ```
 
 - **Adding.** `lola market [<name>] --add <source>` (alias `--get`) fetches the source, your own
@@ -480,3 +482,26 @@ lola market acme --remove                                    # forget it; asks (
   - A wiped cache loses nothing you chose and costs a `lola market --update --all`.
   - A cached catalog is written before its registration, so a failed write leaves at worst a
     cache directory that listings ignore.
+
+## Known marketplaces
+
+lola ships a short list of public marketplaces its maintainers curate. `lola market --known` lists
+what this lola ships, and `lola market --known <id>` shows one: where it comes from, the commit it
+is pinned to, the day it was reviewed and why it is listed. If this lola ships none, it says so.
+
+- **Nothing is enabled until you ask.** Listing registers nothing and fetches nothing. `lola market
+  --enable <id>` registers one, under its id or the name you give (`lola market mine --enable
+  <id>`); it fetches the pinned catalog, shows what it holds (its entries, and how many lola
+  skips) and asks, as `--remove` does. `-y` answers; off a terminal without `-y` it refuses and
+  writes nothing. `-n` previews.
+- **Every entry is pinned to a commit.** `--enable` registers that commit, never the head of a
+  branch, so the catalog and the entries it keeps in the same repository are what you read when
+  you answer; an entry whose source is another repository is fetched at the ref the catalog names
+  for it, which may be a branch. The catalog is a stranger's input as
+  any other: lola skips what it cannot use and runs nothing from it.
+- **`--update` stays on the pin.** `lola market <name> --update` of an enabled one fetches the same
+  commit again. A newer pin ships with a newer lola; update lola, then `lola market --known <id>`
+  shows the commit it now names. To follow a branch instead, add the source yourself with
+  `--add` and a `--ref`.
+- **The list is lola's.** There is no file of yours to edit and no remote directory; your own
+  marketplaces are `--add`.

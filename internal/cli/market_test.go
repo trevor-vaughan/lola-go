@@ -171,10 +171,10 @@ var _ = Describe("lola market", func() {
 			"a b --add " + url:          {"--add registers one marketplace; give it one name", "  hint: lola market a --add " + url + "\n  hint: lola market b --add " + url + "\n"},
 			"a b c":                     {"lola market <name> <entry> shows one entry, and 2 were given: b, c", "  hint: lola market\n"},
 			"acme --remove --update":    {"--update and --remove cannot be combined; lola market takes one action per run", "  hint: lola market acme --update\n  hint: lola market acme --remove\n"},
-			"acme -y":                   {"--yes applies to --remove only", "  hint: lola market acme\n"},
-			"acme --add " + url + " -y": {"--yes applies to --remove only", "  hint: lola market acme --add " + url + "\n"},
+			"acme -y":                   {"--yes applies to --remove and --enable only", "  hint: lola market acme\n"},
+			"acme --add " + url + " -y": {"--yes applies to --remove and --enable only", "  hint: lola market acme --add " + url + "\n"},
 			"a b --remove":              {"--remove forgets one marketplace; name it", ""},
-			"--enable acme":             {"unknown flag: --enable", ""},
+			"--disable acme":            {"unknown flag: --disable", ""},
 			"acme --add " + url + " --update --remove": {"--add, --update and --remove cannot be combined; lola market takes one action per run",
 				"  hint: lola market acme --add " + url + "\n  hint: lola market acme --update\n  hint: lola market acme --remove\n"},
 		} {
@@ -506,7 +506,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 				"  hint: lola market acme --remove\n",
 			"set acme":          "error: set is not a lola market verb: lola market <name> --remove forgets a marketplace; lola has no disabled state\n",
 			"set --enable acme": "error: acme is already active; lola has no disabled state\n  hint: lola market acme\n",
-			"acme --enable":     "error: unknown flag: --enable\n",
+			"acme --disable":    "error: unknown flag: --disable\n",
 			"add --add " + url: "error: marketplace name add is reserved: lola market add answers with the lola command to run instead, " +
 				"so it cannot name a marketplace\n",
 			"search": "error: search is not a lola market verb: lola search <query> searches your cache and every fetched catalog\n",
@@ -900,11 +900,11 @@ var _ = Describe("lola market --ssh-host", func() {
 	It("--ssh-host without an action is refused, naming the actions that take it, with the run without it", func() {
 		Expect(lola("market", "priv", "--add", dir).code).To(Equal(0))
 		for args, want := range map[string]string{
-			"priv --ssh-host x.test": "error: --ssh-host applies to --add, --update and --remove only\n  hint: lola market priv\n",
+			"priv --ssh-host x.test": "error: --ssh-host applies to --add, --update, --remove and --enable only\n  hint: lola market priv\n",
 			"priv --ssh-host x.test --ssh-host y.test --ref main": "error: --ref applies to --add only; " +
-				"--ssh-host applies to --add, --update and --remove only\n  hint: lola market priv\n",
-			"priv --ssh-host x.test -n": "error: --ssh-host applies to --add, --update and --remove only; " +
-				"--dry-run applies to --add, --update and --remove only\n  hint: lola market priv\n",
+				"--ssh-host applies to --add, --update, --remove and --enable only\n  hint: lola market priv\n",
+			"priv --ssh-host x.test -n": "error: --ssh-host applies to --add, --update, --remove and --enable only; " +
+				"--dry-run applies to --add, --update, --remove and --enable only\n  hint: lola market priv\n",
 		} {
 			r := lola(append([]string{"market"}, strings.Fields(args)...)...)
 			Expect(r.code).To(Equal(1), args)
@@ -962,7 +962,7 @@ var _ = Describe("lola market --ssh-host", func() {
 		sp = &scripted{}
 		r = lolaP(sp, "market", "other", "--add", dir, "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HavePrefix("error: --yes applies to --remove only\n"), "-y answers nothing here")
+		Expect(r.err).To(HavePrefix("error: --yes applies to --remove and --enable only\n"), "-y answers nothing here")
 		Expect(sp.sshSteps).To(BeEmpty())
 		Expect(lolaP(sp, "market", "other", "--add", dir, "--force").code).To(Equal(1), "lola market takes no --force")
 		Expect(sp.sshSteps).To(BeEmpty())
