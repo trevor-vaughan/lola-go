@@ -1,0 +1,30 @@
+internal/cli/profile_test.go
+  s_b1af89ea0dd45d::t_cc59d9a286bc4f 482-483
+  s_b1af89ea0dd45d::t_cd2a440cfe8cfb 486-487
+  s_b1af89ea0dd45d::t_f0a25603962ad2 468-481,484-485
+  s_b1af89ea0dd45d::t_f08fda7339bf4f 574
+internal/cli/trash_test.go
+  s_b1af89ea0dd45d::t_e93d65c4d40958 238-247
+internal/cli/nouns.go
+  s_b1af89ea0dd45d::t_b43ad442c31257 299-308
+internal/cli/market_test.go
+  s_b1af89ea0dd45d::t_143b8434c94d92 611-619
+internal/cli/guide.go
+  s_b1af89ea0dd45d::t_6cfa5189ce953e 25-26,32-37,39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f67c8d34dbfa7da0d3c6b5f2e8a6073ec9309684",
+  "prompts": {},
+  "sessions": {
+    "s_b1af89ea0dd45d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86d15ce2-2882-4ded-82be-d18f2ba8f3f4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
