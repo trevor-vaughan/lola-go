@@ -1,0 +1,25 @@
+internal/cli/cmd_trash.go
+  s_b1af89ea0dd45d::t_c9b20b3dc28d8f 87-90,96-97
+internal/cli/nouns.go
+  s_b1af89ea0dd45d::t_c9b20b3dc28d8f 81,101,150-157,165-174,176
+internal/cli/trash_test.go
+  s_b1af89ea0dd45d::t_6025ea64eff94d 337-341
+  s_b1af89ea0dd45d::t_c9b20b3dc28d8f 195-197
+  s_b1af89ea0dd45d::t_7c409c825dea74 342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "4204ec7f4809318ef183196fbc50ab567f4d2761",
+  "prompts": {},
+  "sessions": {
+    "s_b1af89ea0dd45d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86d15ce2-2882-4ded-82be-d18f2ba8f3f4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
