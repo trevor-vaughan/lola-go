@@ -15,6 +15,7 @@ an `include` in the `global` section, anchors, aliases and merge keys, and files
 version: 1
 default_scope: project   # project | user | both (both scopes); used only off a terminal
 pager: true              # false prints everything without lola's viewer
+market_picker: true      # false makes a bare lola market list, never open its picker
 pre_install: ~/bin/lola-pre.sh     # your own install scripts: absolute or ~/…, no trust asked
 post_install: ~/bin/lola-post.sh
 cache_unused_for: 30d    # lola cache clean also removes versions unused this long (<n>d, <n>w, never)

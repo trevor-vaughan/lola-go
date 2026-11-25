@@ -13,7 +13,9 @@ lola market acme --add https://github.com/acme/plugins       # fetch its catalog
 lola market --add https://github.com/acme/plugins            # named by the catalog's own name
 lola market --add https://raw.githubusercontent.com/acme/market/main/general.yml   # a catalog file
 lola market mine --add ./my-marketplace                      # a folder you are authoring
-lola market                                                  # list them
+lola market                                                  # on a terminal, the picker; else list them
+lola market --no-interactive                                 # list them, never the picker
+lola market --check                                          # list them with each git source's upstream status
 lola market acme                                             # its source, pin, entries and skips
 lola market acme formatter                                   # one entry, as lola info @acme/formatter
 lola market acme --update                                    # fetch it again, report what changed
@@ -189,9 +191,28 @@ lola market --enable superpowers                              # register one of 
   your marketplaces close to it (`you have no marketplace acmee; close names: acme`), with the run
   for each as a hint (`lola market acme`, keeping `--update` and `-n`; a `--remove` hint never
   carries `-y`), then the listing.
+- **The picker.** On a terminal, bare `lola market` opens a picker over your marketplaces and the
+  known ones you have not enabled ([the picker](../reference/market.md#the-picker) has its keys).
+  - Tick rows with `x`, filter with `/`; Enter enables a known one or asks what to do with yours
+    (browse their entries, update, remove); `a` adds a source; Esc or `q` leaves.
+  - Nothing contacts a host until you press `u` (the ticked rows, or the cursor's) or `U` (every
+    row). Each git source's row shows its upstream status as it comes in: `up to date`, `update
+    available`, `upstream moved` (a marketplace registered at a commit: `--update` cannot move it, `u` moves it
+    after a confirmation) or `unreachable`, with
+    what to do (`u` retries, `--remove` forgets it). Then the footer asks once whether to update
+    those of yours that need it (`update acme? ⏎/y yes · esc/n no`). When most checks fail, one
+    banner says to check your network connection instead, and nothing is offered.
+  - `--json`, `--plain`, `--no-pager` and `--no-interactive` list instead, as does
+    `market_picker: false` in your [`config.yaml`](config-and-selections.md) for every run. A piped
+    stdout does not: scripts should pass `--plain` or `--json`.
 - **Listing and showing.** Neither fetches nor asks.
   - `lola market` lists `NAME`, `FORMAT` (`claude` or `lola-yaml`), `ENTRIES`, `SKIPPED`,
     `FETCHED` (`2 days ago`, or `not fetched` with the `--update` that fetches it) and `SOURCE`.
+  - `lola market --check` adds `STATUS` (a `"status"` key in `--json`, a last column in `--plain`): for each git
+    source with a fetched catalog, whether its remote's tip is still your cached commit (`up to date`), has moved
+    (`update available`; for a marketplace registered at a commit, `upstream moved`) or could not be asked
+    (`unreachable`); other sources show `-` (`""` in `--json`). It asks each remote for its tip, 8 at a time, 10 seconds
+    each, and fetches no catalog. It takes no name, entry or action.
   - `lola market <name>` shows the source, ref, commit, catalog file, fetch time, owner, version, description and any
     ssh hosts,
     every entry, by name, with its version, source kind, source, path, ref, commit and
@@ -503,5 +524,10 @@ is pinned to, the day it was reviewed and why it is listed. If this lola ships n
   commit again. A newer pin ships with a newer lola; update lola, then `lola market --known <id>`
   shows the commit it now names. To follow a branch instead, add the source yourself with
   `--add` and a `--ref`.
+- **The picker can move past the pin.** In the picker, `u` on an enabled known marketplace whose
+  remote has moved on reads `upstream moved` and offers the update, as for any marketplace
+  registered at a commit. Taking it shows the catalog
+  changes and asks `Update past the commit it is registered at?`; yes registers the remote's tip, a full commit SHA, as its ref and fetches it. The row then reads
+  `ahead of pin`, and later `--update` runs stay at that commit.
 - **The list is lola's.** There is no file of yours to edit and no remote directory; your own
   marketplaces are `--add`.

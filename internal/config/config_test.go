@@ -65,6 +65,28 @@ var _ = Describe("config.yaml", func() {
 		Expect(c.Pager).To(BeTrue())
 	})
 
+	It("reads market_picker, on by default", func() {
+		c, err := config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.MarketPicker).To(BeTrue())
+		write("version: 1\nmarket_picker: false\n")
+		c, err = config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.MarketPicker).To(BeFalse())
+		write("version: 1\nmarket_picker: true\n")
+		c, err = config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.MarketPicker).To(BeTrue())
+	})
+
+	It("refuses a market_picker that is not true or false, with a hint", func() {
+		write("version: 1\nmarket_picker: yes-please\n")
+		_, err := config.LoadConfig(path, "")
+		Expect(err).To(MatchError(ContainSubstring("market_picker")))
+		Expect(err).To(MatchError(ContainSubstring("must be true or false")))
+		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("market_picker: false")))
+	})
+
 	It("reads default_scope", func() {
 		write("# lola settings. Safe to edit by hand.\nversion: 1\ndefault_scope: both   # project | user | both\n")
 		c, err := config.LoadConfig(path, "")

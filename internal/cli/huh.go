@@ -1083,6 +1083,53 @@ func (h *huhForms) MarketName(st MarketNameStep) (string, error) {
 	return name, err
 }
 
+// MarketSource asks for a marketplace's source and an optional ref, as Add a source… of the module
+// picker does; Esc goes back to the marketplace picker.
+func (h *huhForms) MarketSource(MarketSourceStep) (string, string, error) {
+	var src, ref string
+	const srcDesc, refDesc = "a git repository, https:// archive or catalog file, or folder", "a git branch, tag or commit"
+	err := h.run(Nav{Back: true}, slices.Concat(h.described(srcDesc, huh.NewInput().Title("Marketplace source").Description(srcDesc).Value(&src)),
+		h.described(refDesc, huh.NewInput().Title("Ref (optional)").Description(refDesc).Value(&ref)))...)
+	if err != nil {
+		return "", "", err
+	}
+	return strings.TrimSpace(src), strings.TrimSpace(ref), nil
+}
+
+// MarketPicker runs the marketplace picker (marketPicker) inline on stderr, under the forms' break,
+// in the forms' theme; in accessible mode its numbered line prompt (marketPickerLines). A check
+// still running when it ends is cancelled. Ctrl+C, typed or as a signal, is ErrAborted; stdin
+// ending is errStdinEnded.
+func (h *huhForms) MarketPicker(st MarketPickerStep) (MarketPickerAnswer, error) {
+	if h.accessible {
+		return h.marketPickerLines(st)
+	}
+	t, err := h.theme()
+	if err != nil {
+		return MarketPickerAnswer{}, err
+	}
+	if h.hold != nil {
+		defer h.hold()()
+	}
+	if !h.ruled {
+		promptBreak(h.out, style{color: h.color, bold: h.bold}, h.width, false)
+		h.ruled = true
+	}
+	m := newMarketPicker(st, t.Theme(true), h.width, h.height)
+	final, err := runProgram(h.stdin, h.out, m, h.width, h.height)
+	if fm, ok := final.(marketPicker); ok {
+		m = fm
+	}
+	m.stopChecks()
+	switch {
+	case errors.Is(err, tea.ErrInterrupted), err == nil && m.aborted:
+		return MarketPickerAnswer{}, ErrAborted
+	case err != nil:
+		return MarketPickerAnswer{}, err
+	}
+	return m.answer, nil
+}
+
 // TidyPick offers lola tidy's candidates, filterable, preselecting st.Preselect: nothing at first,
 // the last answer when the user comes back from the keep step.
 func (h *huhForms) TidyPick(st TidyPickStep) ([]string, error) {

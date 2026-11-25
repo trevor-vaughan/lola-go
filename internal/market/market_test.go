@@ -799,6 +799,36 @@ var _ = Describe("names and lookup", func() {
 		Expect(err).To(MatchError(ContainSubstring("nope")))
 	})
 
+	It("replaces ref, keeping comments, order and the other keys, and adds it where there was none", func() {
+		in := []byte("# mine\nversion: 1\nmarkets:\n  - name: p\n    source: https://x.test/p.git\n    ref: " + strings.Repeat("a", 40) + "\n    path: sub # kept\n  - name: q\n    source: https://x.test/q.git\n")
+		out, err := market.SetRef(in, "p", strings.Repeat("b", 40))
+		Expect(err).NotTo(HaveOccurred())
+		out, err = market.SetRef(out, "q", strings.Repeat("1", 40))
+		Expect(err).NotTo(HaveOccurred())
+		reg, err := market.ParseRegistry("markets.yaml", out)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reg.Markets[0].Ref).To(Equal(strings.Repeat("b", 40)))
+		Expect(reg.Markets[0].Path).To(Equal("sub"))
+		Expect(reg.Markets[1].Ref).To(Equal(strings.Repeat("1", 40)), "an all-digit SHA stays a string")
+		Expect(string(out)).To(And(HavePrefix("# mine\n"), ContainSubstring("# kept")))
+		Expect(strings.Index(string(out), "name: p")).To(BeNumerically("<", strings.Index(string(out), "name: q")))
+	})
+
+	It("keeps the comment on the ref line it replaces", func() {
+		in := []byte("version: 1\nmarkets:\n  - name: p\n    source: https://x.test/p.git\n    ref: release # the branch I follow\n")
+		out, err := market.SetRef(in, "p", strings.Repeat("b", 40))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(out)).To(ContainSubstring("ref: " + strings.Repeat("b", 40) + " # the branch I follow"))
+	})
+
+	It("refuses to set the ref of a marketplace markets.yaml lacks", func() {
+		in := []byte("version: 1\nmarkets:\n  - name: p\n    source: https://x.test/p.git\n")
+		_, err := market.SetRef(in, "nope", strings.Repeat("b", 40))
+		Expect(err).To(MatchError("marketplace nope is not in markets.yaml"))
+		_, err = market.SetRef(nil, "p", strings.Repeat("b", 40))
+		Expect(err).To(MatchError("marketplace p is not in markets.yaml"))
+	})
+
 	It("adds a registration with its ssh hosts", func() {
 		out, err := market.AddRegistration(nil, market.Registration{Name: "p", Source: "https://x.test/p.git", SSHHosts: []string{"a.test"}})
 		Expect(err).NotTo(HaveOccurred())

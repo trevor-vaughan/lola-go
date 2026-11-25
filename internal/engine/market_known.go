@@ -119,6 +119,81 @@ func (e *Engine) EnableKnown(ctx context.Context, id, name string, req MarketAdd
 	return res, k, nil
 }
 
+// UpdateKnownPastPin moves the git marketplace name to the tip of its remote (of its branch or tag
+// when its ref names one, else the default branch) and registers that
+// full commit SHA as its ref, so later --update runs stay there. It learns the tip without
+// fetching (e.RemoteTip), reads the catalog at it as a dry --update would and asks confirm, with
+// that -n result, before anything is written; a non-nil error from confirm stops the run and is its
+// error, and -n and a nil confirm ask nothing. It then rewrites the ref under the markets write
+// lock, which refuses a registration that changed meanwhile, and fetches the commit. A failed
+// fetch is the run's error and writes nothing. req carries the run's dry-run, display and ssh
+// settings; its names are replaced.
+func (e *Engine) UpdateKnownPastPin(ctx context.Context, name string, req MarketUpdateRequest, confirm func(*MarketResult) error) (*MarketResult, error) {
+	r, err := e.pastPinTarget(name, req.Display)
+	if err != nil {
+		return nil, err
+	}
+	tipOf := e.RemoteTip
+	if tipOf == nil {
+		tipOf = source.RemoteTip
+	}
+	tip, err := tipOf(ctx, source.Spec{Kind: source.KindGit, Location: r.Source, Ref: r.Ref})
+	if err != nil {
+		return nil, err
+	}
+	if !source.IsFullCommit(tip) {
+		return nil, fmt.Errorf("%s: the remote's tip is not a full commit SHA", shown(r.Source))
+	}
+	past := &pastPin{reg: r, tip: tip}
+	req.Names, req.All = []string{name}, false
+	run := func(dry bool, pick func(MarketSSHStep) ([]string, error)) (*MarketResult, error) {
+		q := req
+		q.DryRun, q.PickSSH = dry, pick
+		res, err := e.updateMarkets(ctx, q, past)
+		if err != nil {
+			return nil, err
+		}
+		if out := res.Updates[0]; out.Outcome == MarketStopped {
+			return nil, ctx.Err()
+		} else if out.Err != nil {
+			return nil, out.Err
+		}
+		return res, nil
+	}
+	preview, err := run(true, nil)
+	if err != nil || req.DryRun {
+		return preview, err
+	}
+	if confirm != nil {
+		if err := confirm(preview); err != nil {
+			return nil, err
+		}
+	}
+	return run(false, req.PickSSH)
+}
+
+// pastPinTarget is the registration of name that UpdateKnownPastPin moves: a git source, the
+// only kind a commit can pin. A name you have not registered is refused as every --update does.
+func (e *Engine) pastPinTarget(name string, display []string) (market.Registration, error) {
+	unlock, err := e.readMarkets(true)
+	if err != nil {
+		return market.Registration{}, err
+	}
+	defer unlock()
+	reg, _, err := e.registry()
+	if err != nil {
+		return market.Registration{}, err
+	}
+	r := reg.Find(name)
+	if r == nil {
+		return market.Registration{}, noMarket(reg, name, func(c string) []string { return []string{c, "--update"} }, display)
+	}
+	if market.IsCatalogURL(r.Source) || !source.IsGitForm(r.Source) {
+		return market.Registration{}, fmt.Errorf("%s is not a git repository, so no commit pins it", shown(r.Name))
+	}
+	return *r, nil
+}
+
 // unknownKnown refuses id, which the seed lacks, naming the ids it has and hinting their list.
 func unknownKnown(id string, seed []market.KnownMarket, display []string) error {
 	ids := make([]string, len(seed))

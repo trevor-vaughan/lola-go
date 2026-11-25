@@ -58,6 +58,12 @@ type Prompter interface {
 	// MarketEntry asks which marketplace entry a bare name your cache lacks means,
 	// answering its address.
 	MarketEntry(MarketEntryStep) (string, error)
+	// MarketPicker asks lola market's picker (MarketPickerStep): what to do with which of your
+	// marketplaces and the known ones. Ctrl+C is ErrAborted; Esc and q answer PickerCancel.
+	MarketPicker(MarketPickerStep) (MarketPickerAnswer, error)
+	// MarketSource asks the picker's Add a source… for the source of a marketplace and an optional
+	// ref, trimmed; an empty source is no answer, and Esc is ErrBack: both go back to the picker.
+	MarketSource(MarketSourceStep) (source, ref string, err error)
 	// TidyPick asks which of lola tidy's candidates move to the trash: a
 	// filterable multi-select, nothing preselected, answering the IDs of the options chosen.
 	TidyPick(TidyPickStep) ([]string, error)
@@ -177,6 +183,10 @@ type TidyKeepStep struct {
 type MarketNameStep struct {
 	Why, Value, Problem string
 }
+
+// MarketSourceStep asks for the source of the marketplace the picker's Add a source… adds; it
+// carries nothing, since lola market --add's own questions (another name, ssh hosts) follow it.
+type MarketSourceStep struct{}
 
 // SSHHostStep offers the ssh hosts a catalog names that you have not allowed, each with the entries
 // it would admit; nothing is preselected. Nav places it for Esc: it goes back to the name question
@@ -490,6 +500,12 @@ func (noPrompter) MarketName(MarketNameStep) (string, error)    { return "", err
 func (noPrompter) SSHHosts(SSHHostStep) ([]string, error)       { return nil, errNoTerminal }
 func (noPrompter) MarketEntry(MarketEntryStep) (string, error)  { return "", errNoTerminal }
 func (noPrompter) TidyPick(TidyPickStep) ([]string, error)      { return nil, errNoTerminal }
+func (noPrompter) MarketPicker(MarketPickerStep) (MarketPickerAnswer, error) {
+	return MarketPickerAnswer{}, errNoTerminal
+}
+func (noPrompter) MarketSource(MarketSourceStep) (string, string, error) {
+	return "", "", errNoTerminal
+}
 func (noPrompter) Members(MembersStep) ([]string, error)        { return nil, errNoTerminal }
 func (noPrompter) TidyKeep(TidyKeepStep) ([]string, error)      { return nil, errNoTerminal }
 func (noPrompter) TrashPick(TrashPickStep) (TrashAnswer, error) { return TrashAnswer{}, errNoTerminal }

@@ -58,7 +58,13 @@ only with a newer lola.
 
 Run `task release:known` (the release checklist does). Per entry it prints the pin, the upstream
 head and whether they differ, and enables the pin in a throwaway environment. A moved head is
-only a note. To move a pin, read what changed between the commits (the catalog file above all),
+only a note. So is a redirect: `git` follows HTTP redirects silently, so a renamed or transferred
+repository still passes while the URL in `known.yaml` is stale. The script asks the source's git
+endpoint for its final URL and prints `note: the source redirects to <url>`; a trailing slash or
+`.git` difference is not reported, and a source that is not `http(s)` is not checked. A
+repository that is gone fails instead. On a redirect, check the new location is the same project
+and owner (a redirect can also be a reused name), then set the new `source`, re-pin and run the
+task again. To move a pin, read what changed between the commits (the catalog file above all),
 check the criteria still hold, set the new `commit` and `curated`, and run the task again.
 
 ## Drop an entry

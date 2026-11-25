@@ -1349,6 +1349,19 @@ func marketChanges(name string, was *market.Catalog, now market.Catalog) []Marke
 // --update reported. The ssh hosts each allows are the stored ones, plus for one marketplace the
 // --ssh-host values, plus what the picker ticks on a terminal.
 func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*MarketResult, error) {
+	return e.updateMarkets(ctx, req, nil)
+}
+
+// pastPin is a marketplace as it was registered and the commit its ref is to become.
+type pastPin struct {
+	reg market.Registration
+	tip string
+}
+
+// updateMarkets is UpdateMarkets, and with past set (req naming only past.reg) fetches at
+// past.tip and, unless dry, makes it the registration's ref, failing as an update does when the
+// registration is no longer past.reg.
+func (e *Engine) updateMarkets(ctx context.Context, req MarketUpdateRequest, past *pastPin) (*MarketResult, error) {
 	flagHosts, err := checkedHosts(req.SSHHosts)
 	if err != nil {
 		return nil, err
@@ -1426,7 +1439,11 @@ func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*M
 			res.Updates = append(res.Updates, out)
 			continue
 		}
-		f, was, hosts, err := e.updateMarket(ctx, r, flagHosts, req.DryRun, req.PickSSH, &unlock)
+		tip := ""
+		if past != nil {
+			r, tip = past.reg, past.tip
+		}
+		f, was, hosts, err := e.updateMarket(ctx, r, tip, flagHosts, req.DryRun, req.PickSSH, &unlock)
 		switch {
 		case err != nil && ctx.Err() != nil:
 			stopped, out.Outcome = true, MarketStopped
@@ -1434,7 +1451,11 @@ func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*M
 			out.Outcome, out.Err = MarketFailed, err
 			out.Error, out.Hints = untrusted.CleanErr(err).Error(), append([]string{}, errs.Hints(err)...)
 		default:
-			res.Markets = append(res.Markets, e.marketRow(r, &cachedMarket{pin: f.pin, cat: f.cat}))
+			row := r
+			if tip != "" {
+				row.Ref = tip
+			}
+			res.Markets = append(res.Markets, e.marketRow(row, &cachedMarket{pin: f.pin, cat: f.cat}))
 			var old *market.Catalog
 			if was != nil {
 				old = &was.cat
@@ -1478,8 +1499,9 @@ func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*M
 // shared lock, which it gives back and takes again. The catalog is read with r's ssh hosts, extra
 // (checked --ssh-host values) and what pick ticks (nil: not asked); r's stored hosts are replaced
 // by those, in the same write, when they differ. It returns the fetch, the cached catalog it
-// replaces (nil for none, or one that cannot be read) and the hosts the run allows.
-func (e *Engine) updateMarket(ctx context.Context, r market.Registration, extra []string, dry bool, pick func(MarketSSHStep) ([]string, error),
+// replaces (nil for none, or one that cannot be read) and the hosts the run allows. A tip (a commit
+// SHA) is fetched in place of r's ref and, unless dry, written as the ref in the same write.
+func (e *Engine) updateMarket(ctx context.Context, r market.Registration, tip string, extra []string, dry bool, pick func(MarketSSHStep) ([]string, error),
 	unlock *func()) (_ *fetchedMarket, _ *cachedMarket, _ []string, err error) {
 	was, _ := e.loadMarket(r) // an unreadable cache is replaced, and every entry reads as added
 	run, done, err := e.runDir()
@@ -1488,7 +1510,11 @@ func (e *Engine) updateMarket(ctx context.Context, r market.Registration, extra 
 	}
 	defer func() { err = errors.Join(err, done()) }()
 	base := market.NormalizeHosts(slices.Concat(r.SSHHosts, extra))
-	f, err := e.fetchMarket(ctx, registrySource(r), r.Name, r.Path, "", run, base, nil, "")
+	at := r
+	if tip != "" {
+		at.Ref = tip
+	}
+	f, err := e.fetchMarket(ctx, registrySource(at), r.Name, r.Path, "", run, base, nil, "")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -1520,12 +1546,19 @@ func (e *Engine) updateMarket(ctx context.Context, r market.Registration, extra 
 		if err := e.writeMarket(r.Name, f); err != nil {
 			return err
 		}
-		if slices.Equal(hosts, r.SSHHosts) {
+		if tip == "" && slices.Equal(hosts, r.SSHHosts) {
 			return nil
 		}
-		nb, err := market.SetSSHHosts(b, r.Name, hosts)
-		if err != nil {
-			return fmt.Errorf("%s: %w", shown(e.Paths.Markets), err)
+		nb := b
+		if tip != "" {
+			if nb, err = market.SetRef(nb, r.Name, tip); err != nil {
+				return fmt.Errorf("%s: %w", shown(e.Paths.Markets), err)
+			}
+		}
+		if !slices.Equal(hosts, r.SSHHosts) {
+			if nb, err = market.SetSSHHosts(nb, r.Name, hosts); err != nil {
+				return fmt.Errorf("%s: %w", shown(e.Paths.Markets), err)
+			}
 		}
 		return writeRegistry(e.Paths.Markets, nb)
 	}()

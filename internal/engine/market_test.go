@@ -80,6 +80,22 @@ var _ = Describe("marketplaces", func() {
 	}
 	add := func(req engine.MarketAddRequest) (*engine.MarketResult, error) { return e.AddMarket(ctx, req) }
 
+	It("fails, with no statuses, when the run is cancelled while CheckedMarkets checks", func() {
+		url, _ := repo("acme", acme())
+		_, err := add(engine.MarketAddRequest{Source: url})
+		Expect(err).NotTo(HaveOccurred())
+		run, cancel := context.WithCancel(ctx)
+		defer cancel()
+		e.RemoteTip = func(c context.Context, _ source.Spec) (string, error) {
+			cancel()
+			<-c.Done()
+			return "", c.Err()
+		}
+		rows, _, err := e.CheckedMarkets(run, nil)
+		Expect(err).To(MatchError(context.Canceled))
+		Expect(rows).To(BeNil())
+	})
+
 	It("applies the registration's ssh hosts to the cached catalog on every read", func() {
 		url, _ := repo("priv", map[string]string{".claude-plugin/marketplace.json": sshCatalog})
 		_, err := add(engine.MarketAddRequest{Name: "priv", Source: url})
@@ -1364,6 +1380,144 @@ var _ = Describe("marketplaces", func() {
 				Expect(v.Commit).To(Equal(pin))
 				Expect(v.Entries).To(HaveLen(2))
 			}
+		})
+
+		Describe("past lola's pin", func() {
+			var later string
+			// movedOn enables acme at its pin, then adds a catalog entry upstream whose commit the
+			// seam reports as the remote tip.
+			movedOn := func() {
+				_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
+				Expect(err).NotTo(HaveOccurred())
+				files := acme()
+				files[".claude-plugin/marketplace.json"] = strings.Replace(acmeCatalog, `{"name": "npmx"`, `{"name": "later", "source": {"source": "url", "url": "https://lola.test/later.git"}},{"name": "npmx"`, 1)
+				_, later = repo("kn", files)
+				Expect(later).NotTo(Equal(pin))
+				e.RemoteTip = func(context.Context, source.Spec) (string, error) { return later, nil }
+			}
+			yes := func(*engine.MarketResult) error { return nil }
+
+			It("registers the tip's full commit SHA as the ref and fetches it", func() {
+				movedOn()
+				var preview *engine.MarketResult
+				res, err := e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, func(r *engine.MarketResult) error { preview = r; return nil })
+				Expect(err).NotTo(HaveOccurred())
+				Expect(later).To(MatchRegexp(`^[0-9a-f]{40}$`))
+				b, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(b)).To(ContainSubstring("ref: " + later))
+				Expect(string(b)).NotTo(ContainSubstring(pin))
+				Expect(res.Updates).To(ConsistOf(HaveField("Outcome", engine.MarketUpdated)))
+				Expect(res.Markets).To(ConsistOf(And(HaveField("Ref", later), HaveField("Commit", later))))
+				Expect(preview.DryRun).To(BeTrue())
+				Expect(preview.Updates).To(ConsistOf(HaveField("Outcome", engine.MarketWouldUpdate)))
+				Expect(preview.Changes).To(ContainElement(And(HaveField("Entry", "later"), HaveField("Change", "added"))))
+				v, err := e.ShowMarket("acme", nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(v.Entries).To(HaveLen(3))
+			})
+
+			It("moves a marketplace registered on a branch along that branch, not to the default branch", func() {
+				work := filepath.Join(tmp, "work", "kn")
+				gitIn(work, "checkout", "-q", "-b", "release")
+				repo("kn", map[string]string{"release.txt": "1"})
+				gitIn(work, "checkout", "-q", "main")
+				_, mainTip := repo("kn", map[string]string{"main.txt": "1"})
+				_, err := add(engine.MarketAddRequest{Name: "br", Source: url, Ref: "release"})
+				Expect(err).NotTo(HaveOccurred())
+				gitIn(work, "checkout", "-q", "release")
+				_, releaseTip := repo("kn", map[string]string{"release.txt": "2"})
+				gitIn(work, "checkout", "-q", "main")
+				repo("kn", map[string]string{"main.txt": "2"})
+				Expect(releaseTip).NotTo(Equal(mainTip))
+				res, err := e.UpdateKnownPastPin(ctx, "br", engine.MarketUpdateRequest{}, yes)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(res.Markets).To(ConsistOf(And(HaveField("Name", "br"), HaveField("Ref", releaseTip), HaveField("Commit", releaseTip))))
+				b, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(b)).To(ContainSubstring("ref: " + releaseTip))
+			})
+
+			It("keeps the marketplace on the new commit through a plain --update", func() {
+				movedOn()
+				_, err := e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, yes)
+				Expect(err).NotTo(HaveOccurred())
+				files := acme()
+				files[".claude-plugin/marketplace.json"] = strings.Replace(acmeCatalog, `{"name": "npmx"`, `{"name": "latest", "source": {"source": "url", "url": "https://lola.test/latest.git"}},{"name": "npmx"`, 1)
+				_, latest := repo("kn", files)
+				Expect(latest).NotTo(Equal(later))
+				_, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"acme"}})
+				Expect(err).NotTo(HaveOccurred())
+				v, err := e.ShowMarket("acme", nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(v.Ref).To(Equal(later))
+				Expect(v.Commit).To(Equal(later))
+			})
+
+			It("writes nothing and keeps the cache when confirm refuses", func() {
+				movedOn()
+				before, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, func(*engine.MarketResult) error { return errors.New("declined") })
+				Expect(err).To(MatchError("declined"))
+				Expect(os.ReadFile(p.Markets)).To(Equal(before))
+				v, err := e.ShowMarket("acme", nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(v.Commit).To(Equal(pin))
+				Expect(v.Entries).To(HaveLen(2))
+			})
+
+			It("writes nothing under -n and asks nothing", func() {
+				movedOn()
+				before, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				res, err := e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{DryRun: true}, func(*engine.MarketResult) error {
+					return errors.New("asked")
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(res.DryRun).To(BeTrue())
+				Expect(res.Updates).To(ConsistOf(HaveField("Outcome", engine.MarketWouldUpdate)))
+				Expect(os.ReadFile(p.Markets)).To(Equal(before))
+				v, err := e.ShowMarket("acme", nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(v.Commit).To(Equal(pin))
+			})
+
+			It("refuses a registration that changed while lola was confirming", func() {
+				movedOn()
+				_, err := e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, func(*engine.MarketResult) error {
+					b, err := os.ReadFile(p.Markets)
+					Expect(err).NotTo(HaveOccurred())
+					nb, err := market.SetRef(b, "acme", strings.Repeat("c", 40))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(os.WriteFile(p.Markets, nb, 0o600)).To(Succeed())
+					return nil
+				})
+				Expect(err).To(MatchError(ContainSubstring("acme changed in markets.yaml while lola fetched it")))
+			})
+
+			It("refuses a name you have not registered, and a source that is not git", func() {
+				movedOn()
+				_, err := e.UpdateKnownPastPin(ctx, "nope", engine.MarketUpdateRequest{}, yes)
+				Expect(err).To(MatchError(ContainSubstring("you have no marketplace nope")))
+				b, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				nb, err := market.AddRegistration(b, market.Registration{Name: "flat", Source: "https://example.test/catalog.json"})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(os.WriteFile(p.Markets, nb, 0o600)).To(Succeed())
+				_, err = e.UpdateKnownPastPin(ctx, "flat", engine.MarketUpdateRequest{}, yes)
+				Expect(err).To(MatchError(ContainSubstring("flat is not a git repository")))
+			})
+
+			It("reports a remote that cannot be reached, writing nothing", func() {
+				movedOn()
+				before, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				e.RemoteTip = func(context.Context, source.Spec) (string, error) { return "", errors.New("no route") }
+				_, err = e.UpdateKnownPastPin(ctx, "acme", engine.MarketUpdateRequest{}, yes)
+				Expect(err).To(MatchError(ContainSubstring("no route")))
+				Expect(os.ReadFile(p.Markets)).To(Equal(before))
+			})
 		})
 
 		It("reads the catalog under the seed's path and registers it as the name given", func() {

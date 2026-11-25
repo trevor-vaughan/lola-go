@@ -117,6 +117,132 @@ var _ = Describe("lola market", func() {
 		Expect(r.out).To(Equal("updated\tacme\nchange\tchanged\tacme\tformatter\tcommit,version\n"))
 	})
 
+	Describe("--check", func() {
+		BeforeEach(func() {
+			Expect(lola("market", "--add", url).code).To(Equal(0))
+		})
+
+		It("leaves lola market --json without a status key unless asked", func() {
+			r := lola("market", "--json")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).NotTo(ContainSubstring(`"status"`))
+		})
+
+		It("adds each market's upstream status to --json, and a changed remote to update available", func() {
+			r := lola("market", "--json", "--check")
+			Expect(r.code).To(Equal(0), r.err)
+			var list struct {
+				Markets []map[string]any `json:"markets"`
+			}
+			Expect(json.Unmarshal([]byte(r.out), &list)).To(Succeed())
+			Expect(list.Markets).To(HaveLen(1))
+			Expect(list.Markets[0]).To(HaveKeyWithValue("status", "up to date"))
+			Expect(list.Markets[0]).To(HaveKeyWithValue("commit", commit))
+
+			publish(map[string]string{"README": "more"})
+			r = lola("market", "--json", "--check")
+			Expect(json.Unmarshal([]byte(r.out), &list)).To(Succeed())
+			Expect(list.Markets[0]).To(HaveKeyWithValue("status", "update available"))
+		})
+
+		It("says upstream moved, not update available, for a marketplace registered at a commit the remote has left", func() {
+			Expect(lola("market", "pinned", "--add", url, "--ref", commit).code).To(Equal(0))
+			publish(map[string]string{"README": "more"})
+			r := lola("market", "--json", "--check")
+			Expect(r.code).To(Equal(0), r.err)
+			var list struct {
+				Markets []map[string]any `json:"markets"`
+			}
+			Expect(json.Unmarshal([]byte(r.out), &list)).To(Succeed())
+			Expect(list.Markets).To(HaveLen(2))
+			Expect(list.Markets[0]).To(And(HaveKeyWithValue("name", "acme"), HaveKeyWithValue("status", "update available")))
+			Expect(list.Markets[1]).To(And(HaveKeyWithValue("name", "pinned"), HaveKeyWithValue("status", "upstream moved")))
+		})
+
+		It("says upstream moved for a commit ref written in upper case in markets.yaml by hand", func() {
+			Expect(lola("market", "pinned", "--add", url, "--ref", commit).code).To(Equal(0))
+			markets := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "markets.yaml")
+			b, err := os.ReadFile(markets)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(b)).To(ContainSubstring("ref: " + commit + "\n"))
+			upper := strings.ToUpper(commit)
+			Expect(os.WriteFile(markets, []byte(strings.Replace(string(b), "ref: "+commit, "ref: "+upper, 1)), 0o600)).To(Succeed())
+			r := lola("market", "pinned", "--update")
+			Expect(r.code).To(Equal(0), r.err)
+			publish(map[string]string{"README": "more"})
+			r = lola("market", "--json", "--check")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring(`"ref": "` + upper + `"`))
+			var list struct {
+				Markets []map[string]any `json:"markets"`
+			}
+			Expect(json.Unmarshal([]byte(r.out), &list)).To(Succeed())
+			Expect(list.Markets[1]).To(And(HaveKeyWithValue("name", "pinned"), HaveKeyWithValue("status", "upstream moved")))
+		})
+
+		It("says unreachable when the remote is gone", func() {
+			Expect(os.RemoveAll(filepath.Join(tmp, "srv", "plugins.git"))).To(Succeed())
+			r := lola("market", "--json", "--check")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring(`"status": "unreachable"`))
+		})
+
+		It("leaves the status of a folder marketplace empty in --json", func() {
+			dir := filepath.Join(tmp, "local")
+			writeTree(dir, map[string]string{".claude-plugin/marketplace.json": `{"name": "local", "owner": {"name": "L"}, "plugins": []}`})
+			r := lola("market", "--add", dir)
+			Expect(r.code).To(Equal(0), r.err)
+			r = lola("market", "--json", "--check")
+			Expect(r.code).To(Equal(0), r.err)
+			var list struct {
+				Markets []map[string]any `json:"markets"`
+			}
+			Expect(json.Unmarshal([]byte(r.out), &list)).To(Succeed())
+			Expect(list.Markets).To(HaveLen(2))
+			Expect(list.Markets[1]).To(And(HaveKeyWithValue("name", "local"), HaveKeyWithValue("status", "")))
+		})
+
+		It("prints the status in the table and as the last --plain column", func() {
+			r := lola("market", "--check")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(MatchRegexp(`^NAME +FORMAT +ENTRIES +SKIPPED +FETCHED +SOURCE +STATUS\nacme +claude +2 +1 +just now +` + regexpQuote(url) + ` +up to date\n$`))
+			r = lola("market", "--check", "--plain")
+			Expect(r.out).To(HaveSuffix("\t.claude-plugin/marketplace.json\tup to date\n"))
+		})
+
+		It("is refused with a name, an entry, or an action, and the hint is the run without it", func() {
+			for _, args := range [][]string{{"acme"}, {"acme", "formatter"}, {"--known"}, {"acme", "--update"}, {"--add", url}, {"set", "acme"}} {
+				r := lola(append([]string{"market", "--check"}, args...)...)
+				Expect(r.code).NotTo(Equal(0), strings.Join(args, " "))
+				Expect(r.err).To(ContainSubstring("--check lists your marketplaces' upstream status"), strings.Join(args, " "))
+				Expect(r.err).To(ContainSubstring("hint: lola market --check\n"), strings.Join(args, " "))
+			}
+		})
+	})
+
+	It("refuses --no-interactive with a name, an entry or an action, and the hint is the run without it", func() {
+		Expect(lola("market", "--add", url).code).To(Equal(0))
+		for _, tc := range []struct{ args []string }{
+			{[]string{"acme"}}, {[]string{"acme", "formatter"}}, {[]string{"acme", "--update"}}, {[]string{"--add", url}},
+			{[]string{"acme", "--remove"}}, {[]string{"--enable", "kn"}}, {[]string{"--known"}}, {[]string{"set", "acme"}},
+		} {
+			args := append([]string{"market"}, tc.args...)
+			r := lola(append(args, "--no-interactive")...)
+			what := strings.Join(tc.args, " ")
+			Expect(r.code).NotTo(Equal(0), what)
+			Expect(r.err).To(ContainSubstring("--no-interactive applies to a bare lola market only"), what)
+			Expect(r.err).To(ContainSubstring("hint: lola "+strings.Join(args, " ")+"\n"), what)
+		}
+		r := lola("market", "--no-interactive", "--check")
+		Expect(r.code).To(Equal(0), r.err)
+	})
+
+	It("lists --no-interactive among its flags", func() {
+		r := lola("help", "market")
+		Expect(r.out).To(ContainSubstring("--no-interactive"))
+		Expect(r.out).To(ContainSubstring("--check"))
+	})
+
 	It("installs @market/module, showing where it resolved before anything is asked, and records where it came from", func() {
 		Expect(lola("market", "--add", url).code).To(Equal(0))
 		r := lola("install", "@acme/formatter", "--user", "-t", "claude-code")

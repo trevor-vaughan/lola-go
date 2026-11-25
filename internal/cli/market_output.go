@@ -42,23 +42,35 @@ func marketLine(r engine.MarketRow) string {
 // printMarkets prints lola market's listing: a table of your marketplaces, then
 // the notices. --plain rows are name, format, entries, skipped, fetched_at ("" when not fetched),
 // source, ref and path.
-func printMarkets(w io.Writer, s style, rows []engine.MarketRow, notices []engine.Notice) {
+func printMarkets(w io.Writer, s style, rows []engine.MarketRow, status []string, notices []engine.Notice) {
 	switch {
 	case s.plain:
-		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\n", r.Name, r.Format, r.Entries, r.Skipped, r.FetchedAt, r.Source, r.Ref, r.Path)
+		for i, r := range rows {
+			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s", r.Name, r.Format, r.Entries, r.Skipped, r.FetchedAt, r.Source, r.Ref, r.Path)
+			if status != nil {
+				fmt.Fprintf(w, "\t%s", status[i])
+			}
+			fmt.Fprintln(w)
 		}
 	case len(rows) == 0:
 		fmt.Fprintln(w, "no marketplaces yet; lola market --add <source> adds one")
 	default:
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "NAME\tFORMAT\tENTRIES\tSKIPPED\tFETCHED\tSOURCE")
-		for _, r := range rows {
+		header := "NAME\tFORMAT\tENTRIES\tSKIPPED\tFETCHED\tSOURCE"
+		if status != nil {
+			header += "\tSTATUS"
+		}
+		fmt.Fprintln(tw, header)
+		for i, r := range rows {
 			entries, skipped := "-", "-"
 			if r.FetchedAt != "" {
 				entries, skipped = fmt.Sprint(r.Entries), fmt.Sprint(r.Skipped)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, cmp.Or(r.Format, "-"), entries, skipped, r.Fetched, r.Source)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s", r.Name, cmp.Or(r.Format, "-"), entries, skipped, r.Fetched, r.Source)
+			if status != nil {
+				fmt.Fprintf(tw, "\t%s", cmp.Or(status[i], "-"))
+			}
+			fmt.Fprintln(tw)
 		}
 		_ = tw.Flush()
 	}

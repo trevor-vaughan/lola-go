@@ -94,7 +94,7 @@ func (e *Engine) fetchCatalogs(ctx context.Context, sc Scope, req SyncRequest) (
 		if _, done := out.fetched[ref.Name]; done || out.failed[ref.Name] || r == nil || !sameMarketSource(*r, ref.Source) {
 			continue
 		}
-		f, _, _, err := e.updateMarket(ctx, *r, nil, req.Options.DryRun, nil, &unlock)
+		f, _, _, err := e.updateMarket(ctx, *r, "", nil, req.Options.DryRun, nil, &unlock)
 		if err != nil {
 			if ctx.Err() != nil {
 				unlock()

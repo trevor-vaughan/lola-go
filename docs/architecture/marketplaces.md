@@ -195,6 +195,37 @@ the engine's.
   hands the result to the confirm (the CLI's `app.confirm`: the question, or the refusal that
   carries the plan under `--json`), and only then adds. The CLI passes none under `-y` or `-n`,
   and never a `Rename` or `PickSSH`: collisions are refused with the `--enable` under a free name.
+- **The picker and `--check`** (`internal/engine/market_picker.go`) never fetch.
+  - `PickerRows` is `Markets` split in two: your marketplaces, an enabled known one (the seed's id
+    as its name, the seed's source) marked `Known`, `Enabled` and `AheadOfPin` (registered at a
+    full commit other than the seed's); then the seed entries not enabled, in seed order. A known
+    id at another source is yours alone.
+  - `CheckMarkets` runs `checkRow` for each `Checkable` row (a git form, not a catalog URL, with a
+    fetched catalog or a known row not enabled), 8 at a time, 10 s each, through
+    `Engine.RemoteTip` (`source.RemoteTip`: `git ls-remote` through `runGit`'s scrubbed
+    environment; `HEAD` for no ref or a commit ref). It compares the tip with the cached commit
+    (the seed's pin for a known row not enabled): `up to date`, else `upstream moved` for a row
+    registered at a full commit (`PickerRow.AtCommit`) or a known row not enabled, else `update
+    available`; any error is `unreachable` with its
+    `untrusted.CleanErr` reason. Cancelling the context drops the checks not yet started.
+  - `Classify` is the banner rule: at least two `unreachable` and more than half of the checks.
+  - `CheckedMarkets` serves `--check`: your rows with every check waited for; rows not checked keep
+    `""`.
+  - `UpdateKnownPastPin` (`market_known.go`) moves a git marketplace, known or yours, to its
+    remote's tip: a dry `updateMarkets` at the tip for the confirm, then `market.SetRef` rewrites the
+    registration's `ref` to the full SHA under the markets write lock (refusing a registration
+    that changed meanwhile), then the fetch. Moving the seed's own pin is the maintainers' review
+    ([Refresh a pin](../maintainers/known-markets.md#refresh-a-pin)).
+  - In the CLI, `marketPickerOpens` is the gate, `marketPick` the loop (rows read again, the
+    answer acted on, the picker opened again) and `market_picker.go` the Bubble Tea model: each
+    `u` (its rows) or `U` (every row) starts a numbered run whose results are read one at a time
+    and dropped once another run starts or the picker closes. When the run ends, `endRun` applies
+    `Classify` and, without the banner, offers the run's rows of yours that read `update
+    available` or `upstream moved`, or that are not `Checkable`; the answer is `PickerUpdate`, and
+    `marketPickUpdate` moves each one registered at a commit (`AtCommit`, the rule `checkRow`'s
+    `upstream moved` uses) with `UpdateKnownPastPin` and updates the rest as `--update`. `pickerSaid` prints an action's error or a declined question's
+    cancel line and goes back to the picker; `pickerEnded` ends the run on Ctrl+C. The states are in
+    [TUI flows](tui-flows.md#market-picker).
 - **Hints** are bare commands (`MarketRun`, quoted by `errs.ShellJoin`, every argument through
   `untrusted.Text`), carrying the run's output flags (`--json`, `--plain`, `--no-pager`, as lola
   profile's hints do; `Display`) and exactly these other flags:

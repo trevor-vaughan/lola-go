@@ -4,14 +4,17 @@
 # pinned commit, and proves the pin still works: the source is a git repository, and
 # `lola market --enable <id> -n -y` fetches the pinned commit and reads its catalog, in a
 # throwaway HOME and XDG_* so no real configuration is touched. A moved head is a note, not a
-# failure: whether to re-pin is the maintainer's call. A failed check is a failure.
-# Needs network, git, jq, timeout (each network call is bounded). Exits 1 if any entry fails. Usage: known-markets-refresh.sh <lola>
+# failure: whether to re-pin is the maintainer's call. So is a source that redirects (git follows
+# redirects silently, so a renamed repository still passes while the shipped URL is stale). A
+# failed check is a failure.
+# Needs network, git, curl, jq, timeout (each network call is bounded). Exits 1 if any entry
+# fails. Usage: known-markets-refresh.sh <lola>
 set -uo pipefail
 
 lola="${1:?usage: known-markets-refresh.sh <lola>}"
 lola="$(realpath "$lola")"
 
-for tool in git jq timeout; do
+for tool in git curl jq timeout; do
   command -v "$tool" >/dev/null || {
     echo "error: $tool is required and was not found on PATH" >&2
     exit 1
@@ -33,6 +36,29 @@ entries="$("$lola" market --known --json | jq -r '.known[] | [.id, .source, .com
   exit 1
 }
 
+# redirect_note <source>: prints a note when an http(s) source answers git's discovery request
+# from another URL. A trailing slash or `.git` difference is not a move. The final URL is
+# author-influenced, so control characters are stripped before it is printed.
+redirect_note() {
+  local source="$1" final want got
+  [[ "$source" =~ ^https?:// ]] || {
+    echo "  note: redirects are not checked for a source that is not http(s)"
+    return
+  }
+  final="$(timeout 60 curl -s -L --max-redirs 5 --max-time 50 --proto '=http,https' \
+    --proto-redir '=http,https' -o /dev/null -w '%{url_effective}' \
+    "$source/info/refs?service=git-upload-pack")" || {
+    echo "  note: could not check whether the source redirects"
+    return
+  }
+  final="${final%/info/refs\?service=git-upload-pack}"
+  want="${source%/}"
+  got="${final%/}"
+  if [[ "${want%.git}" != "${got%.git}" ]]; then
+    echo "  note: the source redirects to $(tr -d '[:cntrl:]' <<<"$final"); update known.yaml if the move is permanent"
+  fi
+}
+
 failed=0
 while IFS=$'\t' read -r id source pin; do
   echo "== $id ($source)"
@@ -44,6 +70,7 @@ while IFS=$'\t' read -r id source pin; do
   fi
   echo "  pin:  $pin"
   echo "  head: $head"
+  redirect_note "$source"
   if [[ "$head" == "$pin" ]]; then
     echo "  pin is the head"
   else

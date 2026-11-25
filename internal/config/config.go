@@ -42,6 +42,7 @@ const themeHint = "write theme: dark or theme: light, for your terminal's backgr
 type Config struct {
 	DefaultScope string // "", project, user or both
 	Pager        bool   // show output taller than the terminal in the viewer; pager: false turns it off
+	MarketPicker bool   // open the marketplace picker for a bare lola market on a terminal; market_picker: false turns it off
 	// PreInstall and PostInstall are the user's own install scripts, which wrap every
 	// module copy a run installs or replaces; Path "" for none.
 	PreInstall, PostInstall Script
@@ -121,7 +122,7 @@ type Script struct {
 // LoadConfig reads config.yaml; a missing or empty file is the default configuration. home
 // expands a script path's leading ~/.
 func LoadConfig(path, home string) (*Config, error) {
-	c := &Config{Pager: true}
+	c := &Config{Pager: true, MarketPicker: true}
 	d0, _, err := yamldoc.Read(path, Version)
 	root := yamldoc.Root(d0)
 	if err != nil || root == nil {
@@ -146,6 +147,12 @@ func LoadConfig(path, home string) (*Config, error) {
 				return d.fail(n, at, "must be true or false, not "+kindName(n), "write pager: false to print without the viewer")
 			}
 			return n.Decode(&c.Pager)
+		},
+		"market_picker": func(n *yaml.Node, at string) error {
+			if n.Kind != yaml.ScalarNode || n.Tag != "!!bool" {
+				return d.fail(n, at, "must be true or false, not "+kindName(n), "write market_picker: false to list marketplaces without the picker")
+			}
+			return n.Decode(&c.MarketPicker)
 		},
 		"pre_install":      func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PreInstall) },
 		"post_install":     func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PostInstall) },

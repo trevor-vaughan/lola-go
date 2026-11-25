@@ -23,6 +23,8 @@ what the answers mean.
 - [Init](#init): `lola init` without a directory or `-y`, and the background question that can come
   before any command's first form
 - [Market add](#market-add): the name and ssh host questions of `lola market [<name>] --add <source>`
+- [Market picker](#market-picker): bare `lola market`'s picker on a terminal and the questions its
+  actions ask
 - [Migrate](#migrate): `lola migrate`'s mapping questions, its plan and `Migrate?`
 - [Hook and script consent](#hook-and-script-consent): the consent questions about install hooks,
   Claude Code hooks and a project's install scripts, asked by `lola install`, `sync`, `update`,
@@ -51,8 +53,8 @@ Every transition row is pinned by a spec named `"<surface>: <from> --<input>--> 
 surface's spec file (`internal/cli/flow_paths_test.go` for install,
 `internal/cli/profile_edit_paths_test.go` for profile edit, `internal/cli/scope_paths_test.go`
 for the scope picker and the trust question, `internal/cli/misc_paths_test.go` for tidy, trash
-and cache clean, `internal/cli/misc2_paths_test.go` for init, market add, migrate and hook and
-script consent, `internal/cli/keys_paths_internal_test.go` for the viewer and pager, accessible mode
+and cache clean, `internal/cli/misc2_paths_test.go` for init, market add, market picker, migrate
+and hook and script consent, `internal/cli/keys_paths_internal_test.go` for the viewer and pager, accessible mode
 and form keys), the input followed by its guard in
 parentheses where rows share a *from* and an *input*, or by an existing spec that file lists at its
 top in an `// also pinned (<row>; <row>): <file> "<spec>"` pointer.
@@ -1295,6 +1297,177 @@ Esc there stays; so is the ssh question when the run asked no name.
 | a refused name                                         | the name question, saying why                     | the answer as typed |                  |
 | Esc on ssh after the name question                     | the name question, then ssh for the name answered | the name given      | the hosts ticked |
 | Esc on the name question, or on ssh with no name asked | nothing: a first screen stays                     |                     |                  |
+
+## Market picker
+
+Bare `lola market` on a terminal (`marketPick`, `internal/cli/cmd_market.go`) opens the picker of
+`internal/cli/market_picker.go`, a Bubble Tea model, over `engine.PickerRows`: your marketplaces,
+then the known marketplaces you have not enabled; an enabled known one is among yours, once. It
+opens when stdin and stderr are a terminal, none of `--json`, `--plain`, `--no-pager` and
+`--no-interactive` is given, and `market_picker` in your `config.yaml` is not `false`
+(`marketPickerOpens`); otherwise the run prints the listing. A stdout that is not a terminal does
+not keep it from opening. Opening it contacts no host. `u` and `U` start `engine.CheckMarkets` on
+their rows, which asks each git row's remote for its tip (`git ls-remote`), 8 at a time, 10 seconds
+each; each result fills in its row, and once every result is in the footer offers to update those
+of yours that need it. Each answer runs an action, then the picker opens again with its rows read
+again and no status, until Esc, `q` or Ctrl+C.
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#2f6dab',
+  'primaryTextColor': '#1e1e1e',
+  'primaryBorderColor': '#7c8ba1',
+  'lineColor': '#7c8ba1',
+  'edgeLabelBackground': '#eef2f8',
+  'tertiaryColor': 'transparent',
+  'tertiaryTextColor': '#7c8ba1',
+  'tertiaryBorderColor': '#7c8ba1',
+  'clusterBkg': 'transparent',
+  'clusterBorder': '#7c8ba1',
+  'titleColor': '#7c8ba1',
+  'noteBkgColor': '#eef2f8',
+  'noteTextColor': '#1e1e1e',
+  'fontFamily': 'system-ui, sans-serif'
+}, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+stateDiagram-v2
+  direction TB
+
+  [*] --> picker: on a terminal, no off switch
+  [*] --> numbers: accessible mode
+  [*] --> list: off a terminal, or an off switch
+  picker --> picker: x, ctrl+a, u, U, checks end
+  picker --> filter: /
+  filter --> picker: Enter
+  picker --> offer: checks end, yours to update
+  offer --> picker: esc or n
+  offer --> move: yes, one registered at a commit
+  offer --> picker: yes, the update run
+  move --> picker
+  picker --> source: a, or Enter on Add a source…
+  source --> picker
+  picker --> enable: Enter, known rows ticked
+  enable --> action: own rows ticked too
+  enable --> picker
+  picker --> action: Enter, own rows ticked
+  action --> browse: Browse entries
+  action --> remove: Remove
+  action --> picker: Update, Cancel, esc
+  browse --> picker
+  remove --> picker
+  numbers --> enable
+  numbers --> action
+  numbers --> source
+  picker --> left: esc, q
+  offer --> left: q
+  left --> [*]
+  list --> [*]
+  cancelled --> [*]
+```
+
+`ctrl+c` goes to `cancelled` from the picker, the offer, Add a source…'s questions and `lola market
+--add`'s ([Market add](#market-add)), `Do what with these?` and the install flow. In a yes/no
+question (`enable`, `remove`, `move`) it reads as No (`app.confirm` cannot tell them apart): the
+question's cancel line, then the picker again. In `filter`, typed keys are filter text (`a`, `u`,
+`U`, `q` and `x` included), Backspace takes the last one back and Esc drops the filter. An action
+that fails prints its error with its hints, and the picker opens again.
+
+### States
+
+| state   | what the user sees | asked when |
+|---------|--------------------|------------|
+| picker  | `Marketplaces`, then `Your marketplaces` and `Known marketplaces`, each row two lines: the name or id, its ref (a known row you have not enabled: `pin <commit>`), its entries, `known`, `ahead of pin` and its status; then, dim and indented, its source (a known row: ` — ` and the reason it is listed), wrapped to the terminal's width; then `Add a source…` and, in at most two rows, the keys `u check+update · U all · x tick · / filter · a add · ⏎ act · esc back · q quit`, a note above them when a key or a check run has one. A failed check adds its reason and what to do under the row; the network banner `✗ Several sources unreachable; check your network connection` sits under the title. The rows of the marketplaces Add a source… added are ticked | bare `lola market` on a terminal, with no off switch; again after every action |
+| filter  | the picker with `/<text>█` under the title; only the rows whose name, source, reason or catalog description holds it, ignoring case, and `Add a source…`; the keys `⏎ keep filter · esc clear · ↑↓ move` | `/` |
+| offer   | the picker, its statuses shown, with one footer line in place of the keys: `update <name>, <name>? ⏎/y yes · esc/n no`, or `update N marketplaces? …` when the names do not fit | a check run of `u` or `U` ended with rows of yours to update, no banner and no filter being typed |
+| source  | Add a source…'s source, then its optional ref | `a`, or Enter on `Add a source…` |
+| enable  | `lola market --enable <id>`'s plan, then `Enable known marketplace <id>? [y/N]` | Enter with a known row you have not enabled ticked, one at a time |
+| action  | `Do what with these?`: Browse entries, Update, Remove, Cancel | Enter with rows of yours ticked, after any `enable` |
+| browse  | `lola install @<name>...`'s flow, its module picker offering those marketplaces' entries | Browse entries |
+| remove  | `Forget marketplace <name> (<source>) and drop its cached catalog? [y/N]` | Remove, once per marketplace |
+| move    | the catalog changes the move brings, then `Update past the commit it is registered at? [y/N]` | the offer taken with a marketplace of yours registered at a commit in it |
+| numbers | accessible mode: the rows numbered, with no status, `Add a source…` last, then `Choose marketplaces (numbers, comma separated): ` | bare `lola market` with `LOLA_ACCESSIBLE=1` or `TERM=dumb` |
+
+### Transitions
+
+| from    | input                  | guard                                                                 | to        | effects |
+|---------|------------------------|-----------------------------------------------------------------------|-----------|---------|
+| start   | run                    | a terminal                                                            | picker    | reads markets.yaml, the cached catalogs and lola's known list; contacts no host, shows no status and writes nothing |
+| start   | run                    | --json, --plain, --no-pager, --no-interactive or market_picker: false | list      | the listing, as off a terminal; nothing asked |
+| start   | run                    | no terminal                                                           | list      | the listing; nothing asked |
+| start   | run                    | accessible mode                                                       | numbers   |  |
+| picker  | x                      |                                                                       | picker    | ticks or unticks the cursor's row (`space` too) |
+| picker  | ctrl+a                 |                                                                       | picker    | ticks every row shown, or none when all are |
+| picker  | /                      |                                                                       | filter    |  |
+| filter  | answer                 |                                                                       | picker    | Enter keeps the filter; ticks are kept as the filter changes |
+| filter  | answer                 | an offer waiting                                                      | offer     | a check run that ended while the filter was typed offers once Enter keeps it |
+| picker  | esc                    | a filter kept                                                         | picker    | clears the filter; the ticks stay |
+| picker  | u                      |                                                                       | picker    | checks the ticked rows, else the cursor's: each git row with a fetched catalog, and each known row you have not enabled, reads `checking…` until its result; every other row's status is cleared. A source that is a local path, a `file://` URL, an archive, a folder or a catalog file gets no status |
+| picker  | u                      | nothing ticked, the cursor on Add a source…                           | picker    | `tick a marketplace, or move to one, to update it`; contacts no host |
+| picker  | u                      | a check running                                                       | picker    | cancels it and drops its results; checks again |
+| picker  | u                      | only rows of yours it cannot check                                    | offer     | contacts no host |
+| picker  | u                      | no row it can check or offer                                          | picker    | `nothing to update`; contacts no host |
+| picker  | U                      |                                                                       | picker    | as `u` on every row, ticked or not, whatever the filter shows |
+| picker  | U                      | a check running                                                       | picker    | cancels it and drops its results; checks every row |
+| picker  | checks end             | rows of yours to update                                               | offer     | offers yours that read `update available` or `upstream moved`, and yours it cannot check; never one up to date or unreachable, never a known one you have not enabled |
+| picker  | checks end             | at least two failed, and more than half of those checked              | picker    | the network banner; the failed rows read `not checked`, with no hint; `nothing to update until the checks get through; u checks again`; nothing offered |
+| picker  | checks end             | nothing to update                                                     | picker    | `everything checked is up to date`, `nothing to update; N unreachable`, or `nothing to update; ⏎ enables a known marketplace` |
+| picker  | checks end             | a row of yours failed, no banner                                      | picker    | it reads `unreachable`, its reason under it, then `→ u retries · lola market <name> --remove forgets it` |
+| picker  | checks end             | a known row you have not enabled failed, no banner                    | picker    | it reads `unreachable`, its reason under it, then `→ u checks again` |
+| picker  | checks end             | the only check failed                                                 | picker    | its hint starts `→ check your network connection; ` |
+| offer   | yes                    |                                                                       | picker    | Enter or `y`: updates the rows offered as `lola market <name>... --update` does, then opens again |
+| offer   | yes                    | one registered at a commit                                            | move      | learns the remote's tip and reads the catalog there, writing nothing; the rest of the offer updates after it |
+| offer   | no                     |                                                                       | picker    | Esc or `n`: the statuses stay; nothing written |
+| offer   | u or U                 |                                                                       | picker    | drops the offer and checks again, as in the picker; nothing written |
+| offer   | another key            |                                                                       | offer     | nothing: the ticks and the cursor stay |
+| offer   | q                      |                                                                       | left      |  |
+| offer   | ctrl+c                 |                                                                       | cancelled |  |
+| picker  | Enter                  | known rows ticked                                                     | enable    | the known ones first, one at a time |
+| picker  | Enter                  | rows of yours ticked                                                  | action    |  |
+| picker  | Enter                  | rows of yours and known ones ticked                                   | enable    | then `action` for yours |
+| picker  | Enter                  | nothing ticked                                                        | next step | as if the cursor's row were ticked |
+| picker  | Enter                  | on Add a source…                                                      | source    |  |
+| picker  | a                      |                                                                       | source    |  |
+| picker  | esc or q               |                                                                       | left      | stops a check running |
+| picker  | ctrl+c                 |                                                                       | cancelled | stops a check running |
+| source  | answer                 |                                                                       | picker    | runs `lola market --add <source> [--ref <ref>]`, asking its name and ssh host questions when they apply; opens with the new marketplace ticked. An empty source adds nothing |
+| source  | esc                    |                                                                       | picker    |  |
+| source  | ctrl+c                 |                                                                       | cancelled | also on `--add`'s name question; nothing registered |
+| enable  | yes                    |                                                                       | picker    | registers it at lola's pin, as `--enable` does; it opens among yours, marked `known` |
+| enable  | no                     |                                                                       | picker    | `✗ cancelled — nothing was changed`; nothing written |
+| action  | Browse entries         |                                                                       | browse    |  |
+| action  | Update                 |                                                                       | picker    | updates them as `lola market <name>... --update` does |
+| action  | Remove                 |                                                                       | remove    |  |
+| action  | Cancel                 |                                                                       | picker    |  |
+| action  | esc                    |                                                                       | picker    |  |
+| action  | ctrl+c                 |                                                                       | cancelled |  |
+| browse  | answer                 |                                                                       | picker    | installs what was picked, as `lola install @<name>` does |
+| browse  | ctrl+c                 |                                                                       | cancelled | nothing installed |
+| remove  | yes                    |                                                                       | picker    | `✓ forgot marketplace <name> and dropped its cached catalog`; the next one is asked |
+| remove  | no                     |                                                                       | picker    | `✗ cancelled — nothing was changed`; it stays |
+| move    | yes                    |                                                                       | picker    | rewrites its registered `ref` to the tip's full commit SHA and fetches it; the row reads `ahead of pin` |
+| move    | no                     |                                                                       | picker    | `✗ cancelled — nothing was changed`; nothing written |
+| numbers | answer                 |                                                                       | next step | as Enter with the rows numbered ticked |
+| numbers | answer                 | refused                                                               | numbers   | says what it takes (`answer numbers from 1 to N, comma separated`, or `Add a source… goes alone: answer its number on its own`) and asks again |
+| numbers | Add a source…'s number |                                                                       | source    | asked on line prompts, trimmed |
+| numbers | empty submit           |                                                                       | left      |  |
+| numbers | end of input           |                                                                       | refused   | `error: input ended before the question was answered` |
+
+### Exits
+
+| exit      | when                                     | on disk                              | output, exit code |
+|-----------|------------------------------------------|--------------------------------------|-------------------|
+| left      | Esc or `q` in the picker, `q` at the offer | what the run's actions wrote       | nothing more; 0, even after an action that failed |
+| list      | an off switch, or no terminal            | nothing                              | the listing of `lola market`; 0 |
+| cancelled | Ctrl+C                                   | what the run's earlier actions wrote | `✗ cancelled — nothing was changed`; 4 |
+| refused   | stdin ends in accessible mode            | what the run's earlier actions wrote | `error: …` with `hint:` lines; 3 |
+
+### Re-entry
+
+| way back                                  | asks again                      | keeps                               | drops                                           |
+|-------------------------------------------|---------------------------------|-------------------------------------|-------------------------------------------------|
+| the picker after an action                | the picker, its rows read again | the marketplaces just added, ticked | the ticks, the filter, every status and the banner |
+| Esc on source, or Cancel or Esc on action | the picker                      |                                     | the ticks and the filter                        |
+| Esc or `n` at the offer                   | nothing: the picker stays       | the ticks, the filter and the statuses | the offer                                    |
+| `u` or `U` again                          | nothing: the rows check again   | the ticks and the filter            | the last run's results                          |
 
 ## Migrate
 

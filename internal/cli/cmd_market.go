@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/market"
@@ -134,27 +136,27 @@ func outputFlags(cmd *cobra.Command) []string {
 func (a *app) marketCmd() *cobra.Command {
 	var src, ref, path, enableID string
 	var targets, sshHosts []string
-	var update, remove, known, all, dry, yes, disable bool
+	var update, remove, known, all, dry, yes, disable, check bool
 	cmd := &cobra.Command{
 		Use:     "market [<name> [<entry>]] [flags]",
 		Aliases: []string{"marketplace", "markets"},
 		Short:   "List, add and update the marketplaces whose catalogs you browse, and the ones lola knows",
-		Long: "A marketplace is a catalog of modules, each with the source it is fetched from. lola reads\n" +
-			"Claude Code's .claude-plugin/marketplace.json and lola YAML catalogs. Yours are shared by\n" +
-			"every scope, listed in $XDG_CONFIG_HOME/lola/markets.yaml; each fetched catalog is cached in\n" +
-			"$XDG_CACHE_HOME/lola/markets/.\n" +
+		Long: "A marketplace is a catalog of modules, each with the source it is fetched from: Claude Code's\n" +
+			".claude-plugin/marketplace.json or a lola YAML catalog. Yours are shared by every scope, listed in\n" +
+			"$XDG_CONFIG_HOME/lola/markets.yaml; each fetched catalog is cached in $XDG_CACHE_HOME/lola/markets/.\n" +
 			"\n" +
-			"Without a name, list them; with one, show its source, pin, entries and the entries lola skips;\n" +
-			"with a name and an entry, show it as lola info @<name>/<entry> does (it fetches that module into\n" +
-			"your cache). Listing and showing a marketplace never fetch and never ask.\n" +
-			"\n" +
-			"--add <source> (git repository, https:// archive or catalog file, or folder) fetches a catalog and\n" +
-			"registers it; --update fetches again (--all for every one); --remove forgets one (asks; -y).\n" +
-			"A catalog is a stranger's input: lola skips, with its reason, an entry it cannot use (npm and\n" +
-			"command sources, ssh hosts you did not allow with --ssh-host, declared hooks or MCP servers) and\n" +
-			"runs nothing from it. Install an entry with lola install @<name>/<entry>.\n" +
-			"--known lists the marketplaces lola ships, each pinned to a commit; --enable <id> registers one (asks; -y).",
-		Example: "  lola market\n  lola market acme\n  lola market acme formatter -t claude-code\n" +
+			"Without a name, list them; with one, show its source, pin, entries and skipped entries; with an\n" +
+			"entry too, show it as lola info @<name>/<entry> does, fetching it. Listing and showing a marketplace\n" +
+			"never fetch or ask; --check adds each git source's upstream status, asking each remote for its tip.\n" +
+			"On a terminal a bare lola market opens a picker of yours and the known ones instead: x ticks,\n" +
+			"/ filters, Enter acts, a adds, esc or q leaves; u checks the ticked rows (or the cursor's) and U\n" +
+			"every row upstream, then offers to update yours that need it. Nothing is contacted before u or U.\n" +
+			"--json, --plain, --no-pager, --no-interactive and config.yaml market_picker: false list instead.\n" +
+			"--add <source> (git repository, https:// archive or catalog file, or folder) registers a catalog;\n" +
+			"--update fetches again (--all for all); --remove forgets one (asks; -y). lola skips an entry it\n" +
+			"cannot use, with its reason, and runs nothing from a catalog. --known lists the marketplaces lola\n" +
+			"ships, each pinned to a commit; --enable <id> registers one (asks; -y).",
+		Example: "  lola market\n  lola market --check\n  lola market --no-interactive\n  lola market acme\n  lola market acme formatter -t claude-code\n" +
 			"  lola market acme --add https://github.com/acme/plugins\n" +
 			"  lola market acme --add https://github.com/acme/plugins --ref v1.2 --path catalog\n" +
 			"  lola market --add https://raw.githubusercontent.com/acme/market/main/general.yml\n" +
@@ -170,7 +172,22 @@ func (a *app) marketCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			refuseCheck := func() error {
+				return errs.WithHints(errors.New("--check lists your marketplaces' upstream status; it takes no name, entry or action"),
+					runWithout(cmd, args, "check"), engine.MarketRun(append(outputFlags(cmd), "--check")...))
+			}
+			// --no-interactive keeps a bare lola market from opening the picker; anything else never opens it.
+			refuseNoInteractive := func() error {
+				return errs.WithHints(errors.New("--no-interactive applies to a bare lola market only, which it lists as text"),
+					runWithout(cmd, args, "no-interactive"))
+			}
 			if len(args) > 0 && slices.Contains(market.Verbs(), args[0]) {
+				if check {
+					return refuseCheck()
+				}
+				if cmd.Flags().Changed("no-interactive") {
+					return refuseNoInteractive()
+				}
 				// --enable takes the next word as its value: -y after it was meant as a flag.
 				enabled, named := cmd.Flags().Changed("enable"), enableID
 				if enabled && flagTaken(cmd, enableID) {
@@ -181,6 +198,12 @@ func (a *app) marketCmd() *cobra.Command {
 			act, err := marketAction(cmd, args)
 			if err != nil {
 				return err
+			}
+			if check && (act != "" || len(args) > 0) {
+				return refuseCheck()
+			}
+			if cmd.Flags().Changed("no-interactive") && (act != "" || len(args) > 0) {
+				return refuseNoInteractive()
 			}
 			if act == "" && len(args) > 2 {
 				return tooManyEntries(cmd, eng, args)
@@ -223,12 +246,31 @@ func (a *app) marketCmd() *cobra.Command {
 			case marketKnown:
 				return a.marketKnown(cmd, eng, args)
 			}
+			if check {
+				checked, notices, err := eng.CheckedMarkets(cmd.Context(), outputFlags(cmd))
+				if err != nil {
+					return err
+				}
+				rows, status := make([]engine.MarketRow, len(checked)), make([]string, len(checked))
+				for i, c := range checked {
+					rows[i], status[i] = c.MarketRow, c.Status
+				}
+				return a.emit(cmd, func(w io.Writer, s style) { printMarkets(w, s, rows, status, notices) },
+					map[string]any{"markets": checked, "notices": notices})
+			}
 			if len(args) == 0 {
+				open, err := a.marketPickerOpens(cmd, eng)
+				if err != nil {
+					return err
+				}
+				if open {
+					return a.marketPick(cmd, eng)
+				}
 				rows, notices, err := eng.Markets(outputFlags(cmd))
 				if err != nil {
 					return err
 				}
-				return a.emit(cmd, func(w io.Writer, s style) { printMarkets(w, s, rows, notices) },
+				return a.emit(cmd, func(w io.Writer, s style) { printMarkets(w, s, rows, nil, notices) },
 					map[string]any{"markets": rows, "notices": notices})
 			}
 			v, err := eng.ShowMarket(args[0], outputFlags(cmd))
@@ -258,6 +300,10 @@ func (a *app) marketCmd() *cobra.Command {
 	_ = cmd.RegisterFlagCompletionFunc("ssh-host", cobra.NoFileCompletions)
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "report what the action would do, write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "with --remove or --enable: do it without asking")
+	cmd.Flags().BoolVar(&check, "check", false,
+		"list each git marketplace's upstream status; fetches no catalog")
+	cmd.Flags().Bool("no-interactive", false,
+		"list as text, never the picker (config.yaml market_picker: false too)")
 	cmd.Flags().StringVar(&enableID, string(marketEnable), "",
 		"register the known marketplace with this id, at its pinned commit (asks; -y)")
 	cmd.Flags().BoolVar(&known, string(marketKnown), false,
@@ -699,4 +745,198 @@ func (a *app) completeKnown(*cobra.Command, []string, string) ([]cobra.Completio
 		out = append(out, untrusted.Text(k.ID, untrusted.MaxName))
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
+// marketPickerOpens reports whether a bare lola market opens the picker: on a terminal (the
+// Prompter can ask), with none of --json, --plain, --no-pager and --no-interactive, and with
+// market_picker not false in your config.yaml.
+func (a *app) marketPickerOpens(cmd *cobra.Command, eng *engine.Engine) (bool, error) {
+	if a.json || a.plain || a.noPager || given(cmd, "no-interactive") || !a.prompter(cmd).Interactive() {
+		return false, nil
+	}
+	cfg, err := config.LoadConfig(eng.Paths.Config, eng.Paths.Home)
+	if err != nil {
+		return false, err
+	}
+	return cfg.MarketPicker, nil
+}
+
+// marketPick runs the picker of a bare lola market over your marketplaces and the known ones you
+// have not enabled, read again, with their notices, each time it opens; it acts on each answer and
+// opens again, until Esc or q leaves it. Ctrl+C in the picker or in an action's step (pickerEnded),
+// or an interrupt, ends the run.
+func (a *app) marketPick(cmd *cobra.Command, eng *engine.Engine) error {
+	p := a.prompter(cmd)
+	noticed := map[string]bool{}
+	var preselect []string
+	for {
+		own, known, notices, err := eng.PickerRows(outputFlags(cmd))
+		if err != nil {
+			return err
+		}
+		w := cmd.ErrOrStderr()
+		for _, n := range notices {
+			if !noticed[n.Text] {
+				noticed[n.Text] = true
+				fmt.Fprintln(w, noticeLine(style{color: a.color(w), bold: a.bold(w), width: a.style(cmd).width}, n))
+			}
+		}
+		ans, err := p.MarketPicker(MarketPickerStep{Own: own, Known: known, PreselectOwn: preselect,
+			Check: eng.CheckMarkets})
+		if err != nil {
+			return err
+		}
+		preselect = nil
+		switch ans.Action {
+		case PickerCancel:
+			return nil
+		case PickerAdd:
+			preselect, err = a.marketPickAdd(cmd, eng, p, own)
+			err = a.pickerEnded(cmd, err)
+		case PickerUpdate:
+			err = a.marketPickUpdate(cmd, eng, own, ans)
+		case PickerEnter:
+			err = a.marketPickEnter(cmd, eng, p, ans)
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// pickerEnded is pickerSaid for an action whose questions are never a yes/no one: a cancel there is
+// Ctrl+C (or q), which ends the run as Ctrl+C in the picker does, while Cancel (ErrCancelled) and
+// Esc go back to the picker.
+func (a *app) pickerEnded(cmd *cobra.Command, err error) error {
+	if errors.Is(err, ErrAborted) && !errors.Is(err, ErrCancelled) {
+		return err
+	}
+	return a.pickerSaid(cmd, err)
+}
+
+// pickerSaid prints how an action the picker ran ended, before the picker opens again: a cancel's
+// line for a yes/no question declined within it (a.confirm cannot tell a No from Ctrl+C, so both go
+// back to the picker), or the error with its hints; nothing for none or Esc. Once the run is
+// interrupted it prints nothing and returns err (else the interrupt), which ends the picker.
+func (a *app) pickerSaid(cmd *cobra.Command, err error) error {
+	if cerr := cmd.Context().Err(); cerr != nil {
+		return cmp.Or(err, cerr)
+	}
+	w := cmd.ErrOrStderr()
+	switch {
+	case err == nil, errors.Is(err, ErrBack):
+	case errors.Is(err, ErrAborted):
+		msg := (&quitError{}).Error()
+		if ae, ok := errors.AsType[*abortedError](err); ok {
+			msg = ae.Error()
+		}
+		fmt.Fprintln(w, style{color: a.color(w)}.bad(msg))
+	default:
+		writeError(w, err, false, a.style(cmd).width)
+	}
+	return nil
+}
+
+// marketPickAdd runs the picker's Add a source…: it asks the source and ref, adds them as lola
+// market --add does, with its questions (another name, ssh hosts), and answers the names of the
+// marketplaces it added, which the picker opens ticked. An empty source adds nothing.
+func (a *app) marketPickAdd(cmd *cobra.Command, eng *engine.Engine, p Prompter, own []engine.PickerRow) ([]string, error) {
+	src, ref, err := p.MarketSource(MarketSourceStep{})
+	if err != nil || src == "" {
+		return nil, err
+	}
+	if err := a.marketAdd(cmd, eng, nil, engine.MarketAddRequest{Source: src, Ref: ref, Display: outputFlags(cmd)}); err != nil {
+		return nil, err
+	}
+	names, err := eng.MarketNames()
+	if err != nil {
+		return nil, err
+	}
+	var added []string
+	for _, n := range names {
+		if n = untrusted.Text(n, len(n)); !slices.ContainsFunc(own, func(r engine.PickerRow) bool { return r.ID == n }) {
+			added = append(added, n)
+		}
+	}
+	return added, nil
+}
+
+// marketPickUpdate runs the update u offered on the rows of yours it names (the picker never offers
+// a known one you have not enabled): one registered at a commit (AtCommit) moves past it, asking
+// first (marketPastPin); the rest update as lola market <name>... --update does.
+func (a *app) marketPickUpdate(cmd *cobra.Command, eng *engine.Engine, own []engine.PickerRow, ans MarketPickerAnswer) error {
+	var names []string
+	for _, r := range own {
+		switch {
+		case !slices.Contains(ans.Own, r.ID):
+		case r.AtCommit():
+			if err := a.pickerSaid(cmd, a.marketPastPin(cmd, eng, r.ID)); err != nil {
+				return err
+			}
+		default:
+			names = append(names, r.ID)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return a.pickerEnded(cmd, a.marketUpdate(cmd, eng, names, false, false, nil))
+}
+
+// marketPastPin moves name, a marketplace registered at a commit, to its remote's tip,
+// asking "Update past the commit it is registered at?" over the catalog changes the move brings.
+func (a *app) marketPastPin(cmd *cobra.Command, eng *engine.Engine, name string) error {
+	req := engine.MarketUpdateRequest{Display: outputFlags(cmd), PickSSH: sshPicker(a.prompter(cmd))}
+	res, err := eng.UpdateKnownPastPin(cmd.Context(), name, req, func(preview *engine.MarketResult) error {
+		return a.confirm(cmd, []string{name}, "Update past the commit it is registered at?", Nav{}, preview,
+			func(w io.Writer, s style) { printMarketResult(w, s, preview) })
+	})
+	if err != nil {
+		return err
+	}
+	return a.emit(cmd, func(w io.Writer, s style) { printMarketResult(w, s, res) }, res)
+}
+
+// marketPickEnter acts on the rows ticked at Enter, the known ones first: each is enabled as lola
+// market --enable <id> does, asking first; then "Do what with these?" asks what to do with yours:
+// browse their entries (marketBrowse), update them, or remove each, asking first as --remove does.
+func (a *app) marketPickEnter(cmd *cobra.Command, eng *engine.Engine, p Prompter, ans MarketPickerAnswer) error {
+	for _, id := range ans.Known {
+		if err := a.pickerSaid(cmd, a.marketEnable(cmd, eng, nil, id, false, false, nil)); err != nil {
+			return err
+		}
+	}
+	if len(ans.Own) == 0 {
+		return nil
+	}
+	i, err := p.Where(WhereStep{Title: "Do what with these?", Options: []string{"Browse entries", "Update", "Remove"}, Nav: Nav{Back: true}})
+	switch {
+	case err != nil:
+		return a.pickerEnded(cmd, err)
+	case i == 0:
+		return a.pickerEnded(cmd, a.marketBrowse(cmd, ans.Own))
+	case i == 1:
+		return a.pickerEnded(cmd, a.marketUpdate(cmd, eng, ans.Own, false, false, nil))
+	}
+	for _, n := range ans.Own {
+		if err := a.pickerSaid(cmd, a.marketRemove(cmd, eng, []string{n}, false, false)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// marketBrowse runs lola install @<name>... for names, your marketplaces: the install flow's picker
+// of each one's entries, then the rest of its questions, as lola install @acme asks them.
+func (a *app) marketBrowse(cmd *cobra.Command, names []string) error {
+	install, _, err := cmd.Root().Find([]string{"install"})
+	if err != nil {
+		return err
+	}
+	install.SetContext(cmd.Context())
+	args := make([]string, len(names))
+	for i, n := range names {
+		args[i] = "@" + n
+	}
+	return install.RunE(install, args)
 }

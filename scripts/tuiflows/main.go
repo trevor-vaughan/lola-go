@@ -33,6 +33,7 @@ var surfaces = map[string]string{
 	"Cache clean":             "cache clean",
 	"Init":                    "init",
 	"Market add":              "market add",
+	"Market picker":           "market picker",
 	"Migrate":                 "migrate",
 	"Hook and script consent": "consent",
 	"Viewer and pager":        "viewer",

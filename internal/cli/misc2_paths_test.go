@@ -1,9 +1,10 @@
 package cli_test
 
-// One spec per row of the init, market add, migrate and hook and script consent transition tables
-// in docs/architecture/tui-flows.md, named "init: <from> --<input>--> <to>", "market add: …",
-// "migrate: …" and "consent: …", the input followed by the row's guard in parentheses where rows
-// share a from and an input. Rows an existing spec pins already:
+// One spec per row of the init, market add, market picker, migrate and hook and script consent
+// transition tables in docs/architecture/tui-flows.md, named "init: <from> --<input>--> <to>",
+// "market add: …", "market picker: …", "migrate: …" and "consent: …", the input followed by the
+// row's guard in parentheses where rows share a from and an input. Rows an existing spec pins
+// already:
 //
 // also pinned (init: start --run (no terminal)--> refused): confirm_test.go "off a terminal, refuses with the plan and a hint that keeps the run's flags, writing nothing"
 // also pinned (init: start --run (an invalid name)--> refused): confirm_test.go "refuses an invalid name before asking anything"
@@ -21,6 +22,58 @@ package cli_test
 // also pinned (consent: hooks --esc--> hooks; consent: runtime --esc--> runtime; consent: script --esc--> script; consent: later --esc--> later): keys_paths_internal_test.go "viewer: inline --esc (no screen before)--> inline"
 // also pinned (consent: hooks --q--> cancelled; consent: runtime --q--> cancelled; consent: script --q--> cancelled; consent: later --q--> cancelled): keys_paths_internal_test.go "viewer: inline --q (fewer than two answers)--> cancelled"
 // also pinned (consent: later --ctrl+c--> cancelled): misc2_paths_test.go "consent: start --run (lola sync, nothing to install)--> later"
+// also pinned (market picker: start --run (a terminal)--> picker; market picker: picker --esc or q--> left): marketflow_test.go "opens without contacting a host, and leaving it changes nothing"
+// also pinned (market picker: start --run (a terminal)--> picker): market_picker_internal_test.go "makes no check on open and shows no status"
+// also pinned (market picker: start --run (--json, --plain, --no-pager, --no-interactive or market_picker: false)--> list): marketflow_test.go "lists as text under --json, --plain, --no-pager, --no-interactive and market_picker: false, never asking"
+// also pinned (market picker: start --run (no terminal)--> list): marketflow_test.go "lists as text off a terminal"
+// also pinned (market picker: start --run (no terminal)--> list): market_picker_internal_test.go "never asks off a terminal"
+// also pinned (market picker: start --run (accessible mode)--> numbers; market picker: numbers --answer--> next step): market_picker_internal_test.go "lists the rows numbered, with no status, and answers the numbers chosen"
+// also pinned (market picker: numbers --answer (refused)--> numbers): market_picker_internal_test.go "asks again after an answer it cannot take"
+// also pinned (market picker: numbers --Add a source…'s number--> source; market picker: numbers --empty submit--> left): market_picker_internal_test.go "adds a source for Add a source…'s number, and cancels on an empty answer"
+// also pinned (market picker: numbers --Add a source…'s number--> source): market_picker_internal_test.go "asks Add a source…'s source and ref on line prompts, trimmed, and refuses when input ends"
+// also pinned (market picker: numbers --end of input--> refused): market_picker_internal_test.go "refuses when input ends"
+// also pinned (market picker: picker --x--> picker; market picker: picker --ctrl+a--> picker): market_picker_internal_test.go "ticks with x, all and none with ctrl+a, and answers the ticks in row order on Enter"
+// also pinned (market picker: picker --/--> filter; market picker: filter --answer--> picker; market picker: picker --esc (a filter kept)--> picker): market_picker_internal_test.go "narrows the list with / and takes a, u, r and q typed there as filter text"
+// also pinned (market picker: filter --answer--> picker): market_picker_internal_test.go "takes U and u typed in the filter as text"
+// also pinned (market picker: filter --answer (an offer waiting)--> offer): market_picker_internal_test.go "waits for a filter being typed to end before it offers"
+// also pinned (market picker: picker --u--> picker): market_picker_internal_test.go "checks the cursor row on u when nothing is ticked, and the ticked checkable rows when some are"
+// also pinned (market picker: picker --u--> picker): market_picker_internal_test.go "checks on u, git rows reading checking…, and a result updates its row alone"
+// also pinned (market picker: picker --u--> picker): marketflow_test.go "checks the remotes of the rows the picker gives only when it starts a check, as u does"
+// also pinned (market picker: picker --u (nothing ticked, the cursor on Add a source…)--> picker): market_picker_internal_test.go "asks for a row on u with nothing ticked and the cursor on Add a source…"
+// also pinned (market picker: picker --u (a check running)--> picker): market_picker_internal_test.go "re-checks on a second u, cancelling the first run and dropping its results"
+// also pinned (market picker: picker --u (only rows of yours it cannot check)--> offer): market_picker_internal_test.go "offers yours it cannot check at once, contacting no host"
+// also pinned (market picker: picker --u (no row it can check or offer)--> picker): market_picker_internal_test.go "says nothing to update, not up to date, when u checked nothing"
+// also pinned (market picker: picker --U--> picker): market_picker_internal_test.go "checks every row on U, ticked or not and whatever the filter shows, and offers those of yours that need it"
+// also pinned (market picker: picker --U (a check running)--> picker): market_picker_internal_test.go "re-checks on U after u, cancelling the first run and dropping its results, and stops on leaving"
+// also pinned (market picker: picker --checks end (rows of yours to update)--> offer): market_picker_internal_test.go "offers, once the check ends, to update the checked rows that need it and yours it cannot check"
+// also pinned (market picker: picker --checks end (rows of yours to update)--> offer): market_picker_internal_test.go "offers only the rows that need it, never those up to date or unreachable"
+// also pinned (market picker: picker --checks end (rows of yours to update)--> offer): market_picker_internal_test.go "keeps the offer to one line at any width, its keys always shown, the list still in view"
+// also pinned (market picker: picker --checks end (at least two failed, and more than half of those checked)--> picker): market_picker_internal_test.go "shows the network banner, and rows not checked, when two of three checks fail, and offers nothing"
+// also pinned (market picker: picker --checks end (at least two failed, and more than half of those checked)--> picker): market_picker_internal_test.go "offers nothing on U under the network banner"
+// also pinned (market picker: picker --checks end (nothing to update)--> picker): market_picker_internal_test.go "says when nothing checked needs updating, and stays open"
+// also pinned (market picker: picker --checks end (a row of yours failed, no banner)--> picker): market_picker_internal_test.go "shows one unreachable row with its reason and both hints"
+// also pinned (market picker: picker --checks end (a known row you have not enabled failed, no banner)--> picker): market_picker_internal_test.go "hints u checks again, not --remove, for an unreachable known marketplace you have not enabled"
+// also pinned (market picker: picker --checks end (the only check failed)--> picker): market_picker_internal_test.go "names the connection too when the only check fails"
+// also pinned (market picker: offer --yes--> picker): market_picker_internal_test.go "offers, once the check ends, to update the checked rows that need it and yours it cannot check"
+// also pinned (market picker: offer --yes--> picker): marketflow_test.go "updates your own marketplaces on u, as --update does, and opens again"
+// also pinned (market picker: offer --yes (one registered at a commit)--> move; market picker: move --yes--> picker; market picker: move --no--> picker): marketflow_test.go "updates a known marketplace past lola's pin on u after asking, registering the remote's tip", "moves past the commit on u after asking, after which it reads up to date"
+// also pinned (market picker: offer --no--> picker): market_picker_internal_test.go "declines with esc or n at the offer and stays open with the statuses shown"
+// also pinned (market picker: offer --u or U--> picker): market_picker_internal_test.go "drops the update offer and checks again on u or U, as the unreachable row's hint says"
+// also pinned (market picker: offer --another key--> offer; market picker: offer --q--> left; market picker: offer --ctrl+c--> cancelled): market_picker_internal_test.go "ignores other keys at the offer, and q or Ctrl+C there change nothing"
+// also pinned (market picker: picker --Enter (known rows ticked)--> enable; market picker: enable --yes--> picker; market picker: enable --no--> picker): marketflow_test.go "enables a ticked known marketplace at its pin after the --enable question, and opens again with it among yours"
+// also pinned (market picker: picker --Enter (rows of yours ticked)--> action; market picker: action --Remove--> remove; market picker: remove --yes--> picker; market picker: remove --no--> picker): marketflow_test.go "removes a ticked marketplace of yours only when the --remove question is answered yes"
+// also pinned (market picker: picker --Enter (rows of yours and known ones ticked)--> enable; market picker: action --Update--> picker): marketflow_test.go "on mixed ticks enables the known ones first, then asks what to do with yours"
+// also pinned (market picker: picker --Enter (nothing ticked)--> next step): market_picker_internal_test.go "acts on the cursor row on Enter when nothing is ticked"
+// also pinned (market picker: picker --Enter (on Add a source…)--> source; market picker: picker --a--> source): market_picker_internal_test.go "adds a source with a, or Enter on Add a source…"
+// also pinned (market picker: picker --a--> source; market picker: source --answer--> picker; market picker: source --esc--> picker): marketflow_test.go "adds a source on a, asking --add's questions, and opens again with the new marketplace ticked"
+// also pinned (market picker: source --answer--> picker): market_picker_internal_test.go "ticks the rows Preselect names on open"
+// also pinned (market picker: source --ctrl+c--> cancelled): marketflow_test.go "ends the run on Ctrl+C in Add a source…'s source and in --add's name question"
+// also pinned (market picker: picker --esc or q--> left; market picker: picker --ctrl+c--> cancelled): market_picker_internal_test.go "cancels with esc and q, and Ctrl+C aborts"
+// also pinned (market picker: picker --esc or q--> left; market picker: picker --ctrl+c--> cancelled): market_picker_internal_test.go "stops its checks on leaving and reads no result after"
+// also pinned (market picker: picker --ctrl+c--> cancelled): marketflow_test.go "ends the run on Ctrl+C in the picker, changing nothing"
+// also pinned (market picker: action --Browse entries--> browse; market picker: browse --answer--> picker): marketflow_test.go "browses the entries of the ticked marketplaces of yours through lola install's picker"
+// also pinned (market picker: browse --ctrl+c--> cancelled): marketflow_test.go "ends the run on Ctrl+C in the install flow that browses entries"
+// also pinned (market picker: action --ctrl+c--> cancelled; market picker: action --Cancel--> picker; market picker: action --esc--> picker): marketflow_test.go "ends the run on Ctrl+C in Do what with these?, and goes back to the picker on its Cancel"
 
 import (
 	"encoding/json"

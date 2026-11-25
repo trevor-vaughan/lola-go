@@ -124,6 +124,11 @@ func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 func runGitEnv(ctx context.Context, env []string, dir string, args ...string) ([]byte, error) {
 	cmd := GitCommand(ctx, dir, args...)
 	cmd.Env = append(cmd.Env, env...)
+	return runGitCmd(ctx, cmd, args)
+}
+
+// runGitCmd runs cmd, a GitCommand of args, as runGit does.
+func runGitCmd(ctx context.Context, cmd *exec.Cmd, args []string) ([]byte, error) {
 	stderr := &headWriter{limit: maxStderr + 1}
 	cmd.Stderr = stderr
 	out, err := cmd.Output()
@@ -464,6 +469,65 @@ func remoteRef(ctx context.Context, spec Spec) (string, error) {
 		hints = append([]string{"use the full 40-character commit SHA"}, hints...)
 	}
 	return "", errs.WithHints(fmt.Errorf("%s has no branch or tag named %s", shown, shownRef), hints...)
+}
+
+// RemoteTip is the full commit SHA spec's ref points at on its repository, learned without
+// fetching: HEAD for the default branch (ref "") or for a full commit SHA, else the commit of the
+// one branch or tag named ref (an annotated tag's peeled commit, not the tag object). It fails as
+// remoteRef does: *UnreachableError when the remote does not answer, another error for a ref the
+// remote lacks or a name that is both a branch and a tag. It runs only as long as ctx allows.
+//
+// It never prompts, since the marketplace picker runs it while it owns the terminal: git runs detached from
+// the terminal (detach), and with no askpass program, its own (GIT_ASKPASS, core.askPass and
+// SSH_ASKPASS, which git falls back to and GIT_TERMINAL_PROMPT does not stop) or ssh's. A remote
+// that needs a passphrase, a host key accepted or credentials no helper holds fails instead.
+func RemoteTip(ctx context.Context, spec Spec) (string, error) {
+	url, ref := spec.Location, spec.Ref
+	refs := []string{"HEAD"}
+	if _, ok := CommitRef(ref); !ok && ref != "" {
+		refs = []string{"refs/heads/" + ref, "refs/tags/" + ref, "refs/tags/" + ref + "^{}"}
+	}
+	args := remoteArgs(spec, append([]string{"ls-remote", "--", url}, refs...)...)
+	cmd := GitCommand(ctx, "", args...)
+	cmd.Env = append(cmd.Env, "GIT_ASKPASS=", "SSH_ASKPASS_REQUIRE=never") // an empty GIT_ASKPASS outranks the other two
+	detach(cmd)
+	out, err := runGitCmd(ctx, cmd, args)
+	switch {
+	case err == nil:
+	case errors.Is(err, errNoGit) || errors.Is(ctx.Err(), context.Canceled):
+		return "", err // lola's own failure, or the run stopping: not the source's
+	default:
+		return "", &UnreachableError{Err: err}
+	}
+	tips := map[string]string{}
+	for line := range strings.Lines(string(out)) {
+		sha, name, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if ok {
+			tips[name] = sha
+		}
+	}
+	shown, shownRef := untrusted.Text(url, untrusted.MaxName), untrusted.Text(ref, untrusted.MaxName)
+	if len(refs) == 1 {
+		if tip := tips["HEAD"]; tip != "" {
+			return tip, nil
+		}
+		return "", fmt.Errorf("%s has no HEAD commit", shown)
+	}
+	branch, tag := tips[refs[0]], tips[refs[2]]
+	if tag == "" {
+		tag = tips[refs[1]] // a lightweight tag has no peeled line
+	}
+	switch {
+	case branch != "" && tag != "":
+		return "", errs.WithHints(fmt.Errorf("%s has both a branch and a tag named %s; lola does not guess which you mean", shown, shownRef),
+			"pin the commit you want with --ref <full commit SHA>")
+	case branch != "":
+		return branch, nil
+	case tag != "":
+		return tag, nil
+	}
+	return "", errs.WithHints(fmt.Errorf("%s has no branch or tag named %s", shown, shownRef),
+		"list them: "+errs.ShellJoin([]string{"git", "ls-remote", "--heads", "--tags", shown}))
 }
 
 // checkoutCommit fetches the one commit spec.Ref (a full SHA) into a new repository at scratch and
