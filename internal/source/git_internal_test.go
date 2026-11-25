@@ -99,6 +99,18 @@ var _ = Describe("git's stderr", func() {
 		Expect(len(err.Error())).To(BeNumerically("<", 2*maxStderr))
 	})
 
+	It("shows carriage-return line ends as line breaks, and still replaces other control characters", func() {
+		script := "#!/bin/sh\nprintf 'fatal: x\\r\\nHost key verification failed.\\r\\nlone\\rcr\\033[31mred\\a\\n' >&2\nexit 128\n"
+		Expect(os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755)).To(Succeed())
+		_, err := runGit(context.Background(), "", "clone")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(MatchRegexp(`fatal: x\n\s*Host key verification failed\.\n\s*lone\n\s*cr`))
+		Expect(err.Error()).NotTo(ContainSubstring("\r"))
+		Expect(err.Error()).NotTo(ContainSubstring("\x1b"))
+		Expect(err.Error()).NotTo(ContainSubstring("\a"))
+		Expect(err.Error()).To(ContainSubstring("?[31mred?"))
+	})
+
 	It("does not print the directory git ls-files ran in", func() {
 		root := GinkgoT().TempDir()
 		_, _, err := listFiles(context.Background(), root, listGit)

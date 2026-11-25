@@ -29,6 +29,21 @@ lola's `lola.yml` or `lola.yaml` (`name` and `modules`, each with `name`, `descr
 `--path` directory; `--update` fetches the named ones, or `--all`, again and reports which entries
 changed; `--remove` forgets one (asks; `-y`).
 
+Cursor's and Copilot's catalogs are not searched for; read one with `--path .cursor-plugin/marketplace.json` or `--path .github/plugin/marketplace.json`, where a source written without `./` (`teaching`, `plugins/x`) is a directory under the repository root.
+
+Cursor's `.cursor-plugin/marketplace.json` and GitHub Copilot's `.github/plugin/marketplace.json`
+are the alternate catalogs: lola never reads one unasked, but names it. A source with no catalog
+at its root and an alternate is refused with one `lola market <name> --add <source> --path <file>`
+hint per alternate it holds; likewise a `--path` directory with no catalog that holds a bare
+`marketplace.json` (`--path .cursor-plugin`) is refused with the `--path` of that file. A source with none and a module's layout (`SKILL.md`, `skills/<name>/SKILL.md`, `mcps.json`,
+or `.md` files in `commands/`, `agents/` or `rules/`: what `lola install` reads) is refused as "a module, not a catalog", with
+`lola install <source>` as the hint; any other tree is refused with the places lola looked and no
+hint. When lola reads a catalog at the default location and an alternate is also there (the two can
+differ: `cursor/plugins` lists 2 entries in one and 155 in the other), `--add` adds the notice
+`the source also has <file>, which lola did not read`, in the human output and the JSON `notices`
+array, with the `--add` of the alternate under a free name. `--update` reads the file the
+registration recorded and says nothing of alternates.
+
 `--add` and `--update` ask nothing, but a name when
 yours is taken and, on a terminal, which of the ssh hosts a catalog names to allow (below).
 
@@ -55,6 +70,12 @@ verbs: each is refused with the lola command to run instead.
 A catalog's `ssh://` and `user@host:path` sources are skipped unless you allowed their host. The
 host is a name alone (no scheme, user, port or path; lower-cased; never an IP address or
 `localhost`), and the allowance is per host, whatever the user or port.
+
+An entry whose text holds a line break or a control or invisible character (a description with a
+newline, say) is skipped, with that reason, under its name or under `plugins[N]` (`modules[N]` in
+a YAML catalog) when the name is the offending text. The same text in the catalog's own `name`,
+`description`, `version`, `owner` or `metadata` refuses the catalog. lola never rewrites a
+catalog's text.
 
 On a terminal, `--add`
 and `--update` list the hosts the catalog names that you have not allowed, with their entry

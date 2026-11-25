@@ -75,15 +75,6 @@ func parseYAML(b []byte, ssh []string) (Catalog, error) {
 		return Catalog{}, err
 	}
 	modules := yamldoc.Value(root, "modules")
-	if modules != nil && modules.Kind == yaml.SequenceNode {
-		for i, m := range modules.Content {
-			if m.Kind == yaml.MappingNode {
-				if err := plainYAML(m, fmt.Sprintf("modules[%d]", i), slices.Concat(yamlModuleFields, []string{"tags"})); err != nil {
-					return Catalog{}, err
-				}
-			}
-		}
-	}
 	cat := Catalog{Format: FormatYAML, Entries: []Entry{}, Skipped: []Skip{}}
 	text := func(m *yaml.Node, key string) (string, bool) {
 		v := yamldoc.Value(m, key)
@@ -112,7 +103,18 @@ func parseYAML(b []byte, ssh []string) (Catalog, error) {
 	case len(modules.Content) > maxEntries:
 		return Catalog{}, fmt.Errorf("lists more than %d modules", maxEntries)
 	}
-	for _, m := range modules.Content {
+	for i, m := range modules.Content {
+		if m.Kind == yaml.MappingNode {
+			label := fmt.Sprintf("modules[%d]", i)
+			if err := plainYAML(m, label, slices.Concat(yamlModuleFields, []string{"tags"})); err != nil {
+				name := ""
+				if nv := yamldoc.Value(m, "name"); nv != nil && nv.Kind == yaml.ScalarNode {
+					name = nv.Value
+				}
+				cat.skipUnprintable(name, label, err)
+				continue
+			}
+		}
 		e, s := yamlEntry(m, text, ssh)
 		cat.add(e, s)
 	}
@@ -178,11 +180,19 @@ func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool), ssh [
 	return e, mapPython(&e, vals["repository"], vals["ref"], vals["path"], ssh)
 }
 
-// Parse reads b, a catalog in format, into the model: over MaxCatalog bytes, a
-// catalog that does not decode, or one with an ambiguous key or text that would not print as it
-// is refuses whole, saying why; an entry lola cannot use is skipped with its reason. Relative
-// entries are left for Bind.
-func Parse(format string, b []byte, sshHosts []string) (Catalog, error) {
+// ParseFile reads b, the catalog read from file, a slash path in the fetched tree, into the model:
+// its format is FormatOf(file); over MaxCatalog bytes, a catalog that does not decode, or one with
+// an ambiguous key or catalog-level text that would not print as it is refuses whole, saying why;
+// an entry lola cannot use, or whose own text would not print, is skipped with its reason.
+// Relative entries are left for Bind. In Cursor's and Copilot's catalogs (repoRootCatalogs) a bare
+// relative source names a directory under the repository root, as those tools write them.
+func ParseFile(file string, b []byte, sshHosts []string) (Catalog, error) {
+	_, bareFromRoot := repoRootOf(file)
+	return parse(FormatOf(file), bareFromRoot, b, sshHosts)
+}
+
+// parse is ParseFile; bareFromRoot makes a Claude catalog's bare relative sources root-relative.
+func parse(format string, bareFromRoot bool, b []byte, sshHosts []string) (Catalog, error) {
 	if len(b) > MaxCatalog {
 		return Catalog{}, fmt.Errorf("is larger than %d bytes", MaxCatalog)
 	}
@@ -190,7 +200,7 @@ func Parse(format string, b []byte, sshHosts []string) (Catalog, error) {
 	var err error
 	switch format {
 	case FormatClaude:
-		cat, err = parseClaude(b, sshHosts)
+		cat, err = parseClaude(b, bareFromRoot, sshHosts)
 	case FormatYAML:
 		cat, err = parseYAML(b, sshHosts)
 	default:

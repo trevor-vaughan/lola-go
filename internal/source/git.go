@@ -149,7 +149,9 @@ func runGitEnv(ctx context.Context, env []string, dir string, args ...string) ([
 		return nil, denied
 	}
 	if msg != "" {
-		err = fmt.Errorf("%w: %s", err, untrusted.Text(msg, maxStderr))
+		// ssh and git end lines with CR LF (and progress with a lone CR); untrusted.Text would print each as "?".
+		lines := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(msg)
+		err = fmt.Errorf("%w: %s", err, untrusted.Text(lines, maxStderr))
 	}
 	return nil, fmt.Errorf("git %s failed: %w", sub, err)
 }

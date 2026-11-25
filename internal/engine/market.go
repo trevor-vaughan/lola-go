@@ -394,7 +394,7 @@ func (e *Engine) loadMarket(r market.Registration) (*cachedMarket, error) {
 	if profile.Digest(data) != pin.Digest {
 		return nil, fmt.Errorf("%s changed since lola fetched it: its digest is not the one %s records", shown(file), marketPinFile)
 	}
-	cat, err := market.Parse(format, data, r.SSHHosts)
+	cat, err := market.ParseFile(pin.File, data, r.SSHHosts)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", shown(file), err)
 	}
@@ -582,19 +582,24 @@ type fetchedMarket struct {
 	pin  market.Pin
 	data []byte
 	cat  market.Catalog
+	// alternates are the other tools' catalogs found beside the one read, which it did not read.
+	alternates []string
 }
 
 // catalogIn finds the catalog of the tree fetched at tree: the file p names,
 // or in the directory it names, else at the root, the first of market.CatalogFiles that is there;
 // two of them refuse, with the --add of each as hints (add builds it from the file; nil for
 // none). Every directory on the way and the file must be real, never a symbolic link. It
-// returns the file as a slash path in the tree.
-func catalogIn(tree, name, p string, add func(string) string) (string, error) {
+// returns the file as a slash path in the tree, and the alternate catalogs (market.AlternateCatalogFiles)
+// found beside it, which are never read: with none found they are what the refusal hints, else
+// a tree of module layout is told it is a module, with install, the command that installs it ("" for
+// none), as the hint.
+func catalogIn(tree, name, p string, add func(string) string, install string) (string, []string, error) {
 	dir := ""
 	if p != "" {
 		clean, err := market.CheckRelative(p)
 		if err != nil {
-			return "", fmt.Errorf("--path %w", err)
+			return "", nil, fmt.Errorf("--path %w", err)
 		}
 		if clean == "." {
 			clean = ""
@@ -602,15 +607,15 @@ func catalogIn(tree, name, p string, add func(string) string) (string, error) {
 		fi, err := realPath(tree, clean)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			return "", fmt.Errorf("--path %s is not in the source", untrusted.Text(p, untrusted.MaxName))
+			return "", nil, fmt.Errorf("--path %s is not in the source", untrusted.Text(p, untrusted.MaxName))
 		case err != nil:
-			return "", err
+			return "", nil, err
 		case fi.Mode().IsRegular() && market.FormatOf(clean) == "":
-			return "", fmt.Errorf("--path %s is not a catalog: its name does not end in .json, .yml or .yaml", untrusted.Text(p, untrusted.MaxName))
+			return "", nil, fmt.Errorf("--path %s is not a catalog: its name does not end in .json, .yml or .yaml", untrusted.Text(p, untrusted.MaxName))
 		case fi.Mode().IsRegular():
-			return clean, nil
+			return clean, nil, nil
 		case !fi.IsDir():
-			return "", fmt.Errorf("--path %s is neither a file nor a directory", untrusted.Text(p, untrusted.MaxName))
+			return "", nil, fmt.Errorf("--path %s is neither a file nor a directory", untrusted.Text(p, untrusted.MaxName))
 		}
 		dir = clean
 	}
@@ -631,13 +636,13 @@ func catalogIn(tree, name, p string, add func(string) string) (string, error) {
 	}
 	for _, f := range market.CatalogFiles(name) {
 		if err := probe(f); err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
 	if len(found) == 0 {
 		for _, f := range market.CatalogFallbackFiles() {
 			if err := probe(f); err != nil {
-				return "", err
+				return "", nil, err
 			}
 		}
 	}
@@ -648,21 +653,86 @@ func catalogIn(tree, name, p string, add func(string) string) (string, error) {
 			where = "under path " + untrusted.Text(dir, untrusted.MaxName) // markets.yaml's, on --update
 		}
 	}
+	var alts []string
+	for _, f := range market.AlternateCatalogFiles() {
+		// An alternate that cannot be read as a regular file is simply not offered.
+		if fi, err := realPath(tree, path.Join(dir, f)); err == nil && fi.Mode().IsRegular() {
+			alts = append(alts, path.Join(dir, f))
+		}
+	}
+	// A bare marketplace.json in the directory --path names (Cursor's .cursor-plugin) is read the
+	// same way: by naming the file.
+	if bare := path.Join(dir, "marketplace.json"); dir != "" {
+		if fi, err := realPath(tree, bare); err == nil && fi.Mode().IsRegular() {
+			alts = append(alts, bare)
+		}
+	}
 	switch len(found) {
 	case 0:
-		return "", fmt.Errorf("the source has no catalog %s: lola looked for %s", where, strings.Join(append(market.CatalogFiles(name), market.CatalogFallbackFiles()...), ", "))
+		msg := fmt.Sprintf("the source has no catalog %s: lola looked for %s", where, strings.Join(append(market.CatalogFiles(name), market.CatalogFallbackFiles()...), ", "))
+		var hints []string
+		switch {
+		case len(alts) > 0:
+			msg += "; it has " + andJoin(alts) + ", which --path reads"
+			for _, f := range alts {
+				if add != nil {
+					hints = append(hints, add(f))
+				}
+			}
+		case hasModuleLayout(tree, dir):
+			msg += "; this source is a module, not a catalog"
+			if install != "" {
+				hints = append(hints, install)
+			}
+		}
+		return "", nil, errs.WithHints(errors.New(msg), hints...)
 	case 1:
-		return found[0], nil
+		return found[0], alts, nil
 	}
 	if add == nil {
-		return "", fmt.Errorf("the source has %d catalogs %s, %s; set path: in markets.yaml to the one to read", len(found), where, andJoin(found))
+		return "", nil, fmt.Errorf("the source has %d catalogs %s, %s; set path: in markets.yaml to the one to read", len(found), where, andJoin(found))
 	}
 	var hints []string
 	for _, f := range found {
 		hints = append(hints, add(f))
 	}
-	return "", errs.WithHints(fmt.Errorf("the source has %d catalogs %s, %s; name the one to read with --path", len(found), where,
+	return "", nil, errs.WithHints(fmt.Errorf("the source has %d catalogs %s, %s; name the one to read with --path", len(found), where,
 		andJoin(found)), hints...)
+}
+
+// hasModuleLayout reports whether dir of tree ("" for the root) is laid out as a module, as
+// lola install reads one (module.Load): a SKILL.md of its own, an mcps.json, a skills/<name>/SKILL.md,
+// or a commands/, agents/ or rules/ directory with a .md file in it. Only regular files count,
+// never through a symbolic link (realPath).
+func hasModuleLayout(tree, dir string) bool {
+	regular := func(rel string) bool {
+		fi, err := realPath(tree, rel)
+		return err == nil && fi.Mode().IsRegular()
+	}
+	entries := func(rel string) []os.DirEntry {
+		if fi, err := realPath(tree, rel); err != nil || !fi.IsDir() {
+			return nil
+		}
+		ents, _ := os.ReadDir(filepath.Join(tree, filepath.FromSlash(rel)))
+		return ents
+	}
+	if regular(path.Join(dir, "SKILL.md")) || regular(path.Join(dir, "mcps.json")) {
+		return true
+	}
+	for _, kind := range []string{"commands", "agents", "rules"} {
+		for _, ent := range entries(path.Join(dir, kind)) {
+			if strings.HasSuffix(ent.Name(), ".md") && regular(path.Join(dir, kind, ent.Name())) {
+				return true
+			}
+		}
+	}
+	skills := path.Join(dir, "skills")
+	for _, ent := range entries(skills) {
+		if regular(path.Join(skills, ent.Name(), "SKILL.md")) {
+			return true
+		}
+	}
+	return false
 }
 
 // ErrNoPythonCatalog is wrapped by the refusal of a tree that holds no catalog the Python lola
@@ -779,16 +849,18 @@ func realPath(root, rel string) (fs.FileInfo, error) {
 // fetchMarket fetches the marketplace at src into run and reads its catalog: a catalog
 // file is downloaded, at most market.MaxCatalog bytes; a tree is fetched whole
 // (never through the cache: a marketplace is not a module), so its relative entries can be
-// checked against it, and the fetch refuses links as every fetch does. The catalog is read as a
-// stranger's input (market.Parse); each relative entry's directory must be a real directory in
+// checked against it (the fetch resolves a link inside the tree and refuses one that is
+// unsafe). The catalog is read as a stranger's input (market.ParseFile); each relative entry's directory must be a real directory in
 // the tree, else the entry is skipped. name is the marketplace's name ("" before the catalog
 // names it), p the --path, python the Python lola's name of it (lola migrate's; "" otherwise),
 // which without p finds the catalog as the Python lola did (pythonCatalog), hosts the ssh hosts
-// its entries may name, and add builds the --add hint of a two-catalog refusal.
-func (e *Engine) fetchMarket(ctx context.Context, src marketSource, name, p, python, run string, hosts []string, add func(string) string) (*fetchedMarket, error) {
+// its entries may name, add builds the --add hint of a two-catalog refusal and install is the
+// command that installs the source, the hint of a refusal that finds it is a module ("" for none).
+func (e *Engine) fetchMarket(ctx context.Context, src marketSource, name, p, python, run string, hosts []string, add func(string) string, install string) (*fetchedMarket, error) {
 	pin := market.Pin{Version: market.PinVersion, Source: src.loc, Ref: src.spec.Ref, Path: p, Absent: []string{}, FetchedAt: e.Now().UTC()}
 	var tree, file string
 	var data []byte
+	var alternates []string
 	if src.file {
 		u, err := url.Parse(src.loc)
 		if err != nil {
@@ -816,7 +888,7 @@ func (e *Engine) fetchMarket(ctx context.Context, src marketSource, name, p, pyt
 		if python != "" && p == "" {
 			file, err = pythonCatalog(tree, python)
 		} else {
-			file, err = catalogIn(tree, name, p, add)
+			file, alternates, err = catalogIn(tree, name, p, add, install)
 		}
 		if err != nil {
 			return nil, err
@@ -826,7 +898,7 @@ func (e *Engine) fetchMarket(ctx context.Context, src marketSource, name, p, pyt
 		}
 	}
 	pin.File, pin.Digest = file, profile.Digest(data)
-	cat, err := market.Parse(market.FormatOf(file), data, hosts)
+	cat, err := market.ParseFile(file, data, hosts)
 	if err != nil {
 		return nil, fmt.Errorf("the catalog %s %w", untrusted.Text(file, untrusted.MaxName), err)
 	}
@@ -850,7 +922,7 @@ func (e *Engine) fetchMarket(ctx context.Context, src marketSource, name, p, pyt
 			}
 		}
 	}
-	return &fetchedMarket{pin: pin, data: data, cat: market.Bind(cat, pin)}, nil
+	return &fetchedMarket{pin: pin, data: data, cat: market.Bind(cat, pin), alternates: alternates}, nil
 }
 
 // writeMarket writes the cache of the marketplace name, its catalog and source.json, replacing any
@@ -1055,7 +1127,15 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 	two := func(file string) string {
 		return MarketRun(addRun(req.Name, req.Source, req.Ref, file, req.SSHHosts, req.DryRun, req.Display)...)
 	}
-	f, err := e.fetchMarket(ctx, src, req.Name, req.Path, req.PythonName, run, req.SSHHosts, two)
+	installArgs := []string{"lola", "install", untrusted.Text(req.Source, untrusted.MaxName)}
+	if req.Ref != "" {
+		installArgs = append(installArgs, "--ref", untrusted.Text(req.Ref, untrusted.MaxName))
+	}
+	if req.Path != "" {
+		installArgs = append(installArgs, "--path", untrusted.Text(req.Path, untrusted.MaxName))
+	}
+	installRun := errs.ShellJoin(append(installArgs, req.Display...))
+	f, err := e.fetchMarket(ctx, src, req.Name, req.Path, req.PythonName, run, req.SSHHosts, two, installRun)
 	if err != nil {
 		return nil, err
 	}
@@ -1182,6 +1262,17 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 		return addRun(name, req.Source, req.Ref, p, market.NormalizeHosts(slices.Concat(hosts, pending)), false, req.Display)
 	}); n != nil {
 		res.Notices = append(res.Notices, *n)
+	}
+	// Another name, as the one read is taken: its catalog is another marketplace of the source.
+	offered := map[string]bool{name: true}
+	taken := func(n string) bool { return offered[n] || reg.Find(n) != nil }
+	for _, alt := range f.alternates {
+		text := "the source also has " + alt + ", which lola did not read"
+		if free := market.FreeName(name, 2, taken); free != "" {
+			offered[free] = true
+			text += " → " + MarketRun(addRun(free, req.Source, req.Ref, alt, req.SSHHosts, req.DryRun, req.Display)...)
+		}
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: text})
 	}
 	if !req.DryRun && len(f.cat.Entries) > 0 {
 		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "browse: " + errs.ShellJoin(append([]string{"lola", "install", "@" + name}, req.Display...))})
@@ -1397,7 +1488,7 @@ func (e *Engine) updateMarket(ctx context.Context, r market.Registration, extra 
 	}
 	defer func() { err = errors.Join(err, done()) }()
 	base := market.NormalizeHosts(slices.Concat(r.SSHHosts, extra))
-	f, err := e.fetchMarket(ctx, registrySource(r), r.Name, r.Path, "", run, base, nil)
+	f, err := e.fetchMarket(ctx, registrySource(r), r.Name, r.Path, "", run, base, nil, "")
 	if err != nil {
 		return nil, nil, nil, err
 	}

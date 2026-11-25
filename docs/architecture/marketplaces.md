@@ -50,7 +50,7 @@ the engine's.
     run's staging, never through the cache. It then:
     - finds the catalog (`catalogIn`: `--path` as a file or a directory, else
       `market.CatalogFiles`; `realPath` refuses a link on the way);
-    - reads it with `fsx.ReadOwn` and parses it (`market.Parse`);
+    - reads it with `fsx.ReadOwn` and parses it (`market.ParseFile`);
     - records in `Pin.Absent` each relative entry whose directory the tree does not hold, and
       each path a content list selects that is not there as its kind needs;
     - binds it (`market.Bind`).

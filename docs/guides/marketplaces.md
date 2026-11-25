@@ -75,6 +75,13 @@ lola market acme --remove                                    # forget it; asks (
     `marketplace.yml` and `marketplace.yaml` at its root, or in the directory `--path` names
     (`--path` may name the catalog file itself); two of them are refused with one `--path` command
     per file.
+  - Cursor's `.cursor-plugin/marketplace.json` and GitHub Copilot's `.github/plugin/marketplace.json`
+    are never read unasked. With no catalog found, a source holding one is refused with the
+    `--path` command that reads it; a source laid out as a module (`SKILL.md`, `skills/*/SKILL.md`,
+    `commands/*.md`, `agents/*.md`, `rules/*.md`, `mcps.json`) is refused as a module, not a catalog, hinting
+    `lola install <source>`. With a catalog found and an alternate beside it, `--add` adds a notice
+    naming the alternate and the command that adds it as a second marketplace, as the two may list
+    different entries.
   - The marketplace is named as you name it, else by the catalog's own `name`.
   - For a catalog name that cannot name a marketplace (such as `Lola General Marketplace`), a
     terminal asks for a name, pre-filled with a free slug of it (`lola-general-marketplace`).
@@ -230,7 +237,11 @@ lola market acme --remove                                    # forget it; asks (
     - a name that fails the module-name rule, two entries of one name (both), and a key given
       twice or in another case (`Source`);
     - a description or source over 4096 bytes, more than 64 tags, and skills, commands and
-      agents lists naming more than 1024 paths.
+      agents lists naming more than 1024 paths;
+    - an entry whose text holds a line break or a control or invisible character, in a key or in
+      any field lola reads (a description written as a YAML block or with `\n` in JSON, for
+      example). It is listed under its name, or under `plugins[N]` (`modules[N]` in a YAML
+      catalog) when its name is the unprintable text. lola never rewrites a catalog's text.
   - An allowed ssh host relaxes only that rule:
     - Every other source still has to be `https://`.
     - An allowed host is still given by name, never an address.
@@ -261,7 +272,9 @@ lola market acme --remove                                    # forget it; asks (
     - is nested deeper than 64;
     - holds more than 262144 JSON values, or more than 131072 YAML nodes;
     - has a top-level key given twice or in another case;
-    - has a control or invisible character in any key or field lola reads.
+    - has a line break or a control or invisible character in a key of the catalog, in its
+      `owner` or `metadata`, or in its own `name`, `description` or `version` (an entry's text
+      only skips that entry).
 - **Installing.** `lola install @acme/formatter` installs the entry `formatter` of your
   marketplace `acme`, as its cached catalog lists it (`lola market acme --update` fetches it
   again). `@acme/formatter` is a marketplace address: `@`, one of your marketplaces, `/`, and an

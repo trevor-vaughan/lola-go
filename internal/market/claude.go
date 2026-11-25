@@ -236,7 +236,7 @@ func join(prefix, key string) string {
 // parseClaude reads a Claude Code marketplace.json: the catalog is refused for
 // what makes all of it unreadable or ambiguous, and each entry is skipped, with its reason, for
 // what makes only it unusable.
-func parseClaude(b []byte, ssh []string) (Catalog, error) {
+func parseClaude(b []byte, bareFromRoot bool, ssh []string) (Catalog, error) {
 	root, err := decodeJSON(b)
 	if err != nil {
 		return Catalog{}, err
@@ -272,16 +272,6 @@ func parseClaude(b []byte, ssh []string) (Catalog, error) {
 		}
 	}
 	plugins := root.get("plugins")
-	if plugins != nil && plugins.kind == '[' {
-		for i, item := range plugins.items {
-			if item.kind != '{' {
-				continue
-			}
-			if err := plainFields(item, fmt.Sprintf("plugins[%d]", i), entryKnown); err != nil {
-				return Catalog{}, err
-			}
-		}
-	}
 	cat := Catalog{Format: FormatClaude, Entries: []Entry{}, Skipped: []Skip{}}
 	str := func(o *jval, key, field string, required bool) (string, error) {
 		v := o.get(key)
@@ -315,6 +305,9 @@ func parseClaude(b []byte, ssh []string) (Catalog, error) {
 		return Catalog{}, err
 	}
 	pluginRoot := ""
+	if bareFromRoot {
+		pluginRoot = "." // a bare name is then "./name" from the marketplace root
+	}
 	if meta := root.get("metadata"); meta != nil {
 		if meta.kind != '{' {
 			return Catalog{}, errors.New("metadata is not an object")
@@ -327,11 +320,12 @@ func parseClaude(b []byte, ssh []string) (Catalog, error) {
 		if err != nil {
 			return Catalog{}, err
 		}
-		if pluginRoot, err = str(meta, "pluginRoot", "metadata.pluginRoot", false); err != nil {
+		declared, err := str(meta, "pluginRoot", "metadata.pluginRoot", false)
+		if err != nil {
 			return Catalog{}, err
 		}
-		if pluginRoot != "" {
-			clean, err := CheckRelative(pluginRoot)
+		if declared != "" {
+			clean, err := CheckRelative(declared)
 			if err != nil {
 				return Catalog{}, fmt.Errorf("metadata.pluginRoot %w", err)
 			}
@@ -348,7 +342,18 @@ func parseClaude(b []byte, ssh []string) (Catalog, error) {
 	case len(plugins.items) > maxEntries:
 		return Catalog{}, fmt.Errorf("lists more than %d plugins", maxEntries)
 	}
-	for _, item := range plugins.items {
+	for i, item := range plugins.items {
+		if item.kind == '{' {
+			label := fmt.Sprintf("plugins[%d]", i)
+			if err := plainFields(item, label, entryKnown); err != nil {
+				name := ""
+				if nv := item.get("name"); nv != nil && nv.kind == 's' {
+					name = nv.str
+				}
+				cat.skipUnprintable(name, label, err)
+				continue
+			}
+		}
 		e, s := claudeEntry(item, pluginRoot, ssh)
 		cat.add(e, s)
 	}
@@ -591,6 +596,15 @@ func (c *Catalog) add(e Entry, s *skip) {
 		return
 	}
 	c.Entries = append(c.Entries, e)
+}
+
+// skipUnprintable skips an entry whose text would not print as it is, for the reason err gives. The
+// skip is named by name, else by label (plugins[3]) when the name is itself unusable.
+func (c *Catalog) skipUnprintable(name, label string, err error) {
+	if validateEntryName(name) != nil {
+		name = label
+	}
+	c.Skipped = append(c.Skipped, Skip{Name: name, Reason: err.Error(), Kind: "entry with unprintable text"})
 }
 
 // dedupe skips every entry whose name two or more entries of the catalog have, skipped ones

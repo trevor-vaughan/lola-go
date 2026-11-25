@@ -448,6 +448,117 @@ var _ = Describe("marketplaces", func() {
 		Expect(res.Updates[0].Hints).To(BeEmpty())
 	})
 
+	Describe("a source with no catalog at its root", func() {
+		const noCatalog = "the source has no catalog at the source's root: lola looked for .claude-plugin/marketplace.json, " +
+			"x.yml, x.yaml, marketplace.yml, marketplace.yaml, lola.yml, lola.yaml"
+
+		It("hints the --path of each alternate catalog the tree holds, keeping the run's flags", func() {
+			url, _ := repo("both", map[string]string{".github/plugin/marketplace.json": acmeCatalog, ".cursor-plugin/marketplace.json": acmeCatalog})
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url, Ref: "main", DryRun: true, Display: []string{"--json"}})
+			Expect(err).To(MatchError(noCatalog + "; it has .cursor-plugin/marketplace.json and .github/plugin/marketplace.json, which --path reads"))
+			Expect(errs.Hints(err)).To(Equal([]string{
+				"lola market x --add " + url + " --ref main --path .cursor-plugin/marketplace.json -n --json",
+				"lola market x --add " + url + " --ref main --path .github/plugin/marketplace.json -n --json"}))
+			res, err := add(engine.MarketAddRequest{Name: "x", Source: url, Path: ".github/plugin/marketplace.json"})
+			Expect(err).NotTo(HaveOccurred(), "the hint runs")
+			Expect(res.Markets[0].Path).To(Equal(".github/plugin/marketplace.json"))
+		})
+
+		It("says a source with module layout and no catalog is a module, hinting lola install", func() {
+			for name, files := range map[string]map[string]string{
+				"skillmod":  {"skills/x/SKILL.md": "x"},
+				"rootskill": {"SKILL.md": "x"},
+				"cmdmod":    {"commands/c.md": "x"},
+				"agentmod":  {"agents/a.md": "x"},
+				"rulemod":   {"rules/r.md": "x"},
+				"mcpmod":    {"mcps.json": "{}"},
+			} {
+				url, _ := repo(name, files)
+				_, err := add(engine.MarketAddRequest{Name: "x", Source: url, Ref: "main", Display: []string{"--json"}})
+				Expect(err).To(MatchError(noCatalog+"; this source is a module, not a catalog"), name)
+				Expect(errs.Hints(err)).To(Equal([]string{"lola install " + url + " --ref main --json"}), name)
+			}
+		})
+
+		It("hints nothing for a tree with neither an alternate catalog nor module layout", func() {
+			url, _ := repo("empty", map[string]string{"README.md": "hi", "skills/loose.md": "x", "commands/notes.txt": "x",
+				"skills/.curated/x/SKILL.md": "grouped skills are not a module install reads"})
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url})
+			Expect(err).To(MatchError(noCatalog))
+			Expect(errs.Hints(err)).To(BeEmpty())
+		})
+
+		It("does not offer an alternate that is a directory, and does not fail on one", func() {
+			url, _ := repo("diralt", map[string]string{".github/plugin/marketplace.json/keep": "x", ".cursor-plugin/marketplace.json/keep": "x"})
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url})
+			Expect(err).To(MatchError(noCatalog))
+			Expect(errs.Hints(err)).To(BeEmpty())
+		})
+
+		It("offers an alternate that is a link inside the tree as the file the fetch resolved it to", func() {
+			if runtime.GOOS == "windows" {
+				Skip("symbolic links")
+			}
+			repo("linkalt", map[string]string{"real.json": acmeCatalog, ".cursor-plugin/keep": "x"})
+			Expect(os.Symlink("../real.json", filepath.Join(tmp, "work", "linkalt", ".cursor-plugin", "marketplace.json"))).To(Succeed())
+			url, _ := repo("linkalt", nil)
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url})
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market x --add " + url + " --path .cursor-plugin/marketplace.json"}))
+			_, err = add(engine.MarketAddRequest{Name: "x", Source: url, Path: ".cursor-plugin/marketplace.json"})
+			Expect(err).NotTo(HaveOccurred(), "the hint runs")
+		})
+
+		It("hints the alternate catalog, not lola install, when a tree holds both it and module layout", func() {
+			url, _ := repo("hybrid", map[string]string{".cursor-plugin/marketplace.json": acmeCatalog, "skills/x/SKILL.md": "x"})
+			_, err := add(engine.MarketAddRequest{Name: "x", Source: url})
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market x --add " + url + " --path .cursor-plugin/marketplace.json"}))
+		})
+	})
+
+	It("--add offers each alternate catalog under a name of its own", func() {
+		url, _ := repo("trio", map[string]string{".claude-plugin/marketplace.json": acmeCatalog, ".cursor-plugin/marketplace.json": acmeCatalog,
+			".github/plugin/marketplace.json": acmeCatalog, "tools/formatter/skills/f/SKILL.md": "F"})
+		res, err := add(engine.MarketAddRequest{Source: url, DryRun: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElements(
+			engine.Notice{Level: engine.LevelInfo, Text: "the source also has .cursor-plugin/marketplace.json, which lola did not read → lola market acme-2 --add " +
+				url + " --path .cursor-plugin/marketplace.json -n"},
+			engine.Notice{Level: engine.LevelInfo, Text: "the source also has .github/plugin/marketplace.json, which lola did not read → lola market acme-3 --add " +
+				url + " --path .github/plugin/marketplace.json -n"}))
+	})
+
+	It("--add with --path naming a directory that holds a bare marketplace.json hints the file", func() {
+		url, _ := repo("curs", map[string]string{".cursor-plugin/marketplace.json": acmeCatalog, "tools/formatter/skills/f/SKILL.md": "F"})
+		_, err := add(engine.MarketAddRequest{Name: "x", Source: url, Path: ".cursor-plugin"})
+		Expect(err).To(MatchError(ContainSubstring("under --path .cursor-plugin: lola looked for")))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market x --add " + url + " --path .cursor-plugin/marketplace.json"}))
+		_, err = add(engine.MarketAddRequest{Name: "x", Source: url, Path: ".cursor-plugin/marketplace.json"})
+		Expect(err).NotTo(HaveOccurred(), "the hint runs")
+	})
+
+	It("--add names an alternate catalog beside the one it read, with the --path that reads it", func() {
+		url, _ := repo("duo", map[string]string{".claude-plugin/marketplace.json": acmeCatalog, ".cursor-plugin/marketplace.json": acmeCatalog,
+			"tools/formatter/skills/f/SKILL.md": "F"})
+		res, err := add(engine.MarketAddRequest{Source: url, Display: []string{"--json"}, DryRun: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "the source also has .cursor-plugin/marketplace.json, " +
+			"which lola did not read → lola market acme-2 --add " + url + " --path .cursor-plugin/marketplace.json -n --json"}))
+		res, err = add(engine.MarketAddRequest{Source: url})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Markets[0].Path).To(Equal(".claude-plugin/marketplace.json"), "nothing alternate is read")
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "the source also has .cursor-plugin/marketplace.json, " +
+			"which lola did not read → lola market acme-2 --add " + url + " --path .cursor-plugin/marketplace.json"}))
+		_, err = add(engine.MarketAddRequest{Name: "acme-2", Source: url, Path: ".cursor-plugin/marketplace.json"})
+		Expect(err).NotTo(HaveOccurred(), "the hint runs")
+
+		solo, _ := repo("solo", acme())
+		res, err = add(engine.MarketAddRequest{Name: "solo", Source: solo})
+		Expect(err).NotTo(HaveOccurred())
+		for _, n := range res.Notices {
+			Expect(n.Text).NotTo(ContainSubstring("also has"), "no alternate, no notice")
+		}
+	})
+
 	It("reads the original lola's lola.yml only when no other catalog is at the root", func() {
 		const lolaYML = "name: M\nmodules:\n  - {name: a, repository: \"https://example.com/a.git\", version: main}\n"
 		only := filepath.Join(tmp, "only")

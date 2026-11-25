@@ -115,7 +115,7 @@ func allowedNotice(stored, final []string, dry bool) *Notice {
 // reparse reads f's catalog again under hosts: only the entries' ssh gate depends on them, so the
 // pin's absent directories stand.
 func reparse(f *fetchedMarket, hosts []string) error {
-	cat, err := market.Parse(market.FormatOf(f.pin.File), f.data, hosts)
+	cat, err := market.ParseFile(f.pin.File, f.data, hosts)
 	if err != nil {
 		return fmt.Errorf("the catalog %s %w", untrusted.Text(f.pin.File, untrusted.MaxName), err)
 	}
