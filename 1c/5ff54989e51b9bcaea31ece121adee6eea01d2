@@ -1,0 +1,23 @@
+internal/cli/market_known_test.go
+  s_b1af89ea0dd45d::t_ac9b6a550fa9e1 117,124-128,137,172,224
+internal/cli/remoteprofile_test.go
+  s_b1af89ea0dd45d::t_32d88e5eda3260 211
+internal/cli/sync_test.go
+  s_b1af89ea0dd45d::t_02ab41e7c864e5 19,134-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "1c5ff54989e51b9bcaea31ece121adee6eea01d2",
+  "prompts": {},
+  "sessions": {
+    "s_b1af89ea0dd45d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86d15ce2-2882-4ded-82be-d18f2ba8f3f4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
