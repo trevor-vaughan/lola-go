@@ -195,7 +195,25 @@ the engine's.
   hands the result to the confirm (the CLI's `app.confirm`: the question, or the refusal that
   carries the plan under `--json`), and only then adds. The CLI passes none under `-y` or `-n`,
   and never a `Rename` or `PickSSH`: collisions are refused with the `--enable` under a free name.
-- **The picker and `--check`** (`internal/engine/market_picker.go`) never fetch.
+- **`PreviewKnown`** (`internal/engine/market_known.go`) serves the picker's preview of a known
+  marketplace you have not enabled: it fetches the seed's source at its pin through `fetchMarket`,
+  as `AddMarket`'s dry run does, and returns the entries as `PickerEntry` (the same derivation as
+  `PickerEntries`, through `groupOf`, with installed state read for one scope) beside the seed's
+  facts. It is a call of its own, not `EnableKnown` with `DryRun`, for three reasons: `AddMarket`'s
+  result carries counts, not the entries; it takes the markets lock and refuses a name another
+  marketplace has, which a preview, that names and registers nothing, must not care about; and the
+  picker needs a call it can cancel and cache by id. What it leaves on disk, once it returns:
+  nothing. The tree is fetched into the run's staging directory (`runDir`, never the marketplace
+  cache or the module cache) and removed on return. Quitting the picker with `q` or Ctrl+C
+  mid-fetch cancels the fetch, but the process may end before it removes its `run-*` directory,
+  which then stays in staging until the next run's `sweepRuns`. It also returns how many catalog
+  entries lola skips (`KnownPreview.Skipped`), which `--enable -n` reports. Its failures carry the
+  dry-run `--enable` and `--known` as hints, being commands that show the same error; a cancelled
+  context is returned as is. Every git run lola makes has its locale pinned to English
+  (`LC_ALL=C`, `LANGUAGE` empty, `gitEnv`), since lola tells a missing commit and a missing
+  repository from other failures by git's English messages (`checkoutCommit` says `did not serve
+  commit` only for them, else `could not fetch <url>: <git's reason>`).
+- **The picker's rows and `--check`** (`internal/engine/market_picker.go`) never fetch; `PreviewKnown` is the one call of the picker that does.
   - `PickerRows` is `Markets` split in two: your marketplaces, an enabled known one (the seed's id
     as its name, the seed's source) marked `Known`, `Enabled` and `AheadOfPin` (registered at a
     full commit other than the seed's); then the seed entries not enabled, in seed order. A known

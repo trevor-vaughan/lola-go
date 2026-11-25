@@ -628,6 +628,207 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 		Expect(sum()).To(Equal(before))
 	})
 
+	Describe("installing and uninstalling an entry from its detail page", func() {
+		var proj string
+		linter := func(st cli.MarketPickerStep) engine.PickerEntry {
+			GinkgoHelper()
+			Expect(st.Entries).To(HaveKey("acme"))
+			Expect(st.Entries["acme"]).To(HaveLen(1))
+			return st.Entries["acme"][0]
+		}
+		install := answer(cli.MarketPickerAnswer{Action: cli.PickerInstall, Market: "acme", Entry: "linter", Entries: []string{"linter"}})
+		uninstall := answer(cli.MarketPickerAnswer{Action: cli.PickerUninstall, Market: "acme", Entry: "linter", Entries: []string{"linter"}})
+		BeforeEach(func() {
+			proj = filepath.Join(tmp, "proj")
+			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+			fakeAssistant(tmp, "claude", "2.1.287 (Claude Code)")
+			GinkgoT().Chdir(proj)
+		})
+
+		It("installs where the install flow's own scope question is answered, and opens again at the entry, installed", func() {
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{install, leave}, review: []string{cli.ReviewApply}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.calls).To(Equal([]string{"market-picker", "scope", "review", "market-picker"}), r.err)
+			Expect(filepath.Join(proj, ".claude", "commands", "lint.md")).To(BeARegularFile(), r.err)
+			Expect(p.pickerSteps[0].Resume).To(BeZero())
+			Expect(linter(p.pickerSteps[0]).Installed).To(BeFalse())
+			Expect(p.pickerSteps[1].Resume).To(Equal(cli.PickerResume{Market: "acme", Entry: "linter"}))
+			Expect(linter(p.pickerSteps[1]).Installed).To(BeTrue())
+			Expect(p.pickerSteps[1].Context).To(HavePrefix("project " + proj))
+		})
+
+		It("opens again on the entries page when the install began there", func() {
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{answer(cli.MarketPickerAnswer{Action: cli.PickerInstall, Market: "acme", Entry: "linter", Entries: []string{"linter"}, FromEntries: true}), leave},
+				review: []string{cli.ReviewApply}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(filepath.Join(proj, ".claude", "commands", "lint.md")).To(BeARegularFile(), r.err)
+			Expect(p.pickerSteps[1].Resume).To(Equal(cli.PickerResume{Market: "acme", Entry: "linter", OnEntries: true}))
+		})
+
+		It("prints a failed install's error and opens again on the entries page when it began there", func() {
+			Expect(os.RemoveAll(filepath.Join(acme, "linter"))).To(Succeed())
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{answer(cli.MarketPickerAnswer{Action: cli.PickerInstall, Market: "acme", Entry: "linter", Entries: []string{"linter"}, FromEntries: true}), leave}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(ContainSubstring("error: "))
+			Expect(p.pickerSteps[1].Resume).To(Equal(cli.PickerResume{Market: "acme", Entry: "linter", OnEntries: true}))
+		})
+
+		It("uninstalls an installed entry and opens again at it, not installed", func() {
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{install, uninstall, leave}, review: []string{cli.ReviewApply}, confirm: []bool{true}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(filepath.Join(proj, ".claude", "commands", "lint.md")).NotTo(BeAnExistingFile())
+			Expect(p.pickerSteps[2].Resume).To(Equal(cli.PickerResume{Market: "acme", Entry: "linter"}))
+			Expect(linter(p.pickerSteps[2]).Installed).To(BeFalse())
+		})
+
+		Describe("with several entries", func() {
+			both := func(action cli.MarketPickerAction) cli.MarketPickerAnswer {
+				return cli.MarketPickerAnswer{Action: action, Market: "acme", Entry: "formatter", Entries: []string{"formatter", "linter"}, FromEntries: true}
+			}
+			BeforeEach(func() {
+				writeTree(acme, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"},
+  "plugins": [{"name": "formatter", "source": "./formatter", "description": "Formats code"},
+    {"name": "linter", "source": "./linter", "description": "Lints code"}]}`, "formatter/commands/fmt.md": "Fmt\n"})
+				Expect(run(nil, "market", "acme", "--update").code).To(Equal(0))
+			})
+
+			It("installs them in one install, asking its questions once, and opens again on the first", func() {
+				p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{answer(both(cli.PickerInstall)), leave}, review: []string{cli.ReviewApply}}
+				r := run(p, "market")
+				Expect(r.code).To(Equal(0), r.err)
+				Expect(p.calls).To(Equal([]string{"market-picker", "scope", "review", "market-picker"}), r.err)
+				Expect(filepath.Join(proj, ".claude", "commands", "fmt.md")).To(BeARegularFile(), r.err)
+				Expect(filepath.Join(proj, ".claude", "commands", "lint.md")).To(BeARegularFile(), r.err)
+				Expect(p.pickerSteps[1].Resume).To(Equal(cli.PickerResume{Market: "acme", Entry: "formatter", OnEntries: true}))
+			})
+
+			It("uninstalls them in one uninstall", func() {
+				p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{answer(both(cli.PickerInstall)), answer(both(cli.PickerUninstall)), leave},
+					review: []string{cli.ReviewApply}, confirm: []bool{true}}
+				r := run(p, "market")
+				Expect(r.code).To(Equal(0), r.err)
+				Expect(filepath.Join(proj, ".claude", "commands", "fmt.md")).NotTo(BeAnExistingFile())
+				Expect(filepath.Join(proj, ".claude", "commands", "lint.md")).NotTo(BeAnExistingFile())
+			})
+
+			It("names an entry the marketplace no longer offers, and installs none", func() {
+				ghost := both(cli.PickerInstall)
+				ghost.Entries = []string{"formatter", "ghost"}
+				p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{answer(ghost), leave}}
+				r := run(p, "market")
+				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.err).To(ContainSubstring("error: acme no longer offers ghost"))
+				Expect(r.err).To(ContainSubstring("hint: lola market acme --update"))
+				Expect(filepath.Join(proj, ".claude", "commands", "fmt.md")).NotTo(BeAnExistingFile())
+			})
+		})
+
+		It("prints a failed install's error with its hints and opens again at the same entry", func() {
+			Expect(os.RemoveAll(filepath.Join(acme, "linter"))).To(Succeed())
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{install, leave}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(ContainSubstring("error: "))
+			Expect(r.err).To(ContainSubstring("hint: "))
+			Expect(p.pickerSteps[1].Resume).To(Equal(cli.PickerResume{Market: "acme", Entry: "linter"}))
+			Expect(linter(p.pickerSteps[1]).Installed).To(BeFalse())
+		})
+
+		It("ends the run on Ctrl+C in the install's own question", func() {
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{install}, review: []string{cli.ReviewQuit}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(4))
+			Expect(p.calls).To(Equal([]string{"market-picker", "scope", "review"}))
+			Expect(filepath.Join(proj, ".claude", "commands", "lint.md")).NotTo(BeAnExistingFile())
+		})
+
+		It("opens again with no entry for Enter, update and Add", func() {
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{install, answer(cli.MarketPickerAnswer{Action: cli.PickerUpdate, Own: []string{"acme"}}),
+				answer(cli.MarketPickerAnswer{Action: cli.PickerAdd}), leave}, review: []string{cli.ReviewApply}, sources: [][2]string{{"", ""}}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.pickerSteps).To(HaveLen(4))
+			Expect(p.pickerSteps[1].Resume).NotTo(BeZero())
+			Expect(p.pickerSteps[2].Resume).To(BeZero())
+			Expect(p.pickerSteps[3].Resume).To(BeZero())
+		})
+
+		It("opens again with no entry after Enter's follow-up question", func() {
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{install, answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Own: []string{"acme"}}), leave},
+				review: []string{cli.ReviewApply}, where: []int{1}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.pickerSteps).To(HaveLen(3))
+			Expect(p.pickerSteps[1].Resume).NotTo(BeZero())
+			Expect(p.pickerSteps[2].Resume).To(BeZero())
+		})
+
+		It("refuses --scope both before opening, since it acts on one scope", func() {
+			p := &scripted{pickers: picks{leave}}
+			r := run(p, "market", "--scope", "both")
+			Expect(r.code).To(Equal(1))
+			Expect(r.err).To(ContainSubstring("error: the market picker acts on one scope, and --scope both names two"))
+			Expect(r.err).To(ContainSubstring("hint: lola market --scope project"))
+			Expect(r.err).To(ContainSubstring("hint: lola market --scope user"))
+			Expect(p.calls).To(BeEmpty())
+		})
+
+		It("acts on the scope --scope user names, and says so in the context line", func() {
+			p := &scripted{pickers: picks{install, leave}, review: []string{cli.ReviewApply}}
+			r := run(p, "market", "--scope", "user")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.pickerSteps[0].Context).To(HavePrefix("user scope"))
+			Expect(filepath.Join(os.Getenv("HOME"), ".claude", "commands", "lint.md")).To(BeARegularFile(), r.err)
+			Expect(filepath.Join(proj, ".claude", "commands", "lint.md")).NotTo(BeAnExistingFile())
+			Expect(linter(p.pickerSteps[1]).Installed).To(BeTrue())
+		})
+
+		It("leaves an install's scope to the install flow, which resolves it as lola install does, not as the picker's flags", func() {
+			bare := filepath.Join(tmp, "bare")
+			Expect(os.MkdirAll(bare, 0o755)).To(Succeed())
+			GinkgoT().Chdir(bare)
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeUser)}, pickers: picks{install, leave}, review: []string{cli.ReviewApply}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.pickerSteps[0].Context).To(HavePrefix("user scope"))
+			Expect(filepath.Join(os.Getenv("HOME"), ".claude", "commands", "lint.md")).To(BeARegularFile(), r.err)
+			Expect(p.reviewSteps[0].Summary.Folded()).NotTo(ContainSubstring("flag:"), "the picker's scope is not passed on as a flag")
+			Expect(p.pickerSteps[1].Resume).To(Equal(cli.PickerResume{Market: "acme", Entry: "linter"}))
+		})
+
+		It("passes the scope flags given to lola market on to the install", func() {
+			p := &scripted{pickers: picks{install, leave}, review: []string{cli.ReviewApply}}
+			r := run(p, "market", "--user")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.reviewSteps[0].Summary.Folded()).To(ContainSubstring("flag:"))
+			Expect(filepath.Join(os.Getenv("HOME"), ".claude", "commands", "lint.md")).To(BeARegularFile(), r.err)
+			Expect(filepath.Join(proj, ".claude", "commands", "lint.md")).NotTo(BeAnExistingFile())
+		})
+
+		It("keeps uninstall pinned to the scope the picker reads", func() {
+			p := &scripted{pickers: picks{install, uninstall, leave}, review: []string{cli.ReviewApply}, confirm: []bool{true}}
+			r := run(p, "market", "--scope", "user")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.calls).To(Equal([]string{"market-picker", "review", "market-picker", "confirm:Uninstall linter?", "market-picker"}))
+			Expect(filepath.Join(os.Getenv("HOME"), ".claude", "commands", "lint.md")).NotTo(BeAnExistingFile())
+		})
+
+		It("keeps the picker open on a lock.json lola cannot read, with the error and its hints as a warning", func() {
+			Expect(os.WriteFile(filepath.Join(proj, ".lola", "lock.json"), []byte("{oops"), 0o600)).To(Succeed())
+			p := &scripted{pickers: picks{leave}}
+			r := run(p, "market")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.calls).To(Equal([]string{"market-picker"}))
+			Expect(p.pickerSteps[0].Entries).To(BeEmpty())
+			Expect(r.err).To(ContainSubstring("lock.json"))
+			Expect(r.err).To(ContainSubstring("hint: "))
+		})
+	})
+
 	It("lists as text off a terminal", func() {
 		p := &scripted{}
 		r := run(offTerminal{p}, "market")

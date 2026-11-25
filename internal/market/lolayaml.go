@@ -18,7 +18,7 @@ func validateEntryName(name string) error { return module.ValidateName("entry", 
 // The fields lola reads in a Python lola catalog and in each of its modules.
 var (
 	yamlTopFields    = []string{"name", "description", "version"}
-	yamlModuleFields = []string{"name", "description", "version", "repository", "path", "ref"}
+	yamlModuleFields = []string{"name", "description", "version", "license", "repository", "path", "ref"}
 )
 
 // scalarAdvice follows a refusal of a line break in a YAML catalog's text.
@@ -106,7 +106,7 @@ func parseYAML(b []byte, ssh []string) (Catalog, error) {
 	for i, m := range modules.Content {
 		if m.Kind == yaml.MappingNode {
 			label := fmt.Sprintf("modules[%d]", i)
-			if err := plainYAML(m, label, slices.Concat(yamlModuleFields, []string{"tags"})); err != nil {
+			if err := plainYAML(m, label, slices.Concat(slices.DeleteFunc(slices.Clone(yamlModuleFields), func(f string) bool { return f == "license" }), []string{"tags"})); err != nil {
 				name := ""
 				if nv := yamldoc.Value(m, "name"); nv != nil && nv.Kind == yaml.ScalarNode {
 					name = nv.Value
@@ -141,6 +141,9 @@ func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool), ssh [
 	}
 	vals := map[string]string{}
 	for _, f := range yamlModuleFields {
+		if f == "license" {
+			continue
+		}
 		v, ok := text(m, f)
 		if !ok {
 			return Entry{}, skipped("malformed entry", "line %d: %s is not text", m.Line, f)
@@ -156,6 +159,9 @@ func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool), ssh [
 	e := Entry{Name: vals["name"], Description: vals["description"], Version: vals["version"], Tags: []string{}, Notices: []string{}}
 	if s := checkEntryText(e); s != nil {
 		return e, s
+	}
+	if lv, ok := text(m, "license"); ok {
+		e.License = shownLicense(lv)
 	}
 	if tags := yamldoc.Value(m, "tags"); tags != nil && (tags.Kind != yaml.ScalarNode || tags.Tag != "!!null") {
 		if tags.Kind != yaml.SequenceNode {
@@ -218,6 +224,16 @@ func parse(format string, bareFromRoot bool, b []byte, sshHosts []string) (Catal
 		}
 	}
 	return cat, nil
+}
+
+// shownLicense is license when lola can print it as it is, else "": a license that is over maxText
+// bytes or holds a line break or control characters is dropped and the entry kept, as the field is
+// decoration.
+func shownLicense(license string) string {
+	if len(license) > maxText || !untrusted.IsPlain(license) {
+		return ""
+	}
+	return license
 }
 
 // checkEntryText skips an entry whose description or version is longer than lola prints.

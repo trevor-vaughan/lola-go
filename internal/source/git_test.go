@@ -199,6 +199,22 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(errs.Hints(err)).To(ContainElement("use --ref with a branch or tag that contains the commit"))
 	})
 
+	It("says a commit the server does not have was not served", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "old"})
+		missing := strings.Repeat("1", 40)
+		_, err := fetch(r.url, missing, "")
+		Expect(err).To(MatchError(ContainSubstring("did not serve commit " + missing)))
+		Expect(errs.Hints(err)).To(ContainElement("use --ref with a branch or tag that contains the commit"))
+	})
+
+	It("says a host it could not reach could not be fetched from, with git's reason and no claim about the commit", func() {
+		_, err := fetch("http://127.0.0.1:1/x.git", strings.Repeat("1", 40), "")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(And(HavePrefix("could not fetch http://127.0.0.1:1/x.git: "), ContainSubstring("127.0.0.1"), Not(ContainSubstring("did not serve")),
+			Not(ContainSubstring("protocol v0")), Not(ContainSubstring("exit status"))))
+		Expect(strings.Count(err.Error(), "\n")).To(BeZero())
+	})
+
 	It("refuses a ref that names both a branch and a tag", func() {
 		r := newRemote(tmp, map[string]string{"commands/a.md": "A"})
 		git(r.work, "branch", "dup")

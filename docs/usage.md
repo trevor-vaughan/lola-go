@@ -50,7 +50,7 @@ Each command has its own page, in the order `lola help` lists them:
 - [`lola update`](reference/update.md#lola-update): Update the installed modules from their sources.
 - [`lola tidy`](reference/tidy.md#lola-tidy): Move what lola does not manage to the trash.
 - [`lola profile`](reference/profile.md#lola-profile): List your profiles, show one, or turn them on and off.
-- [`lola market`](reference/market.md#lola-market): List, add and update the marketplaces whose catalogs you browse, and the ones lola knows.
+- [`lola market`](reference/market.md#lola-market): List, add and update the marketplaces whose catalogs you browse, and the ones lola knows; on a terminal, a picker that also opens a marketplace's entries and installs or uninstalls one.
 - [`lola check`](reference/check.md#lola-check): Report what each assistant would lose, change or skip from a module.
 - [`lola info`](reference/info.md#lola-info): Show a module, the code it runs and what installing it here would do.
 - [`lola search`](reference/search.md#lola-search): Search for modules by name, description or keyword.

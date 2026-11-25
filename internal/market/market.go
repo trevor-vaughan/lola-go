@@ -34,7 +34,7 @@ const (
 	maxDescription = 1024 // a catalog's
 	// An entry's description: real catalogs hold ones over 1024 bytes.
 	maxEntryDescription = 4096
-	maxText             = untrusted.MaxName // a catalog's name, owner and version, and an entry's version
+	maxText             = untrusted.MaxName // a catalog's name, owner and version, and an entry's version and license
 	// What decoding may allocate, which the byte cap alone does not bound: JSON
 	// values, YAML bytes (a node costs about 120 bytes decoded) and YAML nodes. Over these refuses
 	// the whole catalog.
@@ -107,6 +107,7 @@ func CountKind(n int, kind string) string {
 type Entry struct {
 	Name                 string
 	Description, Version string
+	License              string // as the catalog states it, "" when it does not
 	Tags                 []string
 	Source               manifest.Entry
 	Kind                 string

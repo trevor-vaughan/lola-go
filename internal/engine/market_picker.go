@@ -56,6 +56,9 @@ type PickerRow struct {
 	Pin string `json:"pin"`
 	// Status is the result of checking the row against its remote; "" until it is checked.
 	Status string `json:"status"`
+	// WebURL is the http(s) address of the row's repository for a browser, "" when its source is not
+	// a git source webURL can name.
+	WebURL string `json:"web_url"`
 }
 
 // PickerRows is the picker's rows: own, your marketplaces in markets.yaml order, with an enabled
@@ -96,14 +99,25 @@ func (e *Engine) PickerRows(display []string) (own, unenabled []PickerRow, _ []N
 				}
 			}
 		}
+		pr.WebURL = rowWebURL(row.Source, row.Ref, row.Path)
 		own = append(own, pr)
 	}
 	for _, k := range seed {
 		if !taken[k.ID] {
-			unenabled = append(unenabled, PickerRow{MarketRow: MarketRow{Source: shown(k.Source)}, ID: shown(k.ID), Known: true, Reason: shown(k.Reason), Pin: shown(k.Commit)})
+			unenabled = append(unenabled, PickerRow{MarketRow: MarketRow{Source: shown(k.Source)}, ID: shown(k.ID), Known: true, Reason: shown(k.Reason), Pin: shown(k.Commit),
+				WebURL: rowWebURL(shown(k.Source), "", "")})
 		}
 	}
 	return own, unenabled, notices, nil
+}
+
+// rowWebURL is webURL of the marketplace source loc at ref and path, "" when loc is not a git source
+// (a catalog file is a file, not a repository, so it has no address either).
+func rowWebURL(loc, ref, path string) string {
+	if market.IsCatalogURL(loc) || !source.IsGitForm(loc) {
+		return ""
+	}
+	return webURL(source.Spec{Kind: source.KindGit, Location: loc, Ref: ref, Path: path})
 }
 
 // Checkable is whether CheckMarkets checks the row: a git source with a fetched catalog, or a known
@@ -183,7 +197,8 @@ type CheckedMarket struct {
 }
 
 // CheckedMarkets is Markets with each git marketplace's Status, as CheckMarkets finds it; it waits
-// for every check, so it takes at most about checkTimeout once the checks run 8 at once. display is the
+// for every check, which run checkConcurrency at once, so it takes up to ceil(rows/checkConcurrency)
+// times checkTimeout. display is the
 // run's output flags, which the notices' commands keep. The slice is never nil; it fails with
 // ctx's error once ctx is done.
 func (e *Engine) CheckedMarkets(ctx context.Context, display []string) ([]CheckedMarket, []Notice, error) {

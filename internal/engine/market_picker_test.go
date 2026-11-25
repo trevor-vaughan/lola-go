@@ -28,7 +28,7 @@ var _ = Describe("Engine.PickerRows", func() {
 		betaURL  = "https://example.com/beta.git"
 		gammaURL = "https://example.com/gamma.git"
 	)
-	type reg struct{ name, source, ref string }
+	type reg struct{ name, source, ref, path string }
 	var (
 		p paths.Paths
 		e *engine.Engine
@@ -51,6 +51,9 @@ var _ = Describe("Engine.PickerRows", func() {
 			b.WriteString("  - name: " + r.name + "\n    source: " + r.source + "\n")
 			if r.ref != "" {
 				b.WriteString("    ref: " + r.ref + "\n")
+			}
+			if r.path != "" {
+				b.WriteString("    path: " + r.path + "\n")
 			}
 		}
 		Expect(os.MkdirAll(filepath.Dir(p.Markets), 0o755)).To(Succeed())
@@ -113,6 +116,27 @@ var _ = Describe("Engine.PickerRows", func() {
 		Expect(own).To(HaveEach(And(HaveField("Known", false), HaveField("Enabled", false))))
 		Expect(unenabled).To(HaveLen(2))
 	})
+
+	DescribeTable("WebURL",
+		func(r reg, want string) {
+			r.name = "alpha"
+			register(r)
+			seedOf(known("beta", "git@github.com:acme/beta.git"), known("gamma", "https://exa_mple.com/acme/gamma.git"))
+			own, unenabled, _, err := e.PickerRows(nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(own).To(ConsistOf(HaveField("WebURL", want)))
+			Expect(unenabled).To(HaveExactElements(HaveField("WebURL", "https://github.com/acme/beta"), HaveField("WebURL", "")))
+		},
+		Entry("an https GitHub source", reg{source: "https://github.com/acme/alpha.git"}, "https://github.com/acme/alpha"),
+		Entry("an ssh scp form of a known host", reg{source: "git@github.com:acme/alpha.git"}, "https://github.com/acme/alpha"),
+		Entry("its ref and path", reg{source: "https://github.com/acme/alpha.git", ref: "v1", path: "cat/market"}, "https://github.com/acme/alpha/tree/v1/cat/market"),
+		Entry("its path at the default ref", reg{source: "https://github.com/acme/alpha.git", path: "cat"}, "https://github.com/acme/alpha/tree/HEAD/cat"),
+		Entry("a local folder", reg{source: "/srv/alpha"}, ""),
+		Entry("an archive", reg{source: "https://example.com/alpha.tar.gz"}, ""),
+		Entry("a catalog file", reg{source: "https://example.com/acme/alpha/marketplace.json"}, ""),
+		Entry("a host a web address may not name", reg{source: "https://exa_mple.com/acme/alpha.git"}, ""),
+		Entry("an ssh remote of an unknown host", reg{source: "git@internal.example.com:acme/alpha.git"}, ""),
+	)
 
 	DescribeTable("AheadOfPin",
 		func(ref string, ahead bool) {
@@ -350,7 +374,9 @@ var _ = Describe("Engine.CheckMarkets", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		ch := e.CheckMarkets(ctx, []engine.PickerRow{own(first), own(first)})
 		time.AfterFunc(100*time.Millisecond, cancel)
-		for _, c := range collect(ch) {
+		got := collect(ch)
+		Expect(got).To(HaveLen(2))
+		for _, c := range got {
 			Expect(c.Status).To(Equal(engine.StatusUnreachable))
 		}
 	})

@@ -131,6 +131,36 @@ modules:
 		Expect(yml.Entries[3].Notices).To(Equal([]string{"catalog install scripts are ignored"}))
 	})
 
+	It("an entry's license is read as the catalog states it, and a license that would not print is dropped, not the entry, in either format", func() {
+		cat := parsed(`{"name": "mit", "source": "./a", "license": "MIT"}`, `{"name": "none", "source": "./b"}`,
+			`{"name": "nottext", "source": "./c", "license": {"type": "MIT"}}`,
+			`{"name": "wordy", "source": "./d", "license": "`+strings.Repeat("a", 257)+`"}`,
+			`{"name": "line", "source": "./e", "license": "MIT\nGPL"}`,
+			`{"name": "ctrl", "source": "./f", "license": "MIT\u001b[31m"}`)
+		Expect(cat.Skipped).To(BeEmpty())
+		Expect(cat.Entries).To(HaveLen(6))
+		licenses := []string{}
+		for _, e := range cat.Entries {
+			licenses = append(licenses, e.License)
+		}
+		Expect(licenses).To(Equal([]string{"MIT", "", "", "", "", ""}))
+		yml, err := market.ParseFile("marketplace.yml", []byte("name: m\nmodules:\n"+
+			"  - {name: mit, repository: \"https://e.example/a.git\", license: Apache-2.0}\n"+
+			"  - {name: none, repository: \"https://e.example/b.git\"}\n"+
+			"  - {name: wordy, repository: \"https://e.example/c.git\", license: "+strings.Repeat("a", 257)+"}\n"+
+			"  - {name: nottext, repository: \"https://e.example/d.git\", license: {type: MIT}}\n"+
+			"  - {name: line, repository: \"https://e.example/e.git\", license: \"MIT\\nGPL\"}\n"+
+			"  - {name: ctrl, repository: \"https://e.example/f.git\", license: \"MIT\\e[31m\"}\n"), nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(yml.Skipped).To(BeEmpty())
+		Expect(yml.Entries).To(HaveLen(6))
+		licenses = []string{}
+		for _, e := range yml.Entries {
+			licenses = append(licenses, e.License)
+		}
+		Expect(licenses).To(Equal([]string{"Apache-2.0", "", "", "", "", ""}))
+	})
+
 	It("an entry with an unsupported source kind is skipped with its reason and the rest load", func() {
 		missing := parsed(`{"name": "nourl", "source": {"source": "url"}}`, `{"name": "norepo", "source": {"source": "github"}}`,
 			`{"name": "emptyurl", "source": {"source": "archive", "url": ""}}`,

@@ -38,18 +38,21 @@ var scrubbedGitVars = map[string]bool{"GIT_DIR": true, "GIT_WORK_TREE": true, "G
 var shortSHARE = regexp.MustCompile(`^[0-9a-f]{4,39}$`)
 
 // gitEnv is environ for a git command lola runs on a source: prompts and
-// user-chosen protocols off, optional locks off, and the repository-selecting variables
-// removed. Everything else, credential helpers and the ssh agent included, passes through.
+// user-chosen protocols off, optional locks off, the repository-selecting variables removed and
+// the locale pinned to English. Everything else, credential helpers and the ssh
+// agent included, passes through.
 func gitEnv(environ []string) []string {
 	out := make([]string, 0, len(environ)+3)
 	for _, kv := range environ {
 		k, _, _ := strings.Cut(kv, "=")
-		if scrubbedGitVars[k] || strings.HasPrefix(k, "GIT_CONFIG_KEY_") || strings.HasPrefix(k, "GIT_CONFIG_VALUE_") {
+		if scrubbedGitVars[k] || strings.HasPrefix(k, "GIT_CONFIG_KEY_") || strings.HasPrefix(k, "GIT_CONFIG_VALUE_") ||
+			k == "LC_ALL" || k == "LC_MESSAGES" || k == "LANGUAGE" {
 			continue
 		}
 		out = append(out, kv)
 	}
-	return append(out, "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0")
+	// lola reads git's messages (a missing commit, a repository not found), so git speaks English.
+	return append(out, "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "LANGUAGE=")
 }
 
 // GitCommand builds a git invocation over an UNTRUSTED repository, in dir when dir is set: a
@@ -547,6 +550,9 @@ func checkoutCommit(ctx context.Context, spec Spec, scratch string) ([]string, e
 	if errors.As(err, new(*AccessError)) {
 		return nil, err
 	}
+	if err != nil && !missingRef(err) {
+		return nil, fmt.Errorf("could not fetch %s: %s", shown, lastLine(err))
+	}
 	if err != nil {
 		return nil, errs.WithHints(fmt.Errorf("%s did not serve commit %s; servers using git protocol v0 refuse a commit "+
 			"that no branch or tag points to: %w", shown, shownRef, err), "use --ref with a branch or tag that contains the commit")
@@ -569,6 +575,33 @@ func checkoutCommit(ctx context.Context, spec Spec, scratch string) ([]string, e
 		return nil, fmt.Errorf("%s served commit %s for %s; lola installs only the commit asked for", shown, untrusted.Text(got, untrusted.MaxName), shownRef)
 	}
 	return execs, nil
+}
+
+// missingRef reports whether a failed fetch of a commit says the server lacks it, in the words git
+// prints for one: "not our ref" (a server that serves no commit no ref points to), "Server does
+// not allow request for unadvertised object" (protocol v0) and "couldn't find remote ref".
+func missingRef(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "not our ref") || strings.Contains(msg, "unadvertised object") ||
+		strings.Contains(msg, "couldn't find remote ref")
+}
+
+// lastLine is the last line of err's text that says something, after git's "fatal: " or "error: "
+// lead: the reason a git run failed, which runGit's text ends with.
+func lastLine(err error) string {
+	lines := strings.Split(strings.TrimSpace(err.Error()), "\n")
+	for _, line := range slices.Backward(lines) {
+		if l := strings.TrimSpace(line); l != "" {
+			// runGit's text is "git fetch failed: exit status N: <git's output>".
+			for _, lead := range []string{"fatal: ", "error: "} {
+				if _, rest, ok := strings.Cut(l, lead); ok {
+					return rest
+				}
+			}
+			return l
+		}
+	}
+	return err.Error()
 }
 
 // prepareCheckout readies the repository at scratch for checking out rev: it writes

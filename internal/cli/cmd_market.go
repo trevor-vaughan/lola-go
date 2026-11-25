@@ -2,6 +2,7 @@ package cli
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/market"
+	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -149,7 +151,7 @@ func (a *app) marketCmd() *cobra.Command {
 			"entry too, show it as lola info @<name>/<entry> does, fetching it. Listing and showing a marketplace\n" +
 			"never fetch or ask; --check adds each git source's upstream status, asking each remote for its tip.\n" +
 			"On a terminal a bare lola market opens a picker of yours and the known ones instead: x ticks,\n" +
-			"/ filters, Enter acts, a adds, esc or q leaves; u checks the ticked rows (or the cursor's) and U\n" +
+			"/ filters, Enter acts, a adds, o opens a row's web page, esc or q leaves; u checks the ticked rows (or the cursor's) and U\n" +
 			"every row upstream, then offers to update yours that need it. Nothing is contacted before u or U.\n" +
 			"--json, --plain, --no-pager, --no-interactive and config.yaml market_picker: false list instead.\n" +
 			"--add <source> (git repository, https:// archive or catalog file, or folder) registers a catalog;\n" +
@@ -768,13 +770,55 @@ func (a *app) marketPickerOpens(cmd *cobra.Command, eng *engine.Engine) (bool, e
 func (a *app) marketPick(cmd *cobra.Command, eng *engine.Engine) error {
 	p := a.prompter(cmd)
 	noticed := map[string]bool{}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	req, err := a.scopeRequest(cwd, false)
+	if err != nil {
+		return err
+	}
+	scopes, err := eng.ResolveReadScope(req)
+	if err != nil {
+		return err
+	}
+	if req.Scope != "" && len(scopes) > 1 {
+		return errs.WithHints(fmt.Errorf("the market picker acts on one scope, and --scope %s names two", untrusted.Text(req.Scope, untrusted.MaxName)),
+			"lola market --scope project", "lola market --scope user")
+	}
+	sc := scopes[0].Scope
 	var preselect []string
+	var resume PickerResume
 	for {
 		own, known, notices, err := eng.PickerRows(outputFlags(cmd))
 		if err != nil {
 			return err
 		}
 		w := cmd.ErrOrStderr()
+		entries, warnings, err := eng.PickerEntries(sc, outputFlags(cmd))
+		if err != nil {
+			// Entries are a convenience: a lock.json lola cannot read must not lock the user out of
+			// adding, updating and removing marketplaces, so the picker opens without them.
+			entries, warnings = nil, nil
+			text := untrusted.CleanErr(err).Error()
+			if !noticed[text] {
+				noticed[text] = true
+				fmt.Fprintln(w, a.style(cmd).warn("entries are not shown: "+text))
+				for _, h := range errs.Hints(err) {
+					fmt.Fprintln(w, hintLine("  ", h, a.style(cmd).width))
+				}
+			}
+		}
+		skipped, err := eng.PickerSkips(outputFlags(cmd))
+		if err != nil {
+			skipped = nil // read from the same groups as entries: those that failed above already said why
+		}
+		for _, warning := range warnings {
+			if !noticed[warning] {
+				noticed[warning] = true
+				fmt.Fprintln(w, a.style(cmd).warn(warning))
+			}
+		}
 		for _, n := range notices {
 			if !noticed[n.Text] {
 				noticed[n.Text] = true
@@ -782,11 +826,14 @@ func (a *app) marketPick(cmd *cobra.Command, eng *engine.Engine) error {
 			}
 		}
 		ans, err := p.MarketPicker(MarketPickerStep{Own: own, Known: known, PreselectOwn: preselect,
-			Check: eng.CheckMarkets})
+			Check: eng.CheckMarkets, Entries: entries, Skipped: skipped, Context: contextLine(eng.Context(sc, nil)), ScopeKind: sc.Kind.String(), Resume: resume, OpenURL: openBrowser,
+			Preview: func(ctx context.Context, id string) (engine.KnownPreview, error) {
+				return eng.PreviewKnown(ctx, id, sc, outputFlags(cmd))
+			}})
 		if err != nil {
 			return err
 		}
-		preselect = nil
+		preselect, resume = nil, PickerResume{}
 		switch ans.Action {
 		case PickerCancel:
 			return nil
@@ -797,6 +844,9 @@ func (a *app) marketPick(cmd *cobra.Command, eng *engine.Engine) error {
 			err = a.marketPickUpdate(cmd, eng, own, ans)
 		case PickerEnter:
 			err = a.marketPickEnter(cmd, eng, p, ans)
+		case PickerInstall, PickerUninstall:
+			err = a.pickerEnded(cmd, a.marketEntry(cmd, sc, ans, entries))
+			resume = PickerResume{Market: ans.Market, Entry: ans.Entry, OnEntries: ans.FromEntries}
 		}
 		if err != nil {
 			return err
@@ -924,6 +974,49 @@ func (a *app) marketPickEnter(cmd *cobra.Command, eng *engine.Engine, p Prompter
 		}
 	}
 	return nil
+}
+
+// scopePin is the scope flags of a run, which marketEntry sets for an uninstall hand-off and puts back.
+type scopePin struct {
+	scope         string
+	user, project bool
+	root          string
+}
+
+// marketEntry runs lola install of the entries ans names, or lola uninstall of them, in one call as
+// the command asks its own questions. An install keeps the scope flags lola market was given and
+// resolves its scope as lola install does; an uninstall acts on what the picker marks installed, so
+// its scope flags are set aside for the run and sc, the scope the picker reads, is the one it acts on,
+// none asked. Each entry is found again in entries, read afresh; one the marketplace no longer offers
+// ends the call, naming it, before anything runs.
+func (a *app) marketEntry(cmd *cobra.Command, sc engine.Scope, ans MarketPickerAnswer, entries map[string][]engine.PickerEntry) error {
+	name, args := "install", make([]string, 0, len(ans.Entries))
+	if ans.Action == PickerUninstall {
+		name = "uninstall"
+	}
+	for _, n := range ans.Entries {
+		i := slices.IndexFunc(entries[ans.Market], func(e engine.PickerEntry) bool { return e.Name == n })
+		if i < 0 {
+			return errs.WithHints(fmt.Errorf("%s no longer offers %s", untrusted.Text(ans.Market, untrusted.MaxName), untrusted.Text(n, untrusted.MaxName)),
+				errs.ShellJoin([]string{"lola", "market", ans.Market, "--update"}))
+		}
+		if ans.Action == PickerUninstall {
+			args = append(args, n)
+		} else {
+			args = append(args, entries[ans.Market][i].Install)
+		}
+	}
+	run, _, err := cmd.Root().Find([]string{name})
+	if err != nil {
+		return err
+	}
+	run.SetContext(cmd.Context())
+	if ans.Action == PickerUninstall {
+		was := scopePin{a.scopeFlag, a.user, a.project, a.root}
+		defer func() { a.scopeFlag, a.user, a.project, a.root = was.scope, was.user, was.project, was.root }()
+		a.scopeFlag, a.user, a.project, a.root = "", sc.Kind == target.User, sc.Kind == target.Project, sc.ProjectDir
+	}
+	return run.RunE(run, args)
 }
 
 // marketBrowse runs lola install @<name>... for names, your marketplaces: the install flow's picker

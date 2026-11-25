@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -29,7 +30,7 @@ import (
 // name), a relative one from the marketplace's own tree, and the ones lola refuses to install.
 const installCatalog = `{"name": "acme", "owner": {"name": "Acme"}, "plugins": [
   {"name": "secdevai", "source": {"source": "git-subdir", "url": "MODS/tools.git", "path": "module", "ref": "main", "sha": "HEAD"},
-   "description": "Security review"},
+   "description": "Security review", "license": "MIT"},
   {"name": "forked", "source": {"source": "url", "url": "MODS/tools.git", "ref": "main", "sha": "FORK"}},
   {"name": "pinned-ref", "source": {"source": "url", "url": "MODS/tools.git", "ref": "FORK"}},
   {"name": "renamed", "source": {"source": "url", "url": "MODS/named.git"}},
@@ -416,6 +417,19 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(groups).NotTo(BeEmpty())
 	})
 
+	It("offers an entry's license as its catalog states it, and none for an entry that states none", func() {
+		groups, _, err := e.MarketGroups(nil)
+		Expect(err).NotTo(HaveOccurred())
+		k := slices.IndexFunc(groups, func(g engine.MarketGroup) bool { return g.Name == "acme" })
+		Expect(k).NotTo(BeNumerically("<", 0))
+		Expect(groups[k].Entries).To(ContainElements(
+			And(HaveField("Install", "@acme/secdevai"), HaveField("License", "MIT")),
+			And(HaveField("Install", "@acme/forked"), HaveField("License", ""))))
+		out, err := json.Marshal(groups[k].Entries[0])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(out)).To(ContainSubstring(`"license":"MIT"`))
+	})
+
 	It("offers an entry with a selection though your cache holds its name whole from the same source", func() {
 		whole := filepath.Join(tmp, "whole")
 		writeTree(whole, map[string]string{"lola.yml": "name: whole\n", "skills/a/SKILL.md": "---\ndescription: A\n---\nA\n",
@@ -437,11 +451,54 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(hits).To(ContainElement(HaveField("Install", "@wm/whole")))
 	})
 
+	It("reads each entry's installed state for a scope, by module name", func() {
+		before, _, err := e.PickerEntries(sc, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(before["acme"]).To(ContainElement(And(HaveField("Name", "secdevai"), HaveField("Installed", false), HaveField("At", ""))))
+
+		_, err = install(engine.Options{}, engine.InstallRequest{Arg: "@acme/secdevai"})
+		Expect(err).NotTo(HaveOccurred())
+		after, _, err := e.PickerEntries(sc, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(after["acme"]).To(ContainElement(And(HaveField("Name", "secdevai"), HaveField("Installed", true), HaveField("At", Not(BeEmpty())))))
+
+		other := engine.Scope{Kind: target.Project, ProjectDir: filepath.Join(tmp, "other")}
+		elsewhere, _, err := e.PickerEntries(other, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(elsewhere["acme"]).To(ContainElement(And(HaveField("Name", "secdevai"), HaveField("Installed", false))), "installed state is per scope")
+	})
+
+	It("gives each entry the web address of its source, when it has one", func() {
+		entries, _, err := e.PickerEntries(sc, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(entries["acme"]).To(ContainElement(And(HaveField("Name", "secdevai"), HaveField("WebURL", "https://lola.test:"+strings.Split(mods, ":")[2]+"/tools"))))
+		for _, en := range entries["acme"] {
+			Expect(en.WebURL).To(Or(BeEmpty(), HavePrefix("http")), en.Name)
+		}
+	})
+
+	It("lists, by marketplace, the entries it skips and why, as ShowMarket does", func() {
+		skips, err := e.PickerSkips(nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(skips["acme"]).To(ConsistOf(And(HaveField("Name", "npmx"), HaveField("Reason", ContainSubstring("npm")))))
+		v, err := e.ShowMarket("acme", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(skips["acme"]).To(Equal(v.Skipped))
+	})
+
+	It("refuses entries for a scope whose lock.json cannot be read, with the ledger's coaching", func() {
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(proj, ".lola", "lock.json"), []byte("{oops"), 0o600)).To(Succeed())
+		_, _, err := e.PickerEntries(sc, nil)
+		Expect(err).To(HaveOccurred())
+		Expect(errs.Hints(err)).NotTo(BeEmpty())
+	})
+
 	It("takes a bare name for a marketplace entry only when your cache lacks it and it is no source here", func() {
 		offers, err := e.MarketMeaning("secdevai", proj, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(offers).To(Equal([]engine.MarketOffer{{Install: "@acme/secdevai", Name: "secdevai", Description: "Security review", Tags: []string{},
-			Host: "https://lola.test:" + strings.Split(mods, ":")[2]}}))
+			Host: "https://lola.test:" + strings.Split(mods, ":")[2], URL: mods + "/tools.git", License: "MIT"}}))
 		for _, name := range []string{"Secdevai", "npmx", "nope"} {
 			offers, err = e.MarketMeaning(name, proj, nil)
 			Expect(err).NotTo(HaveOccurred())

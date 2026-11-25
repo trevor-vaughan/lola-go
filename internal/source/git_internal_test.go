@@ -28,7 +28,14 @@ var _ = Describe("git environment and listing", func() {
 			"GIT_REPLACE_REF_BASE=refs/r/", "GIT_PREFIX=sub/", "GIT_SHALLOW_FILE=s",
 			"GIT_CONFIG_GLOBAL=/home/u/.gitconfig", "SSH_AUTH_SOCK=/tmp/agent", "GIT_TERMINAL_PROMPT=1", "HOME=/home/u"})
 		Expect(env).To(Equal([]string{"GIT_CONFIG_GLOBAL=/home/u/.gitconfig", "SSH_AUTH_SOCK=/tmp/agent", "GIT_TERMINAL_PROMPT=1",
-			"HOME=/home/u", "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0"}))
+			"HOME=/home/u", "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "LANGUAGE="}))
+	})
+
+	It("makes git speak English, whatever locale the parent runs in, since lola reads its messages", func() {
+		env := gitEnv([]string{"LC_ALL=de_DE.UTF-8", "LANGUAGE=de", "LC_MESSAGES=fr_FR.UTF-8", "LANG=de_DE.UTF-8", "HOME=/home/u"})
+		Expect(env).To(HaveEach(Not(Or(Equal("LC_ALL=de_DE.UTF-8"), Equal("LANGUAGE=de"), HavePrefix("LC_MESSAGES=")))))
+		Expect(env[len(env)-2:]).To(Equal([]string{"LC_ALL=C", "LANGUAGE="}))
+		Expect(env).To(ContainElement("HOME=/home/u"))
 	})
 
 	It("lists only committed files in a clone", func() {

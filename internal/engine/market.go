@@ -114,6 +114,17 @@ type MarketSkip struct {
 	Reason string `json:"reason"`
 }
 
+// marketSkips is the entries of cat that lola does not offer, with why, by name (a skip's name may
+// repeat, and keeps its order), never nil; every string has been through untrusted.Text.
+func marketSkips(cat market.Catalog) []MarketSkip {
+	skips := make([]MarketSkip, len(cat.Skipped))
+	for i, s := range cat.Skipped {
+		skips[i] = MarketSkip{Name: shown(s.Name), Reason: shown(s.Reason)}
+	}
+	slices.SortStableFunc(skips, func(a, b MarketSkip) int { return strings.Compare(a.Name, b.Name) })
+	return skips
+}
+
 // MarketChange is how an --update changed one entry of a marketplace: "added", "removed", or
 // "changed" with the fields that differ (source, path, ref, commit, version, components).
 type MarketChange struct {
@@ -552,13 +563,10 @@ func (e *Engine) ShowMarket(name string, display []string) (*MarketView, error) 
 		me.Install = "@" + r.Name + "/" + me.Name
 		v.Entries = append(v.Entries, me)
 	}
-	for _, s := range c.cat.Skipped {
-		v.Skipped = append(v.Skipped, MarketSkip{Name: shown(s.Name), Reason: shown(s.Reason)})
-	}
+	v.Skipped = marketSkips(c.cat)
 	// By name, not in catalog order, so a long catalog reads like a listing (an entry's name is
 	// unique in its catalog, so the order is total; a skip's may repeat, and keeps its order).
 	slices.SortFunc(v.Entries, func(a, b MarketEntry) int { return strings.Compare(a.Name, b.Name) })
-	slices.SortStableFunc(v.Skipped, func(a, b MarketSkip) int { return strings.Compare(a.Name, b.Name) })
 	if n := sshHint(c.cat, func(pending []string) []string {
 		return slices.Concat([]string{r.Name, "--update"}, sshFlags(pending), display)
 	}); n != nil {

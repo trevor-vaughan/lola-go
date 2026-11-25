@@ -1364,6 +1364,110 @@ var _ = Describe("marketplaces", func() {
 			Expect(v.Entries).To(HaveLen(2), "the catalog at the pin, which has no later entry")
 		})
 
+		Describe("previewing one you have not enabled", func() {
+			sc := func() engine.Scope { return engine.Scope{Kind: target.Project, ProjectDir: filepath.Join(tmp, "proj")} }
+			noRunDir := func() {
+				GinkgoHelper()
+				left, err := os.ReadDir(p.Staging)
+				Expect(err == nil && len(left) == 0 || errors.Is(err, os.ErrNotExist)).To(BeTrue(), "the fetch's run directory is removed")
+			}
+
+			It("reads the catalog at the pin, with the entries as the picker shows them, and writes no registration or cache", func() {
+				files := acme()
+				files[".claude-plugin/marketplace.json"] = strings.Replace(acmeCatalog, `{"name": "npmx"`, `{"name": "later", "source": "./later"},{"name": "npmx"`, 1)
+				_, later := repo("kn", files)
+				Expect(later).NotTo(Equal(pin))
+				pv, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pv.KnownMarket).To(Equal(known("acme")))
+				Expect(pv.Host).To(Equal(source.Host(url)))
+				Expect(pv.Entries).To(HaveExactElements(
+					And(HaveField("Name", "formatter"), HaveField("Install", "@acme/formatter"), HaveField("Installed", false), HaveField("At", ""), HaveField("WebURL", HavePrefix("http"))),
+					And(HaveField("Name", "linter"), HaveField("Install", "@acme/linter"), HaveField("WebURL", "https://lola.test/linter"))))
+				Expect(p.Markets).NotTo(BeAnExistingFile(), "nothing is registered")
+				Expect(p.MarketCache).NotTo(BeADirectory(), "no marketplace cache is written")
+				noRunDir()
+				Expect(pv.Skipped).To(ConsistOf(And(HaveField("Name", "npmx"), HaveField("Reason", ContainSubstring("npm")))),
+					"the npm entry is one lola does not offer, with the reason `--enable -n` gives")
+			})
+
+			It("marks an entry installed in the scope by its module name", func() {
+				mod := filepath.Join(tmp, "formatter")
+				writeTree(mod, map[string]string{"lola.yml": "name: formatter\n", "commands/formatter.md": "f\n"})
+				proj := filepath.Join(tmp, "proj")
+				Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+				_, err := e.Install(ctx, sc(), proj, []engine.InstallRequest{{Arg: mod}}, engine.Options{Targets: []string{"claude-code"}})
+				Expect(err).NotTo(HaveOccurred())
+				pv, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pv.Entries).To(ContainElement(And(HaveField("Name", "formatter"), HaveField("Installed", true), HaveField("At", Not(BeEmpty())))))
+				Expect(pv.Entries).To(ContainElement(And(HaveField("Name", "linter"), HaveField("Installed", false))))
+			})
+
+			It("is not stopped by a marketplace of its id from another source", func() {
+				other, _ := repo("other", map[string]string{".claude-plugin/marketplace.json": `{"name": "mine", "owner": {"name": "Me"}, "plugins": [
+  {"name": "mine-only", "source": {"source": "url", "url": "https://lola.test/mine.git"}}]}`})
+				_, err := e.AddMarket(ctx, engine.MarketAddRequest{Name: "acme", Source: other})
+				Expect(err).NotTo(HaveOccurred())
+				registered, err := os.ReadFile(p.Markets)
+				Expect(err).NotTo(HaveOccurred())
+				cached, err := os.ReadFile(filepath.Join(p.MarketCache, "acme", "catalog.json"))
+				Expect(err).NotTo(HaveOccurred())
+				pv, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pv.Entries).To(HaveEach(Not(HaveField("Name", "mine-only"))))
+				Expect(pv.Entries).To(ConsistOf(HaveField("Name", "formatter"), HaveField("Name", "linter")), "the seed's catalog, not the one registered")
+				Expect(os.ReadFile(p.Markets)).To(Equal(registered))
+				Expect(os.ReadFile(filepath.Join(p.MarketCache, "acme", "catalog.json"))).To(Equal(cached))
+				noRunDir()
+			})
+
+			It("refuses an id the seed lacks, naming the ids it has", func() {
+				_, err := e.PreviewKnown(ctx, "nope", sc(), []string{"--json"})
+				Expect(err).To(MatchError(ContainSubstring("the known ones are acme")))
+				Expect(errs.Hints(err)).To(ContainElement("lola market --known --json"))
+			})
+
+			It("coaches a pin the repository lacks, with the preview and the list as commands", func() {
+				bad := known("acme")
+				bad.Commit = strings.Repeat("a", 40)
+				e.KnownSeed = func() ([]market.KnownMarket, error) { return []market.KnownMarket{bad}, nil }
+				_, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).To(HaveOccurred())
+				Expect(errs.Hints(err)).To(ContainElements("lola market --enable acme -n", "lola market --known"))
+				Expect(p.MarketCache).NotTo(BeADirectory())
+				noRunDir()
+			})
+
+			It("coaches a source that cannot be reached", func() {
+				gone := known("acme")
+				gone.Source = base + "/missing.git"
+				e.KnownSeed = func() ([]market.KnownMarket, error) { return []market.KnownMarket{gone}, nil }
+				_, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).To(HaveOccurred())
+				Expect(errs.Hints(err)).To(ContainElements("lola market --enable acme -n", "lola market --known"))
+			})
+
+			It("coaches a catalog lola cannot read", func() {
+				files := acme()
+				files[".claude-plugin/marketplace.json"] = "{oops"
+				bad := known("acme")
+				bad.Source, bad.Commit = repo("badcat", files)
+				e.KnownSeed = func() ([]market.KnownMarket, error) { return []market.KnownMarket{bad}, nil }
+				_, err := e.PreviewKnown(ctx, "acme", sc(), nil)
+				Expect(err).To(HaveOccurred())
+				Expect(errs.Hints(err)).To(ContainElement("lola market --enable acme -n"))
+			})
+
+			It("stops when the run is cancelled, with the cancellation as its error", func() {
+				run, cancel := context.WithCancel(ctx)
+				cancel()
+				_, err := e.PreviewKnown(run, "acme", sc(), nil)
+				Expect(err).To(MatchError(context.Canceled))
+				noRunDir()
+			})
+		})
+
 		It("--update and --update --all keep an enabled known marketplace on its commit", func() {
 			_, _, err := e.EnableKnown(ctx, "acme", "", engine.MarketAddRequest{}, nil)
 			Expect(err).NotTo(HaveOccurred())

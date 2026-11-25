@@ -3,7 +3,10 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"os/exec"
+	"regexp"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -129,10 +132,10 @@ var _ = Describe("the marketplace picker", func() {
 		}
 	})
 
-	It("draws each row on two lines, the source dim and indented, a known row's reason after it", func() {
+	It("draws a row with no description on two lines, the source dim and indented, a known row's reason above it", func() {
 		out := drawn(newPicker(&checker{}, 100))
 		Expect(out).To(MatchRegexp(`> \[ \] acme .*3 entries\n {6}https://example\.com/acme\.git\n`))
-		Expect(out).To(MatchRegexp(`\[ \] kn .*known\n {6}https://example\.com/kn\.git — curated skills\n`))
+		Expect(out).To(MatchRegexp(`\[ \] kn .*known\n {6}curated skills\n {6}https://example\.com/kn\.git\n`))
 		Expect(out).To(ContainSubstring("Add a source…"))
 	})
 
@@ -507,8 +510,8 @@ var _ = Describe("the marketplace picker", func() {
 		Expect(drawn(m)).To(Equal(before))
 	})
 
-	It("acts on the cursor row on Enter when nothing is ticked", func() {
-		m, _ := pick(newPicker(&checker{}, 100), keyDown, keyDown, keyDown, keyEnter)
+	It("acts on the cursor row on m when nothing is ticked", func() {
+		m, _ := pick(newPicker(&checker{}, 100), keyDown, keyDown, keyDown, keyM)
 		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}))
 	})
 
@@ -656,7 +659,7 @@ var _ = Describe("the marketplace picker", func() {
 		Expect(drawn(m)).To(MatchRegexp(`> \[ \] acme  3 entries ·\n {6}update available\n`))
 	})
 
-	It("fits its keys in two rows at most, never wider than the terminal, on one row at 80 columns", func() {
+	It("fits its keys in two rows at most, never wider than the terminal", func() {
 		for _, width := range []int{30, 50, 80} {
 			for _, keys := range [][]tea.Msg{nil, {keySlash}} {
 				m, _ := pick(newPicker(&checker{}, width), keys...)
@@ -665,14 +668,10 @@ var _ = Describe("the marketplace picker", func() {
 				for _, l := range footer {
 					Expect(ansi.StringWidth(l)).To(BeNumerically("<=", width), l)
 				}
-				if width == 80 {
-					Expect(footer).To(HaveLen(1))
-					Expect(ansi.StringWidth(footer[0])).To(BeNumerically("<=", 80), footer[0])
-				}
 			}
 		}
 		m := newPicker(&checker{}, 80)
-		Expect(ansi.Strip(m.footer()[0])).To(Equal("u check+update · U all · x tick · / filter · a add · ⏎ act · esc back · q quit"))
+		Expect(ansi.Strip(strings.Join(m.footer(), " · "))).To(Equal("u check+update · U all · x tick · / filter · a add · ⏎ open · o web · m menu · q quit"))
 		m, _ = pick(m, keySlash)
 		Expect(ansi.Strip(m.footer()[0])).To(Equal("⏎ keep filter · esc clear · ↑↓ move"))
 		m, _ = pick(newPicker(&checker{}, 80), keyCtrlA)
@@ -703,9 +702,9 @@ var _ = Describe("the marketplace picker", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme"}, Known: []string{"kn"}}))
 			Expect(out.String()).To(ContainSubstring("1. acme"))
-			Expect(out.String()).To(ContainSubstring("https://example.com/kn.git — curated skills"))
+			Expect(out.String()).To(ContainSubstring("curated skills\n    https://example.com/kn.git\n"))
 			Expect(out.String()).To(ContainSubstring("5. Add a source…"))
-			Expect(out.String()).To(ContainSubstring("Choose marketplaces (numbers, comma separated):"))
+			Expect(out.String()).To(ContainSubstring("Choose marketplaces (numbers, comma separated; m1 for the menu; o1 for the web page):"))
 			Expect(out.String()).To(MatchRegexp(`\n\n-+\nChoose marketplaces`)) // under the accessible break
 			Expect(out.String()).NotTo(ContainSubstring("check+update"))
 		})
@@ -722,7 +721,7 @@ var _ = Describe("the marketplace picker", func() {
 
 		It("asks again after an answer it cannot take", func() {
 			var out bytes.Buffer
-			got, err := accessible(&out, "9", "x", "1,5", "2").MarketPicker(step())
+			got, err := accessible(&out, "9", "x", "1,5", "m2").MarketPicker(step())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"beta"}}))
 			Expect(strings.Count(out.String(), "Choose marketplaces")).To(Equal(4))
@@ -754,5 +753,640 @@ var _ = Describe("the marketplace picker", func() {
 		Expect([]string{src, ref}).To(Equal([]string{"/srv/m", ""}))
 		_, _, err = accessible(&out).MarketSource(MarketSourceStep{})
 		Expect(err).To(MatchError(errInputEnded))
+	})
+})
+
+var (
+	keyM     = tea.KeyPressMsg{Code: 'm', Text: "m"}
+	keyI     = tea.KeyPressMsg{Code: 'i', Text: "i"}
+	keyD     = tea.KeyPressMsg{Code: 'd', Text: "d"}
+	keyO     = tea.KeyPressMsg{Code: 'o', Text: "o"}
+	keyLeft  = tea.KeyPressMsg{Code: tea.KeyLeft}
+	keyRight = tea.KeyPressMsg{Code: tea.KeyRight}
+	keyX     = tea.KeyPressMsg{Code: 'x', Text: "x"}
+)
+
+// entryPicker is newPicker with acme offering two entries, the second installed, in a 100-wide terminal.
+func entryPicker(c *checker) marketPicker {
+	own, known := pickerRows()
+	entries := map[string][]engine.PickerEntry{"acme": {
+		{MarketOffer: engine.MarketOffer{Install: "@acme/review", Name: "review", Version: "1.2.0", Description: "Code review", Tags: []string{"go"}, URL: "https://example.com/acme.git", License: "MIT"}},
+		{MarketOffer: engine.MarketOffer{Install: "@acme/fmt", Name: "fmt", Version: "0.3.0", Description: "Formatter", Cached: true}, Installed: true, At: strings.Repeat("c", 40)},
+	}}
+	return newMarketPicker(MarketPickerStep{Own: own, Known: known, Check: c.check, Entries: entries, Context: "project /srv/app", ScopeKind: "project"}, plainTheme(), 100, 40)
+}
+
+var _ = Describe("the marketplace picker's entries and detail", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("opens a marketplace's entries on Enter with nothing ticked, under the context line", func() {
+		m, _ := pick(entryPicker(&checker{}), keyEnter)
+		out := drawn(m)
+		Expect(m.done).To(BeFalse())
+		Expect(out).To(ContainSubstring("review 1.2.0"))
+		Expect(out).To(ContainSubstring("fmt 0.3.0 · installed"))
+		Expect(out).To(ContainSubstring("project /srv/app"))
+		Expect(out).To(ContainSubstring("Code review"))
+		Expect(out).NotTo(ContainSubstring("beta"))
+	})
+
+	It("keeps the menu on Enter with a row ticked, and on m", func() {
+		m, _ := pick(entryPicker(&checker{}), keyDown, keyX, keyUp, keyEnter)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"beta"}}))
+		Expect(m.done).To(BeTrue())
+
+		m, _ = pick(entryPicker(&checker{}), keyM)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme"}}))
+	})
+
+	It("acts on a known row on m, and says a row without entries has none", func() {
+		m, _ := pick(entryPicker(&checker{}), keyDown, keyDown, keyDown, keyM)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}))
+
+		m, _ = pick(entryPicker(&checker{}), keyDown, keyDown, keyEnter)
+		Expect(m.done).To(BeFalse())
+		Expect(drawn(m)).To(ContainSubstring("local has no entries; u fetches its catalog"))
+		m, _ = pick(m, keyDown)
+		Expect(drawn(m)).NotTo(ContainSubstring("no entries"))
+	})
+
+	It("draws an entry's detail, and refuses i on an installed one and d on one that is not", func() {
+		m, _ := pick(entryPicker(&checker{}), keyEnter, keyDown, keyEnter)
+		out := drawn(m)
+		for _, want := range []string{"project /srv/app", "fmt 0.3.0", "Formatter", "installed (ccccccc) · in your cache", "d uninstall"} {
+			Expect(out).To(ContainSubstring(want))
+		}
+		Expect(out).NotTo(ContainSubstring("i install"))
+		Expect(out).NotTo(ContainSubstring("license:"), "an entry whose catalog states no license has no license line")
+		m, _ = pick(m, keyI)
+		Expect(m.done).To(BeFalse())
+		Expect(drawn(m)).To(ContainSubstring("already installed; d uninstalls"))
+		m, cmd := pick(m, keyD)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerUninstall, Market: "acme", Entry: "fmt", Entries: []string{"fmt"}}))
+		Expect(cmd()).To(Equal(tea.QuitMsg{}))
+
+		m, _ = pick(entryPicker(&checker{}), keyEnter, keyEnter)
+		out = drawn(m)
+		for _, want := range []string{"review 1.2.0", "Code review", "tags: go", "url: https://example.com/acme.git", "license: MIT", "not installed", "i install"} {
+			Expect(out).To(ContainSubstring(want))
+		}
+		Expect(out).To(MatchRegexp(`url: [^\n]*\n  license: MIT\n\n  not installed`), "license follows url, before the state block")
+		Expect(out).NotTo(ContainSubstring("d uninstall"))
+		m, _ = pick(m, keyD)
+		Expect(m.done).To(BeFalse())
+		Expect(drawn(m)).To(ContainSubstring("not installed; i installs"))
+		m, _ = pick(m, keyI)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerInstall, Market: "acme", Entry: "review", Entries: []string{"review"}}))
+	})
+
+	It("indents everything under the detail page's title by two spaces, wrapped lines too", func() {
+		own, known := pickerRows()
+		entries := map[string][]engine.PickerEntry{"acme": {{MarketOffer: engine.MarketOffer{Name: "fmt", Version: "0.3.0", Cached: true,
+			Description: strings.Repeat("word ", 30), Tags: []string{"go", "lint"}, URL: "https://example.com/acme.git", License: "Apache-2.0 OR MIT"}, Installed: true, At: "ccccccc"}}}
+		m := newMarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries, Context: "project /srv/app", ScopeKind: "project"}, plainTheme(), 80, 40)
+		m, _ = pick(m, keyEnter, keyEnter)
+		out := drawn(m)
+		Expect(out).To(MatchRegexp(`(?m)^fmt 0\.3\.0$`))
+		for _, want := range []string{"  tags: go, lint", "  url: https://example.com/acme.git", "  license: Apache-2.0 OR MIT", "  installed (ccccccc) · in your cache"} {
+			Expect(out).To(MatchRegexp(`(?m)^` + regexp.QuoteMeta(want) + `$`))
+		}
+		words := 0
+		for l := range strings.SplitSeq(out, "\n") {
+			if strings.Contains(l, "word") {
+				Expect(l).To(HavePrefix("  word"), "wrapped description lines keep the indent")
+				Expect(len([]rune(l))).To(BeNumerically("<=", 80))
+				words++
+			}
+		}
+		Expect(words).To(BeNumerically(">", 1))
+	})
+
+	It("installs and uninstalls from the entries page, saying why when the key does not apply", func() {
+		m, _ := pick(entryPicker(&checker{}), keyEnter)
+		Expect(drawn(m)).To(And(ContainSubstring("i install"), Not(ContainSubstring("d uninstall"))))
+		m, _ = pick(m, keyD)
+		Expect(m.done).To(BeFalse())
+		Expect(drawn(m)).To(ContainSubstring("not installed; i installs"))
+		m, cmd := pick(m, keyI)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerInstall, Market: "acme", Entry: "review", Entries: []string{"review"}, FromEntries: true}))
+		Expect(cmd()).To(Equal(tea.QuitMsg{}))
+
+		m, _ = pick(entryPicker(&checker{}), keyEnter, keyDown)
+		Expect(drawn(m)).To(And(ContainSubstring("d uninstall"), Not(ContainSubstring("i install"))))
+		m, _ = pick(m, keyI)
+		Expect(m.done).To(BeFalse())
+		Expect(drawn(m)).To(ContainSubstring("already installed; d uninstalls"))
+		m, _ = pick(m, keyD)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerUninstall, Market: "acme", Entry: "fmt", Entries: []string{"fmt"}, FromEntries: true}))
+	})
+
+	It("acts on the entry the filter leaves under the cursor, and on none when it shows none", func() {
+		m, _ := pick(entryPicker(&checker{}), append([]tea.Msg{keyEnter}, append(presses("/fmt"), keyEnter)...)...)
+		m, _ = pick(m, keyD)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerUninstall, Market: "acme", Entry: "fmt", Entries: []string{"fmt"}, FromEntries: true}))
+
+		m, _ = pick(entryPicker(&checker{}), append([]tea.Msg{keyEnter}, append(presses("/zzz"), keyEnter)...)...)
+		Expect(func() { m, _ = pick(m, keyI, keyD) }).NotTo(Panic())
+		Expect(m.done).To(BeFalse())
+		Expect(m.answer).To(BeZero())
+		Expect(drawn(m)).To(And(ContainSubstring("no entry matches the filter"), Not(ContainSubstring("i install")), Not(ContainSubstring("d uninstall"))))
+	})
+
+	It("takes i and d as filter characters while a filter is typed on the entries page", func() {
+		m, _ := pick(entryPicker(&checker{}), append([]tea.Msg{keyEnter}, presses("/id")...)...)
+		Expect(m.done).To(BeFalse())
+		Expect(m.filter).To(Equal("id"))
+		Expect(drawn(m)).To(And(ContainSubstring("⏎ keep filter"), Not(ContainSubstring("i install"))))
+	})
+
+	It("reopens on the entries page, the cursor on the entry, when Resume says it began there", func() {
+		own, known := pickerRows()
+		entries := entryPicker(&checker{}).entries
+		m := newMarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries, Resume: PickerResume{Market: "acme", Entry: "fmt", OnEntries: true}}, plainTheme(), 100, 40)
+		Expect(m.level).To(Equal(entriesLevel))
+		Expect(drawn(m)).To(ContainSubstring("> [ ] fmt 0.3.0"))
+		m, _ = pick(m, keyEsc)
+		Expect(drawn(m)).To(ContainSubstring("> [ ] acme"))
+	})
+
+	It("keeps the entries footer within two rows at 80 columns and draws at width 40 and 0", func() {
+		own, known := pickerRows()
+		entries := entryPicker(&checker{}).entries
+		for _, width := range []int{80, 40, 0} {
+			m := newMarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries, Context: "project /srv/app", ScopeKind: "project"}, plainTheme(), width, 12)
+			m, _ = pick(m, keyEnter)
+			Expect(func() { _ = drawn(m) }).NotTo(Panic())
+			if width == 80 {
+				Expect(m.entriesFooter()).To(HaveLen(1))
+			}
+		}
+	})
+
+	Describe("opening an entry's web page", func() {
+		const page = "https://github.com/acme/tools/tree/main/review"
+		// webPicker is the entries of acme: review with a web page, fmt without, and the ones with the
+		// addresses a hostile catalog could make; open records the addresses it is asked to launch.
+		webPicker := func(width int, open func(string) error) marketPicker {
+			own, known := pickerRows()
+			entries := map[string][]engine.PickerEntry{"acme": {
+				{MarketOffer: engine.MarketOffer{Name: "review"}, WebURL: page},
+				{MarketOffer: engine.MarketOffer{Name: "fmt"}, Installed: true},
+			}}
+			return newMarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries, Context: "project /srv/app", ScopeKind: "project", OpenURL: open}, plainTheme(), width, 40)
+		}
+
+		It("launches the address from a command, not from the key, then says it opened it", func() {
+			var launched []string
+			m := webPicker(80, func(u string) error { launched = append(launched, u); return nil })
+			m, _ = pick(m, keyEnter)
+			m, cmd := pick(m, keyO)
+			Expect(launched).To(BeEmpty(), "Update itself starts nothing")
+			Expect(cmd).NotTo(BeNil())
+			m, _ = pick(m, cmd())
+			Expect(launched).To(Equal([]string{page}))
+			Expect(m.done).To(BeFalse())
+			Expect(drawn(m)).To(ContainSubstring("opened " + page))
+
+			launched = nil
+			m, _ = pick(m, keyEnter)
+			m, cmd = pick(m, keyO)
+			m, _ = pick(m, cmd())
+			Expect(launched).To(Equal([]string{page}), "the detail page, of the same entry")
+		})
+
+		It("cuts the address in its note to fit", func() {
+			m := webPicker(30, func(string) error { return nil })
+			m, _ = pick(m, keyEnter)
+			m, cmd := pick(m, keyO)
+			m, _ = pick(m, cmd())
+			for l := range strings.SplitSeq(strings.TrimRight(drawn(m), "\n"), "\n") {
+				Expect(ansi.StringWidth(l)).To(BeNumerically("<=", 30), l)
+			}
+			Expect(drawn(m)).To(ContainSubstring("opened https://"))
+		})
+
+		It("says an entry with no web page has none, and launches nothing", func() {
+			launched := false
+			m := webPicker(80, func(string) error { launched = true; return nil })
+			m, cmd := pick(m, keyEnter, keyDown, keyO)
+			Expect(cmd).To(BeNil())
+			Expect(launched).To(BeFalse())
+			Expect(drawn(m)).To(ContainSubstring("no web page for this entry"))
+			m, cmd = pick(m, keyEnter, keyO)
+			Expect(cmd).To(BeNil(), "the detail page, of the same entry")
+			Expect(launched).To(BeFalse())
+			Expect(drawn(m)).To(ContainSubstring("no web page for this entry"))
+		})
+
+		DescribeTable("refuses an address that is not a plain http(s) one, launching nothing",
+			func(bad string) {
+				launched := false
+				own, known := pickerRows()
+				entries := map[string][]engine.PickerEntry{"acme": {{MarketOffer: engine.MarketOffer{Name: "bad"}, WebURL: bad}}}
+				m := newMarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries, OpenURL: func(string) error { launched = true; return nil }}, plainTheme(), 80, 40)
+				m, cmd := pick(m, keyEnter, keyO)
+				for range 2 { // the entries page, then the detail page
+					Expect(cmd).To(BeNil())
+					Expect(launched).To(BeFalse())
+					Expect(m.done).To(BeFalse())
+					Expect(drawn(m)).To(ContainSubstring("refusing to open this entry's address"))
+					Expect(m.View().Content).NotTo(ContainSubstring("\x1b[31m"))
+					m, cmd = pick(m, keyEnter, keyO)
+				}
+			},
+			Entry("a newline", "https://example.org/a\nb"),
+			Entry("an escape sequence", "https://example.org/\x1b[31m"),
+			Entry("a leading dash", "-oProxyCommand=x"),
+			Entry("a leading dash after a space", " -x https://example.org"),
+			Entry("a space inside", "https://example.org/a b"),
+			Entry("another scheme", "ftp://example.org/x"),
+			Entry("a file scheme", "file:///etc/passwd"),
+			Entry("a scheme-less address", "example.org/x"),
+			Entry("no host", "https:///x"),
+			Entry("a non-ASCII character", "https://example.org/\u202ex"),
+			Entry("a command substitution in the host", "https://a$(id)b.com/x/y"),
+			Entry("a semicolon and quotes in the host", "https://a;b'c\"d<e>.com/x"),
+			Entry("a glob in the host", "https://x*.com/x"),
+			Entry("userinfo", "https://user@example.org/x"),
+			Entry("userinfo with a second at sign", "https://a@b@example.org/x"),
+			Entry("a port that is not digits", "https://example.org:80a/x"),
+		)
+
+		It("says what failed and the address when the launcher fails", func() {
+			m := webPicker(200, func(string) error { return &exec.Error{Name: "xdg-open", Err: exec.ErrNotFound} })
+			m, _ = pick(m, keyEnter)
+			m, cmd := pick(m, keyO)
+			m, _ = pick(m, cmd())
+			Expect(m.done).To(BeFalse())
+			Expect(drawn(m)).To(ContainSubstring("could not open a browser (xdg-open not found); the address is " + page))
+
+			m, _ = pick(m, keyEnter)
+			m, cmd = pick(m, keyO)
+			m, _ = pick(m, cmd())
+			Expect(drawn(m)).To(ContainSubstring("could not open a browser (xdg-open not found); the address is "+page), "the detail page too")
+
+			m = webPicker(200, func(string) error { return errors.New("exit status 3") })
+			m, _ = pick(m, keyEnter)
+			m, cmd = pick(m, keyO)
+			m, _ = pick(m, cmd())
+			Expect(drawn(m)).To(ContainSubstring("could not open a browser (exit status 3); the address is " + page))
+		})
+
+		It("wraps the address of a failed launch rather than cutting it", func() {
+			m := webPicker(30, func(string) error { return errors.New("no") })
+			m, _ = pick(m, keyEnter)
+			m, cmd := pick(m, keyO)
+			m, _ = pick(m, cmd())
+			Expect(strings.Join(strings.Fields(drawn(m)), "")).To(ContainSubstring("theaddressis" + page))
+		})
+
+		It("takes o as a filter character while a filter is typed, and does nothing on an empty list", func() {
+			launched := false
+			m := webPicker(80, func(string) error { launched = true; return nil })
+			m, _ = pick(m, keyEnter)
+			m, cmd := pick(m, append(presses("/o"), keyEnter)...)
+			Expect(cmd).To(BeNil())
+			Expect(m.filter).To(Equal("o"))
+			Expect(launched).To(BeFalse())
+			m, cmd = pick(m, append(presses("/zzz"), keyEnter)...)
+			Expect(func() { m, cmd = pick(m, keyO) }).NotTo(Panic())
+			Expect(cmd).To(BeNil())
+			Expect(launched).To(BeFalse())
+		})
+
+		It("offers o and open only where they apply", func() {
+			m := webPicker(80, func(string) error { return nil })
+			m, _ = pick(m, keyEnter)
+			Expect(drawn(m)).To(And(ContainSubstring("o web"), ContainSubstring("⏎/→ open")))
+			m, _ = pick(m, keyDown)
+			out := drawn(m)
+			Expect(out).To(And(ContainSubstring("⏎/→ open"), Not(ContainSubstring("o web"))), "an entry with no web page")
+			m, _ = pick(m, keyEnter)
+			Expect(drawn(m)).NotTo(ContainSubstring("o web"))
+			m, _ = pick(m, keyEsc)
+			m, _ = pick(m, append(presses("/zzz"), keyEnter)...)
+			out = drawn(m)
+			Expect(out).To(And(ContainSubstring("/ filter"), Not(ContainSubstring("o web")), Not(ContainSubstring("⏎/→ open")),
+				Not(ContainSubstring("i install")), Not(ContainSubstring("d uninstall"))))
+			Expect(len(m.entriesFooter())).To(BeNumerically("<=", 2))
+		})
+
+		It("names o in the entries and detail footers, within two rows at 80 columns", func() {
+			m := webPicker(80, func(string) error { return nil })
+			m, _ = pick(m, keyEnter)
+			Expect(len(m.entriesFooter())).To(BeNumerically("<=", 2))
+			Expect(drawn(m)).To(ContainSubstring("o web"))
+			m, _ = pick(m, keyEnter)
+			Expect(len(m.entriesFooter())).To(BeNumerically("<=", 2))
+			Expect(drawn(m)).To(ContainSubstring("o web"))
+		})
+	})
+
+	It("goes back a level on Left, restoring the list's cursor and filter, and never cancels from the list", func() {
+		m, _ := pick(entryPicker(&checker{}), append(presses("/acme"), keyEnter)...)
+		m, _ = pick(m, keyRight, keyDown, keyRight)
+		Expect(m.level).To(Equal(detailLevel))
+		m, _ = pick(m, keyLeft)
+		Expect(m.level).To(Equal(entriesLevel))
+		Expect(drawn(m)).To(ContainSubstring("> [ ] fmt 0.3.0"), "the entries, on the entry")
+		m, _ = pick(m, append(presses("/fmt"), keyEnter)...)
+		m, _ = pick(m, keyLeft)
+		Expect(m.level).To(Equal(listLevel), "Left pops the level even with an entries filter set")
+		out := drawn(m)
+		Expect(out).To(ContainSubstring("> [ ] acme"))
+		Expect(out).To(ContainSubstring("/acme"))
+		m, _ = pick(m, keyLeft)
+		Expect(m.done).To(BeFalse())
+		Expect(m.level).To(Equal(listLevel))
+	})
+
+	It("goes in a level on Right, only where Enter would drill or open", func() {
+		m, _ := pick(entryPicker(&checker{}), keyRight)
+		Expect(m.level).To(Equal(entriesLevel))
+		m, _ = pick(m, keyRight)
+		Expect(m.level).To(Equal(detailLevel))
+		m, _ = pick(m, keyRight)
+		Expect(m.level).To(Equal(detailLevel))
+		Expect(m.done).To(BeFalse())
+
+		m, _ = pick(entryPicker(&checker{}), keyDown, keyX, keyUp, keyRight)
+		Expect(m.level).To(Equal(listLevel), "a ticked row: Right does not enter the menu")
+		Expect(m.done).To(BeFalse())
+		m, _ = pick(entryPicker(&checker{}), keyEnd, keyRight)
+		Expect(m.done).To(BeFalse(), "Add a source…")
+		m, _ = pick(entryPicker(&checker{}), keyDown, keyDown, keyRight)
+		Expect(m.level).To(Equal(listLevel))
+		Expect(drawn(m)).To(ContainSubstring("local has no entries; u fetches its catalog"))
+
+		m, _ = pick(entryPicker(&checker{}), append([]tea.Msg{keyEnter}, append(presses("/zzz"), keyEnter)...)...)
+		m, _ = pick(m, keyRight)
+		Expect(m.level).To(Equal(entriesLevel), "no entry under the cursor")
+	})
+
+	It("ignores Left and Right while a filter is typed", func() {
+		m, _ := pick(entryPicker(&checker{}), append([]tea.Msg{keyEnter}, presses("/")...)...)
+		m, _ = pick(m, keyLeft, keyRight)
+		Expect(m.level).To(Equal(entriesLevel))
+		Expect(m.typing).To(BeTrue())
+		m, _ = pick(entryPicker(&checker{}), presses("/")...)
+		m, _ = pick(m, keyRight)
+		Expect(m.level).To(Equal(listLevel))
+		Expect(m.typing).To(BeTrue())
+	})
+
+	It("goes back a page on Esc, restoring the cursor and the filter, and cancels from the list", func() {
+		m, _ := pick(entryPicker(&checker{}), append(presses("/acme"), keyEnter)...)
+		m, _ = pick(m, keyEnter, keyDown, keyEnter)
+		m, _ = pick(m, keyEsc)
+		Expect(drawn(m)).To(ContainSubstring("> [ ] fmt 0.3.0"), "the entries, on the entry")
+		m, _ = pick(m, keyEsc)
+		out := drawn(m)
+		Expect(out).To(ContainSubstring("> [ ] acme"))
+		Expect(out).To(ContainSubstring("/acme"))
+		Expect(out).NotTo(ContainSubstring("beta"))
+		Expect(m.done).To(BeFalse())
+		m, _ = pick(m, keyEsc, keyEsc)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerCancel}))
+	})
+
+	It("filters entries by name, description and tag, shows none for no match, and opens nothing then", func() {
+		m, _ := pick(entryPicker(&checker{}), keyEnter)
+		m, _ = pick(m, append(presses("/fmt"), keyEnter)...)
+		Expect(drawn(m)).To(And(ContainSubstring("fmt 0.3.0"), Not(ContainSubstring("review"))))
+		m, _ = pick(m, keyEsc)
+		Expect(drawn(m)).To(ContainSubstring("review 1.2.0"))
+
+		m, _ = pick(m, append(presses("/GO"), keyEnter)...)
+		Expect(drawn(m)).To(And(ContainSubstring("review 1.2.0"), Not(ContainSubstring("fmt"))), "by tag, ignoring case")
+		m, _ = pick(m, keyEsc)
+
+		m, _ = pick(m, append(presses("/zzz"), keyEnter)...)
+		Expect(drawn(m)).To(ContainSubstring("no entry matches the filter"))
+		m, _ = pick(m, keyEnter, keyDown, keyUp, keyEnd, keyHome)
+		Expect(m.done).To(BeFalse())
+		Expect(m.level).To(Equal(entriesLevel))
+		m, _ = pick(m, keyEsc)
+		Expect(drawn(m)).To(ContainSubstring("review 1.2.0"))
+	})
+
+	It("quits on q at either page and aborts on Ctrl+C", func() {
+		for _, keys := range [][]tea.Msg{{keyEnter, keyQ}, {keyEnter, keyEnter, keyQ}} {
+			m, _ := pick(entryPicker(&checker{}), keys...)
+			Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerCancel}))
+			Expect(m.aborted).To(BeFalse())
+		}
+		m, _ := pick(entryPicker(&checker{}), keyEnter, keyCtrlC)
+		Expect(m.level).To(Equal(entriesLevel))
+		Expect(m.aborted).To(BeTrue())
+		Expect(m.done).To(BeTrue())
+		m, _ = pick(entryPicker(&checker{}), keyEnter, keyEnter, keyCtrlC)
+		Expect(m.aborted).To(BeTrue())
+		Expect(m.done).To(BeTrue())
+	})
+
+	It("draws author text on one line without control sequences", func() {
+		own, known := pickerRows()
+		entries := map[string][]engine.PickerEntry{"acme": {{MarketOffer: engine.MarketOffer{Name: "evil\x1b[31m\nname", Version: "1\n2",
+			Description: "line one\nline two", Tags: []string{"t\x1b[2Jag"}, URL: "h\nost"}, Installed: true, At: "x\ny"}}}
+		m := newMarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries}, plainTheme(), 100, 40)
+		m, _ = pick(m, keyEnter)
+		Expect(m.View().Content).NotTo(ContainSubstring("\x1b[31m"))
+		Expect(drawn(m)).To(MatchRegexp(`evil\S* name 1 2 · installed\n`))
+		Expect(drawn(m)).To(ContainSubstring("line one line two"))
+		m, _ = pick(m, keyEnter)
+		Expect(m.View().Content).NotTo(ContainSubstring("\x1b[2J"))
+		Expect(drawn(m)).To(MatchRegexp(`url: h ost\n`))
+		Expect(drawn(m)).To(MatchRegexp(`tags: t\S*ag\n`))
+		Expect(drawn(m)).To(MatchRegexp(`installed \(x y\)\n`))
+	})
+
+	It("shortens a recorded content digest to seven digits on the detail page, on one line at 80 columns", func() {
+		own, known := pickerRows()
+		digest := "sha256:1e74abc" + strings.Repeat("d", 57)
+		entries := map[string][]engine.PickerEntry{"acme": {{MarketOffer: engine.MarketOffer{Name: "dir", Version: "1.0.0", Cached: true}, Installed: true, At: digest}}}
+		m := newMarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries, Context: "project /srv/app", ScopeKind: "project"}, plainTheme(), 80, 40)
+		m, _ = pick(m, keyEnter, keyEnter)
+		Expect(drawn(m)).To(ContainSubstring("installed (sha256:1e74abc) · in your cache\n"))
+		Expect(drawn(m)).NotTo(ContainSubstring("1e74abcddd"))
+	})
+
+	It("opens on the detail page Resume names, and on the list when it is gone", func() {
+		own, known := pickerRows()
+		entries := entryPicker(&checker{}).entries
+		open := func(r PickerResume) marketPicker {
+			return newMarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries, Resume: r}, plainTheme(), 100, 40)
+		}
+		Expect(open(PickerResume{Market: "acme", Entry: "review"}).level).To(Equal(detailLevel))
+		for _, gone := range []PickerResume{{Market: "acme", Entry: "gone"}, {Market: "gone", Entry: "fmt"}, {Market: "kn", Entry: "fmt"}, {}} {
+			Expect(open(gone).level).To(Equal(listLevel), "%v", gone)
+		}
+		m := open(PickerResume{Market: "acme", Entry: "fmt"})
+		Expect(drawn(m)).To(ContainSubstring("Formatter"))
+		m, _ = pick(m, keyEsc)
+		Expect(drawn(m)).To(ContainSubstring("> [ ] fmt 0.3.0"))
+		m, _ = pick(m, keyEsc)
+		Expect(drawn(m)).To(ContainSubstring("> [ ] acme"))
+	})
+
+	It("draws every page at width 40 and without a width", func() {
+		for _, width := range []int{40, 0} {
+			own, known := pickerRows()
+			entries := entryPicker(&checker{}).entries
+			m := newMarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries, Context: "project /srv/app", ScopeKind: "project"}, plainTheme(), width, 12)
+			Expect(func() {
+				_ = drawn(m)
+				m, _ = pick(m, keyEnter)
+				_ = drawn(m)
+				m, _ = pick(m, append(presses("/zzz"), keyEnter)...)
+				_ = drawn(m)
+				m, _ = pick(m, keyEsc, keyEsc, keyEnter, keyEnter)
+				_ = drawn(m)
+			}).NotTo(Panic())
+			Expect(m.level).To(Equal(detailLevel))
+		}
+	})
+})
+
+var _ = Describe("the marketplace picker's entries in accessible mode", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	// lines is the picker step over entryPicker's entries, read by line prompts answering answers.
+	lines := func(entries map[string][]engine.PickerEntry, resume PickerResume, answers ...string) (MarketPickerAnswer, string, error) {
+		own, known := pickerRows()
+		var out bytes.Buffer
+		got, err := accessible(&out, answers...).MarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries,
+			Context: "project /srv/app", ScopeKind: "project", Resume: resume})
+		return got, out.String(), err
+	}
+	entries := func() map[string][]engine.PickerEntry { return entryPicker(&checker{}).entries }
+
+	It("drills into an entry's detail and uninstalls it", func() {
+		got, out, err := lines(entries(), PickerResume{}, "1", "2", "d")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerUninstall, Market: "acme", Entry: "fmt", Entries: []string{"fmt"}}))
+		Expect(out).To(ContainSubstring("project /srv/app"))
+		Expect(out).To(ContainSubstring("1. review 1.2.0"))
+		Expect(out).To(ContainSubstring("2. fmt 0.3.0 · installed"))
+		Expect(out).To(ContainSubstring("i<n,n…> install · d<n,n…> uninstall from project · o<n> web · Enter alone goes back\nChoose an entry (number or key above): "))
+		Expect(out).To(ContainSubstring("installed (ccccccc) · in your cache"))
+		Expect(out).To(ContainSubstring("d uninstall from project · Enter alone goes back: "))
+		Expect(out).NotTo(ContainSubstring("i install"))
+	})
+
+	It("installs an entry that is not installed, offering only i", func() {
+		got, out, err := lines(entries(), PickerResume{}, "1", "1", "i")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerInstall, Market: "acme", Entry: "review", Entries: []string{"review"}}))
+		Expect(out).To(ContainSubstring("i install · Enter alone goes back: "))
+		Expect(out).NotTo(ContainSubstring("d uninstall"))
+	})
+
+	It("says why the other letter does not apply and asks again", func() {
+		got, out, err := lines(entries(), PickerResume{}, "1", "1", "d", "x", "i")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got.Action).To(Equal(PickerInstall))
+		Expect(out).To(ContainSubstring("not installed; i installs"))
+		Expect(strings.Count(out, "i install · Enter alone goes back: ")).To(Equal(3))
+		got, out, err = lines(entries(), PickerResume{}, "1", "2", "i", "d")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got.Action).To(Equal(PickerUninstall))
+		Expect(out).To(ContainSubstring("already installed; d uninstalls"))
+	})
+
+	It("goes back one level on an empty answer and then cancels", func() {
+		got, out, err := lines(entries(), PickerResume{}, "1", "1", "", "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerCancel}))
+		Expect(strings.Count(out, "Choose an entry")).To(Equal(2))
+		Expect(strings.Count(out, "Choose marketplaces")).To(Equal(2))
+	})
+
+	It("keeps m<N> for the menu answer", func() {
+		got, _, err := lines(entries(), PickerResume{}, "m1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme"}}))
+		got, _, err = lines(entries(), PickerResume{}, "m1,2")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme", "beta"}}))
+		got, _, err = lines(entries(), PickerResume{}, "m4")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}), "a known row's menu acts as it did")
+		got, _, err = lines(entries(), PickerResume{}, "1,2")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got.Own).To(Equal([]string{"acme", "beta"}), "several numbers act as they did")
+	})
+
+	It("says what m takes when it has no valid number, and asks again", func() {
+		for _, answer := range []string{"m", "M", "m,", "m  "} {
+			got, out, err := lines(entries(), PickerResume{}, answer, "m1")
+			Expect(err).NotTo(HaveOccurred(), answer)
+			Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme"}}), answer)
+			Expect(strings.Count(out, "m takes numbers: m1, or m1,2\n")).To(Equal(1), answer)
+			Expect(strings.Count(out, pickerPrompt)).To(Equal(2), answer)
+		}
+		got, out, err := lines(entries(), PickerResume{}, "m9", "m1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got.Action).To(Equal(PickerEnter))
+		Expect(out).To(ContainSubstring("answer numbers from 1 to"))
+		Expect(out).NotTo(ContainSubstring("m takes numbers"))
+	})
+
+	It("says a marketplace has no entries and asks again", func() {
+		got, out, err := lines(entries(), PickerResume{}, "3", "m")
+		Expect(err).To(MatchError(errInputEnded))
+		Expect(got).To(Equal(MarketPickerAnswer{}))
+		Expect(out).To(ContainSubstring("local has no entries; fetch its catalog with m3 (Update), or lola market local --update"))
+		Expect(strings.Count(out, "Choose marketplaces")).To(Equal(3))
+	})
+
+	It("aborts on Ctrl+C at the entries prompt", func() {
+		own, known := pickerRows()
+		var out bytes.Buffer
+		h := accessible(&out, "1")
+		h.in.interrupted = true
+		_, err := h.MarketPicker(MarketPickerStep{Own: own, Known: known, Entries: entries(), Context: "project /srv/app", ScopeKind: "project"})
+		Expect(err).To(MatchError(ErrAborted))
+		Expect(out.String()).To(ContainSubstring("Choose an entry"))
+	})
+
+	It("reprints the prompt after a number out of range or not a number, at each level", func() {
+		got, out, err := lines(entries(), PickerResume{}, "x", "1", "0", "3", "z", "1", "?", "i")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got.Action).To(Equal(PickerInstall))
+		Expect(strings.Count(out, "answer a number from 1 to 2")).To(Equal(3))
+		Expect(strings.Count(out, "Choose an entry")).To(Equal(4))
+		Expect(out).To(ContainSubstring("answer i to install, or Enter to go back"))
+	})
+
+	It("reopens at the detail Resume names, going back to its entries", func() {
+		got, out, err := lines(entries(), PickerResume{Market: "acme", Entry: "fmt"}, "d")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerUninstall, Market: "acme", Entry: "fmt", Entries: []string{"fmt"}}))
+		Expect(out).NotTo(ContainSubstring("Choose marketplaces"))
+		_, out, _ = lines(entries(), PickerResume{Market: "acme", Entry: "fmt"}, "")
+		Expect(out).To(ContainSubstring("Choose an entry"))
+	})
+
+	It("refuses when input ends at the entries or the detail prompt", func() {
+		for _, answers := range [][]string{{"1"}, {"1", "1"}} {
+			_, out, err := lines(entries(), PickerResume{}, answers...)
+			Expect(err).To(MatchError(errInputEnded))
+			Expect(out).To(HaveSuffix("\n")) // the error prints under the prompt
+		}
+	})
+
+	It("prints author text on one line without control sequences", func() {
+		own, known := pickerRows()
+		hostile := map[string][]engine.PickerEntry{"acme": {{MarketOffer: engine.MarketOffer{Name: "evil\x1b[31m\nname", Version: "1\n2",
+			Description: "line one\nline two", Tags: []string{"t\x1b[2Jag"}, URL: "h\nost"}, Installed: true, At: "x\ny"}}}
+		var out bytes.Buffer
+		_, err := accessible(&out, "1", "1").MarketPicker(MarketPickerStep{Own: own, Known: known, Entries: hostile, Context: "ctx\nline"})
+		Expect(err).To(MatchError(errInputEnded))
+		Expect(out.String()).NotTo(ContainSubstring("\x1b"))
+		Expect(out.String()).To(ContainSubstring("1. evil"))
+		Expect(out.String()).To(MatchRegexp(`evil\S* name 1 2 · installed\n`))
+		Expect(out.String()).To(ContainSubstring("line one line two"))
+		Expect(out.String()).To(ContainSubstring("ctx line"))
+		Expect(out.String()).To(MatchRegexp(`url: h ost\n`))
 	})
 })

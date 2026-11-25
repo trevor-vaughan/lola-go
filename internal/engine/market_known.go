@@ -2,7 +2,9 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -117,6 +119,72 @@ func (e *Engine) EnableKnown(ctx context.Context, id, name string, req MarketAdd
 		return nil, market.KnownMarket{}, err
 	}
 	return res, k, nil
+}
+
+// KnownPreview is a known marketplace's catalog read at its pin without enabling it: the seed's
+// entry, the host it is fetched from, the entries it offers (installed state read for the scope
+// asked about), the catalog entries lola does not offer with why (ssh hosts not allowed, sources it
+// does not take, directories the tree lacks; what `--enable -n` lists) and a warning for each cache record
+// of an entry that could not be read.
+type KnownPreview struct {
+	market.KnownMarket
+	Host     string
+	Entries  []PickerEntry
+	Skipped  []MarketSkip
+	Warnings []string
+}
+
+// PreviewKnown fetches the known marketplace id at its pinned commit as the dry run of EnableKnown
+// does (fetchMarket, with no ssh host allowed) and returns the entries it offers, with their
+// installed state in sc. It registers nothing and writes neither markets.yaml nor the marketplace
+// cache: the tree is fetched into the run's staging directory, which is removed when it returns,
+// and no file of the catalog is kept. A marketplace of the id you already have, from another
+// source, does not matter: nothing is named or registered. An id the seed lacks is refused, naming
+// the ids it has. A failed fetch (offline, a pin the repository lacks, a catalog lola cannot
+// read) is coached with the dry-run --enable that shows the same error and the list of known
+// marketplaces; a cancelled ctx is its own error. display is the run's output flags, which the
+// hints keep.
+func (e *Engine) PreviewKnown(ctx context.Context, id string, sc Scope, display []string) (_ KnownPreview, err error) {
+	seed, err := e.seed()
+	if err != nil {
+		return KnownPreview{}, err
+	}
+	i := slices.IndexFunc(seed, func(k market.KnownMarket) bool { return k.ID == id })
+	if i < 0 {
+		return KnownPreview{}, unknownKnown(id, seed, display)
+	}
+	k := seed[i]
+	installed, err := e.InstalledVersions(sc)
+	if err != nil {
+		return KnownPreview{}, err
+	}
+	src, err := e.marketSource(k.ID, k.Source, k.Commit, k.Path, nil, true, display)
+	if err != nil {
+		return KnownPreview{}, err
+	}
+	run, done, err := e.runDir()
+	if err != nil {
+		return KnownPreview{}, err
+	}
+	defer func() { err = errors.Join(err, done()) }()
+	two := func(file string) string {
+		return MarketRun(addRun(k.ID, k.Source, k.Commit, file, nil, true, display)...)
+	}
+	f, err := e.fetchMarket(ctx, src, k.ID, k.Path, "", run, nil, two, "")
+	if err != nil {
+		if ctx.Err() != nil {
+			return KnownPreview{}, ctx.Err()
+		}
+		return KnownPreview{}, errs.WithHints(err, append(errs.Hints(err),
+			MarketRun(append([]string{"--enable", k.ID, "-n"}, display...)...), MarketRun(append([]string{"--known"}, display...)...))...)
+	}
+	g, warnings := e.groupOf(k.ID, f.cat, display)
+	entries := make([]PickerEntry, len(g.Entries))
+	for j, o := range g.Entries {
+		at, ok := installed[o.Name]
+		entries[j] = PickerEntry{MarketOffer: o, Installed: ok, At: at, WebURL: g.webURLs[j]}
+	}
+	return KnownPreview{KnownMarket: k, Host: shown(source.Host(k.Source)), Entries: entries, Skipped: marketSkips(f.cat), Warnings: warnings}, nil
 }
 
 // UpdateKnownPastPin moves the git marketplace name to the tip of its remote (of its branch or tag

@@ -1121,6 +1121,7 @@ func (h *huhForms) MarketPicker(st MarketPickerStep) (MarketPickerAnswer, error)
 		m = fm
 	}
 	m.stopChecks()
+	m.stopFetch()
 	switch {
 	case errors.Is(err, tea.ErrInterrupted), err == nil && m.aborted:
 		return MarketPickerAnswer{}, ErrAborted

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -133,7 +134,7 @@ var (
 	topKeys      = []string{"name", "owner", "plugins", "description", "version", "metadata"}
 	ownerKeys    = []string{"name", "email", "url"}
 	metadataKeys = []string{"description", "version", "pluginRoot"}
-	entryKeys    = []string{"name", "source", "description", "version", "category", "tags", "keywords", "dependencies"}
+	entryKeys    = []string{"name", "source", "description", "version", "license", "category", "tags", "keywords", "dependencies"}
 )
 
 // skipOn are the entry fields whose presence skips the entry, with why: lola
@@ -167,6 +168,10 @@ var entryKnown = func() []string {
 	}
 	return out
 }()
+
+// entryChecked is the keys of an entry whose text must print as it is, or the entry is skipped: every
+// key it reads but license, which is only shown and so is dropped, not the entry, when it will not.
+var entryChecked = slices.DeleteFunc(slices.Clone(entryKnown), func(k string) bool { return k == "license" })
 
 // notPlain is how a refusal says why s, which untrusted.IsPlain refuses, would not print as it is.
 // A line break alone is named, with yaml's advice after it, since an author sees none in a YAML
@@ -345,7 +350,7 @@ func parseClaude(b []byte, bareFromRoot bool, ssh []string) (Catalog, error) {
 	for i, item := range plugins.items {
 		if item.kind == '{' {
 			label := fmt.Sprintf("plugins[%d]", i)
-			if err := plainFields(item, label, entryKnown); err != nil {
+			if err := plainFields(item, label, entryChecked); err != nil {
 				name := ""
 				if nv := item.get("name"); nv != nil && nv.kind == 's' {
 					name = nv.str
@@ -415,6 +420,9 @@ func claudeEntry(o *jval, pluginRoot string, ssh []string) (Entry, *skip) {
 			}
 			*f.to = v.str
 		}
+	}
+	if lv := o.get("license"); lv != nil && lv.kind == 's' {
+		e.License = shownLicense(lv.str)
 	}
 	if s := checkEntryText(e); s != nil {
 		return e, s
