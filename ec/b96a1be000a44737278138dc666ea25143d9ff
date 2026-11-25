@@ -1,0 +1,29 @@
+docs/reference/market.md
+  s_b1af89ea0dd45d::t_1f6b0153686564 15-16,127-128,145-146
+docs/architecture/layers.md
+  s_b1af89ea0dd45d::t_fbf7e576ab3940 586-589
+docs/decisions.md
+  s_b1af89ea0dd45d::t_0b63de12abc68a 76-77
+docs/guides/marketplaces.md
+  s_b1af89ea0dd45d::t_21c9820d84decd 192-193
+docs/reference/profile.md
+  s_b1af89ea0dd45d::t_8437ff44c569ac 77-79,85,99-110
+internal/cli/help.go
+  s_b1af89ea0dd45d::t_bdade0cd8a5a25 157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "ecb96a1be000a44737278138dc666ea25143d9ff",
+  "prompts": {},
+  "sessions": {
+    "s_b1af89ea0dd45d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86d15ce2-2882-4ded-82be-d18f2ba8f3f4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
