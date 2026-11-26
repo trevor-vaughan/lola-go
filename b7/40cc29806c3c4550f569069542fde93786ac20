@@ -1,0 +1,45 @@
+internal/cli/market_picker_internal_test.go
+  s_b1af89ea0dd45d::t_ff2452bcfcad57 513-527,686-687,720,737,739-740,806,811-815,818-819,1129,1320-1321,1323-1324,1326,1329,1332-1340,1342-1343,1346-1350,1357
+internal/cli/market_picker_preview_internal_test.go
+  s_b1af89ea0dd45d::t_ff2452bcfcad57 146,148,152,170,349,351-353
+internal/cli/marketflow_test.go
+  s_b1af89ea0dd45d::t_bc265e07038376 570
+  s_b1af89ea0dd45d::t_62f5818e367312 380,382-383,386,390,393-395,402-410,412-413,416-417,421,544-547,550-552,554-560,569,573,626,629,762-764
+internal/cli/market_picker_lines_internal_test.go
+  s_b1af89ea0dd45d::t_ff2452bcfcad57 312,338,340,342-343,351,355-362,440,443
+internal/cli/cmd_market.go
+  s_b1af89ea0dd45d::t_e133fdb92d7701 997-1004,1108-1112,1114-1118,1122,1125
+internal/cli/market_picker_preview.go
+  s_b1af89ea0dd45d::t_e133fdb92d7701 107-108,138,140
+docs/architecture/tui-flows.md
+  s_b1af89ea0dd45d::t_ed201b78faa46a 1477,1483-1484,1540-1541,1548,1554-1555,1563,1574-1575,1577,1583,1585,1645,1647,1649-1650,1663
+  s_b1af89ea0dd45d::t_cf5aa191f83d1e 1316-1318,1416-1419,1445-1446,1461,1472,1486,1501-1502,1690
+internal/cli/market_picker.go
+  s_b1af89ea0dd45d::t_9228f2587c70b3 28,34-35
+  s_b1af89ea0dd45d::t_e133fdb92d7701 95,110-112,304,308-310,313-323,720,790-796,844,853-857,869,872,874,878,914-934
+  s_b1af89ea0dd45d::t_ab9f2d7243c2a0 935-936
+AGENTS.md
+  s_b1af89ea0dd45d::t_fd7b2c7afc7c02 102-104
+docs/guides/marketplaces.md
+  s_b1af89ea0dd45d::t_5ec419bf4ecd38 199-201
+docs/reference/market.md
+  s_b1af89ea0dd45d::t_6a7ae3794e652b 244-245,350,359,387-388,395,406
+internal/cli/misc2_paths_test.go
+  s_b1af89ea0dd45d::t_f6d8f472b57b3f 65-70,78,82-83,107-108,125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b740cc29806c3c4550f569069542fde93786ac20",
+  "prompts": {},
+  "sessions": {
+    "s_b1af89ea0dd45d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86d15ce2-2882-4ded-82be-d18f2ba8f3f4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
