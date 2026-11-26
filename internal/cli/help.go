@@ -91,7 +91,11 @@ func (a *app) installHelp(root *cobra.Command) {
 		if longHelpAsked(cmd, args) {
 			form = helpLong
 		}
-		a.showHelp(cmd, form)
+		// cobra's help func returns nothing, so a failure to write help (a closed stdout) is
+		// reported here and the run still exits 0.
+		if err := a.showHelp(cmd, form); err != nil {
+			writeError(cmd.ErrOrStderr(), err, a.json, 0)
+		}
 	})
 
 	var all, short bool
@@ -130,8 +134,7 @@ func (a *app) installHelp(root *cobra.Command) {
 			case short:
 				form = helpShort
 			}
-			a.showHelp(c, form)
-			return nil
+			return a.showHelp(c, form)
 		},
 	}
 	help.Flags().BoolVar(&all, "all", false, "print the command and every command below it")
@@ -283,10 +286,15 @@ func longHelpAsked(cmd *cobra.Command, args []string) bool {
 	return false
 }
 
-// showHelp is the single help path for -h, --help, `help` and a bare command group: renderHelp
-// through page, so help taller than the terminal opens in the viewer.
-func (a *app) showHelp(cmd *cobra.Command, form helpForm) {
+// showHelp is the single help path for -h, --help, `help` and a bare command group: under --json
+// the help document (helpDoc) through emit, else renderHelp through page, so help taller than the
+// terminal opens in the viewer.
+func (a *app) showHelp(cmd *cobra.Command, form helpForm) error {
+	if a.json {
+		return a.emit(cmd, nil, helpDoc(cmd, form))
+	}
 	a.page(cmd, cmd.OutOrStdout(), style{}, func(w io.Writer, _ style) { renderHelp(w, cmd, form) })
+	return nil
 }
 
 // renderHelp writes cmd's help in form to w.
@@ -334,14 +342,8 @@ func writeLongHelp(w io.Writer, c *cobra.Command, omit string) {
 			fmt.Fprintf(w, "  %-*s  %s\n", width, e.Name, e.Description)
 		}
 	}
-	if bi, ok := debug.ReadBuildInfo(); ok {
-		ver := version
-		if !releaseTag.MatchString(ver) && releaseTag.MatchString(bi.Main.Version) {
-			ver = bi.Main.Version // go install …@vX.Y.Z stamps no version, but records the module's
-		}
-		if u := referenceURL(c, bi.Main.Path, ver); u != "" {
-			fmt.Fprintf(w, "\nReference: %s\n", u)
-		}
+	if u := buildReferenceURL(c); u != "" {
+		fmt.Fprintf(w, "\nReference: %s\n", u)
 	}
 }
 
@@ -367,6 +369,19 @@ func referenceURL(c *cobra.Command, modulePath, ver string) string {
 	return "https://" + modulePath + "/blob/" + ref + "/docs/" + page
 }
 
+// buildReferenceURL is referenceURL for the running build: "" when it records no build info.
+func buildReferenceURL(c *cobra.Command) string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	ver := version
+	if !releaseTag.MatchString(ver) && releaseTag.MatchString(bi.Main.Version) {
+		ver = bi.Main.Version // go install …@vX.Y.Z stamps no version, but records the module's
+	}
+	return referenceURL(c, bi.Main.Path, ver)
+}
+
 // globalFlagsBlock is the "Global Flags:" block of c's usage as cobraGlobalFlags renders it ("" when
 // c inherits none): long help prints the global flags once, in its preamble.
 func globalFlagsBlock(c *cobra.Command) string {
@@ -376,11 +391,159 @@ func globalFlagsBlock(c *cobra.Command) string {
 	return "\n\nGlobal Flags:\n" + strings.TrimRightFunc(c.InheritedFlags().FlagUsages(), unicode.IsSpace)
 }
 
+// helpListed reports whether help lists c among its parent's commands: cobra's usage template
+// lists the available ones and help, and prose --all and --json follow it.
+func helpListed(c *cobra.Command) bool {
+	return c.IsAvailableCommand() || c.Name() == "help"
+}
+
 func walk(c *cobra.Command, fn func(*cobra.Command)) {
 	fn(c)
 	for _, sub := range c.Commands() {
-		if sub.IsAvailableCommand() || sub.Name() == "help" {
+		if helpListed(sub) {
 			walk(sub, fn)
 		}
 	}
+}
+
+// helpCommand is a command's help as --json prints it (helpDoc). Keys a form omits are absent:
+// helpDetail's when nil, global_flags and environment when nil; every listed array is non-nil.
+type helpCommand struct {
+	Path    string   `json:"path"`
+	Name    string   `json:"name"`
+	Aliases []string `json:"aliases"`
+	Group   string   `json:"group"`
+	Short   string   `json:"short"`
+	Usage   string   `json:"usage"`
+	*helpDetail
+	Flags       []helpFlag `json:"flags"`
+	GlobalFlags []helpFlag `json:"global_flags,omitzero"`
+	Environment []helpEnv  `json:"environment,omitzero"`
+	Commands    any        `json:"commands"` // []helpSummary; []helpCommand under --all
+}
+
+// helpDetail is what long help adds to short.
+type helpDetail struct {
+	Long         string   `json:"long"`
+	Examples     []string `json:"examples"`
+	ReferenceURL string   `json:"reference_url"`
+}
+
+// helpSummary is a subcommand as a command's help lists it.
+type helpSummary struct {
+	Path    string   `json:"path"`
+	Name    string   `json:"name"`
+	Aliases []string `json:"aliases"`
+	Short   string   `json:"short"`
+}
+
+// helpFlag is one flag as help shows it.
+type helpFlag struct {
+	Name          string   `json:"name"`
+	Shorthand     string   `json:"shorthand"`
+	Aliases       []string `json:"aliases"`
+	Type          string   `json:"type"`
+	Value         string   `json:"value"`
+	Usage         string   `json:"usage"`
+	Default       string   `json:"default"`
+	ValueOptional bool     `json:"value_optional"`
+}
+
+// helpDoc is cmd's help in form as one document: helpEntry, plus the global flags once, at the
+// top, as prose prints them (long help in its usage, --all before the first command).
+func helpDoc(cmd *cobra.Command, form helpForm) helpCommand {
+	doc := helpEntry(cmd, form)
+	if form != helpShort {
+		doc.GlobalFlags = helpFlags(cmd.InheritedFlags())
+	}
+	return doc
+}
+
+// helpEntry is cmd's document in form without its global flags; under --all its commands are
+// documents too, each in long form.
+func helpEntry(cmd *cobra.Command, form helpForm) helpCommand {
+	cmd.InitDefaultHelpFlag() // as renderHelp: help, bare groups and --all reach here before cobra adds it
+	doc := helpCommand{
+		Path:    cmd.CommandPath(),
+		Name:    cmd.Name(),
+		Aliases: append([]string{}, cmd.Aliases...),
+		Group:   groupTitle(cmd),
+		Short:   strings.TrimSpace(cmd.Short),
+		Usage:   cmd.UseLine(),
+		Flags:   helpFlags(cmd.LocalFlags()),
+	}
+	if form != helpShort {
+		long := cmd.Long
+		if long == "" {
+			long = cmd.Short
+		}
+		examples := []string{}
+		for line := range strings.SplitSeq(cmd.Example, "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				examples = append(examples, line)
+			}
+		}
+		doc.helpDetail = &helpDetail{Long: strings.TrimSpace(long), Examples: examples, ReferenceURL: buildReferenceURL(cmd)}
+		if cmd == cmd.Root() {
+			doc.Environment = environment()
+		}
+	}
+	if form == helpAll {
+		subs := []helpCommand{}
+		for _, sub := range cmd.Commands() {
+			if helpListed(sub) {
+				subs = append(subs, helpEntry(sub, helpAll))
+			}
+		}
+		doc.Commands = subs
+		return doc
+	}
+	subs := []helpSummary{}
+	for _, sub := range cmd.Commands() {
+		if helpListed(sub) {
+			subs = append(subs, helpSummary{Path: sub.CommandPath(), Name: sub.Name(),
+				Aliases: append([]string{}, sub.Aliases...), Short: strings.TrimSpace(sub.Short)})
+		}
+	}
+	doc.Commands = subs
+	return doc
+}
+
+// groupTitle is the title of the group c's parent lists it under, without its colon ("Core");
+// "" when it has none.
+func groupTitle(c *cobra.Command) string {
+	if p := c.Parent(); p != nil {
+		for _, g := range p.Groups() {
+			if g.ID == c.GroupID {
+				return strings.TrimSuffix(g.Title, ":")
+			}
+		}
+	}
+	return ""
+}
+
+// helpFlags is fs's flags as help shows them, hidden ones skipped: --trust's value is the
+// placeholder prose shows (trustShownKey), since its NoOptDefVal is a sentinel no one types.
+func helpFlags(fs *pflag.FlagSet) []helpFlag {
+	out := []helpFlag{}
+	fs.VisitAll(func(f *pflag.Flag) {
+		if f.Hidden {
+			return
+		}
+		value, usage := pflag.UnquoteUsage(f)
+		if shown := f.Annotations[trustShownKey]; len(shown) > 0 {
+			value = shown[0]
+		}
+		out = append(out, helpFlag{
+			Name:          f.Name,
+			Shorthand:     f.Shorthand,
+			Aliases:       append([]string{}, f.Annotations[flagAliasKey]...),
+			Type:          f.Value.Type(),
+			Value:         value,
+			Usage:         usage,
+			Default:       f.DefValue,
+			ValueOptional: f.NoOptDefVal != "",
+		})
+	})
+	return out
 }

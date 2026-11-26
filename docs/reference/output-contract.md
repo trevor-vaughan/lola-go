@@ -5,6 +5,7 @@ Command reference, for lola users; back to [Using lola](../usage.md) and the [RE
 The output formats lola's commands share. It is split out of [usage](../usage.md).
 
 - `--json`: one JSON document on stdout, snake_case keys, arrays always present (`[]` when empty).
+  Help is JSON too: see [`lola help`](help.md#json).
 - `--plain`: tab-separated lines, no color, every row starting at column 1 (its kind first), so
   `cut -f1` reads it.
 - Human output merges two or more warnings that differ only in the artifact (same module, target,
