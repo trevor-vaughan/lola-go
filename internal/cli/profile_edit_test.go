@@ -20,7 +20,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("lola profile --edit", func() {
+var _ = Describe("lola profile edit", func() {
 	var (
 		p        paths.Paths
 		tmp, kit string
@@ -38,22 +38,32 @@ var _ = Describe("lola profile --edit", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
 	})
 
+	It("refuses edit --new without a name, hinting the verb form", func() {
+		r := lola("profile", "edit", "--new", "--user")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("lola profile edit <name> --new"))
+		Expect(r.err).To(ContainSubstring("hint: usage: lola profile edit <name> --new\n"))
+		r = lola("profile", "--edit", "--new", "--user")
+		Expect(r.err).To(HavePrefix("error: --edit is not a flag of lola profile\n  hint: usage: lola profile edit [<name>] <module>...\n"),
+			"the coach offers no run edit refuses")
+	})
+
 	It("edits a named profile's module and its picks, as a write line says, and applies it where the profile is on", func() {
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		goYml := filepath.Join(p.UserProfiles, "go.yml")
-		r := lola("profile", "go", "--edit", "kit", "--only", "skill/a", "--override", "--user", "-y")
+		r := lola("profile", "edit", "go", "kit", "--only", "skill/a", "--override", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(HavePrefix("user scope: profile go over default\n"))
 		Expect(r.out + r.err).To(ContainSubstring("✓ added kit to profile go  (" + goYml + ")\n"))
 		Expect(os.ReadFile(goYml)).To(ContainSubstring("  - name: kit\n    source: "+kit+"\n    skip: [skill/b]\n"), "--only tracks, as lola install's: the rest is skipped")
 		Expect(os.ReadFile(goYml)).NotTo(ContainSubstring("only:"))
 
-		r = lola("profile", "go", "--edit", "kit", "--only", "skill/a", "--exact", "--user", "-y")
+		r = lola("profile", "edit", "go", "kit", "--only", "skill/a", "--exact", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out + r.err).To(ContainSubstring("✓ changed kit in profile go  (" + goYml + ")  only: 1 skill\n"))
 		Expect(os.ReadFile(goYml)).To(ContainSubstring("    only: [skill/a]\n"), "--exact writes the entry's only: list")
 
-		r = lola("profile", "--pick", "kit", "--unskip", "skill/b", "--user", "--json")
+		r = lola("profile", "pick", "kit", "--unskip", "skill/b", "--user", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var v struct {
 			Edits []map[string]any `json:"edits"`
@@ -69,7 +79,7 @@ var _ = Describe("lola profile --edit", func() {
 		writeTree(kit, map[string]string{"skills/c/SKILL.md": "---\ndescription: C\n---\nC\n"})
 		r := lola("sync", "--user")
 		Expect(r.code).To(Equal(0), r.err)
-		hint := "lola profile --user default --edit kit --unskip skill/c"
+		hint := "lola profile --user edit default kit --unskip skill/c"
 		Expect(r.out).To(ContainSubstring("→ kit adds skill/c, not installed (only: in default (base)) → " + hint + "\n"))
 		r = runHint(hint)
 		Expect(r.code).To(Equal(0), hint+": "+r.err)
@@ -79,11 +89,11 @@ var _ = Describe("lola profile --edit", func() {
 
 	It("names, after a sync, a profile named as its module qualified in the edit, which runs as printed", func() {
 		writeTree(p.UserProfiles, map[string]string{"kit.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + ", only: [skill/a]}\n"})
-		Expect(lola("profile", "user:kit", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "user:kit", "--user", "-y").code).To(Equal(0))
 		writeTree(kit, map[string]string{"skills/c/SKILL.md": "---\ndescription: C\n---\nC\n"})
 		r := lola("sync", "--user")
 		Expect(r.code).To(Equal(0), r.err)
-		hint := "lola profile --user user:kit --edit kit --unskip skill/c"
+		hint := "lola profile --user edit user:kit kit --unskip skill/c"
 		Expect(r.out).To(ContainSubstring("→ kit adds skill/c, not installed (only: in profile kit) → " + hint + "\n"))
 		r = runHint(hint)
 		Expect(r.code).To(Equal(0), hint+": "+r.err)
@@ -95,11 +105,11 @@ var _ = Describe("lola profile --edit", func() {
 		proj := filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		Expect(lola("install", kit, "-C", proj, "-t", "claude-code", "--only", "skill/a", "--exact", "-y").code).To(Equal(0))
-		Expect(lola("profile", "go", "--switch", "-C", proj, "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "-C", proj, "-y").code).To(Equal(0))
 		writeTree(kit, map[string]string{"skills/c/SKILL.md": "---\ndescription: C\n---\nC\n"})
 		r := lola("sync", "-C", proj, "--trust=entries")
 		Expect(r.code).To(Equal(0), r.err)
-		hint := "lola profile -C " + proj + " base --edit kit --unskip skill/c"
+		hint := "lola profile -C " + proj + " edit base kit --unskip skill/c"
 		Expect(r.out).To(ContainSubstring(" → " + hint + "\n"))
 		r = runHint(hint)
 		Expect(r.code).To(Equal(0), hint+": "+r.err)
@@ -113,9 +123,9 @@ var _ = Describe("lola profile --edit", func() {
 		writeTree(filepath.Dir(p.Selections), map[string]string{"selections.yaml": "version: 1\nprojects:\n  " + proj + ":\n    kit:\n      skip: [skill/a]\n"})
 		Expect(lola("sync", "-C", proj, "--trust=entries", "-y").code).To(Equal(0))
 		GinkgoT().Chdir(proj)
-		r := lola("profile", "user:go", "--switch", "-y")
+		r := lola("profile", "switch", "user:go", "-y")
 		Expect(r.code).To(Equal(0), r.err)
-		hint := "lola profile --project go --edit kit"
+		hint := "lola profile --project edit go kit"
 		Expect(r.out + r.err).To(ContainSubstring("⚠ selections.yaml projects[" + proj + "] kit is ignored: profile go provides it; delete it from " + p.Selections + ", and pick kit's components in profile go → " + hint + "\n"))
 		Expect(filepath.Join(proj, ".claude", "skills", "a", "SKILL.md")).To(BeAnExistingFile(), "the section's skip is not go's")
 		words := shellWords(hint)
@@ -139,7 +149,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(lola("install", "kit", "--user", "--only", "skill/a", "--exact", "-y").code).To(Equal(0))
 		writeTree(kit, map[string]string{"skills/c/SKILL.md": "---\ndescription: C\n---\nC\n"})
 		Expect(lola("cache", "add", kit).code).To(Equal(0), "the cache holds kit with skill/c; the version installed has a and b")
-		hint := "lola profile --user default --edit kit"
+		hint := "lola profile --user edit default kit"
 		r := lola("info", "kit", "--user", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("  components of kit here, provided by default (base):\n" +
@@ -235,8 +245,8 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(sp.calls).To(ContainElement(HavePrefix("components:")), "the hint opens kit's component page")
 		Expect(filepath.Join(proj, ".claude", "skills", "b", "SKILL.md")).To(BeAnExistingFile())
 
-		Expect(lola("profile", "go", "--switch", "-C", proj, "-y").code).To(Equal(0))
-		hint = "lola profile -C " + proj + " base --edit kit"
+		Expect(lola("profile", "switch", "go", "-C", proj, "-y").code).To(Equal(0))
+		hint = "lola profile -C " + proj + " edit base kit"
 		r = lola("info", "kit", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("  components of kit here, provided by project.yml (base):\n"))
@@ -254,8 +264,8 @@ var _ = Describe("lola profile --edit", func() {
 	It("lola info names a bundle member as the provider, its re-pick naming the member, never the bundle, which runs as printed", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + ", only: [skill/a]}\n",
 			"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n"})
-		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
-		hint := "lola profile --user go --edit kit"
+		Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
+		hint := "lola profile --user edit go kit"
 		r := lola("info", "kit", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("  components of kit here, provided by profile go:\n" +
@@ -274,7 +284,7 @@ var _ = Describe("lola profile --edit", func() {
 
 	It("lola info's install refusal under a bundle hints a run that names the module and keeps the scope, and it runs as printed", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n", "docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n"})
-		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
 		r := lola("info", kit, "--user", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
 		hint := "lola install kit --target claude-code --user --profile go"
@@ -304,9 +314,9 @@ var _ = Describe("lola profile --edit", func() {
 			Commit: strings.Repeat("c", 40), Digest: profile.Digest([]byte(body))})
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(filepath.Join(p.RemoteProfiles, "team"), map[string]string{profile.RemoteFile: body, profile.OriginFile: string(o)})
-		r := lola("profile", "team", "--switch", "--user", "-y")
+		r := lola("profile", "switch", "team", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
-		hint := "lola profile --user team-mine --switch --new --from remote:team"
+		hint := "lola profile --user switch team-mine --new --from remote:team"
 		r = lola("info", "notes", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("  components of notes here, provided by remote:team:\n" +
@@ -322,11 +332,11 @@ var _ = Describe("lola profile --edit", func() {
 
 	It("labels on a profile's component page what its only: list leaves out and what the version adds, and names the profile that provides the module", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + ", only: [skill/a]}\n"})
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		writeTree(kit, map[string]string{"skills/c/SKILL.md": "---\ndescription: C\n---\nC\n"})
 		Expect(lola("cache", "add", kit).code).To(Equal(0))
 		sp := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}
-		r := lolaP(sp, "profile", "go", "--edit", "kit", "--user", "-n")
+		r := lolaP(sp, "profile", "edit", "go", "kit", "--user", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		labels := []string{}
 		for _, o := range sp.pages[0].Groups[0].Options {
@@ -340,7 +350,7 @@ var _ = Describe("lola profile --edit", func() {
 		origin := filepath.Join(p.Store, "kit", "versions", strings.TrimPrefix(led.Modules["kit"].Digest, "sha256:")[:12], ".lola-origin")
 		Expect(os.WriteFile(origin, []byte("{\n"), 0o644)).To(Succeed())
 		sp = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}
-		r = lolaP(sp, "profile", "go", "--edit", "kit", "--user", "-n")
+		r = lolaP(sp, "profile", "edit", "go", "kit", "--user", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		labels = []string{}
 		for _, o := range sp.pages[0].Groups[0].Options {
@@ -350,13 +360,13 @@ var _ = Describe("lola profile --edit", func() {
 			"an installed version the cache holds but cannot read leaves the page open, calling nothing new")
 	})
 
-	It("refuses an inherited edit off a terminal with lola profile base --edit and lola profile <target> --edit --override, which run as printed", func() {
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
-		r := lola("profile", "--edit", "kit", "--only", "skill/a", "--user")
+	It("refuses an inherited edit off a terminal with lola profile edit base and lola profile edit <target> --override, which run as printed", func() {
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
+		r := lola("profile", "edit", "kit", "--only", "skill/a", "--user")
 		Expect(r.code).To(Equal(3))
-		Expect(r.err).To(HaveSuffix("error: kit comes from default (base); lola profile --edit needs to know whether to change it there or override it in profile go, " +
-			"and there is no terminal to ask on\n  hint: lola profile base kit --edit --only skill/a --user\n  hint: lola profile go kit --edit --only skill/a --user --override\n"))
-		for _, hint := range []string{"lola profile go kit --edit --only skill/a --user --override", "lola profile base kit --edit --only skill/a --user"} {
+		Expect(r.err).To(HaveSuffix("error: kit comes from default (base); lola profile edit needs to know whether to change it there or override it in profile go, " +
+			"and there is no terminal to ask on\n  hint: lola profile edit base kit --only skill/a --user\n  hint: lola profile edit go kit --only skill/a --user --override\n"))
+		for _, hint := range []string{"lola profile edit go kit --only skill/a --user --override", "lola profile edit base kit --only skill/a --user"} {
 			r = lola(append(strings.Fields(hint)[1:], "-y")...)
 			Expect(r.code).To(Equal(0), hint+": "+r.err)
 		}
@@ -365,34 +375,34 @@ var _ = Describe("lola profile --edit", func() {
 	})
 
 	It("refuses a name no profile has, hinting --new, which makes it, and refuses --edit without a module off a terminal with hints that run", func() {
-		r := lola("profile", "try", "--edit", "kit", "--user")
+		r := lola("profile", "edit", "try", "kit", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(userContext + "error: no profile try for user scope; --new makes it\n  hint: make it: lola profile try kit --edit --user --new\n"))
-		r = lola("profile", "try", "kit", "--edit", "--user", "--new")
+		Expect(r.err).To(Equal(userContext + "error: no profile try for user scope; --new makes it\n  hint: make it: lola profile edit try kit --user --new\n"))
+		r = lola("profile", "edit", "try", "kit", "--user", "--new")
 		Expect(r.code).To(Equal(0), "the hint runs as printed: "+r.err)
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "try.yml"))).To(ContainSubstring("name: kit"))
 
-		r = lola("profile", "go", "--edit", "--user")
+		r = lola("profile", "edit", "go", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(userContext + "error: lola profile --edit edits profile go by its modules: name one, as in lola profile go --edit <module> --only <kind/name>\n" +
+		Expect(r.err).To(Equal(userContext + "error: lola profile edit edits profile go by its modules: name one, as in lola profile edit go <module> --only <kind/name>\n" +
 			"  hint: see what it lists: lola profile --user go\n  hint: see your cache: lola cache list\n"))
 		for _, run := range [][]string{{"profile", "--user", "go"}, {"cache", "list"}} {
 			Expect(lola(run...).code).To(Equal(0), strings.Join(run, " "))
 		}
 
-		r = lola("profile", "docs", "--edit", "--new", "--user")
+		r = lola("profile", "edit", "docs", "--new", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("✓ new profile docs (" + filepath.Join(p.UserProfiles, "docs.yml") + ", empty)\n"))
-		Expect(r.out).To(ContainSubstring("docs is not on at user scope → lola profile --user docs --switch\n"))
-		r = lola("profile", "--edit", "--new", "--user", "-n")
+		Expect(r.out).To(ContainSubstring("docs is not on at user scope → lola profile --user switch docs\n"))
+		r = lola("profile", "edit", "--new", "--user", "-n")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: --new makes the profile --edit names, and none was named: name it, as in lola profile <name> --edit --new\n"+
-			"  hint: see the profiles: lola profile --user\n"), "the listing keeps no -n, which it refuses")
-		Expect(lola("profile", "--user").code).To(Equal(0), "the hint runs as printed")
+		Expect(r.err).To(Equal("error: --new makes the profile edit names, and none was named: name it, as in lola profile edit <name> --new\n" +
+			"  hint: usage: lola profile edit <name> --new\n  hint: find one: lola profile list\n"))
+		Expect(lola("profile", "list").code).To(Equal(0), "the hint runs as printed")
 	})
 
 	It("refuses --exact with no pick by saying what it needs, with no hint: the run without it changes nothing the base gives", func() {
-		for _, run := range [][]string{{"profile", "go", "kit", "--edit", "--exact", "--user"}, {"install", "kit", "--exact", "--user"}} {
+		for _, run := range [][]string{{"profile", "edit", "go", "kit", "--exact", "--user"}, {"install", "kit", "--exact", "--user"}} {
 			r := lola(run...)
 			Expect(r.code).To(Equal(1))
 			Expect(r.err).To(Equal("error: --exact applies to --only, and none was given: name the components to keep, as in lola " +
@@ -413,23 +423,23 @@ var _ = Describe("lola profile --edit", func() {
 		defaultYml := filepath.Join(p.UserProfiles, "default.yml")
 		before, err := os.ReadFile(defaultYml)
 		Expect(err).NotTo(HaveOccurred())
-		r := lola("profile", "--edit", "kit", "--only", "skill/a", "-y")
+		r := lola("profile", "edit", "kit", "--only", "skill/a", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(HavePrefix(projectContext(proj)))
 		Expect(r.err).NotTo(ContainSubstring("user scope"))
 		Expect(os.ReadFile(filepath.Join(proj, ".lola", "project.yml"))).To(ContainSubstring("name: kit"))
 		Expect(os.ReadFile(defaultYml)).To(Equal(before), "one scope: the project's write target alone")
 
-		r = lola("profile", "project:team", "--edit", "kit", "--only", "skill/a", "-y")
+		r = lola("profile", "edit", "project:team", "kit", "--only", "skill/a", "-y")
 		Expect(r.code).To(Equal(0), "a project profile, from its project: "+r.err)
 		Expect(os.ReadFile(filepath.Join(proj, ".lola", "profiles", "team.yml"))).To(ContainSubstring("  - name: kit\n    source: " + kit + "\n    skip: [skill/b]\n"))
 		Expect(os.ReadFile(filepath.Join(proj, ".lola", "profiles", "team.yml"))).NotTo(ContainSubstring("only:"))
 
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
-		Expect(lola("profile", "user:go", "--switch", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "user:go", "-y").code).To(Equal(0))
 		skillB := map[string]string{"user": filepath.Join(p.Home, ".claude", "skills", "b", "SKILL.md"), "project": filepath.Join(proj, ".claude", "skills", "b", "SKILL.md")}
-		r = lola("profile", "go", "--edit", "kit", "--only", "skill/a", "-y")
+		r = lola("profile", "edit", "go", "kit", "--only", "skill/a", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(HavePrefix("project " + proj + ": profile go over project.yml\nuser scope: profile go over default\n"))
 		Expect(strings.Count(r.out, "changed kit in profile go")).To(Equal(1), "written once: "+r.out)
@@ -437,7 +447,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(skillB["user"]).NotTo(BeAnExistingFile())
 		Expect(skillB["project"]).NotTo(BeAnExistingFile())
 
-		r = lola("profile", "go", "--edit", "kit", "--unskip", "skill/b", "--project")
+		r = lola("profile", "edit", "go", "kit", "--unskip", "skill/b", "--project")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).NotTo(ContainSubstring("user scope"), "a scope flag names the one scope")
 		Expect(skillB["project"]).To(BeAnExistingFile())
@@ -449,17 +459,17 @@ var _ = Describe("lola profile --edit", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [opencode]\n"})
 		Expect(lola("sync", "-C", proj, "--trust=entries", "-y").code).To(Equal(0))
 		GinkgoT().Chdir(proj)
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
-		Expect(lola("profile", "user:go", "--switch", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "user:go", "-y").code).To(Equal(0))
 		goYml := filepath.Join(p.UserProfiles, "go.yml")
 
-		r := lola("profile", "go", "--edit", "kit", "--only", "skill/a", "--override", "-n", "-v")
+		r := lola("profile", "edit", "go", "kit", "--only", "skill/a", "--override", "-n", "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(And(ContainSubstring("✓ create opencode    .opencode/skills/a/SKILL.md\n"), ContainSubstring("user:\nkit: 2 changes (claude-code 2)\n    → delete claude-code .claude/skills/b/SKILL.md\n")),
 			"-n plans the other scope from the file as it would be written")
 		Expect(os.ReadFile(goYml)).To(Equal([]byte("version: 1\n")))
 
-		r = lola("profile", "go", "--edit", "kit", "--only", "skill/a", "--override")
+		r = lola("profile", "edit", "go", "kit", "--only", "skill/a", "--override")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(HavePrefix("project " + proj + ": profile go over project.yml\nuser scope: profile go over default\n"))
 		Expect(r.out + r.err).NotTo(ContainSubstring("written differently"))
@@ -480,19 +490,19 @@ var _ = Describe("lola profile --edit", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
 		Expect(lola("sync", "-C", proj, "--trust=all", "-y").code).To(Equal(0))
 		GinkgoT().Chdir(proj)
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
-		Expect(lola("profile", "user:go", "--switch", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "user:go", "-y").code).To(Equal(0))
 		goYml := filepath.Join(p.UserProfiles, "go.yml")
 
-		r := lola("profile", "go", "--edit", "kit", "--only", "skill/a")
+		r := lola("profile", "edit", "go", "kit", "--only", "skill/a")
 		Expect(r.code).To(Equal(3))
-		Expect(lola("profile", "go", "kit", "--edit", "--only", "skill/a", "-n").code).To(Equal(0), "the -n hint runs as printed")
-		Expect(r.err).To(HaveSuffix("error: lola profile --edit needs your confirmation to remove kit (opencode) at user scope, and there is no terminal to ask on; nothing was written\n" +
-			"  hint: see what goes: lola profile go kit --edit --only skill/a -n\n  hint: confirm it: lola profile go kit --edit --only skill/a -y\n"))
+		Expect(lola("profile", "edit", "go", "kit", "--only", "skill/a", "-n").code).To(Equal(0), "the -n hint runs as printed")
+		Expect(r.err).To(HaveSuffix("error: lola profile edit needs your confirmation to remove kit (opencode) at user scope, and there is no terminal to ask on; nothing was written\n" +
+			"  hint: see what goes: lola profile edit go kit --only skill/a -n\n  hint: confirm it: lola profile edit go kit --only skill/a -y\n"))
 		Expect(os.ReadFile(goYml)).To(Equal([]byte("version: 1\n")), "nothing was written")
 		Expect(filepath.Join(proj, ".claude", "skills", "a", "SKILL.md")).NotTo(BeAnExistingFile())
 
-		r = lola("profile", "go", "kit", "--edit", "--only", "skill/a", "-y")
+		r = lola("profile", "edit", "go", "kit", "--only", "skill/a", "-y")
 		Expect(r.code).To(Equal(0), "the hint runs as printed: "+r.err)
 		Expect(os.ReadFile(goYml)).To(ContainSubstring("  - name: kit\n    source: " + kit + "\n    skip: [skill/b]\n"))
 		Expect(os.ReadFile(goYml)).NotTo(ContainSubstring("only:"))
@@ -501,12 +511,12 @@ var _ = Describe("lola profile --edit", func() {
 
 	It("runs an edit beside a catalog lola cannot read, qualifying each profile its hints name", func() {
 		Expect(os.WriteFile(p.Markets, []byte("version: [\n"), 0o600)).To(Succeed())
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
-		r := lola("profile", "--edit", "kit", "--only", "skill/a", "--user")
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
+		r := lola("profile", "edit", "kit", "--only", "skill/a", "--user")
 		Expect(r.code).To(Equal(3))
-		Expect(r.err).To(HaveSuffix("  hint: lola profile base kit --edit --only skill/a --user\n  hint: lola profile user:go kit --edit --only skill/a --user --override\n"),
+		Expect(r.err).To(HaveSuffix("  hint: lola profile edit base kit --only skill/a --user\n  hint: lola profile edit user:go kit --only skill/a --user --override\n"),
 			"go might be a catalog's entry too")
-		r = lola("profile", "user:go", "kit", "--edit", "--only", "skill/a", "--user", "--override", "-y") // -y: the hint's run deletes skill/b, which it asks
+		r = lola("profile", "edit", "user:go", "kit", "--only", "skill/a", "--user", "--override", "-y") // -y: the hint's run deletes skill/b, which it asks
 		Expect(r.code).To(Equal(0), "the hint runs as printed: "+r.err)
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))).To(ContainSubstring("  - name: kit\n    source: " + kit + "\n    skip: [skill/b]\n"))
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))).NotTo(ContainSubstring("only:"))
@@ -514,15 +524,15 @@ var _ = Describe("lola profile --edit", func() {
 
 	It("refuses off a terminal a name that is a profile and a module, hinting each reading, which run as printed", func() {
 		writeTree(p.UserProfiles, map[string]string{"kit.yml": "version: 1\n"})
-		r := lola("profile", "kit", "--edit", "--only", "skill/a", "--user")
+		r := lola("profile", "edit", "kit", "--only", "skill/a", "--user")
 		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(Equal(userContext + "error: kit names profile user:kit (" + filepath.Join(p.UserProfiles, "kit.yml") + ") and a module; " +
-			"lola profile --edit needs to know which to edit, and there is no terminal to ask on\n" +
+			"lola profile edit needs to know which to edit, and there is no terminal to ask on\n" +
 			"  hint: see profile user:kit, then name a module after it: lola profile --user user:kit\n" +
-			"  hint: edit module kit in default (base): lola profile base kit --edit --only skill/a --user\n"))
-		for _, hint := range []string{"lola profile --user user:kit", "lola profile base kit --edit --only skill/a --user"} {
+			"  hint: edit module kit in default (base): lola profile edit base kit --only skill/a --user\n"))
+		for _, hint := range []string{"lola profile --user user:kit", "lola profile edit base kit --only skill/a --user"} {
 			args := strings.Fields(hint)[1:]
-			if strings.Contains(hint, "--edit") {
+			if strings.Contains(hint, " edit ") {
 				args = append(args, "-y") // the hint's run deletes skill/b, which it asks
 			}
 			r = lola(args...)
@@ -534,142 +544,142 @@ var _ = Describe("lola profile --edit", func() {
 	})
 
 	It("refuses --new of a name a profile has, with hints that run", func() {
-		r := lola("profile", "go", "--edit", "--new", "--user")
+		r := lola("profile", "edit", "go", "--new", "--user")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(userContext + "error: go names user:go (" + filepath.Join(p.UserProfiles, "go.yml") + "); --new makes a profile that does not exist yet\n" +
-			"  hint: see it: lola profile --user user:go\n  hint: or make another: lola profile go-2 --edit --user --new\n"))
-		for _, run := range [][]string{{"profile", "--user", "user:go"}, {"profile", "go-2", "--edit", "--user", "--new"}} {
+			"  hint: see it: lola profile --user user:go\n  hint: or make another: lola profile edit go-2 --user --new\n"))
+		for _, run := range [][]string{{"profile", "--user", "user:go"}, {"profile", "edit", "go-2", "--user", "--new"}} {
 			Expect(lola(run...).code).To(Equal(0), strings.Join(run, " "))
 		}
 	})
 
 	It("narrows picks off a terminal as lola install --skip does: refusing without -y, hinting a run that applies, refusing a hand-edited file with a --force hint that runs", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		skill := func(n string) string { return filepath.Join(p.Home, ".claude", "skills", n, "SKILL.md") }
-		r := lola("profile", "go", "--edit", "kit", "--skip", "skill/b", "--user")
+		r := lola("profile", "edit", "go", "kit", "--skip", "skill/b", "--user")
 		Expect(r.code).To(Equal(3))
-		Expect(r.err).To(ContainSubstring("error: lola profile --edit needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\n"))
-		Expect(r.err).To(ContainSubstring("hint: lola profile go kit --edit --skip skill/b --user -y\n"))
+		Expect(r.err).To(ContainSubstring("error: lola profile edit needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\n"))
+		Expect(r.err).To(ContainSubstring("hint: lola profile edit go kit --skip skill/b --user -y\n"))
 		Expect(skill("b")).To(BeAnExistingFile())
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))).NotTo(ContainSubstring("skip"), "a refusal writes nothing")
-		r = lola("profile", "go", "--edit", "kit", "--skip", "skill/b", "--user", "-n")
+		r = lola("profile", "edit", "go", "kit", "--skip", "skill/b", "--user", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(skill("b")).To(BeAnExistingFile())
 		Expect(os.WriteFile(skill("b"), []byte("mine\n"), 0o600)).To(Succeed())
-		r = lola("profile", "go", "--edit", "kit", "--skip", "skill/b", "--user", "-y")
+		r = lola("profile", "edit", "go", "kit", "--skip", "skill/b", "--user", "-y")
 		Expect(r.code).To(Equal(3))
-		Expect(r.err).To(HaveSuffix("  hint: lola profile go kit --edit --skip skill/b --user --force\n"))
+		Expect(r.err).To(HaveSuffix("  hint: lola profile edit go kit --skip skill/b --user --force\n"))
 		Expect(skill("b")).To(BeAnExistingFile())
-		r = lola("profile", "go", "kit", "--edit", "--skip", "skill/b", "--user", "--force")
+		r = lola("profile", "edit", "go", "kit", "--skip", "skill/b", "--user", "--force")
 		Expect(r.code).To(Equal(0), "the hint runs as printed: "+r.err)
 		Expect(skill("b")).NotTo(BeAnExistingFile())
-		r = lola("profile", "go", "--edit", "kit", "--skip", "skill/a", "--user", "-y")
+		r = lola("profile", "edit", "go", "kit", "--skip", "skill/a", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(skill("a")).NotTo(BeAnExistingFile())
-		r = lola("profile", "go", "--edit", "kit", "--unskip", "skill/a", "--user")
+		r = lola("profile", "edit", "go", "kit", "--unskip", "skill/a", "--user")
 		Expect(r.code).To(Equal(0), "a widening change asks nothing: "+r.err)
 		Expect(skill("a")).To(BeAnExistingFile())
 	})
 
 	It("refuses an edit of a bundle's modules, hinting each member, and takes its flags only with --edit", func() {
 		writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n"})
-		r := lola("profile", "work", "--edit", "kit", "--user")
+		r := lola("profile", "edit", "work", "kit", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: work is a bundle; it lists profiles, not modules\n  hint: lola profile go kit --edit --user\n  hint: lola profile docs kit --edit --user\n"))
-		Expect(lola("profile", "go", "kit", "--edit", "--user").code).To(Equal(0), "the hint runs as printed")
-		Expect(lola("profile", "go", "--on", "--only", "skill/a").err).To(ContainSubstring("--only applies to --edit only"))
+		Expect(r.err).To(ContainSubstring("error: work is a bundle; it lists profiles, not modules\n  hint: lola profile edit go kit --user\n  hint: lola profile edit docs kit --user\n"))
+		Expect(lola("profile", "edit", "go", "kit", "--user").code).To(Equal(0), "the hint runs as printed")
+		Expect(lola("profile", "on", "go", "--only", "skill/a").err).To(ContainSubstring("--only applies to lola profile edit"))
 	})
 
 	It("sets a bundle's members with --bundle, saying what it made and changed, and makes one, or a copy, with --new", func() {
 		work := filepath.Join(p.UserProfiles, "work.yml")
 		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\nbundle: [go]\n"})
-		r := lola("profile", "work", "--edit", "--bundle", "go,notes", "--user")
+		r := lola("profile", "edit", "work", "--bundle", "go,notes", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("✓ new profile notes (" + filepath.Join(p.UserProfiles, "notes.yml") + ", empty)\n" +
 			"✓ changed bundle work (go → go, notes)  (" + work + ")\n"))
-		Expect(r.out).To(ContainSubstring("saved to bundle work; it is not on at user scope → lola profile --user work --switch\n"))
-		r = lola("profile", "work", "--modify", "--bundle", "notes", "--user", "--json")
+		Expect(r.out).To(ContainSubstring("saved to bundle work; it is not on at user scope → lola profile --user switch work\n"))
+		r = lola("profile", "modify", "work", "--bundle", "notes", "--user", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var v map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
 		Expect(v).To(And(HaveKeyWithValue("profile", "user:work"), HaveKeyWithValue("members", []any{"notes"}), HaveKeyWithValue("was", []any{"go", "notes"}),
 			HaveKeyWithValue("created", BeEmpty()), HaveKeyWithValue("sync", BeNil())))
-		Expect(lola("profile", "work", "--edit", "--bundle", "go,notes", "--user", "-n", "--plain").out).To(HavePrefix("would-bundle\tuser:work\tgo,notes\t" + work + "\n"))
+		Expect(lola("profile", "edit", "work", "--bundle", "go,notes", "--user", "-n", "--plain").out).To(HavePrefix("would-bundle\tuser:work\tgo,notes\t" + work + "\n"))
 		Expect(os.ReadFile(work)).To(Equal([]byte("version: 1\nbundle: [notes]\n")), "-n writes nothing")
 
-		r = lola("profile", "work", "--edit", "--user")
+		r = lola("profile", "edit", "work", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HaveSuffix("error: bundle work lists profiles, not modules (notes): --bundle sets them, as in lola profile work --edit --bundle notes,<profile>\n" +
+		Expect(r.err).To(HaveSuffix("error: bundle work lists profiles, not modules (notes): --bundle sets them, as in lola profile edit work --bundle notes,<profile>\n" +
 			"  hint: see it: lola profile --user work\n  hint: see the profiles: lola profile --user\n"))
 
-		r = lola("profile", "both", "--edit", "--new", "--bundle", "go,notes", "--user")
+		r = lola("profile", "edit", "both", "--new", "--bundle", "go,notes", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("✓ new bundle both (go, notes)\n"))
-		r = lola("profile", "mine", "--edit", "--new", "--from", "go", "--user")
+		r = lola("profile", "edit", "mine", "--new", "--from", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("✓ new profile mine, a copy of go (0 modules)\n"))
 	})
 
 	It("names the profile --new --from copies bare, qualified only beside a namesake", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		r := lola("profile", "try", "--edit", "--new", "--from", "go", "--user")
+		r := lola("profile", "edit", "try", "--new", "--from", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("✓ new profile try, a copy of go (0 modules)\n"))
 
 		proj := filepath.Join(tmp, "named")
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\n", ".lola/profiles/go.yml": "version: 1\n"})
-		r = lola("profile", "again", "--edit", "--new", "--from", "user:go", "-C", proj)
+		r = lola("profile", "edit", "again", "--new", "--from", "user:go", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("✓ new profile again, a copy of user:go (0 modules)\n"), "the project's go is a namesake")
-		r = lola("profile", "again2", "--edit", "--new", "--from", "user:go", "-C", proj, "--json")
+		r = lola("profile", "edit", "again2", "--new", "--from", "user:go", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(`"from": "user:go"`), "JSON keeps the qualified name")
 
-		r = lola("profile", "fromdef", "--edit", "--new", "--from", "default", "--user")
+		r = lola("profile", "edit", "fromdef", "--new", "--from", "default", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("✓ new profile fromdef, a copy of default (1 module)\n"), "the default profile is not a layer 'default (base)'")
 	})
 
 	It("refuses --from without --new, --from beside --bundle, and modules beside either, hinting the runs that work", func() {
-		r := lola("profile", "mine", "--edit", "--from", "go", "--user")
-		Expect(r.err).To(HaveSuffix("error: --from makes a new profile and goes with --new\n  hint: make it: lola profile mine --edit --from go --user --new\n"))
-		r = lola("profile", "mine", "--edit", "--new", "--from", "go", "--bundle", "go", "--user")
+		r := lola("profile", "edit", "mine", "--from", "go", "--user")
+		Expect(r.err).To(HaveSuffix("error: --from makes a new profile and goes with --new\n  hint: make it: lola profile edit mine --from go --user --new\n"))
+		r = lola("profile", "edit", "mine", "--new", "--from", "go", "--bundle", "go", "--user")
 		Expect(r.err).To(HaveSuffix("error: --from copies a profile and --bundle combines several; pick one\n" +
-			"  hint: keep --from: lola profile mine --edit --from go --new --user\n  hint: keep --bundle: lola profile mine --bundle go --edit --new --user\n"))
-		r = lola("profile", "go", "--edit", "kit", "--bundle", "notes", "--user", "-y")
+			"  hint: keep --from: lola profile edit mine --from go --new --user\n  hint: keep --bundle: lola profile edit mine --bundle go --new --user\n"))
+		r = lola("profile", "edit", "go", "kit", "--bundle", "notes", "--user", "-y")
 		Expect(r.err).To(HaveSuffix("error: --bundle makes or edits a profile's own file; the modules kit name are a separate edit\n" +
-			"  hint: drop them: lola profile go --bundle notes --edit --user\n  hint: or drop --bundle: lola profile go kit --edit --user\n"))
-		for _, run := range []string{"lola profile mine --edit --from go --user --new", "lola profile mine --bundle go --edit --new --user",
-			"lola profile go --bundle notes --edit --user", "lola profile go kit --edit --user"} {
+			"  hint: drop them: lola profile edit go --bundle notes --user\n  hint: or drop --bundle: lola profile edit go kit --user\n"))
+		for _, run := range []string{"lola profile edit mine --from go --user --new", "lola profile edit mine --bundle go --new --user",
+			"lola profile edit go --bundle notes --user", "lola profile edit go kit --user"} {
 			Expect(lola(strings.Fields(run)[1:]...).code).To(Equal(0), run)
 			Expect(os.RemoveAll(filepath.Join(p.UserProfiles, "mine.yml"))).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(p.UserProfiles, "go.yml"), []byte("version: 1\n"), 0o600)).To(Succeed())
 		}
 
-		r = lola("profile", "go", "--edit", "kit", "--bundle", "go", "--user")
+		r = lola("profile", "edit", "go", "kit", "--bundle", "go", "--user")
 		Expect(r.err).To(HaveSuffix("error: --bundle makes or edits a profile's own file; the modules kit name are a separate edit\n"+
-			"  hint: or drop --bundle: lola profile go kit --edit --user\n"), "a bundle cannot name itself: no hint that would")
+			"  hint: or drop --bundle: lola profile edit go kit --user\n"), "a bundle cannot name itself: no hint that would")
 		writeTree(p.UserProfiles, map[string]string{"mods.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
-		r = lola("profile", "mods", "--edit", "--bundle", "go", "--from", "go", "--new", "--user")
+		r = lola("profile", "edit", "mods", "--bundle", "go", "--from", "go", "--new", "--user")
 		Expect(r.err).To(HaveSuffix("error: --from copies a profile and --bundle combines several; pick one\n  hint: see the profiles: lola profile --user\n"),
 			"mods exists: --new makes neither")
-		r = lola("profile", "go", "--edit", "--from", "mods", "--user")
+		r = lola("profile", "edit", "go", "--from", "mods", "--user")
 		Expect(r.err).To(HaveSuffix("error: --from makes a new profile and goes with --new, and go exists\n  hint: see it: lola profile --user go\n"))
 		Expect(lola("profile", "--user", "go").code).To(Equal(0), "the hint runs as printed")
 	})
 
 	It("refuses --edit --bundle with no name, saying to name the bundle, its hints running as printed", func() {
 		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\nbundle: [go]\n"})
-		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
-		r := lola("profile", "--edit", "--bundle", "notes", "--user")
+		Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
+		r := lola("profile", "edit", "--bundle", "notes", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HaveSuffix("error: --bundle sets the members of the bundle --edit names, and none was named: name the bundle to edit, as in " +
-			"lola profile <bundle> --edit --bundle <profile>,<profile>\n" +
-			"  hint: add them to work, the bundle on: lola profile --user work --edit --bundle go,notes\n" +
-			"  hint: or make a bundle of them: lola profile --user notes-2 --edit --new --bundle notes\n"))
+		Expect(r.err).To(HaveSuffix("error: --bundle sets the members of the bundle edit names, and none was named: name the bundle to edit, as in " +
+			"lola profile edit <bundle> --bundle <profile>,<profile>\n" +
+			"  hint: add them to work, the bundle on: lola profile --user edit work --bundle go,notes\n" +
+			"  hint: or make a bundle of them: lola profile --user edit notes-2 --new --bundle notes\n"))
 		Expect(r.err).NotTo(ContainSubstring("no profile  for"))
-		for _, run := range []string{"lola profile --user notes-2 --edit --new --bundle notes", "lola profile --user work --edit --bundle go,notes"} {
+		for _, run := range []string{"lola profile --user edit notes-2 --new --bundle notes", "lola profile --user edit work --bundle go,notes"} {
 			Expect(lola(strings.Fields(run)[1:]...).code).To(Equal(0), run)
 		}
 	})
@@ -680,25 +690,25 @@ var _ = Describe("lola profile --edit", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n", ".lola/profiles/lint.yml": "version: 1\ntargets: [claude-code]\n",
 			".lola/profiles/deploy.yml": "version: 1\n", ".lola/profiles/team.yml": "version: 1\nbundle: [lint]\n"})
 		GinkgoT().Chdir(proj)
-		Expect(lola("profile", "team", "--switch", "--trust=all", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "team", "--trust=all", "-y").code).To(Equal(0))
 		Expect(os.WriteFile(team, []byte("version: 1\nbundle: [lint, deploy]\n"), 0o600)).To(Succeed()) // as a pull would
 		Expect(os.WriteFile(lint, []byte("version: 1\ntargets: [claude-code, cursor]\n"), 0o600)).To(Succeed())
 
-		r := lola("profile", "team", "--edit", "--bundle", "lint,extra")
+		r := lola("profile", "edit", "team", "--bundle", "lint,extra")
 		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(HaveSuffix("error: lola profile needs your trust for changes to the members of project:team and changes to the targets of project:lint, " +
-			"and there is no terminal to ask on; nothing was written\n  hint: see them: lola profile --project team --edit --bundle lint,extra -n\n" +
-			"  hint: then accept them: lola profile --project team --edit --bundle lint,extra --trust=profiles\n"))
+			"and there is no terminal to ask on; nothing was written\n  hint: see them: lola profile --project edit team --bundle lint,extra -n\n" +
+			"  hint: then accept them: lola profile --project edit team --bundle lint,extra --trust=profiles\n"))
 		Expect(os.ReadFile(team)).To(Equal([]byte("version: 1\nbundle: [lint, deploy]\n")))
-		r = lola("profile", "--edit", "--bundle", "x")
+		r = lola("profile", "edit", "--bundle", "x")
 		Expect(r.err).NotTo(ContainSubstring("add them"), "no hint repeats the pulled list")
 
-		r = lola("profile", "--project", "team", "--edit", "--bundle", "lint,extra", "-n")
+		r = lola("profile", "--project", "edit", "team", "--bundle", "lint,extra", "-n")
 		Expect(r.code).To(Equal(0), "the see hint runs as printed: "+r.err)
 		Expect(r.out).To(And(ContainSubstring("changed since lola last wrote it or you last trusted it:\n"), MatchRegexp(`in profile project:team .*\n  ~ bundle +\[lint\] → \[lint, deploy\]\n`),
 			MatchRegexp(`in profile project:lint .*\n  [+~] targets +.*\[claude-code, cursor\]\n`)), "it shows every change the accept hint takes in")
 		Expect(r.out).NotTo(ContainSubstring("is unchanged"))
-		Expect(lola("profile", "--project", "team", "--edit", "--bundle", "lint,extra", "--trust=profiles").code).To(Equal(0), "the accept hint runs as printed")
+		Expect(lola("profile", "--project", "edit", "team", "--bundle", "lint,extra", "--trust=profiles").code).To(Equal(0), "the accept hint runs as printed")
 		Expect(os.ReadFile(team)).To(Equal([]byte("version: 1\nbundle: [lint, extra]\n")))
 	})
 
@@ -707,34 +717,34 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n",
 			"work.yml": "version: 1\nbundle: []\n"})
-		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
 		proj := filepath.Join(tmp, "proj")
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
 		Expect(lola("sync", "-C", proj, "--trust=all", "-y").code).To(Equal(0))
 		GinkgoT().Chdir(proj)
 
-		r := lola("profile", "work", "--edit", "--bundle", "go")
+		r := lola("profile", "edit", "work", "--bundle", "go")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(p.Home, ".claude", "skills", "a", "SKILL.md")).To(BeAnExistingFile(), "applied at user scope, where work is on")
 		Expect(r.err).To(HavePrefix("project " + proj + ": project.yml\nuser scope: bundle work () over default\n"))
-		Expect(r.out).To(ContainSubstring("saved to bundle work; it is not on in this project → lola profile --project work --switch\n"))
+		Expect(r.out).To(ContainSubstring("saved to bundle work; it is not on in this project → lola profile --project switch work\n"))
 		Expect(r.out).To(ContainSubstring("user:\n"))
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: [go]\n")))
 
-		r = lola("profile", "work", "--edit", "--bundle", "")
+		r = lola("profile", "edit", "work", "--bundle", "")
 		Expect(r.code).To(Equal(3), r.out+r.err)
 		Expect(r.err).To(HaveSuffix("error: lola profile needs your confirmation to remove kit (claude-code) at user scope, and there is no terminal to ask on; nothing was written\n" +
-			"  hint: see what goes: lola profile --project work --edit --bundle '' -n\n  hint: then confirm them: lola profile --project work --edit --bundle '' -y\n"))
+			"  hint: see what goes: lola profile --project edit work --bundle '' -n\n  hint: then confirm them: lola profile --project edit work --bundle '' -y\n"))
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: [go]\n")))
-		Expect(lola("profile", "work", "--edit", "--bundle", "", "-n").code).To(Equal(0), "the -n hint runs as printed")
-		Expect(lola("profile", "work", "--edit", "--bundle", "", "-y").code).To(Equal(0), "the hint runs as printed")
+		Expect(lola("profile", "edit", "work", "--bundle", "", "-n").code).To(Equal(0), "the -n hint runs as printed")
+		Expect(lola("profile", "edit", "work", "--bundle", "", "-y").code).To(Equal(0), "the hint runs as printed")
 		Expect(filepath.Join(p.Home, ".claude", "skills", "a", "SKILL.md")).NotTo(BeAnExistingFile())
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: []\n")))
 	})
 
 	It("keeps --json in the take-out a bundle's broken member hints, which runs as printed", func() {
 		writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [docs]\n"})
-		Expect(lola("profile", "work", "--switch", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "--user").code).To(Equal(0))
 		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\nbundle: [docs, gone]\n"})
 		r := lola("sync", "--user", "--json")
 		Expect(r.code).NotTo(Equal(0))
@@ -742,7 +752,7 @@ var _ = Describe("lola profile --edit", func() {
 			Hints []string `json:"hints"`
 		}
 		Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
-		Expect(refusal.Hints).To(Equal([]string{"see the profiles: lola profile --user --json", "or take it out: lola profile --user work --edit --bundle docs --json"}))
+		Expect(refusal.Hints).To(Equal([]string{"see the profiles: lola profile --user --json", "or take it out: lola profile --user edit work --bundle docs --json"}))
 		r = lola(strings.Fields(strings.TrimPrefix(refusal.Hints[1], "or take it out: "))[1:]...)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("{"), "the run as printed prints JSON")
@@ -766,7 +776,7 @@ var _ = Describe("lola profile --edit", func() {
 				}},
 				components: []func(cli.ComponentPage) ([]string, error){func(cli.ComponentPage) ([]string, error) { return []string{"skill/a"}, nil }},
 				review:     []string{cli.ReviewApply}}
-			r := lolaP(sp, "profile", "go", "--edit", "--user")
+			r := lolaP(sp, "profile", "edit", "go", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.moduleSteps[0]).To(And(HaveField("Title", "profile go › modules"), HaveField("None", true), HaveField("Preselect", []string{"kit", "notes"})))
 			Expect(sp.moduleSteps[0].Options).To(ContainElement(cli.ModuleOption{Name: "notes", Label: "notes (in profile go; not in your cache)"}))
@@ -781,13 +791,13 @@ var _ = Describe("lola profile --edit", func() {
 			writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
 			sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) { return cli.ModuleAnswer{}, nil }},
 				confirm: []bool{false}}
-			r := lolaP(sp, "profile", "go", "--edit", "--user")
+			r := lolaP(sp, "profile", "edit", "go", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))).To(ContainSubstring("name: kit"), "No keeps it")
 
 			writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go]\n"})
 			sp = &scripted{members: []func(cli.MembersStep) ([]string, error){func(cli.MembersStep) ([]string, error) { return []string{"docs", "go"}, nil }}}
-			r = lolaP(sp, "profile", "work", "--edit", "--user")
+			r = lolaP(sp, "profile", "edit", "work", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.memberSteps).To(Equal([]cli.MembersStep{{Title: "bundle work › members", Options: []cli.ModuleOption{{Name: "docs", Label: "docs"}, {Name: "go", Label: "go"}}, Preselect: []string{"go"}}}))
 			Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: [go, docs]\n")))
@@ -795,7 +805,7 @@ var _ = Describe("lola profile --edit", func() {
 
 		It("asks what a new profile is for a name no profile has: a bundle of the members picked, or an empty profile when nothing is picked", func() {
 			sp := &scripted{where: []int{1}, members: []func(cli.MembersStep) ([]string, error){func(cli.MembersStep) ([]string, error) { return []string{"go"}, nil }}}
-			r := lolaP(sp, "profile", "both", "--edit", "--user")
+			r := lolaP(sp, "profile", "edit", "both", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.whereSteps).To(Equal([]cli.WhereStep{{Title: "New profile both:", Options: []string{"Lists modules", "Bundles profiles"}}}))
 			Expect(sp.memberSteps[0].Title).To(Equal("new bundle both › members"))
@@ -803,7 +813,7 @@ var _ = Describe("lola profile --edit", func() {
 
 			sp = &scripted{where: []int{0}, modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) { return cli.ModuleAnswer{}, nil }},
 				review: []string{cli.ReviewApply}}
-			r = lolaP(sp, "profile", "try", "--edit", "--user")
+			r = lolaP(sp, "profile", "edit", "try", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.moduleSteps[0].Title).To(Equal("new profile try › modules"))
 			Expect(os.ReadFile(filepath.Join(p.UserProfiles, "try.yml"))).To(Equal([]byte("version: 1\n")))
@@ -811,9 +821,9 @@ var _ = Describe("lola profile --edit", func() {
 
 		It("offers --on of a profile while a bundle is on its addition to that bundle, which keeps the bundle on", func() {
 			writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "lint.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n"})
-			Expect(lola("profile", "work", "--switch", "--user").code).To(Equal(0))
+			Expect(lola("profile", "switch", "work", "--user").code).To(Equal(0))
 			sp := &scripted{where: []int{2}}
-			r := lolaP(sp, "profile", "lint", "--on", "--user")
+			r := lolaP(sp, "profile", "on", "lint", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.whereSteps).To(Equal([]cli.WhereStep{{Title: "user:work is on.",
 				Options: []string{"Switch to user:lint", "Make bundle work-lint of work and lint", "Add user:lint to bundle work"}}}))
@@ -827,10 +837,10 @@ var _ = Describe("lola profile --edit", func() {
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "agents/critic.md": "Criticize.\n"})
 			writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n",
 				"lint.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
-			Expect(lola("profile", "work", "--switch", "--user").code).To(Equal(0))
-			r := lolaP(&scripted{where: []int{2}}, "profile", "lint", "--on", "--user", "-v")
+			Expect(lola("profile", "switch", "work", "--user").code).To(Equal(0))
+			r := lolaP(&scripted{where: []int{2}}, "profile", "on", "lint", "--user", "-v")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).To(ContainSubstring("render it anyway: lola profile --user work --edit --bundle go,docs,lint --force\n"))
+			Expect(r.out).To(ContainSubstring("render it anyway: lola profile --user edit work --bundle go,docs,lint --force\n"))
 		})
 
 		It("prints each scope's context line once when --on's addition to a bundle applies in two scopes", func() {
@@ -839,10 +849,10 @@ var _ = Describe("lola profile --edit", func() {
 			proj := filepath.Join(tmp, "proj")
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\n"})
 			GinkgoT().Chdir(proj)
-			Expect(lola("profile", "work", "--switch", "--user").code).To(Equal(0))
-			Expect(lola("profile", "user:work", "--switch", "--project").code).To(Equal(0))
+			Expect(lola("profile", "switch", "work", "--user").code).To(Equal(0))
+			Expect(lola("profile", "switch", "user:work", "--project").code).To(Equal(0))
 			sp := &scripted{where: []int{2}, scope: []func(cli.ScopeStep) ([]string, error){scopes("project")}}
-			r := lolaP(sp, "profile", "lint", "--on")
+			r := lolaP(sp, "profile", "on", "lint")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.err).To(Equal("project "+proj+": bundle work (go, docs) over project.yml\n"+
 				"user scope: bundle work (go, docs) over default\n"), "read's line before the question, the other scope's after it")
@@ -853,7 +863,7 @@ var _ = Describe("lola profile --edit", func() {
 			work := filepath.Join(p.UserProfiles, "work.yml")
 			writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [user:go, gone]\n"})
 			sp := &scripted{members: []func(cli.MembersStep) ([]string, error){func(cli.MembersStep) ([]string, error) { return []string{"user:go", "docs"}, nil }}}
-			r := lolaP(sp, "profile", "work", "--edit", "--user")
+			r := lolaP(sp, "profile", "edit", "work", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.memberSteps).To(Equal([]cli.MembersStep{{Title: "bundle work › members", Options: []cli.ModuleOption{
 				{Name: "gone", Label: "gone (names no profile here)"}, {Name: "docs", Label: "docs"}, {Name: "user:go", Label: "user:go"}}, Preselect: []string{"user:go", "gone"}}}))
@@ -866,11 +876,11 @@ var _ = Describe("lola profile --edit", func() {
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n", ".lola/profiles/lint.yml": "version: 1\n",
 				".lola/profiles/deploy.yml": "version: 1\n", ".lola/profiles/team.yml": "version: 1\nbundle: [lint]\n"})
 			GinkgoT().Chdir(proj)
-			Expect(lola("profile", "team", "--switch", "--trust=all", "-y").code).To(Equal(0))
+			Expect(lola("profile", "switch", "team", "--trust=all", "-y").code).To(Equal(0))
 			Expect(os.WriteFile(team, []byte("version: 1\nbundle: [lint, deploy]\n"), 0o600)).To(Succeed()) // as a pull would
 
 			sp := &scripted{members: []func(cli.MembersStep) ([]string, error){func(st cli.MembersStep) ([]string, error) { return st.Preselect, nil }}}
-			r := lolaP(sp, "profile", "team", "--edit")
+			r := lolaP(sp, "profile", "edit", "team")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.memberSteps[0]).To(And(HaveField("Title", "bundle team › members"), HaveField("Preselect", []string{"lint", "deploy"})))
 			Expect(sp.calls).NotTo(ContainElement("trust"))
@@ -882,7 +892,7 @@ var _ = Describe("lola profile --edit", func() {
 			for _, extra := range [][]string{nil, {"-y"}, {"--force"}} {
 				sp = &scripted{members: []func(cli.MembersStep) ([]string, error){func(cli.MembersStep) ([]string, error) { return []string{"lint"}, nil }},
 					trust: []func(cli.TrustStep) (engine.TrustAnswer, error){func(cli.TrustStep) (engine.TrustAnswer, error) { return engine.TrustAnswer{}, nil }}}
-				r = lolaP(sp, append([]string{"profile", "team", "--edit"}, extra...)...)
+				r = lolaP(sp, append([]string{"profile", "edit", "team"}, extra...)...)
 				Expect(sp.calls).To(Equal([]string{"members", "trust"}), "%v", extra)
 				Expect(r.err).To(MatchRegexp(`~ bundle +\[lint\] → \[lint, deploy\]`), "the question shows the pulled change")
 				Expect(os.ReadFile(team)).To(Equal([]byte("version: 1\nbundle: [lint, deploy]\n")), "declined: nothing written")
@@ -894,21 +904,21 @@ var _ = Describe("lola profile --edit", func() {
 			for _, flag := range []string{"-y", "--force"} {
 				writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
 				sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) { return cli.ModuleAnswer{}, nil }}}
-				r := lolaP(sp, "profile", "go", "--edit", "--user", flag)
+				r := lolaP(sp, "profile", "edit", "go", "--user", flag)
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"modules"}), flag)
 				Expect(os.ReadFile(goYml)).To(Equal([]byte("version: 1\n")), flag)
 			}
 			sp := &scripted{}
-			r := lolaP(sp, "profile", "go", "--edit", "--only", "skill/a", "--user")
+			r := lolaP(sp, "profile", "edit", "go", "--only", "skill/a", "--user")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(ContainSubstring("lola profile --edit edits profile go by its modules: name one"))
+			Expect(r.err).To(ContainSubstring("lola profile edit edits profile go by its modules: name one"))
 			Expect(sp.calls).To(BeEmpty())
 		})
 
 		It("says in the review why user scope is a destination: no project found from here, or the profile on there too", func() {
 			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\n"})
-			Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+			Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 			bare := filepath.Join(tmp, "bare")
 			Expect(os.MkdirAll(bare, 0o755)).To(Succeed())
 			GinkgoT().Chdir(bare)
@@ -917,7 +927,7 @@ var _ = Describe("lola profile --edit", func() {
 					components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}
 			}
 			sp := review()
-			r := lolaP(sp, "profile", "go", "--edit")
+			r := lolaP(sp, "profile", "edit", "go")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.reviewSteps[0].Summary.Folded()).To(HavePrefix("Summary:\n  user (" + p.Home + "), no .lola/ project in " + bare + " or above it:\n"))
 
@@ -925,9 +935,9 @@ var _ = Describe("lola profile --edit", func() {
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
 			Expect(lola("sync", "-C", proj, "--trust=entries", "-y").code).To(Equal(0))
 			GinkgoT().Chdir(proj)
-			Expect(lola("profile", "user:go", "--switch", "-y").code).To(Equal(0))
+			Expect(lola("profile", "switch", "user:go", "-y").code).To(Equal(0))
 			sp = review()
-			r = lolaP(sp, "profile", "go", "--edit")
+			r = lolaP(sp, "profile", "edit", "go")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.reviewSteps[0].Summary.Folded()).To(And(ContainSubstring("  project ("+proj+"), found .lola/ at "+proj+":\n"),
 				ContainSubstring("  user ("+p.Home+"), where profile go is on too:\n")))
@@ -941,8 +951,8 @@ var _ = Describe("lola profile --edit", func() {
 			goYml := filepath.Join(p.UserProfiles, "go.yml")
 			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\n", // kit comes from go alone
 				"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
-			Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
-			Expect(lola("profile", "user:go", "--switch", "-y").code).To(Equal(0))
+			Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
+			Expect(lola("profile", "switch", "user:go", "-y").code).To(Equal(0))
 			skillA := []string{filepath.Join(p.Home, ".claude", "skills", "a", "SKILL.md"), filepath.Join(proj, ".claude", "skills", "a", "SKILL.md")}
 			untick := func() *scripted {
 				return &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) { return cli.ModuleAnswer{}, nil }},
@@ -950,14 +960,14 @@ var _ = Describe("lola profile --edit", func() {
 			}
 
 			sp := untick()
-			r := lolaP(sp, "profile", "go", "--edit", "-n")
+			r := lolaP(sp, "profile", "edit", "go", "-n")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring("would then apply the removal at user scope, where profile go is on too"))
 			Expect(r.out).NotTo(ContainSubstring("lola sync --user"), "no notice sends you to apply what the run applies")
 			Expect(os.ReadFile(goYml)).To(ContainSubstring("name: kit"))
 
 			sp = untick()
-			r = lolaP(sp, "profile", "go", "--edit")
+			r = lolaP(sp, "profile", "edit", "go")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.err).To(HavePrefix("project " + proj + ": profile go over project.yml\nuser scope: profile go over default\n"))
 			Expect(sp.calls).To(Equal([]string{"modules", "confirm:Remove kit from profile go?", "confirm:Remove these there too? No changes nothing"}),
@@ -973,7 +983,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(lola("sync", "-y").code).To(Equal(0))
 			Expect(skillA[0]).To(BeAnExistingFile())
 			sp = untick()
-			r = lolaP(sp, "profile", "go", "--edit", "--force")
+			r = lolaP(sp, "profile", "edit", "go", "--force")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.calls).To(Equal([]string{"modules"}), "--force answers both removal questions")
 			for _, f := range skillA {
@@ -986,13 +996,13 @@ var _ = Describe("lola profile --edit", func() {
 			lintMd := filepath.Join(p.Home, ".claude", "commands", "lint.md")
 			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\n",
 				"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n  - {name: lint, source: " + lint + "}\n"})
-			Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+			Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 			Expect(lintMd).To(BeAnExistingFile())
 			sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) {
 				return cli.ModuleAnswer{Names: []string{"kit"}}, nil
 			}}, components: []func(cli.ComponentPage) ([]string, error){func(cli.ComponentPage) ([]string, error) { return []string{"skill/a", "skill/b"}, nil }},
 				confirm: []bool{true}}
-			r := lolaP(sp, "profile", "go", "--edit", "--user", "-v")
+			r := lolaP(sp, "profile", "edit", "go", "--user", "-v")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.calls).To(ContainElement("confirm:Remove lint from profile go?"))
 			Expect(r.err).To(And(ContainSubstring("Remove lint from profile go, as you unticked at user scope:\n"), ContainSubstring("→ delete claude-code .claude/commands/lint.md")))
@@ -1006,7 +1016,7 @@ var _ = Describe("lola profile --edit", func() {
 			sp = &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) {
 				return cli.ModuleAnswer{Names: []string{"kit"}}, nil
 			}}, components: []func(cli.ComponentPage) ([]string, error){func(cli.ComponentPage) ([]string, error) { return []string{"skill/a"}, nil }}}
-			r = lolaP(sp, "profile", "go", "--edit", "--user", "-y", "-v")
+			r = lolaP(sp, "profile", "edit", "go", "--user", "-y", "-v")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.calls).NotTo(ContainElement(HavePrefix("confirm:")))
 			Expect(r.err).To(MatchRegexp(`(?s)install.*Remove lint from profile go, as you unticked at user scope:\n.*→ delete claude-code \.claude/commands/lint\.md`),
@@ -1026,7 +1036,7 @@ var _ = Describe("lola profile --edit", func() {
 			sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) {
 				return cli.ModuleAnswer{Names: []string{"notes"}}, nil
 			}}}
-			r := lolaP(sp, "profile", "go", "--edit", "--user")
+			r := lolaP(sp, "profile", "edit", "go", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(Equal("→ profile go is unchanged: notes is not in your cache, so its entry stays as it is\n" +
 				"→ to pick its components, add it to your cache, then edit again: lola cache add " + notes + "\n"))
@@ -1040,14 +1050,14 @@ var _ = Describe("lola profile --edit", func() {
 			BeforeEach(func() {
 				goYml, defaultYml = filepath.Join(p.UserProfiles, "go.yml"), filepath.Join(p.UserProfiles, "default.yml")
 				pickA = func(cli.ComponentPage) ([]string, error) { return []string{"skill/a"}, nil }
-				Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+				Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 			})
 
 			It("asks where the edit goes before the page, which is titled with the profile Override writes", func() {
 				before, err := os.ReadFile(defaultYml)
 				Expect(err).NotTo(HaveOccurred())
 				sp := &scripted{where: []int{1}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r := lolaP(sp, "profile", "--edit", "kit", "--user")
+				r := lolaP(sp, "profile", "edit", "kit", "--user")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:profile go › kit", "review"}), "the question first, then the page for the file it chose")
 				Expect(sp.whereSteps[0].Title).To(Equal("kit comes from default (base), loaded under every profile at user scope."))
@@ -1058,7 +1068,7 @@ var _ = Describe("lola profile --edit", func() {
 
 			It("titles the page with the base when the answer changes it there", func() {
 				sp := &scripted{where: []int{0}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r := lolaP(sp, "profile", "--edit", "kit", "--user")
+				r := lolaP(sp, "profile", "edit", "kit", "--user")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:default (base) › kit", "review"}))
 				Expect(sp.reviewSteps[0].Summary.Folded()).To(ContainSubstring("To remove:\n  ✗ kit: claude-code (dropped by your pick change)\n      .claude/skills/b/SKILL.md\n"),
@@ -1072,13 +1082,13 @@ var _ = Describe("lola profile --edit", func() {
 				before, err := os.ReadFile(defaultYml)
 				Expect(err).NotTo(HaveOccurred())
 				sp := &scripted{where: []int{-1}}
-				r := lolaP(sp, "profile", "--edit", "kit", "--user")
+				r := lolaP(sp, "profile", "edit", "kit", "--user")
 				Expect(r.code).To(Equal(4), r.err)
 				Expect(sp.calls).To(Equal([]string{"where"}), r.err)
 				Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 
 				sp = &scripted{where: []int{1}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r = lolaP(sp, "profile", "--edit", "kit", "--user", "-n")
+				r = lolaP(sp, "profile", "edit", "kit", "--user", "-n")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:profile go › kit", "review"}), "-n opens the page and asks")
 				Expect(os.ReadFile(goYml)).To(Equal([]byte("version: 1\n")))
@@ -1088,7 +1098,7 @@ var _ = Describe("lola profile --edit", func() {
 			It("says nothing changed when Override keeps the picks the module has, and writes no entry", func() {
 				pickBoth := func(cli.ComponentPage) ([]string, error) { return []string{"skill/a", "skill/b"}, nil }
 				sp := &scripted{where: []int{1}, components: []func(cli.ComponentPage) ([]string, error){pickBoth}}
-				r := lolaP(sp, "profile", "--edit", "kit", "--user")
+				r := lolaP(sp, "profile", "edit", "kit", "--user")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:profile go › kit"}))
 				Expect(r.out).To(Equal("→ nothing changed: kit's picks are as they were, so profile go gets no entry of its own (an override is written only with a change)\n"))
@@ -1097,9 +1107,9 @@ var _ = Describe("lola profile --edit", func() {
 
 			It("asks a bundle's member question, then the inherited-edit question, before the page", func() {
 				writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [docs, go]\n"})
-				Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+				Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
 				sp := &scripted{where: []int{0, 1}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r := lolaP(sp, "profile", "--edit", "kit", "--user")
+				r := lolaP(sp, "profile", "edit", "kit", "--user")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "where", "components:profile go › kit", "review"}), "each question once, both before the page")
 				Expect(sp.whereSteps[0]).To(Equal(cli.WhereStep{Title: "work is a bundle. Which profile gets kit?", Options: []string{"go  (last member: wins overlaps)", "docs"}}))
@@ -1119,7 +1129,7 @@ var _ = Describe("lola profile --edit", func() {
 				led.Profile = &ledger.Active{Name: "remote:team", By: ledger.ByOn}
 				Expect(led.Save(p.UserLedger)).To(Succeed())
 				sp := &scripted{where: []int{0}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r := lolaP(sp, "profile", "--edit", "kit", "--user")
+				r := lolaP(sp, "profile", "edit", "kit", "--user")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:default (base) › kit", "review"}))
 				Expect(sp.whereSteps[0]).To(Equal(cli.WhereStep{Title: "remote:team is read-only.", Options: []string{"Write to the base (default)"}}))
@@ -1150,14 +1160,14 @@ var _ = Describe("lola profile --edit", func() {
 				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
 				Expect(lola("sync", "-C", proj, "--trust=entries", "-y").code).To(Equal(0))
 				Expect(lola("install", "kit", "-C", proj, "-y").code).To(Equal(0))
-				Expect(lola("profile", "user:go", "--switch", "-C", proj, "-y").code).To(Equal(0))
+				Expect(lola("profile", "switch", "user:go", "-C", proj, "-y").code).To(Equal(0))
 				before, err := os.ReadFile(projectYml)
 				Expect(err).NotTo(HaveOccurred())
 				options := []string{"Change it for project.yml's module  (picks: selections.yaml; other edits: project.yml, shared)",
 					"Override it in profile go  (go gets its own entry, starting from project.yml's)"}
 
 				sp := &scripted{where: []int{0}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r := lolaP(sp, "profile", "--edit", "kit", "-C", proj)
+				r := lolaP(sp, "profile", "edit", "kit", "-C", proj)
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:project.yml › kit", "review"}))
 				Expect(sp.whereSteps[0].Options).To(Equal(options))
@@ -1165,7 +1175,7 @@ var _ = Describe("lola profile --edit", func() {
 				Expect(os.ReadFile(projectYml)).To(Equal(before), "the shared file is untouched")
 
 				sp = &scripted{where: []int{0}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r = lolaP(sp, "profile", "--edit", "kit", "-C", proj, "-t", "claude-code,opencode@2.0")
+				r = lolaP(sp, "profile", "edit", "kit", "-C", proj, "-t", "claude-code,opencode@2.0")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:project.yml › kit", "review"}))
 				Expect(sp.whereSteps[0].Options).To(Equal(options))
@@ -1177,9 +1187,9 @@ var _ = Describe("lola profile --edit", func() {
 				before, err := os.ReadFile(defaultYml)
 				Expect(err).NotTo(HaveOccurred())
 				writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [docs, go]\n"})
-				Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+				Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
 				sp := &scripted{where: []int{-1}}
-				r := lolaP(sp, "profile", "--edit", "kit", "--user")
+				r := lolaP(sp, "profile", "edit", "kit", "--user")
 				Expect(r.code).To(Equal(4), r.err)
 				Expect(sp.calls).To(Equal([]string{"where"}))
 				Expect(sp.whereSteps[0].Title).To(Equal("work is a bundle. Which profile gets kit?"))
@@ -1197,7 +1207,7 @@ var _ = Describe("lola profile --edit", func() {
 				led.Profile = &ledger.Active{Name: "remote:team", By: ledger.ByOn}
 				Expect(led.Save(p.UserLedger)).To(Succeed())
 				sp = &scripted{where: []int{-1}}
-				r = lolaP(sp, "profile", "--edit", "kit", "--user")
+				r = lolaP(sp, "profile", "edit", "kit", "--user")
 				Expect(r.code).To(Equal(4), r.err)
 				Expect(sp.calls).To(Equal([]string{"where"}))
 				Expect(sp.whereSteps[0].Title).To(Equal("remote:team is read-only."))
@@ -1210,9 +1220,9 @@ var _ = Describe("lola profile --edit", func() {
 				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n", ".lola/profiles/go.yml": "version: 1\n"})
 				Expect(lola("sync", "-C", proj, "--trust=entries", "-y").code).To(Equal(0))
 				Expect(lola("install", "kit", "-C", proj, "-y").code).To(Equal(0))
-				Expect(lola("profile", "user:go", "--switch", "-C", proj, "-y").code).To(Equal(0))
+				Expect(lola("profile", "switch", "user:go", "-C", proj, "-y").code).To(Equal(0))
 				sp := &scripted{where: []int{0}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r := lolaP(sp, "profile", "--edit", "kit", "-C", proj)
+				r := lolaP(sp, "profile", "edit", "kit", "-C", proj)
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:project.yml › kit", "review"}), "the project's base, as the context line names it")
 				Expect(sp.whereSteps[0].Options).To(Equal([]string{"Change it for project.yml's module  (picks: selections.yaml; other edits: project.yml, shared)",
@@ -1220,7 +1230,7 @@ var _ = Describe("lola profile --edit", func() {
 
 				pickBoth := func(cli.ComponentPage) ([]string, error) { return []string{"skill/a", "skill/b"}, nil }
 				sp = &scripted{where: []int{1}, components: []func(cli.ComponentPage) ([]string, error){pickBoth}, review: []string{cli.ReviewApply}}
-				r = lolaP(sp, "profile", "--edit", "kit", "-C", proj)
+				r = lolaP(sp, "profile", "edit", "kit", "-C", proj)
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:profile user:go › kit", "review"}))
 				Expect(os.ReadFile(goYml)).To(ContainSubstring("name: kit"))

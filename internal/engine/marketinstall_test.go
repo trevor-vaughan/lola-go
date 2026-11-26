@@ -330,7 +330,7 @@ var _ = Describe("installing from a marketplace", func() {
 			_, err := install(engine.Options{Display: []string{"--json"}}, engine.InstallRequest{Arg: arg})
 			Expect(err).To(MatchError(want), arg)
 			mkt := strings.TrimPrefix(strings.Split(arg, "/")[0], "@")
-			Expect(errs.Hints(err)).To(Equal([]string{"lola market " + mkt + " --update --json"}), arg)
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market update " + mkt + " --json"}), arg)
 		}
 		Expect(cached()).To(BeEmpty())
 		Expect(filepath.Join(proj, ".lola", "project.yml")).NotTo(BeAnExistingFile())
@@ -534,8 +534,8 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(Equal([]engine.Notice{{Level: engine.LevelInfo,
 			Text: "2 entries in this project and your user scope name acme as their marketplace; installed from their real sources, they stay " +
-				"installed, and lola sync --update follows acme again once you add it back → lola market acme --add " + market +
-				" --path .claude-plugin/marketplace.json --json"}}))
+				"installed, and lola sync --update follows acme again once you add it back → lola market add " + market +
+				" acme --path .claude-plugin/marketplace.json --json"}}))
 		// The entry edited to name another source is a change sync asks to trust, so the run is
 		// refused; with project.yml restored, sync keeps every module installed.
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: claude})
@@ -606,7 +606,7 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(refused).To(BeTrue(), "%v", err)
 		Expect(err).To(MatchError(HavePrefix("lola sync needs your trust for the pins it would write for secdevai")))
 		Expect(refusal.Notices).To(ConsistOf(HaveField("Text", "secdevai: could not read the version this run would install, so the files it drops are not listed: "+
-			"secdevai: marketplace acme lists secdevai at "+fork+", which main does not reach → lola market acme --update")), "the failure's hint is kept")
+			"secdevai: marketplace acme lists secdevai at "+fork+", which main does not reach → lola market update acme")), "the failure's hint is kept")
 		Expect(errs.Hints(err)).To(ContainElement("then accept them: lola sync --project secdevai --update --trust=entries"))
 
 		// Another ref, or another source: a notice with the install that takes it there; the entry

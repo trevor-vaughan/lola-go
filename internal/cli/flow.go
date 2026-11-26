@@ -38,7 +38,7 @@ type installFlags struct {
 	unseen                                                               bool              // --unseen: trust's consent kinds reach what lola has not shown
 	at                                                                   []string          // lola install's --at, as given
 	pinned                                                               map[string]string // --at parsed (parseAt)
-	// edit, when not nil, says the run is lola profile <edit> --edit <module>...: edit holds the
+	// edit, when not nil, says the run is lola profile edit <edit> <module>...: edit holds the
 	// profile's name as typed ([] for the one edits go to), which every hint repeats before the
 	// modules; create is its --new; scopes, where it applies, which the run resolved without asking
 	// (engine.EditScopes); catalog, the names your catalogs list (engine.CatalogNames).
@@ -52,7 +52,7 @@ type installFlags struct {
 	// first), so the run prints them no more; back, that Esc on the run's first screen goes back to
 	// that question: the run ends with ErrBack.
 	said, back bool
-	// keep, when not nil, says the run is lola profile <name> --edit's module page: the profile's
+	// keep, when not nil, says the run is lola profile edit <name>'s module page: the profile's
 	// modules, preselected, a module unticked there being removed from it once asked; keepLabel
 	// names the profile ("profile go-review").
 	keep      []string
@@ -129,7 +129,7 @@ type installFlow struct {
 	where                       func(engine.WhereQuestion) (engine.WhereChoice, error) // the run's AskWhere (askWhere), nil off a terminal
 	answers                     map[whereKey]engine.WhereChoice                        // the where-questions answered
 	overrides                   map[string]string                                      // module → the file an override of its inherited entry writes, as its page names it (targetOf)
-	dropShown                   bool                                                   // the review showed the removal of what lola profile --edit's page unticked
+	dropShown                   bool                                                   // the review showed the removal of what lola profile edit's page unticked
 	thenConfirmed               map[string][]engine.Removal                            // per later scope, the removals of what the page unticked answered yes before any write (confirmThen); nil until asked
 	// reviewShown is the planned result whose findings and runtime hooks the review showed before Apply
 	// in this run; nil when no review was shown. The report folds them and consent points at them.
@@ -244,7 +244,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 		return errs.WithHints(err, runWithout(cmd, args, append([]string{"global"}, consentFlags...)...))
 	}
 	p := a.prompter(cmd)
-	if f.yes && f.keep == nil { // -y asks no question: each picker takes what an off-terminal run would, or refuses as it does; lola profile --edit is its editor
+	if f.yes && f.keep == nil { // -y asks no question: each picker takes what an off-terminal run would, or refuses as it does; lola profile edit is its editor
 		p = noPrompter{}
 	}
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
@@ -527,7 +527,7 @@ func sameVersion(a, b string) bool {
 }
 
 // hintArgs is args, module arguments of the run, as a hint repeating the run gives them: after the
-// profile's name for lola profile <name> --edit.
+// profile's name for lola profile edit <name>.
 func (fl *installFlow) hintArgs(args []string) []string {
 	return append(slices.Clone(fl.f.edit), args...)
 }
@@ -885,7 +885,7 @@ func (fl *installFlow) run() error {
 	if fl.reviewApplied && fl.reviewShown != nil {
 		spec.Options.Receipt = appliedReceipt(spec.Options.Receipt, reviewedConsents(fl.reviewShown, fl.a.style(fl.cmd).verbose))
 	}
-	if fl.cmd.Name() == "install" { // lola install takes --at; lola profile --edit does not
+	if fl.cmd.Name() == "install" { // lola install takes --at; lola profile edit does not
 		spec.Options.PinRun, spec.At = pinnedRun(fl.cmd, fl.hintArgs(fl.args)), fl.f.pinned
 		spec.AtFresh = runWithout(fl.cmd, fl.hintArgs(fl.args), "at", "dry-run") + " -n"
 	}
@@ -960,7 +960,7 @@ func (fl *installFlow) run() error {
 	}, installOutput{InstallResult: res, EquivalentCommands: eq})
 }
 
-// dropped is what lola profile --edit's page unticked: the profile's modules no longer picked.
+// dropped is what lola profile edit's page unticked: the profile's modules no longer picked.
 func (fl *installFlow) dropped() []string {
 	var out []string
 	for _, m := range fl.f.keep {
@@ -1048,7 +1048,7 @@ func (fl *installFlow) confirmThen(gone []string) error {
 	return err
 }
 
-// unchanged ends lola profile --edit's page when it changes nothing: what was kept is as it was
+// unchanged ends lola profile edit's page when it changes nothing: what was kept is as it was
 // and nothing was unticked. A module kept that your cache lacks is named, with the lola cache add
 // that puts it there, so its components can be picked on the page.
 func (fl *installFlow) unchanged() error {
@@ -1083,7 +1083,7 @@ func destWhere(sc engine.Scope) string {
 	return "in " + destLabel(sc)
 }
 
-// removeDropped ends lola profile --edit's page: gone, the modules unticked and confirmed, are
+// removeDropped ends lola profile edit's page: gone, the modules unticked and confirmed, are
 // removed from the profile at the run's first scope as lola uninstall --profile removes them (the
 // entries, and their files where it is on), after res, the install of what was picked (nil when
 // none was); each later scope the profile is on then applies the file as lola sync does, its
@@ -1572,7 +1572,7 @@ func (fl *installFlow) ensureScopes() error {
 	if fl.scopes != nil {
 		return nil
 	}
-	if fl.f.scopes != nil { // lola profile --edit asks no scope
+	if fl.f.scopes != nil { // lola profile edit asks no scope
 		fl.scopes = fl.f.scopes
 		if !fl.f.said {
 			t := fl.target()
@@ -1760,7 +1760,7 @@ func (fl *installFlow) ensureChoices() error {
 	}
 	req := engine.ChoicesRequest{Cwd: fl.cwd, Scopes: fl.scopes, Modules: fl.requests(), DryRun: fl.f.dry,
 		Display: outputFlags(fl.cmd), Run: fl.staged, Target: fl.target()}
-	if fl.f.edit != nil { // lola profile --edit asks which file it writes before any page
+	if fl.f.edit != nil { // lola profile edit asks which file it writes before any page
 		req.AskWhere = fl.where
 	}
 	var done func()
@@ -1906,7 +1906,7 @@ func (fl *installFlow) ensureModules() error {
 		}
 		fl.shown[ReviewModules] = true
 		fl.done += moduleFields(step)
-		fl.modules = append([]string{}, names...) // none is an answer on lola profile --edit's page
+		fl.modules = append([]string{}, names...) // none is an answer on lola profile edit's page
 		for _, addr := range fl.marketPicks {
 			for name, a := range fl.marketNames {
 				if a == addr {
@@ -2007,7 +2007,7 @@ func (fl *installFlow) dropRemovedPicks() {
 }
 
 // moduleOptions labels the cached modules: source · name — description, marked (installed)
-// when installed in a chosen scope; on lola profile --edit's page, first the profile's modules
+// when installed in a chosen scope; on lola profile edit's page, first the profile's modules
 // your cache does not hold, so unticking one is a choice made in view.
 func (fl *installFlow) moduleOptions() []ModuleOption {
 	var out []ModuleOption
@@ -2672,8 +2672,8 @@ func (fl *installFlow) flagScript(given string) engine.FlagScript {
 
 // targetOf is the file the install of m writes at dests, as a page title starts with it: "profile
 // go › ", "default (base) › ", "project.yml › "; "" when the
-// destinations' differ. lola profile --edit and lola install --profile decide the file before the
-// page: --edit asked which file it writes with the choices (ensureChoices), --profile names it,
+// destinations' differ. lola profile edit and lola install --profile decide the file before the
+// page: edit asked which file it writes with the choices (ensureChoices), --profile names it,
 // and an inherited m asks the inherited-edit question here; each override answered is
 // recorded in fl.overrides. A plain lola install names only a file no later question can change:
 // "" while a remote profile or a bundle is on, or for m inherited without --override.
@@ -2748,7 +2748,7 @@ func (a *app) askWhere(p Prompter, byModule map[whereKey]engine.WhereChoice) fun
 
 // target is the run's TargetRequest: --profile and --override, the run
 // without them as each hint's base, and the run at user scope for --profile default in a project;
-// for lola profile --edit, editTarget's.
+// for lola profile edit, editTarget's.
 func (fl *installFlow) target() engine.TargetRequest {
 	if fl.f.edit != nil {
 		t := editTarget(fl.cmd, fl.f.edit, fl.args, fl.f.create)
@@ -2783,7 +2783,7 @@ func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	if fl.f.rules || fl.f.noRules {
 		spec.Options.Rules = &fl.f.rules
 	}
-	// The files the plan deletes, and a later scope's sync of lola profile --edit, are asked as
+	// The files the plan deletes, and a later scope's sync of lola profile edit, are asked as
 	// lola uninstall and lola sync ask (engine.InstallSpec.ConfirmRemovals); the review's Apply
 	// already answered the plan's own.
 	var asked bool

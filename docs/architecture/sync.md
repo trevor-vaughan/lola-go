@@ -217,34 +217,34 @@ the scope lock (none in a dry run):
         changes it showed.
     - The CLI prints it after the removals are answered, when it asked the question.
 
-**Activation** (`internal/engine/activate.go`). `lola profile --on`, `--off` and `--switch` are
-syncs: `SyncRequest.Profiles` (`ProfileChange{Action, Name}`, `Name` empty only for a bare `--off`)
+**Activation** (`internal/engine/activate.go`). `lola profile on`, `off` and `switch` are
+syncs: `SyncRequest.Profiles` (`ProfileChange{Action, Name}`, `Name` empty only for a bare `off`)
 runs under the same scope lock, after the tracked-`lock.json` refusal. `startActivation` lists the
 profiles directory once and `activeProfile` computes the new profile on from the one `lock.json` has
 (`cur`). `default` at project scope is refused (`default is user scope's base; this project's base
 is project.yml`), hinting only runs that would change something.
 
-`base`, and at user scope `default`, go to `baseChange`: `--off` of it is refused (hinting `--off`
-when a profile is on), `--on` of it is a notice (`the base is always loaded`) when none is on and
-refused hinting `base --switch` when one is, and `--switch` to it turns the profile on off, or is
+`base`, and at user scope `default`, go to `baseChange`: `off` of it is refused (hinting `off`
+when a profile is on), `on` of it is a notice (`the base is always loaded`) when none is on and
+refused hinting `switch base` when one is, and `switch` to it turns the profile on off, or is
 the notice `already on the base`.
 
-`--off` goes to `turnOff`: no name, the qualified name or the bare name of the profile on turns it
+`off` goes to `turnOff`: no name, the qualified name or the bare name of the profile on turns it
 off, whether or not its file is still there; otherwise a bare name several kinds define is the
 notice `neither … is on` (`resolveProfile`'s `ambiguousProfileError`), one that resolves to another
 profile is `<name> is not on`, and an unknown one is refused.
 
-`--on` and `--switch` resolve the typed name (`resolveProfile`) and refuse a remote profile a local
+`on` and `switch` resolve the typed name (`resolveProfile`) and refuse a remote profile a local
 one shadows (`shadowing`). The profile already on is the notice `<name> is already on` (`already on,
 in place of remote:go` when it is the user profile read in place of the stored remote one).
 
-`--switch` sets the named profile (`by: switch`); `--on` does when none is on, or when the named
+`switch` sets the named profile (`by: switch`); `on` does when none is on, or when the named
 profile is the project's namesake of the one on (`replaces`), and otherwise returns
-`*OtherProfileOnError{On, Name}`, whose hint is the `--switch` run keeping `--trust` but never
+`*OtherProfileOnError{On, Name}`, whose hint is the `switch` run keeping `--trust` but never
 `--force`; the CLI asks that question on a terminal.
 
 A run that leaves the profile on as it was returns at once with its notice and `in_sync`. Otherwise
-hints that repeat the run name the profile as resolved, and a switch to the base as the `--off` it
+hints that repeat the run name the profile as resolved, and a switch to the base as the `off` it
 is. `loadStack` reads `default` and the old and the new profile once each, reusing that listing, and
 `assemble` builds the old and new layers.
 
@@ -271,7 +271,7 @@ and files.
 The result embeds `*Activation`: `profile` (`Activation.Profile`, the profile on after the run by
 qualified name, or `null`), `changes` (`{module, action, from, over}`, `over` from `Wanted.Over`; an
 unload's `from` is the layer `lock.json` recorded) and `Named`/`File`/`Turned` (human output only).
-Hints that repeat the run (`commandOf`) name `lola profile <name> --<action>` with the scope's flags
+Hints that repeat the run (`commandOf`) name `lola profile <action> <name>` with the scope's flags
 instead of `lola sync`.
 
 **Prepare and commit.** `Store.Prepare` detects, normalizes, checks the cached copy reads the same,
@@ -384,7 +384,7 @@ ends with the process, since a cancel always ends the command. The process-wide 
 looks at the context's cause, so the form's cancel keeps exit 4.
 
 **Restoring remote profiles** (`restoreRemotes`, `internal/engine/restore.go`). `Sync`,
-`InstallAll`, `--switch`/`--on` and a `Move` that can cross scopes (for both scopes, before its
+`InstallAll`, `switch`/`on` and a `Move` that can cross scopes (for both scopes, before its
 syncs, which run `held`) call it before `readProfiles`, so planning sees the profile.
 
 It loads `pins.yaml` (validated, so a bad record refuses before any network contact) and, for each
@@ -394,13 +394,13 @@ recorded and absent, `restoreOne` checks the source (`remoteSpec`: host rules), 
 by the recorded commit (`CheckReachable` first), reads the profile, and refuses unless commit and
 digest equal the record.
 
-It then writes it under the exclusive profiles lock, as `--add` does (`writeRemote`), with the
+It then writes it under the exclusive profiles lock, as `profile add` does (`writeRemote`), with the
 recorded origin. No consent question is asked: the digest is the proof. A file or link at the
 profile's place (`inTheWay`) refuses the run before it plans, naming it, since a plan without the
 profile would remove its modules; the context line and the warnings name it too.
 
 Only a commit that is not on the ref (`NotOnRefError`'s message) or a digest that differs hints
-`lola profile <name> --add <source>`; a transport failure keeps its own message and hints running
+`lola profile add <source> <name>`; a transport failure keeps its own message and hints running
 the same command again. Under `-n` it warns and fetches nothing. Read-only commands never restore:
 `Context` sets `ScopeContext.Restore` to the sync command.
 
@@ -440,7 +440,7 @@ directory), since as yours its later content would never be judged; an
 install that adds one to a file of yours warns instead (`inProjectNotices`, after the write).
 
 `carriedOut` composes the two for every copy or move of a project file's entry into a file of yours:
-a move, a `--new --from`, and an `--override` of `lola install` or `lola profile --edit`.
+a move, a `--new --from`, and an `--override` of `lola install` or `lola profile edit`.
 `installedAsTrusted` refuses unless the project's own dry sync of the modules (`held`) is in sync
 and trusted, and an entry of a project profile that is off outright, hinting the switch that reviews
 it.

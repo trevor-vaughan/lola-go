@@ -100,6 +100,10 @@ type app struct {
 	pace            pace                                 // how the progress line draws (WithProgressPace)
 	line            *progressLine                        // the progress line app.progress shows, nil when none
 	knownSeed       func() ([]market.KnownMarket, error) // the known marketplaces; nil for the ones lola ships
+	argv            []string                             // the run's arguments (WithArgs, else os.Args[1:]); flag coaching reads what pflag never parsed from it
+	argvGiven       bool                                 // WithArgs set argv
+	reserved        map[string][]string                  // by noun, the words its commands answer to (engine.Reserved)
+	notes           []engine.Notice                      // the verb-wins note of the run (noteVerbWins), until it prints
 }
 
 // Option configures the command tree.
@@ -109,6 +113,12 @@ type Option func(*app)
 // with it.
 func WithPrompter(p Prompter) Option {
 	return func(a *app) { a.newPrompter = func(*cobra.Command) Prompter { return p } }
+}
+
+// WithArgs makes lola run args, not os.Args[1:]. Flag coaching reads an unknown flag's value from
+// them, since pflag stops at the flag and no error carries it.
+func WithArgs(args []string) Option {
+	return func(a *app) { a.argv, a.argvGiven = args, true }
 }
 
 // WithKnownSeed makes lola market list and enable the known marketplaces seed returns, in place of
@@ -186,6 +196,9 @@ func NewRootCmd(getenv func(string) string, opts ...Option) (*cobra.Command, err
 				return errs.WithHints(errors.New("--json and --plain cannot be combined"), "pick one output format")
 			}
 			a.display = outputFlags(cmd)
+			if a.eng != nil { // an Args rule built it before the output flags were known
+				a.eng.Display = a.display
+			}
 			if !a.json && !a.plain {
 				for _, id := range a.reg.IDs() {
 					if f := a.reg.Replaced(id); f != "" {
@@ -195,6 +208,11 @@ func NewRootCmd(getenv func(string) string, opts ...Option) (*cobra.Command, err
 			}
 			return nil
 		},
+	}
+	if a.argvGiven {
+		root.SetArgs(a.argv)
+	} else {
+		a.argv = os.Args[1:]
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.Flags().BoolVar(&showVersion, "version", false, "print lola's version: lola version")
@@ -220,7 +238,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) (*cobra.Command, err
 		if cmd == cmd.Root() && strings.HasPrefix(err.Error(), "unknown shorthand flag: 'V' in") {
 			hints = append([]string{"lola has no -V; the flag is --version: lola --version"}, hints...)
 		}
-		// pflag: "flag needs an argument: --add" (or "'a' in -a" for a shorthand).
+		// pflag: "flag needs an argument: --ref" (or "'a' in -a" for a shorthand).
 		if name, ok := strings.CutPrefix(err.Error(), "flag needs an argument: --"); ok {
 			if f := cmd.Flags().Lookup(name); f != nil {
 				hints = append([]string{"--" + name + " takes a value: " + f.Usage}, hints...)
@@ -231,6 +249,15 @@ func NewRootCmd(getenv func(string) string, opts ...Option) (*cobra.Command, err
 	a.addCoreCommands(root)
 	a.addStoreCommands(root)
 	a.addMiscCommands(root)
+	marketNoun, _, err := root.Find([]string{"market"})
+	if err != nil || marketNoun == root {
+		panic("lola has no market command to reserve the words of")
+	}
+	profileNoun, _, err := root.Find([]string{"profile"})
+	if err != nil || profileNoun == root {
+		panic("lola has no profile command to reserve the words of")
+	}
+	a.reserved = map[string][]string{"market": reservedWords(marketNoun, engine.CoachedMarketWords()...), "profile": reservedWords(profileNoun)}
 	a.installHelp(root)
 	a.offerSplits(root)
 	a.carryContext(root)
@@ -248,6 +275,7 @@ func (a *app) engine() (*engine.Engine, error) {
 		a.eng = engine.New(p, a.reg)
 		a.eng.Display = a.display
 		a.eng.KnownSeed = a.knownSeed
+		a.eng.Reserved = a.reserved
 	}
 	return a.eng, nil
 }
@@ -284,7 +312,7 @@ func (a *app) scope(cmd *cobra.Command, eng *engine.Engine) (engine.Scope, error
 	if err != nil {
 		return engine.Scope{}, err
 	}
-	req.Command = cmd.Name()
+	req.Command = commandWords(cmd)
 	res, err := eng.ResolveScope(req)
 	if err != nil {
 		return engine.Scope{}, err
@@ -365,8 +393,7 @@ func Execute(root *cobra.Command) int {
 // exiting 0, and print help when run bare.
 func (a *app) groupRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		a.showHelp(cmd, helpShort)
-		return nil
+		return a.showHelp(cmd, helpShort)
 	}
 	hints := []string{"see: " + cmd.CommandPath() + " --help"}
 	if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {

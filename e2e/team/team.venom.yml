@@ -333,7 +333,7 @@ testcases:
   - name: T8 A project profile from the repo is untrusted until trusted
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile review --on -C /work/proj -y --json > /tmp/t8.out 2> /tmp/t8.err; echo exit=$?'"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile on review -C /work/proj -y --json > /tmp/t8.out 2> /tmp/t8.err; echo exit=$?'"
         assertions:
           - result.systemout ShouldEqual "exit=3"
       - type: exec
@@ -347,8 +347,8 @@ testcases:
           doc = json.load(open("/tmp/t8.err"))
           assert doc["error"] == "lola profile needs your trust for changes to .lola/profiles/review.yml, and there is no terminal to ask on; -y confirms removals only; accept them with --trust=profiles", doc["error"]
           assert [(c["module"], c["change"]) for c in doc["trust"]["changes"]] == [("lint", "added")], doc["trust"]["changes"]
-          assert doc["hints"] == ["see them: lola profile -C /work/proj project:review --on --json -n",
-              "then accept them: lola profile -C /work/proj project:review --on --trust=profiles --json -y"], doc["hints"]
+          assert doc["hints"] == ["see them: lola profile -C /work/proj on project:review --json -n",
+              "then accept them: lola profile -C /work/proj on project:review --trust=profiles --json -y"], doc["hints"]
           print("ok turning the profile on asks to trust it")
           '
         assertions:
@@ -410,7 +410,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} profile mine --on --user -y"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile on mine --user -y"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → on"'
@@ -420,7 +420,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} profile mine --off --user -y"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile off mine --user -y"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → off"'
@@ -433,7 +433,7 @@ testcases:
   - name: T11 A remote profile is fetched over HTTPS at a host named by name
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile go --add https://git.lola.test:8443/profiles.git --trust"
+        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile add https://git.lola.test:8443/profiles.git go --trust"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemerr ShouldContainSubstring "remote:go → /home/tester/.local/share/lola/profiles/go/profile.yml (shared by every scope)"'
@@ -449,7 +449,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile remote:go --on --user -y"
+        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile on remote:go --user -y"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "✓ synced fmt (claude-code)"
@@ -469,7 +469,7 @@ testcases:
       # so the count cannot see a failed handshake with 127.0.0.1: for T12a, "before any request"
       # rests on the exact error.
       - type: exec
-        script: "{{.runtime}} exec {{.tls}} {{.container}} sh -c '{{.lola}} profile go --add https://127.0.0.1:8443/profiles.git --json > /tmp/t12a.out 2> /tmp/t12a.err; echo exit=$?'"
+        script: "{{.runtime}} exec {{.tls}} {{.container}} sh -c '{{.lola}} profile add https://127.0.0.1:8443/profiles.git go --json > /tmp/t12a.out 2> /tmp/t12a.err; echo exit=$?'"
         assertions:
           - result.systemout ShouldEqual "exit=1"
       - type: exec
@@ -479,7 +479,7 @@ testcases:
           - 'result.systemoutjson.error ShouldEqual "https://127.0.0.1:8443/profiles.git names the loopback address 127.0.0.1; a remote profile reaches hosts by name only, never inside your network; use the repository''s https:// or ssh:// URL (or user@host:path), with its host name"'
           - result.systemoutjson.hints ShouldBeEmpty
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile go --add http://127.0.0.1:8765/profiles.git --json > /tmp/t12b.out 2> /tmp/t12b.err; echo exit=$?'"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile add http://127.0.0.1:8765/profiles.git go --json > /tmp/t12b.out 2> /tmp/t12b.err; echo exit=$?'"
         assertions:
           - result.systemout ShouldEqual "exit=1"
       - type: exec

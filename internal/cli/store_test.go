@@ -107,7 +107,7 @@ var _ = Describe("store, search and init commands", func() {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("x")) }))
 		DeferCleanup(srv.Close)
 		const hint = "  hint: trust your certificate authority: set SSL_CERT_FILE=<path to its PEM>\n"
-		for _, args := range [][]string{{"cache", "add", srv.URL + "/kit.tar.gz"}, {"market", "--add", srv.URL + "/general.yml"}} {
+		for _, args := range [][]string{{"cache", "add", srv.URL + "/kit.tar.gz"}, {"market", "add", srv.URL + "/general.yml"}} {
 			r := lola(args...)
 			Expect(r.code).To(Equal(1), strings.Join(args, " "))
 			Expect(r.err).To(ContainSubstring("certificate"), strings.Join(args, " "))
@@ -520,18 +520,34 @@ var _ = Describe("published alias table", func() {
 			}
 		}
 		Expect(table).To(Equal(map[string][]string{
-			"lola install":      {"add"},
-			"lola uninstall":    {"remove", "rm", "erase", "delete", "del"},
-			"lola list":         {"ls"},
-			"lola update":       {"upgrade"},
-			"lola info":         {"show", "view"},
-			"lola search":       {"find"},
-			"lola cache add":    {"get"},
-			"lola cache rm":     {"remove", "uninstall", "erase", "delete", "del"},
-			"lola cache list":   {"ls"},
-			"lola cache search": {"find"},
-			"lola version":      {"ver"},
-			"lola market":       {"marketplace", "markets"},
+			"lola install":        {"add"},
+			"lola uninstall":      {"remove", "rm", "erase", "delete", "del"},
+			"lola list":           {"ls"},
+			"lola update":         {"upgrade"},
+			"lola info":           {"show", "view"},
+			"lola search":         {"find"},
+			"lola cache add":      {"get"},
+			"lola cache rm":       {"remove", "delete", "del", "erase"},
+			"lola cache list":     {"ls"},
+			"lola cache search":   {"find"},
+			"lola version":        {"ver"},
+			"lola market":         {"marketplace", "markets"},
+			"lola market list":    {"ls"},
+			"lola market add":     {"get"},
+			"lola market update":  {"upgrade"},
+			"lola market rm":      {"remove", "delete", "del", "erase"},
+			"lola trash list":     {"ls"},
+			"lola trash restore":  {"undo", "recover"},
+			"lola trash empty":    {"purge", "clear"},
+			"lola profile list":   {"ls"},
+			"lola profile on":     {"enable", "activate"},
+			"lola profile off":    {"disable", "deactivate"},
+			"lola profile switch": {"use"},
+			"lola profile edit":   {"pick", "modify"},
+			"lola profile move":   {"mv"},
+			"lola profile add":    {"get"},
+			"lola profile update": {"upgrade"},
+			"lola profile rm":     {"remove", "delete", "del", "erase"},
 		}))
 	})
 
@@ -545,32 +561,19 @@ var _ = Describe("published alias table", func() {
 			})
 		}
 		Expect(table).To(Equal(map[string][]string{
-			"lola profile --on":     {"enable", "activate"},
-			"lola profile --off":    {"disable", "deactivate"},
-			"lola profile --switch": {"use"},
-			"lola profile --edit":   {"pick", "modify"},
-			"lola profile --move":   {"mv"},
-			"lola profile --new":    {"create"},
-			"lola profile --add":    {"get"},
-			"lola profile --update": {"upgrade"},
-			"lola profile --remove": {"rm", "delete", "del", "erase", "uninstall"},
-			"lola market --add":     {"get"},
-			"lola market --update":  {"upgrade", "refresh"},
-			"lola market --remove":  {"rm", "delete", "del", "erase"},
-			"lola tidy --keep":      {"protect"},
-			"lola tidy --unkeep":    {"unprotect"},
-			"lola update --fetch":   {"refresh"},
-			"lola trash --restore":  {"undo", "recover"},
-			"lola trash --empty":    {"purge", "clear"},
+			"lola profile switch --new": {"create"},
+			"lola profile edit --new":   {"create"},
+			"lola tidy --keep":          {"protect"},
+			"lola tidy --unkeep":        {"unprotect"},
+			"lola update --fetch":       {"refresh"},
 		}))
-		Expect(lola("help", "profile", "--short").out).To(And(ContainSubstring("--on (--enable, --activate) "),
-			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) "), ContainSubstring("--edit (--pick, --modify) "), ContainSubstring("--move (--mv) strings "), ContainSubstring("--new (--create) "), ContainSubstring("--add (--get) string "),
-			ContainSubstring("--update (--upgrade) "), ContainSubstring("--remove (--rm, --delete, --del, --erase, --uninstall) ")))
-		Expect(lola("help", "market", "--short").out).To(And(ContainSubstring("--add (--get) string "),
-			ContainSubstring("--update (--upgrade, --refresh) "), ContainSubstring("--remove (--rm, --delete, --del, --erase) "),
-			ContainSubstring("--enable string "), ContainSubstring("--known "), Not(ContainSubstring("--enable (")), Not(ContainSubstring("--known ("))))
-		Expect(lola("help", "trash", "--short").out).To(And(ContainSubstring("--restore (--undo, --recover) "),
-			ContainSubstring("--empty (--purge, --clear) ")))
+		Expect(lola("help", "profile", "switch", "--short").out).To(ContainSubstring("--new (--create) "))
+		Expect(lola("help", "profile", "--short").out).To(And(ContainSubstring("list (ls)"), ContainSubstring("on (enable, activate)"),
+			ContainSubstring("off (disable, deactivate)"), ContainSubstring("switch (use)"), ContainSubstring("edit (pick, modify)"),
+			ContainSubstring("move (mv)"), ContainSubstring("add (get)"), ContainSubstring("update (upgrade)"),
+			ContainSubstring("rm (remove, delete, del, erase)")))
+		Expect(lola("help", "market", "--short").out).To(And(ContainSubstring("list (ls)"), ContainSubstring("add (get)"),
+			ContainSubstring("update (upgrade)"), ContainSubstring("rm (remove, delete, del, erase)")))
 	})
 
 	It("the published alias tables include tidy's flags and no alias for tidy", func() {
@@ -594,7 +597,7 @@ var _ = Describe("published alias table", func() {
 		proj := GinkgoT().TempDir()
 		for _, args := range [][]string{
 			{"list", "-C", proj}, {"update", "-C", proj}, {"cache", "list"}, {"cache", "update"},
-			{"search", "x"}, {"cache", "search", "x"}, {"list", "--user"}, {"repair", "-C", proj}, {"market"}, {"market", "--update", "--all"},
+			{"search", "x"}, {"cache", "search", "x"}, {"list", "--user"}, {"repair", "-C", proj}, {"market"}, {"market", "update", "--all"},
 		} {
 			r := lola(append(args, "--json")...)
 			Expect(r.code).To(Equal(0), strings.Join(args, " ")+": "+r.err)
@@ -640,14 +643,14 @@ var _ = Describe("published alias table", func() {
 
 	It("refuses an unknown flag with a hint, as one JSON line under --json", func() {
 		Expect(lola("install", "--bogus").err).To(Equal("error: unknown flag: --bogus\n  hint: see: lola install --help\n"))
-		Expect(lola("market", "--add").err).To(Equal("error: flag needs an argument: --add\n" +
-			"  hint: --add takes a value: fetch the catalog at this source and register it\n  hint: see: lola market --help\n"))
+		Expect(lola("market", "add", "--ref").err).To(Equal("error: flag needs an argument: --ref\n" +
+			"  hint: --ref takes a value: the branch, tag or commit of a git source\n  hint: see: lola market add --help\n"))
 		Expect(lola("install", "--json", "--bogus").err).To(Equal(`{"error":"unknown flag: --bogus","hints":["see: lola install --help"]}` + "\n"))
 	})
 
 	It("aliases appear in help", func() {
 		Expect(lola("help", "--short").out).To(ContainSubstring("uninstall (remove, rm, erase, delete, del)"))
-		Expect(lola("help", "cache", "--short").out).To(ContainSubstring("rm (remove, uninstall, erase, delete, del)"))
+		Expect(lola("help", "cache", "--short").out).To(ContainSubstring("rm (remove, delete, del, erase)"))
 	})
 })
 

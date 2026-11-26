@@ -77,11 +77,11 @@ func (w *profileWrites) add(sc Scope, kind profile.Kind, name, path string, data
 	w.read[path], w.infos, w.made = p, append(w.infos, profile.Info{Name: name, Kind: kind, Path: path}), append(w.made, c)
 }
 
-// newProfiles is what lola profile <name> --switch --new writes at sc: the
+// newProfiles is what lola profile switch <name> --new writes at sc: the
 // profile ch.Name names, yours or with project:<name> the project's, which must not exist; empty,
 // a copy of ch.From's entries and top-level targets (no pin into a profile of yours), or with
 // ch.Bundle a bundle of those members, each that names no profile made too, empty (newMembers).
-// infos is what sc can use; runs words the hints (switchRuns for --switch, editRuns for --edit),
+// infos is what sc can use; runs words the hints (switchRuns for switch, editRuns for edit),
 // display is the run's output flags.
 func (e *Engine) newProfiles(ctx context.Context, sc Scope, infos []profile.Info, ch ProfileChange, runs newRuns, display []string) (*profileWrites, error) {
 	k, name, err := e.newTarget(sc, infos, ch, runs)
@@ -156,14 +156,14 @@ type newRuns struct {
 	list     string
 }
 
-// switchRuns is newRuns for lola profile <name> --switch --new at sc, each run keeping again (what
+// switchRuns is newRuns for lola profile switch <name> --new at sc, each run keeping again (what
 // a hint naming another run keeps).
 func (e *Engine) switchRuns(sc Scope, again []string) newRuns {
 	run := func(args ...string) string { return e.Command(sc, "profile", append(args, again...)...) }
 	return newRuns{make: func(name string, modifiers ...string) string {
-		return run(append([]string{name, "--switch", "--new"}, modifiers...)...)
+		return run(append([]string{"switch", name, "--new"}, modifiers...)...)
 	},
-		plain: func(name string) string { return run(name, "--switch", "--new") }, use: func(q string) string { return run(q, "--switch") },
+		plain: func(name string) string { return run("switch", name, "--new") }, use: func(q string) string { return run("switch", q) },
 		useLabel: "switch to it", list: e.listRun(sc, again)}
 }
 
@@ -184,7 +184,7 @@ func (e *Engine) newTarget(sc Scope, infos []profile.Info, ch ProfileChange, run
 	}
 	switch {
 	case kind == string(profile.KindRemote):
-		return "", "", errs.WithHints(errors.New("--new makes a profile of yours or the project's; lola profile --add fetches a remote one"),
+		return "", "", errs.WithHints(errors.New("--new makes a profile of yours or the project's; lola profile add fetches a remote one"),
 			"make it yours: "+runs.make(name, modifiers...))
 	case kind == string(profile.KindProject) && sc.Kind != target.Project:
 		return "", "", errs.WithHints(fmt.Errorf("%s is a project's profile; --new makes one in a project only", shown(ch.Name)),
@@ -208,7 +208,7 @@ func isDir(i profile.Info) bool {
 	return err == nil && fi.IsDir() && i.Kind != profile.KindRemote
 }
 
-// NewOrSwitch decides what lola profile <ch.Name> --switch given --from or --bundle without --new
+// NewOrSwitch decides what lola profile switch <ch.Name> given --from or --bundle without --new
 // means at sc, for the refusal's hint: exists when a switch resolves the name
 // to a profile (the hint drops the modifier); else nil when --new would make it (the hint adds
 // --new); else the refusal of both (the switch's when the name is ambiguous, else --new's), with
@@ -335,7 +335,7 @@ func (e *Engine) newMembers(sc Scope, infos []profile.Info, w *profileWrites, ki
 		case mk == "" && (has(local) || has(string(profile.KindRemote)) || e.recorded(string(profile.KindRemote)+":"+mn)):
 		case mk != "" && has(mk), mk == string(profile.KindRemote) && e.recorded(m):
 		case mk == string(profile.KindRemote):
-			return errs.WithHints(fmt.Errorf("--bundle: %s is not a remote profile you have; lola profile --add fetches one", shown(m)),
+			return errs.WithHints(fmt.Errorf("--bundle: %s is not a remote profile you have; lola profile add fetches one", shown(m)),
 				"see yours: "+runs.list)
 		case mk == string(profile.KindProject):
 			hint := "see the profiles: " + runs.list
@@ -505,14 +505,14 @@ func bundleName(infos []profile.Info, members []string) string {
 	return freeName(infos, strings.Join(bareNames(members), "-"))
 }
 
-// bundleRun is the run that makes the bundle name of members and switches to it at sc: lola profile <name> --switch --new --bundle a,b; again is what it keeps
+// bundleRun is the run that makes the bundle name of members and switches to it at sc: lola profile switch <name> --new --bundle a,b; again is what it keeps
 // of the run.
 func (e *Engine) bundleRun(sc Scope, name string, members []string, again []string) string {
-	return e.Command(sc, "profile", append([]string{name, "--switch", "--new", "--bundle", strings.Join(members, ",")}, again...)...)
+	return e.Command(sc, "profile", append([]string{"switch", name, "--new", "--bundle", strings.Join(members, ",")}, again...)...)
 }
 
 // BundleOffer is the run that combines the profiles names (as typed at sc) into a bundle of yours
-// and switches to it: what lola profile --switch a b hints, since one profile is on at a time.
+// and switches to it: what lola profile switch a b hints, since one profile is on at a time.
 // Its name is the names joined with -. A name that names no profile, or
 // several, is refused as --switch refuses it.
 func (e *Engine) BundleOffer(sc Scope, names []string, again []string) (string, error) {

@@ -69,3 +69,28 @@ var _ = Describe("notice classes", func() {
 		Expect(printed(style{verbose: true}, r)).To(Equal("✗ skipped m: t skill s: no place\n    hint: render it anyway: lola install m --force\n⚠ m: t skill z: lossy\n"))
 	})
 })
+
+var _ = Describe("withNotices", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	note := []engine.Notice{{Level: engine.LevelInfo, Text: "ran ls"}}
+	const added = `{"level":"info","text":"ran ls","class":"safety"}`
+
+	It("adds the notes at the end of the document's notices, keeping its members in order", func() {
+		doc, err := withNotices([]byte(`{"z":1,"notices":[{"level":"warn","text":"w","class":""}],"a":[]}`), note)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(doc)).To(Equal(`{"z":1,"notices":[{"level":"warn","text":"w","class":""},` + added + `],"a":[]}`))
+	})
+
+	It("adds a notices member last to a document without one, and leaves a document as it is with no notes", func() {
+		doc, err := withNotices([]byte(`{"name":"acme"}`), note)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(doc)).To(Equal(`{"name":"acme","notices":[` + added + `]}`))
+		doc, err = withNotices([]byte(`{}`), note)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(doc)).To(Equal(`{"notices":[` + added + `]}`))
+		doc, err = withNotices([]byte(`{"name":"acme"}`), nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(doc)).To(Equal(`{"name":"acme"}`))
+	})
+})

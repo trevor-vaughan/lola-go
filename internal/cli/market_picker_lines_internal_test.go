@@ -309,7 +309,7 @@ var _ = Describe("the marketplace picker's accessible preview of a known marketp
 			var out bytes.Buffer
 			got, err := accessible(&out, answers...).MarketPicker(scopedStep(p, nil))
 			Expect(err).NotTo(HaveOccurred(), strings.Join(answers, ","))
-			Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}), strings.Join(answers, ","))
+			Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnable, Known: []string{"kn"}}), strings.Join(answers, ","))
 			Expect(strings.Count(out.String(), "not added yet; m enables kn\n")).To(Equal(2), strings.Join(answers, ","))
 		}
 	})
@@ -335,12 +335,12 @@ var _ = Describe("the marketplace picker's accessible preview of a known marketp
 	It("prints why a fetch failed with its first hint and asks the market prompt again", func() {
 		p := &previewer{err: errs.WithHints(errors.New("git said\nno"), "check your network")}
 		var out bytes.Buffer
-		got, err := accessible(&out, "4", "m4").MarketPicker(scopedStep(p, nil))
+		got, err := accessible(&out, "4", "4", "").MarketPicker(scopedStep(p, nil))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}))
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerCancel}))
 		Expect(out.String()).To(ContainSubstring("could not fetch kn: git said no → check your network\n"))
-		Expect(strings.Count(out.String(), "Choose marketplaces")).To(Equal(2))
-		Expect(p.calls).To(Equal(1), "a failure is not kept; m4 never fetches")
+		Expect(strings.Count(out.String(), "Choose marketplaces")).To(Equal(3))
+		Expect(p.calls).To(Equal(2), "a failure is not kept")
 	})
 
 	It("says a catalog with no entry offers none, and stays on the list", func() {
@@ -348,22 +348,18 @@ var _ = Describe("the marketplace picker's accessible preview of a known marketp
 		var out bytes.Buffer
 		_, err := accessible(&out, "4").MarketPicker(scopedStep(p, nil))
 		Expect(err).To(MatchError(errInputEnded))
-		Expect(out.String()).To(ContainSubstring("kn at bbbbbbb offers no entries; m enables it anyway\n"))
+		Expect(out.String()).To(ContainSubstring("kn at bbbbbbb offers no entries; lola market enable kn enables it anyway\n"))
 		Expect(strings.Count(out.String(), "Choose marketplaces")).To(Equal(2))
 	})
 
-	It("keeps m<N> going straight to the menu and several numbers meaning what they did, fetching nothing", func() {
-		for answer, want := range map[string]MarketPickerAnswer{
-			"m4":  {Action: PickerEnter, Known: []string{"kn"}},
-			"1,4": {Action: PickerEnter, Own: []string{"acme"}, Known: []string{"kn"}},
-		} {
-			p := &previewer{}
-			var out bytes.Buffer
-			got, err := accessible(&out, answer).MarketPicker(scopedStep(p, nil))
-			Expect(err).NotTo(HaveOccurred(), answer)
-			Expect(got).To(Equal(want), answer)
-			Expect(p.calls).To(BeZero(), answer)
-		}
+	It("answers several numbers with their rows, and refuses d on a known row, fetching nothing", func() {
+		p := &previewer{}
+		var out bytes.Buffer
+		got, err := accessible(&out, "d4", "1,4").MarketPicker(scopedStep(p, nil))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme"}, Known: []string{"kn"}}))
+		Expect(out.String()).To(ContainSubstring("d removes your marketplaces: answer numbers from 1 to 3, comma separated\n"))
+		Expect(p.calls).To(BeZero())
 	})
 
 	It("ends at end of input at each prompt of a preview", func() {
@@ -441,10 +437,10 @@ var _ = Describe("the marketplace picker's accessible prompts at a narrow width"
 
 	It("keeps the stable prompt when it fits the width, and moves the keys above a short one when it does not", func() {
 		wide := strings.Join(printed(0, scopedStep(&previewer{}, nil), "1", "1"), "\n")
-		Expect(wide).To(ContainSubstring("Choose marketplaces (numbers, comma separated; m1 for the menu; o1 for the web page): "))
+		Expect(wide).To(ContainSubstring("Choose marketplaces (numbers, comma separated; d1 removes; o1 for the web page): "))
 		Expect(wide).To(ContainSubstring("i install · o web · Enter alone goes back: "))
 		narrow := strings.Join(printed(40, scopedStep(&previewer{}, nil), "1", "1"), "\n")
-		Expect(narrow).NotTo(ContainSubstring("numbers, comma separated; m1 for the menu; o1 for the web page): "))
+		Expect(narrow).NotTo(ContainSubstring("numbers, comma separated; d1 removes; o1 for the web page): "))
 		Expect(narrow).To(ContainSubstring("Choose a key above: "))
 	})
 

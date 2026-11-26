@@ -85,7 +85,7 @@ need podman or docker, and neither is on PATH` and exit 0.
 | `migrate`       | `lola migrate` against the real Python lola.                                                                                                                                                     |
 | `tidy`          | `lola tidy` with the trash on another file system.                                                                                                                                               |
 | `profile-first` | Scenarios S1–S8: base and profile, edits and overrides, moves, a teammate's home, bundles, the listing, and a new machine given only `~/.config/lola`.                                           |
-| `picks`         | A profile's picks: `--edit --only` and `--exact`, `lola profile <name>` and `lola info` showing them, the re-pick hints run as printed, and a new upstream component an `only:` list leaves out. |
+| `picks`         | A profile's picks: `profile edit --only` and `--exact`, `lola profile <name>` and `lola info` showing them, the re-pick hints run as printed, and a new upstream component an `only:` list leaves out. |
 
 ### The runner
 
@@ -286,8 +286,8 @@ through its one-line refusal's hint.
 The **profile-first** suite walks eight scenarios, S1 to S8, in an order one home can:
 
 - S1 and S2 at user scope (a first install that picks user scope and writes `default`; a
-  baseline, a `go-review` profile over it, an override through `lola profile --edit` and the
-  way back with `--off`).
+  baseline, a `go-review` profile over it, an override through `lola profile edit` and the
+  way back with `off`).
 - S4 and S3 in the team project `acme` (a module installed into `project.yml` moved into a new
   profile in one step; an experiment copied from `go-review`, then back, keeping the
   experiment).

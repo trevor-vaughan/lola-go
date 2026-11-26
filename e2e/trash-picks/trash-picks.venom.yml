@@ -53,7 +53,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "  /work/a/.claude/commands/stray.md → {{.state}}/lola/trash/{{.run}}/"'
-          - 'result.systemout ShouldContainSubstring "→ restore them: lola trash {{.run}} --restore"'
+          - 'result.systemout ShouldContainSubstring "→ restore them: lola trash restore {{.run}}"'
 
   - name: T3 A restore puts the file back with its content and removes the emptied run
     steps:
@@ -65,7 +65,7 @@ testcases:
           run:
             from: result.systemout
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} trash {{.run}} --restore"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash restore {{.run}}"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "✓ restored 1 item from trash run {{.run}}"'
@@ -85,11 +85,11 @@ testcases:
   - name: T4 Restoring a run that is not there is refused with the way to list the runs
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} trash 20000101T000000Z --restore"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash restore 20000101T000000Z"
         assertions:
           - result.code ShouldEqual 1
           - 'result.systemerr ShouldContainSubstring "there is no trash run 20000101T000000Z"'
-          - 'result.systemerr ShouldContainSubstring "hint: see the runs: lola trash"'
+          - 'result.systemerr ShouldContainSubstring "hint: see the runs: lola trash list"'
 
   - name: K1 A pick made in one clone is saved under the repository's key
     steps:
@@ -160,7 +160,7 @@ testcases:
           - result.code ShouldEqual 0
           - "result.systemout ShouldEqual \"alpha\nalpha bravo\n      skip: [skill/charlie, skill/bravo]\""
 
-  - name: E1 Off a terminal, --empty without -y shows what it would delete, is refused and deletes nothing
+  - name: E1 Off a terminal, empty without -y shows what it would delete, is refused and deletes nothing
     steps:
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} tidy -C /work/a -t claude-code command/stray -y"
@@ -168,23 +168,23 @@ testcases:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "✓ moved 1 item (11 B) to the trash: {{.state}}/lola/trash/"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} trash --empty"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash empty"
         assertions:
           - result.code ShouldEqual 3
           - 'result.systemerr ShouldContainSubstring "will delete from the trash:"'
           - 'result.systemerr ShouldContainSubstring "lola tidy -C /work/a  11 B"'
-          - 'result.systemerr ShouldContainSubstring "error: lola trash needs confirmation, and there is no terminal to ask on"'
-          - 'result.systemerr ShouldContainSubstring "hint: lola trash --empty -y"'
+          - 'result.systemerr ShouldContainSubstring "error: lola trash empty needs confirmation, and there is no terminal to ask on"'
+          - 'result.systemerr ShouldContainSubstring "hint: lola trash empty -y"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} trash --json | python3 -c \"import json,sys; print(len(json.load(sys.stdin)[\\\"runs\\\"]))\"'"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "1"
 
-  - name: E2 With -y --empty deletes the run, and the trash is empty
+  - name: E2 With -y, empty deletes the run, and the trash is empty
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} trash --empty -y"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash empty -y"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldEqual "✓ deleted 1 trash run, freeing 11 B"'

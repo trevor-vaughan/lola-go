@@ -502,7 +502,7 @@ var _ = Describe("the install flow", func() {
 		acme := filepath.Join(tmp, "acme")
 		writeTree(acme, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"},
   "plugins": [{"name": "formatter", "source": "./formatter", "description": "Formats code"}]}`, "formatter/commands/fmt.md": "Fmt\n"})
-		Expect(lola("market", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme).code).To(Equal(0))
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\nmodules:\n  - name: formatter\n    source: '@acme/formatter'\n" +
 			"  - {name: fmt2, source: '@acme/formatter'}\n"})
 		for _, dry := range [][]string{nil, {"-n"}} {
@@ -1792,7 +1792,7 @@ var _ = Describe("the install flow", func() {
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
 			"  - {name: review-kit, source: " + review + ", rules: false}\n  - {name: deploy, source: " + deploy + ", targets: [claude-code]}\n"})
-		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "on", "go", "--user", "-y").code).To(Equal(0))
 		style := filepath.Join(home, ".claude", "rules", "lola", "review-kit", "style.md")
 		Expect(style).NotTo(BeAnExistingFile(), "go's entry turns rules off")
 		listed := func() string {
@@ -1836,7 +1836,7 @@ var _ = Describe("the install flow", func() {
 	It("reviews an install with --profile base while a remote profile that lists the module is on, naming the base and the winner", func() {
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		// A remote profile as lola profile --add keeps it, on at user scope.
+		// A remote profile as lola profile add keeps it, on at user scope.
 		body := "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: deploy, source: https://example.com/deploy.git, commit: " +
 			strings.Repeat("a", 40) + ", digest: sha256:" + strings.Repeat("b", 64) + "}\n"
 		o, err := json.Marshal(profile.Origin{Version: profile.OriginVersion, Source: "https://example.com/profiles.git",
@@ -1861,7 +1861,7 @@ var _ = Describe("the install flow", func() {
 			"and there is no terminal to ask on\n  hint: lola install deploy --scope user --target claude-code --profile base\n"))
 		r = lola("install", "deploy", "--scope", "user", "-t", "claude-code", "-n")
 		Expect(r.code).To(Equal(3))
-		bundle := "lola profile --user team-work --switch --new --bundle remote:team,team-extras -n"
+		bundle := "lola profile --user switch team-work --new --bundle remote:team,team-extras -n"
 		Expect(r.err).To(HaveSuffix("  hint: lola install deploy --dry-run --scope user --target claude-code --profile base\n"+
 			"  hint: or bundle it with a profile of yours: "+bundle+"\n"), "both hints keep -n")
 		r = runHint(bundle)
@@ -1881,7 +1881,7 @@ var _ = Describe("the install flow", func() {
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\n"})
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
 			components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}
 		r := lolaP(sp, "install", "--scope", "user")
@@ -1913,7 +1913,7 @@ var _ = Describe("the install flow", func() {
 				"go.yml": "version: 1\n"})
 			Expect(lola("sync", "--user", "-y").code).To(Equal(0))
 			if profileOn {
-				Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+				Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 			}
 			git(work, "commit", "-q", "--allow-empty", "-m", "two")
 			moved := git(work, "rev-parse", "HEAD")
@@ -1982,7 +1982,7 @@ var _ = Describe("the install flow", func() {
 		// The profile on lists it and the base does not: nothing to do.
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\n",
 			"go.yml": "version: 1\nmodules:\n  - {name: review-kit, source: " + review + "}\n"})
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		Expect(install().out).To(Equal("✓ already up to date\n"))
 
 		// The base, which the install writes, lacks it (Listed false): the engine writes its entry.
@@ -2007,7 +2007,7 @@ var _ = Describe("the install flow", func() {
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: review-kit, source: " + review + "}\n",
 			"go.yml": "version: 1\n"})
 		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
 			components: []func(cli.ComponentPage) ([]string, error){keep("skill/review")}, where: []int{1}, review: []string{cli.ReviewApply}}
 		r := lolaP(sp, "install", "--scope", "user", "-t", "claude-code")
@@ -2026,7 +2026,7 @@ var _ = Describe("the install flow", func() {
 			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: review-kit, source: " + review + "}\n",
 				"go.yml": "version: 1\n"})
 			Expect(lola("sync", "--user", "-y").code).To(Equal(0))
-			Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+			Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 			sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
 				components: []func(cli.ComponentPage) ([]string, error){keep("skill/review")}, where: []int{answer}, review: []string{cli.ReviewQuit}}
 			r := lolaP(sp, "install", "--scope", "user", "-t", "claude-code")
@@ -2052,7 +2052,7 @@ var _ = Describe("the install flow", func() {
 		writeTree(deploy, map[string]string{"commands/rollback.md": "Roll back.\n"})
 		Expect(lola("cache", "update", "deploy").code).To(Equal(0))
 		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy", "review-kit")},
 			components: []func(cli.ComponentPage) ([]string, error){keep("command/rollback"), keep("skill/review")},
 			where:      []int{0, 1}, review: []string{cli.ReviewQuit}}
@@ -2086,8 +2086,8 @@ var _ = Describe("the install flow", func() {
 			"  - {name: review-kit, source: " + review + "}\n", "go.yml": "version: 1\n"})
 		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
 		Expect(lola("install", "review-kit", "--scope", "project", "-t", "claude-code", "-y").code).To(Equal(0))
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
-		Expect(lola("profile", "go", "--switch", "--project", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--project", "-y").code).To(Equal(0))
 		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
 			components: []func(cli.ComponentPage) ([]string, error){keep("skill/review")}, where: []int{0, 1}, review: []string{cli.ReviewQuit}}
 		r := lolaP(sp, "install", "--scope", "both", "-t", "claude-code")
@@ -3480,8 +3480,8 @@ var _ = Describe("the version question", func() {
 		Expect(strings.Count(r.out, "→ opencode")).To(Equal(1))
 	})
 
-	It("documents -t <id>@<version> in install's help and lola profile --edit's", func() {
-		Expect(lola("profile", "--help").out).To(ContainSubstring("<id>@<version> also picks the version"))
+	It("documents -t <id>@<version> in install's help and lola profile edit's", func() {
+		Expect(lola("profile", "edit", "--help").out).To(ContainSubstring("<id>@<version> also picks the version"))
 		r := lola("install", "--help")
 		Expect(r.out).To(ContainSubstring("<id>@<version> also picks the version"))
 		Expect(r.out).To(ContainSubstring("  lola install ./m -C /srv/app -t opencode@1.19\n"), "an example")

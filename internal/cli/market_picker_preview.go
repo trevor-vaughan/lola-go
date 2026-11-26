@@ -104,7 +104,8 @@ func (m marketPicker) previewed(msg previewMsg) marketPicker {
 			m.note += " → " + oneLine(hints[0])
 		}
 	case len(msg.pv.Entries) == 0:
-		m.note = id + " at " + shortCommit(oneLine(msg.pv.Commit)) + " offers no entries; m enables it anyway"
+		m.note = id + " at " + shortCommit(oneLine(msg.pv.Commit)) + " offers no entries; " +
+			errs.ShellJoin([]string{"lola", "market", "enable", id}) + " enables it anyway"
 	case m.level != listLevel || m.typing || m.offer != nil:
 		m.previews[msg.id] = msg.pv
 		m.note = id + " fetched; ⏎ opens it"
@@ -134,10 +135,9 @@ func (m marketPicker) previewTitle() string {
 		", curated " + oneLine(pv.Curated)
 }
 
-// enablePreview leaves the picker as m does on the known row of the preview, to the menu that
-// enables it.
+// enablePreview leaves the picker to enable the known row of the preview, as m on its pages does.
 func (m marketPicker) enablePreview() (marketPicker, tea.Cmd) {
-	return m.leave(PickerEnter, []int{m.market})
+	return m.leave(PickerEnable, []int{m.market})
 }
 
 // noteLines is a note wrapped to the width, one footer line each.

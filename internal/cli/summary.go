@@ -16,7 +16,7 @@ import (
 )
 
 // scopeSourceLabel says where a scope came from, in the summary. User scope is found, not named,
-// when no project is found from where lola runs, or when lola profile --edit adds it as a scope the
+// when no project is found from where lola runs, or when lola profile edit adds it as a scope the
 // profile is on too (engine.EditScopes), after the project.
 func (fl *installFlow) scopeSourceLabel(c engine.ScopeChoice) string {
 	switch {

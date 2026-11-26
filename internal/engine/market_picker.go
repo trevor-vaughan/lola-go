@@ -189,7 +189,7 @@ func checkRow(ctx context.Context, tip func(context.Context, source.Spec) (strin
 	return Check{Index: index, Status: StatusUpdate}
 }
 
-// CheckedMarket is one of your marketplaces as lola market --check lists it: its row and Status, the
+// CheckedMarket is one of your marketplaces as lola market check lists it: its row and Status, the
 // result of CheckMarkets for it, "" for one it does not check (not a git source, or never fetched).
 type CheckedMarket struct {
 	MarketRow

@@ -311,7 +311,7 @@ var _ = Describe("the background question before a command's first form", func()
 		var errb bytes.Buffer
 		cmd := &cobra.Command{}
 		cmd.SetErr(&errb)
-		h = onInput(paced("\r", "\x1b[B\r"))
+		h = onPaced(screen{"\r"}, screen{"\x1b[B\r"})
 		h.color = true
 		h.dark = func() (bool, error) { return a.darkBackground(cmd) }
 		_, err := h.Where(WhereStep{Title: "Restore which?", Options: []string{"Restore"}})

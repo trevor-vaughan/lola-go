@@ -8,7 +8,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
@@ -72,6 +74,14 @@ var _ = Describe("help, errors and output contract", func() {
 		short := lola("-h").out
 		Expect(short).NotTo(ContainSubstring("Environment:"))
 		Expect(lola([]string{}...).out).To(Equal(short))
+	})
+
+	It("the root's long help lists each environment variable by name, aligned", func() {
+		long := lola("--help").out
+		Expect(long).To(ContainSubstring("\nEnvironment:\n" +
+			"  LOLA_COLOR       1 or 0 forces color on or off\n" +
+			"  NO_COLOR         disable color when set (https://no-color.org)\n"))
+		Expect(long).To(ContainSubstring("\n  XDG_CACHE_HOME   the cache, marketplace catalogs, downloads and assistant versions (default ~/.cache)\n"))
 	})
 
 	It("piped help is not the tree; help --all is, with the global flags once", func() {
@@ -166,5 +176,155 @@ var _ = Describe("help, errors and output contract", func() {
 			Expect(r.out).To(ContainSubstring("lola"), sh)
 		}
 		Expect(lola("completion", "tcsh").code).To(Equal(1))
+	})
+
+	Context("under --json", func() {
+		// helpJSON is lola's stdout for args, which must exit 0, parsed as one JSON object.
+		helpJSON := func(args ...string) map[string]any {
+			r := lola(args...)
+			Expect(r.code).To(Equal(0), r.err)
+			var doc map[string]any
+			Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
+			return doc
+		}
+		named := func(name string) types.GomegaMatcher { return HaveKeyWithValue("name", name) }
+
+		It("help --all --json lists every command prose --all lists, once, in order, each with its own flags", func() {
+			var want []string
+			for _, m := range regexp.MustCompile(`(?m)^== (.+) ==$`).FindAllStringSubmatch(lola("help", "--all").out, -1) {
+				want = append(want, m[1])
+			}
+			root, err := cli.NewRootCmd(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
+			root.InitDefaultHelpCmd()
+			root.InitDefaultCompletionCmd()
+			var got []string
+			var visit func(doc map[string]any)
+			visit = func(doc map[string]any) {
+				path := doc["path"].(string)
+				got = append(got, path)
+				c, _, err := root.Find(strings.Fields(path)[1:])
+				Expect(err).NotTo(HaveOccurred(), path)
+				c.InitDefaultHelpFlag()
+				var local, listed []string
+				c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+					if !f.Hidden {
+						local = append(local, f.Name)
+					}
+				})
+				for _, f := range doc["flags"].([]any) {
+					listed = append(listed, f.(map[string]any)["name"].(string))
+				}
+				Expect(listed).To(Equal(local), path)
+				for _, sub := range doc["commands"].([]any) {
+					visit(sub.(map[string]any))
+				}
+			}
+			visit(helpJSON("help", "--all", "--json"))
+			Expect(got).To(Equal(want))
+		})
+
+		It("-h and --help print what help --short and help print", func() {
+			Expect(lola("install", "-h", "--json").out).To(Equal(lola("help", "--short", "install", "--json").out))
+			Expect(lola("install", "--help", "--json").out).To(Equal(lola("help", "install", "--json").out))
+		})
+
+		It("short help has no long, examples, global flags or reference; long help has them", func() {
+			short := helpJSON("install", "-h", "--json")
+			Expect(short).To(HaveKeyWithValue("path", "lola install"))
+			Expect(short).To(HaveKeyWithValue("name", "install"))
+			Expect(short).To(HaveKeyWithValue("aliases", []any{"add"}))
+			Expect(short).To(HaveKeyWithValue("group", "Core"))
+			Expect(short).To(HaveKeyWithValue("short", find("install").Short))
+			Expect(short).To(HaveKeyWithValue("usage", find("install").UseLine()))
+			for _, k := range []string{"long", "examples", "global_flags", "reference_url", "environment"} {
+				Expect(short).NotTo(HaveKey(k))
+			}
+			long := helpJSON("install", "--help", "--json")
+			Expect(long).To(HaveKeyWithValue("long", strings.TrimSpace(find("install").Long)))
+			Expect(long).To(HaveKeyWithValue("examples", ContainElement(HavePrefix("lola install "))))
+			Expect(long).To(HaveKeyWithValue("reference_url", docs+"reference/install.md"))
+			Expect(long).To(HaveKeyWithValue("global_flags", ContainElement(named("json"))))
+			Expect(long).NotTo(HaveKey("environment"))
+		})
+
+		It("lists command aliases and flag aliases", func() {
+			Expect(helpJSON("help", "profile", "--json")).To(HaveKeyWithValue("commands",
+				ContainElement(And(named("on"), HaveKeyWithValue("aliases", []any{"enable", "activate"})))))
+			Expect(helpJSON("help", "update", "--json")).To(HaveKeyWithValue("flags",
+				ContainElement(And(named("fetch"), HaveKeyWithValue("aliases", []any{"refresh"})))))
+		})
+
+		It("prints empty arrays, never null", func() {
+			r := lola("help", "version", "--json")
+			Expect(r.out).NotTo(ContainSubstring(": null"))
+			doc := helpJSON("help", "version", "--json")
+			Expect(doc).To(HaveKeyWithValue("commands", BeEmpty()))
+			Expect(doc).To(HaveKeyWithValue("flags", ContainElement(And(named("help"), HaveKeyWithValue("aliases", []any{})))))
+			all := lola("help", "--all", "--json")
+			Expect(all.out).NotTo(ContainSubstring(": null"))
+			Expect(helpJSON("help", "--all", "--json")).To(HaveKeyWithValue("global_flags", []any{}))
+		})
+
+		It("says which flags take an optional value, and shows --trust's placeholder without lola's sentinel", func() {
+			install := helpJSON("install", "-h", "--json")
+			Expect(install).To(HaveKeyWithValue("flags", ContainElement(And(named("strict"),
+				HaveKeyWithValue("type", "bool"), HaveKeyWithValue("value", ""), HaveKeyWithValue("value_optional", true)))))
+			Expect(install).To(HaveKeyWithValue("flags", ContainElement(And(named("target"),
+				HaveKeyWithValue("shorthand", "t"), HaveKeyWithValue("type", "stringSlice"), HaveKeyWithValue("value_optional", false)))))
+			Expect(install).To(HaveKeyWithValue("flags", ContainElement(And(named("trust"),
+				HaveKeyWithValue("value", "=<kinds>"), HaveKeyWithValue("value_optional", true)))))
+			Expect(helpJSON("sync", "-h", "--json")).To(HaveKeyWithValue("flags", ContainElement(And(named("trust"),
+				HaveKeyWithValue("value", "[=entries,profiles]")))))
+			for _, args := range [][]string{{"install", "-h", "--json"}, {"help", "--all", "--json"}} {
+				Expect(lola(args...).out).NotTo(ContainSubstring(`\u0000`))
+			}
+		})
+
+		It("the root's long help has the environment; bare lola prints short help", func() {
+			long := helpJSON("--help", "--json")
+			Expect(long).To(HaveKeyWithValue("group", ""))
+			Expect(long).To(HaveKeyWithValue("reference_url", docs+"usage.md"))
+			Expect(long).To(HaveKeyWithValue("environment", ContainElement(Equal(map[string]any{
+				"name": "LOLA_COLOR", "description": "1 or 0 forces color on or off"}))))
+			Expect(long).To(HaveKeyWithValue("commands", ContainElement(And(named("help"),
+				HaveKeyWithValue("path", "lola help")))))
+			Expect(lola("help", "--json").out).To(Equal(lola("--help", "--json").out))
+			Expect(lola("--json").out).To(Equal(lola("-h", "--json").out))
+		})
+
+		It("help --all <cmd> carries the global flags once, at the top, and only that subtree", func() {
+			doc := helpJSON("help", "--all", "cache", "--json")
+			Expect(doc).To(HaveKeyWithValue("path", "lola cache"))
+			Expect(doc).To(HaveKeyWithValue("global_flags", ContainElement(named("no-pager"))))
+			Expect(doc).NotTo(HaveKey("environment"))
+			subs := doc["commands"].([]any)
+			Expect(subs).NotTo(BeEmpty())
+			for _, s := range subs {
+				sub := s.(map[string]any)
+				Expect(sub["path"]).To(HavePrefix("lola cache "))
+				Expect(sub).To(HaveKey("long"))
+				Expect(sub).To(HaveKey("flags"))
+				Expect(sub).NotTo(HaveKey("global_flags"))
+			}
+		})
+
+		It("prints JSON on the help path even with --plain, which only the help command refuses", func() {
+			Expect(lola("install", "-h", "--json", "--plain").out).To(Equal(lola("install", "-h", "--json").out))
+			r := lola("help", "install", "--json", "--plain")
+			Expect(r.code).To(Equal(1))
+			Expect(r.out).To(BeEmpty())
+		})
+
+		It("refuses an unknown topic and --all with --short as a JSON error, stdout empty", func() {
+			for _, args := range [][]string{{"help", "nope", "--json"}, {"help", "--all", "--short", "--json"}} {
+				r := lola(args...)
+				Expect(r.code).To(Equal(1), strings.Join(args, " "))
+				Expect(r.out).To(BeEmpty())
+				var e map[string]any
+				Expect(json.Unmarshal([]byte(r.err), &e)).To(Succeed(), r.err)
+				Expect(e).To(HaveKey("error"))
+			}
+		})
 	})
 })

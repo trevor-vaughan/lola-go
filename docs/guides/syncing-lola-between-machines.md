@@ -29,7 +29,7 @@ remotes:
 - **When lola writes it.** Every user-scope run that installs, updates or removes entries of your
   profiles (`lola sync`, `lola update`, `lola install`, `lola uninstall` and the `lola profile`
   actions that change user scope) rewrites `modules:`, and only when its bytes change.
-  - `lola profile --add`, `--update` and `--remove` keep `remotes:` current and leave `modules:` as
+  - `lola profile add`, `update` and `rm` keep `remotes:` current and leave `modules:` as
     it was.
   - A sync sets the pins of the modules it resolved or changed.
   - Any other run sets a pin
@@ -52,29 +52,29 @@ remotes:
 - **Moving the pins.** `lola update --user` moves them; the next sync of `~/.config/lola` carries
   them to your other machines, where `lola sync --user` applies them as changes.
 - **Restoring a remote profile.** A run that needs a remote profile this machine lacks and
-  `pins.yaml` records (`lola sync`, `lola install`, `lola profile --move`, `lola profile --switch`
-  or `--on` of it, a run while a [bundle](bundles.md) with it as a member is on, or the profile a
-  `--switch` or `--on` names)
+  `pins.yaml` records (`lola sync`, `lola install`, `lola profile move`, `lola profile switch`
+  or `on` of it, a run while a [bundle](bundles.md) with it as a member is on, or the profile a
+  `switch` or `on` names)
   fetches it at the recorded commit before planning, checks the recorded digest, and writes it as
-  `--add` does, with no question:
+  `add` does, with no question:
   `→ restored remote profile go from pins.yaml (https://github.com/acme/lola-profiles @ 77d2c1…)`.
   - Read-only commands do not fetch; `lola list` and `lola profile` show
     `profile remote:go (not on this machine yet → lola sync --user)`.
   - Under `-n` (a dry run) a run warns
     `remote:go is not on this machine yet; run this again without -n to restore it from pins.yaml`
     and fetches nothing.
-- **When it refuses.** The source must pass the same host rules as `--add`, checked before any
+- **When it refuses.** The source must pass the same host rules as `add`, checked before any
   network contact.
   - If the commit is not on the ref any more, the run stops naming it
     (`go: commit <commit> is not on <ref> at <source>`); if the source no
     longer serves the recorded digest, it stops with `go: the source no longer serves the recorded
-    version`. Both hint `review and take what it serves now: lola profile go --add <source> …`.
+    version`. Both hint `review and take what it serves now: lola profile add <source> go …`.
   - A network failure keeps its own message and hints running the same command again.
   - A file or link
     at the profile's place under `$XDG_DATA_HOME/lola/profiles` is never written over: the run
     stops before it plans, naming it (`… is in the way of remote:go, which pins.yaml records; lola
     never writes over it`), and hints moving it aside; `lola list` shows it in place of the restore.
-- **When it cannot record one.** `lola profile --add` or `--update` that wrote a profile but could
+- **When it cannot record one.** `lola profile add` or `update` that wrote a profile but could
   not record it warns: a `pins.yaml` that does not load is named with its line, and a sync records
   the profiles once it is fixed by hand; otherwise a sync records them once the file can be
   written.
@@ -84,4 +84,4 @@ remotes:
 
 `lock.json` and everything under `$XDG_STATE_HOME/lola` and `$XDG_DATA_HOME/lola` stay per
 machine: the profile that is on is recorded there, so a new machine starts on the base, with no
-profile on ([Profiles](profiles.md)); turn one on with `lola profile <name> --on`.
+profile on ([Profiles](profiles.md)); turn one on with `lola profile on <name>`.

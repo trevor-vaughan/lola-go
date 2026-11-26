@@ -21,7 +21,7 @@ import (
 )
 
 // ProfileUpdate is lola profile's action that fetches a kept remote profile again from its
-// source; it is also the flag lola profile takes for it.
+// source; it is also lola profile's verb for it.
 const ProfileUpdate ProfileAction = "update"
 
 // ProfileUpdateRequest is one lola profile <name>... --update: fetch the remote
@@ -63,7 +63,7 @@ type ProfileUpdateRequest struct {
 	Batch *TrustBatch
 }
 
-// What became of one remote profile of lola profile --update, as ProfileOutcome.Outcome reports it.
+// What became of one remote profile of lola profile update, as ProfileOutcome.Outcome reports it.
 const (
 	UpdateUpdated  = "updated"      // the new profile is written
 	UpdateUpToDate = "up_to_date"   // the source serves the pin it has
@@ -86,7 +86,7 @@ type ProfileOutcome struct {
 	Err     error    `json:"-"`
 }
 
-// ProfileUpdateResult is what lola profile --update reports: the remote profiles shown, each
+// ProfileUpdateResult is what lola profile update reports: the remote profiles shown, each
 // written when you accepted it (unless a dry run), every named profile's outcome (Updates), the
 // notices, and Scopes, the scopes the updates apply in, in the order the run applies them ([]
 // unless one was written).
@@ -129,7 +129,7 @@ type UpdateScope struct {
 	Of    Scope    `json:"-"`
 }
 
-// UpdateStoppedError is a lola profile --update stopped by Err: an error of its consent such as
+// UpdateStoppedError is a lola profile update stopped by Err: an error of its consent such as
 // Ctrl+C, of taking the profiles lock again after a write, or of a later staged profile that
 // changed before CommitStaged wrote it. What it wrote is kept, nothing after was fetched or asked
 // about, and nothing is applied. Result is the run so far: each profile's outcome (UpdateSkipped
@@ -144,7 +144,7 @@ func (e *UpdateStoppedError) Unwrap() error { return e.Err }
 
 // UpdateProfile fetches remote profiles again from their recorded sources: the names, the scopes
 // and whether the run can ask for consent are checked before any network contact, and each
-// profile's recorded source (as --add checks one) before its own fetch; each profile is then
+// profile's recorded source (as add checks one) before its own fetch; each profile is then
 // fetched, read as untrusted input, and how its entries changed shown with the whole content of
 // every added or changed one (remoteContent), and asked about on its own: a profile whose pin did
 // not change is a notice; a No keeps that one and goes on; a failure to fetch, read, check or write
@@ -173,16 +173,15 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 	// Your home directory is user scope's root, never a project: a run named
 	// there is refused before anything is fetched or kept, with the run at user scope instead.
 	if len(given) == 1 && e.IsHome(given[0]) {
-		args := []string{"--update", "--all"}
+		args := []string{"update", "--all"}
 		if !req.All {
-			args = nil
+			args = []string{"update"}
 			for _, n := range req.Names {
 				if !strings.Contains(n, ":") {
 					n = string(profile.KindRemote) + ":" + n
 				}
 				args = append(args, n)
 			}
-			args = append(args, "--update")
 		}
 		err := fmt.Errorf("project scope at %s is your home directory, where user scope installs", shown(e.Paths.Home))
 		// With neither names nor --all (an engine call; the CLI refuses it first) the run at user
@@ -220,11 +219,11 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 		qs = append(qs, string(profile.KindRemote)+":"+n)
 	}
 	run := func(extra ...string) []string {
-		args := []string{"--update"}
+		args := []string{"update"}
 		if req.All {
 			args = append(args, "--all")
 		} else {
-			args = append(slices.Clone(qs), args...)
+			args = append(args, qs...)
 		}
 		return slices.Concat(args, extra, req.Flags, req.Rerun)
 	}
@@ -234,7 +233,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 	}
 	covered := req.Trust.Covers(TrustProfiles)
 	if req.Consent == nil && !covered && !req.DryRun {
-		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola profile --update shows how each profile changes and asks before keeping it, and there is no terminal to ask on")),
+		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola profile update shows how each profile changes and asks before keeping it, and there is no terminal to ask on")),
 			"see it: "+e.ProfileRun(given, run("-n")...),
 			"then update it unasked: "+e.ProfileRun(given, trusting()...))
 	}
@@ -356,7 +355,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 			if covered {
 				res.Trusted = append(res.Trusted, Consent{Kind: TrustProfiles.String(), Item: rp.Profile, Change: ConsentChanged})
 			}
-			again := slices.DeleteFunc(slices.Concat([]string{q, "--update"}, req.Flags, req.Rerun), func(f string) bool { return f == "-n" })
+			again := slices.DeleteFunc(slices.Concat([]string{"update", q}, req.Flags, req.Rerun), func(f string) bool { return f == "-n" })
 			text := "to update " + shown(q) + ": " + e.ProfileRun(given, again...)
 			if !covered {
 				text += " (off a terminal: " + TrustProfiles.Arg() + ")"
@@ -434,8 +433,8 @@ func (e *Engine) updateNames(sc Scope, given []Scope, req ProfileUpdateRequest) 
 	case len(req.Names) == 0:
 		// A hint for profiles never named answers no question for them: no -y or --trust.
 		display := slices.DeleteFunc(slices.Clone(req.Rerun), consentArg)
-		return nil, errs.WithHints(errors.New("--update needs the remote profiles to update, or --all"),
-			"update every one: "+e.ProfileRun(given, append([]string{"--update", "--all"}, display...)...))
+		return nil, errs.WithHints(errors.New("lola profile update needs the remote profiles to update, or --all"),
+			"update every one: "+e.ProfileRun(given, append([]string{"update", "--all"}, display...)...))
 	}
 	var names []string
 	for _, n := range req.Names {
@@ -451,7 +450,7 @@ func (e *Engine) updateNames(sc Scope, given []Scope, req ProfileUpdateRequest) 
 }
 
 // RemoteProfileNames is the names of the remote profiles you have, by the listing of their
-// directory alone: for the completion of --update and --remove, and the hints of an --update that
+// directory alone: for the completion of update and rm, and the hints of an --update that
 // names none.
 func (e *Engine) RemoteProfileNames() ([]string, error) {
 	infos, _, err := profile.Remote(e.Paths)
@@ -473,7 +472,7 @@ func (o *ProfileOutcome) fail(err error) {
 	}
 }
 
-// updateRun is what every profile of one lola profile --update shares: the scopes the flags named
+// updateRun is what every profile of one lola profile update shares: the scopes the flags named
 // (none when empty), the scope whose lock.json (led) annotates the content shown, the run's flags,
 // the assistants' versions probed once, and the one template budget its trust diffs render on.
 type updateRun struct {
@@ -552,7 +551,7 @@ func (u *updateRun) write(rp *RemoteProfile, was profile.Origin, again []string)
 	q := string(profile.KindRemote) + ":" + rp.name
 	if _, now, err := profile.LoadRemote(e.profilePath(u.sc, profile.KindRemote, rp.name)); err != nil || now != was {
 		return false, nil, errs.WithHints(errors.Join(fmt.Errorf("%s changed while you were asked; it was not updated", shown(q)), err),
-			"run it again: "+e.ProfileRun(u.given, slices.Concat(again, []string{"--update"}, u.flags)...))
+			"run it again: "+e.ProfileRun(u.given, slices.Concat([]string{"update"}, again, u.flags)...))
 	}
 	written, err = e.writeRemote(rp.name, rp.data, rp.origin)
 	if !written {
@@ -862,7 +861,7 @@ func (u scopeUse) usedText(qs []string, also bool) string {
 	return text
 }
 
-// remoteNamed is the remote profile name names as typed for action (--update, --remove): go or
+// remoteNamed is the remote profile name names as typed for action (update, rm): go or
 // remote:go, a bare name meaning the remote profile since only those can be updated or removed.
 // A name of another kind is refused, saying the action is for remote profiles (sc locates a local
 // profile's file); one no remote profile has is refused, with the action for the remote profiles
@@ -877,7 +876,7 @@ func (e *Engine) remoteNamed(sc Scope, given []Scope, name string, action Profil
 		if kind == string(profile.KindUser) || kind == string(profile.KindProject) {
 			edit = "edit " + shown(e.profilePath(sc, profile.Kind(kind), bare)) + " by hand: lola updates only remote profiles"
 		}
-		return "", errs.WithHints(fmt.Errorf("--%s acts on remote profiles; %s is not one", action, untrusted.Text(name, untrusted.MaxName)),
+		return "", errs.WithHints(fmt.Errorf("lola profile %s acts on remote profiles; %s is not one", action, untrusted.Text(name, untrusted.MaxName)),
 			edit, "see the remote ones: "+e.ProfileRun(given))
 	}
 	if err := remoteName(bare); err != nil {
@@ -908,7 +907,7 @@ func (e *Engine) noRemote(given []Scope, name string, action ProfileAction) erro
 			hints = append(hints, "see them all: "+e.ProfileRun(given))
 			break
 		}
-		hints = append(hints, "--"+string(action)+" "+shown(i.Qualified())+": "+e.ProfileRun(given, i.Qualified(), "--"+string(action)))
+		hints = append(hints, string(action)+" "+shown(i.Qualified())+": "+e.ProfileRun(given, string(action), i.Qualified()))
 	}
 	if len(infos) == 0 {
 		hints = []string{"you have none; see the profiles you have: " + e.ProfileRun(given)}
@@ -919,22 +918,22 @@ func (e *Engine) noRemote(given []Scope, name string, action ProfileAction) erro
 // readd is err, the remote profile name's that does not load, with the commands that replace it
 // with a fresh copy. Removing it takes --force: a profile that does not load is in use wherever
 // it was read, and no check of its use can pass; it never carries -y. Then, when its
-// source.json still reads and --add would take its source, ref and --path, add it again from
-// them; when --add would refuse them, say why.
+// source.json still reads and add would take its source, ref and --path, add it again from
+// them; when add would refuse them, say why.
 func (e *Engine) readd(sc Scope, name string, err error) error {
 	// Its source would serve the same entries again: CoachUnresolved says what can fix them.
 	if _, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
 		return err
 	}
-	remove := []string{string(profile.KindRemote) + ":" + name, "--remove", "--force"}
+	remove := []string{"rm", string(profile.KindRemote) + ":" + name, "--force"}
 	hints := []string{"remove it: " + e.Command(sc, "profile", remove...)}
 	if o, oerr := profile.ReadOrigin(filepath.Join(e.Paths.RemoteProfiles, name)); oerr == nil {
 		if _, serr := e.remoteSpec(o.Source, o.Ref, o.Path); serr != nil {
 			hints = append(hints, "its recorded source cannot be added again: "+untrusted.CleanErr(serr).Error()+"; add "+shown(name)+
-				" from a source lola profile --add accepts")
+				" from a source lola profile add accepts")
 			return errs.WithHints(err, hints...)
 		}
-		args := []string{name, "--add", o.Source}
+		args := []string{"add", o.Source, name}
 		for _, f := range [][2]string{{"--ref", o.Ref}, {"--path", o.Path}} {
 			if f[1] != "" {
 				args = append(args, f[0], f[1])

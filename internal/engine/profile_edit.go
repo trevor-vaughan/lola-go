@@ -19,11 +19,11 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
-// ProfileEdit is lola profile [<name>] --edit [<module>...]: it edits a profile's modules and their
+// ProfileEdit is lola profile edit [<name>] [<module>...]: it edits a profile's modules and their
 // picks, or with --bundle a bundle's members.
 const ProfileEdit ProfileAction = "edit"
 
-// EditTarget is the file lola profile [<name>] --edit edits at a scope:
+// EditTarget is the file lola profile edit [<name>] edits at a scope:
 // Name as the run's hints name it (base, or the profile's name as the scope resolves it alone),
 // Label as a write line names it, Path its file, Kind base, user or project, and either its modules
 // by name or, for a bundle, its members as its file writes them; CacheAdd is, for each module, the
@@ -40,7 +40,7 @@ type EditTarget struct {
 	CacheAdd map[string]string
 }
 
-// EditTarget is what lola profile [<req.Profile>] --edit edits at sc: the
+// EditTarget is what lola profile edit [<req.Profile>] edits at sc: the
 // profile req.Profile names (base, default at user scope, a profile of yours or the project's, or
 // a bundle of them), else the write target, asked as an install asks it (ask; nil refuses with the
 // flag forms, which req.Rerun words). A remote profile is refused, hinting a copy of yours; a name
@@ -82,7 +82,7 @@ func (e *Engine) EditTarget(sc Scope, req TargetRequest, ask func(WhereQuestion)
 			}
 		}
 	}
-	t, _, err := e.writeTarget(sc, layers, infos, req, "profile --edit", "", ask)
+	t, _, err := e.writeTarget(sc, layers, infos, req, "profile edit", "", ask)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (e *Engine) EditTarget(sc Scope, req TargetRequest, ask func(WhereQuestion)
 	return out, nil
 }
 
-// makeIt is unknown, a name no profile has, as lola profile <name> --edit refuses it: what it says,
+// makeIt is unknown, a name no profile has, as lola profile edit <name> refuses it: what it says,
 // that --new makes it, and the run with --new (req.Rerun). unknown's own hints (write a file, fetch a
 // remote one) are left out: --new is the run's way to make it.
 func makeIt(unknown *unknownProfileError, req TargetRequest) error {
@@ -135,18 +135,18 @@ func (e *Engine) scopeLayers(sc Scope) ([]Layer, error) {
 // a copy of yours, which you can edit, keeping again.
 func (e *Engine) remoteReadOnly(sc Scope, infos []profile.Info, i profile.Info, again []string) error {
 	return errs.WithHints(fmt.Errorf("%s is read-only; lola does not edit remote profiles", shown(i.Qualified())),
-		"switch to a copy of yours, which you can edit: "+e.Command(sc, "profile", append([]string{freeName(infos, bareName(i.Qualified())+"-mine"),
-			"--switch", "--new", "--from", i.Qualified()}, again...)...))
+		"switch to a copy of yours, which you can edit: "+e.Command(sc, "profile", append([]string{"switch", freeName(infos, bareName(i.Qualified())+"-mine"),
+			"--new", "--from", i.Qualified()}, again...)...))
 }
 
-// editName is i as lola profile <name> --edit names it at a scope that can use infos: its bare
+// editName is i as lola profile edit <name> names it at a scope that can use infos: its bare
 // name, unless a profile of another kind has it (layerLabel's rule).
 func editName(infos []profile.Info, i profile.Info) string {
 	return strings.TrimPrefix(layerLabel(infos, ledger.FromProfile(i.Qualified())), "profile ")
 }
 
 // editArg is name, a profile sc can use (infos), as a hint names it first in lola profile <name>
-// --edit: qualified when, bare, it also names a module (readsAsModule; catalog, the names your
+// edit: qualified when, bare, it also names a module (readsAsModule; catalog, the names your
 // catalogs list, read before the run took any lock: TargetRequest.Catalog), so the run reads it as
 // the profile; else as given. A name lola cannot judge is qualified, one beside a catalog lola
 // could not read (partial) too: a qualified name is never read as a module.
@@ -168,7 +168,7 @@ func (e *Engine) editArg(sc Scope, layers []Layer, infos []profile.Info, catalog
 	return name
 }
 
-// readsAsModule reports whether name, typed after lola profile --edit at a scope whose layers are
+// readsAsModule reports whether name, typed after lola profile edit at a scope whose layers are
 // layers, also names a module: a cached one, a source or a folder from cwd, an entry of the layers,
 // or an entry of your fetched catalogs (catalog, CatalogNames).
 func (e *Engine) readsAsModule(cwd, name string, layers []Layer, catalog []string) (bool, error) {
@@ -190,7 +190,7 @@ func (e *Engine) readsAsModule(cwd, name string, layers []Layer, catalog []strin
 }
 
 // CatalogNames is the names of the entries your fetched catalogs offer (MarketGroups; display, the
-// run's output flags), which lola profile --edit reads before an install locks the catalogs: an
+// run's output flags), which lola profile edit reads before an install locks the catalogs: an
 // install argument of one of them is a marketplace entry (TargetRequest.Catalog). An edit needs
 // none of them to run, so a catalog lola cannot read fails nothing: complete is false (some
 // names may be missing), and a hint qualifies every profile name instead (editArg).
@@ -205,7 +205,7 @@ func (e *Engine) CatalogNames(display []string) (names []string, complete bool) 
 	return names, err == nil && len(warnings) == 0
 }
 
-// EditScopes is where lola profile [<name>] --edit applies: read, the one scope the run takes
+// EditScopes is where lola profile edit [<name>] applies: read, the one scope the run takes
 // without asking (the scope flags, else the project found from here, else user scope), and, when no
 // flag named it and name is a profile of yours on at user scope too (or a bundle the one on there
 // nests), user scope as well: the profile is written once and applied in each scope it is on. A
@@ -253,13 +253,13 @@ func (e *Engine) EditScopes(read ScopeChoice, name string) ([]ScopeChoice, error
 }
 
 // IsUnknownProfile reports whether err refuses a profile name that names no profile the scope can
-// use: what lola profile <name> --edit offers to make (--new).
+// use: what lola profile edit <name> offers to make (--new).
 func IsUnknownProfile(err error) bool {
 	_, ok := errors.AsType[*unknownProfileError](err)
 	return ok
 }
 
-// editRuns is newRuns for lola profile <name> --edit --new at sc, worded as the run is (req.Rerun,
+// editRuns is newRuns for lola profile edit <name> --new at sc, worded as the run is (req.Rerun,
 // which takes "--profile <name>" as the profile the run names): make keeps the run's modules and
 // flags, --from and --bundle among them, so make ignores the modifiers a caller offers (repeating
 // them would fail, "bundle lists a twice"); plain makes the profile alone.
@@ -267,12 +267,12 @@ func (e *Engine) editRuns(sc Scope, req TargetRequest) newRuns {
 	return newRuns{make: func(name string, _ ...string) string {
 		return req.Rerun("--profile", name, "--new")
 	}, plain: func(name string) string {
-		return e.Command(sc, "profile", append([]string{name, "--edit", "--new"}, req.Again...)...)
+		return e.Command(sc, "profile", append([]string{"edit", name, "--new"}, req.Again...)...)
 	},
 		use: func(q string) string { return req.Rerun("--profile", q) }, useLabel: "edit it", list: e.listRun(sc, req.Again)}
 }
 
-// EditArgsRequest is what lola profile [<name>] --edit [<module>...] was given at Scope, for
+// EditArgsRequest is what lola profile edit [<name>] [<module>...] was given at Scope, for
 // EditArgs: Args, the names typed; Made, --new; Cwd, where a source resolves; Display, the run's
 // output flags; Catalog, the names your catalogs list (CatalogNames; CatalogPartial when lola could
 // not read them all); Rerun, the run with other names in place of Args (its hints); Ask, the
@@ -318,7 +318,7 @@ func (e *Engine) EditArgs(req EditArgsRequest) (string, []string, error) {
 	amb, ambiguous := errors.AsType[*ambiguousProfileError](err)
 	isProfile := err == nil || ambiguous
 	// What a name reads as never waits on a bundle's member that resolves to nothing: that is the
-	// run's own load to judge, and --edit --bundle takes it out (Engine.recovering).
+	// run's own load to judge, and edit --bundle takes it out (Engine.recovering).
 	saved := e.recovering
 	if saved == nil {
 		e.recovering = &recovery{}
@@ -384,7 +384,7 @@ func (e *Engine) bothRead(req EditArgsRequest, profiles []profile.Info, layers [
 		}
 	}
 	if req.Ask == nil {
-		return "", nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("%s names %s and a module; lola profile --edit needs to know which to edit, and there is no terminal to ask on",
+		return "", nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("%s names %s and a module; lola profile edit needs to know which to edit, and there is no terminal to ask on",
 			module, andJoin(named))), hints...)
 	}
 	c, err := req.Ask(WhereQuestion{Scope: req.Scope, Title: module + " names " + andJoin(named) + " and a module.",
@@ -398,7 +398,7 @@ func (e *Engine) bothRead(req EditArgsRequest, profiles []profile.Info, layers [
 	return "", req.Args, nil
 }
 
-// MakeRequest is lola profile <Name> --edit --new without modules: make the
+// MakeRequest is lola profile edit <Name> --new without modules: make the
 // profile, empty, or From's copy, or with Bundle (members as typed) a bundle, and apply nothing (it
 // is not on). Target words the hints as the run does (its Rerun, Again); Options is the run's (-n
 // writes nothing).
@@ -439,11 +439,11 @@ func (e *Engine) MakeProfile(ctx context.Context, req MakeRequest) (*SyncResult,
 	}
 	made := w.infos[len(w.infos)-1] // the profile named: newProfiles adds it after the members it makes
 	res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: shown(editName(infos, made)) + " is not on " + scopeWhere(sc) + " → " +
-		e.Command(sc, "profile", append([]string{shown(editName(infos, made)), "--switch"}, req.Target.Again...)...)})
+		e.Command(sc, "profile", append([]string{"switch", shown(editName(infos, made))}, req.Target.Again...)...)})
 	return res, nil
 }
 
-// BundleEditRequest is lola profile <Name> --edit --bundle <Members>: set the members of Name, a
+// BundleEditRequest is lola profile edit <Name> --bundle <Members>: set the members of Name, a
 // bundle or an empty profile, in order. Also is where else the run applies a bundle of yours that
 // reaches there (EditScopes' later scopes). Target words the hints as the run does; Options,
 // ConfirmRemovals, Trust and Show are the apply's, as a sync's are. ConfirmAfter, when set, asks
@@ -462,7 +462,7 @@ type BundleEditRequest struct {
 	Show            func(TrustReport) error
 }
 
-// BundleEdit is what lola profile --edit --bundle did: the bundle (Profile, its qualified name, and
+// BundleEdit is what lola profile edit --bundle did: the bundle (Profile, its qualified name, and
 // Path), its members as written now and before (Was), the profiles it made for members that named
 // none, Sync, the apply of the scope when the bundle is on there (null otherwise, and when
 // nothing changed), and Also, the apply of each other scope it reaches (BundleEditRequest.Also).
@@ -545,7 +545,7 @@ func (e *Engine) EditBundle(ctx context.Context, req BundleEditRequest) (*Bundle
 		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "bundle " + bundleLabel(infos, q) + " already lists " + strings.Join(res.Members, ", ")})
 		return res, nil
 	}
-	args := []string{shown(editName(infos, i)), "--edit", "--bundle", strings.Join(req.Members, ",")}
+	args := []string{"edit", shown(editName(infos, i)), "--bundle", strings.Join(req.Members, ",")}
 	pending, err := e.pendingMembers(sc, i, p)
 	if err != nil {
 		return nil, err
@@ -655,7 +655,7 @@ func (e *Engine) EditBundle(ctx context.Context, req BundleEditRequest) (*Bundle
 		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "would be saved to bundle " + bundleLabel(infos, q) + "; it is not on " + scopeWhere(sc)})
 	default:
 		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "saved to bundle " + bundleLabel(infos, q) + "; it is not on " + scopeWhere(sc) +
-			" → " + e.Command(sc, "profile", append([]string{shown(editName(infos, i)), "--switch"}, again...)...)})
+			" → " + e.Command(sc, "profile", append([]string{"switch", shown(editName(infos, i))}, again...)...)})
 	}
 	for _, o := range also {
 		then := SyncRequest{Scope: o, Options: req.Options, ConfirmRemovals: req.ConfirmRemovals, Display: req.Options.Display, profileArgs: args}
@@ -732,7 +732,7 @@ func (e *Engine) confirmAlso(ctx context.Context, first SyncRequest, also []Scop
 	return confirmed, nil
 }
 
-// nameTheBundle refuses lola profile --edit --bundle members with no name at sc: the write target
+// nameTheBundle refuses lola profile edit --bundle members with no name at sc: the write target
 // an edit defaults to is never a bundle. Its hints run as printed: adding members to the bundle of
 // yours or the project's that is on, and making a bundle of them.
 func (e *Engine) nameTheBundle(sc Scope, infos []profile.Info, members, again, display []string) error {
@@ -757,7 +757,7 @@ func (e *Engine) nameTheBundle(sc Scope, infos []profile.Info, members, again, d
 					}
 				}
 				hints = append(hints, "add them to "+bundleLabel(infos, infos[k].Qualified())+", the bundle on: "+
-					e.Command(sc, "profile", append([]string{editName(infos, infos[k]), "--edit", "--bundle", strings.Join(all, ",")}, again...)...))
+					e.Command(sc, "profile", append([]string{"edit", editName(infos, infos[k]), "--bundle", strings.Join(all, ",")}, again...)...))
 			}
 		}
 	}
@@ -771,13 +771,13 @@ func (e *Engine) nameTheBundle(sc Scope, infos []profile.Info, members, again, d
 		for _, m := range bareNames(members) {
 			taken = append(taken, profile.Info{Name: m})
 		}
-		hints = append(hints, label+e.Command(sc, "profile", append([]string{freeName(taken, strings.Join(bareNames(members), "-")), "--edit", "--new",
+		hints = append(hints, label+e.Command(sc, "profile", append([]string{"edit", freeName(taken, strings.Join(bareNames(members), "-")), "--new",
 			"--bundle", strings.Join(members, ",")}, again...)...))
 	} else {
 		hints = append(hints, "see the profiles: "+e.Command(sc, "profile", display...))
 	}
-	return errs.WithHints(errors.New("--bundle sets the members of the bundle --edit names, and none was named: name the bundle to edit, as in "+
-		"lola profile <bundle> --edit --bundle <profile>,<profile>"), hints...)
+	return errs.WithHints(errors.New("--bundle sets the members of the bundle edit names, and none was named: name the bundle to edit, as in "+
+		"lola profile edit <bundle> --bundle <profile>,<profile>"), hints...)
 }
 
 // withPending is rep, the report of a run's own sync, with pending, the change to a project bundle's

@@ -143,23 +143,23 @@ var _ = Describe("the marketplace picker's preview of a known marketplace", func
 		Expect(m.level).To(Equal(detailLevel))
 	})
 
-	It("answers m on the entries page and on the detail page as m on the known row does", func() {
+	It("enables the known row on m on the entries page and on the detail page", func() {
 		m, cmd := pick(previewing(&previewer{}), keyM)
-		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}))
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnable, Known: []string{"kn"}}))
 		Expect(cmd()).To(Equal(tea.QuitMsg{}))
 		m, _ = pick(previewing(&previewer{}), keyEnter, keyM)
 		Expect(m.level).To(Equal(detailLevel))
-		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}))
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnable, Known: []string{"kn"}}))
 	})
 
 	It("stays on the list with the real reason and a working hint when the fetch fails, and opens no entries page", func() {
-		p := &previewer{err: errs.WithHints(errors.New("could not reach example.com: no route to host"), "lola market --enable kn -n", "lola market --known")}
+		p := &previewer{err: errs.WithHints(errors.New("could not reach example.com: no route to host"), "lola market enable kn -n", "lola market known")}
 		m, cmd := toKnown(previewPicker(p, 100, 40), keyEnter)
 		m, _ = pick(m, cmd())
 		Expect(m.level).To(Equal(listLevel))
 		Expect(m.done).To(BeFalse())
 		Expect(drawn(m)).To(And(ContainSubstring("could not reach example.com: no route to host"),
-			ContainSubstring("→ lola market --enable kn -n"), Not(ContainSubstring("fetching kn"))))
+			ContainSubstring("→ lola market enable kn -n"), Not(ContainSubstring("fetching kn"))))
 	})
 
 	It("stays on the list, saying so, when the pinned catalog offers no entry", func() {
@@ -167,7 +167,7 @@ var _ = Describe("the marketplace picker's preview of a known marketplace", func
 		m, cmd := toKnown(previewPicker(p, 100, 40), keyEnter)
 		m, _ = pick(m, cmd())
 		Expect(m.level).To(Equal(listLevel))
-		Expect(drawn(m)).To(ContainSubstring("kn at bbbbbbb offers no entries; m enables it anyway"))
+		Expect(drawn(m)).To(ContainSubstring("kn at bbbbbbb offers no entries; lola market enable kn enables it anyway"))
 	})
 
 	It("cancels the fetch on Esc, stays on the list, and drops a result that still arrives", func() {
@@ -286,11 +286,11 @@ var _ = Describe("the marketplace picker's preview of a known marketplace", func
 
 	It("starts a failure note with what was being fetched and keeps the reason and the hint visible at 80 columns", func() {
 		reason := strings.Repeat("far away ", 40) + "TAIL-REASON"
-		p := &previewer{err: errs.WithHints(errors.New(reason), "lola market --enable kn -n")}
+		p := &previewer{err: errs.WithHints(errors.New(reason), "lola market enable kn -n")}
 		m, cmd := toKnown(previewPicker(p, 80, 40), keyEnter)
 		m, _ = pick(m, cmd())
 		out := drawn(m)
-		Expect(out).To(And(ContainSubstring("could not fetch kn: far away"), ContainSubstring("TAIL-REASON"), MatchRegexp(`→ lola\s+market --enable kn -n`)))
+		Expect(out).To(And(ContainSubstring("could not fetch kn: far away"), ContainSubstring("TAIL-REASON"), MatchRegexp(`→ lola\s+market enable kn -n`)))
 	})
 
 	It("bounds the reason of a failed fetch to failureCap, ending the note cleanly", func() {
@@ -346,10 +346,11 @@ var _ = Describe("the marketplace picker's preview of a known marketplace", func
 		Expect(p.calls).To(BeZero())
 	})
 
-	It("keeps m on the known row as the menu, without fetching", func() {
+	It("takes m on the known row as no key, fetching nothing", func() {
 		p := &previewer{}
-		m, _ := toKnown(previewPicker(p, 100, 40), keyM)
-		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}))
+		m, cmd := toKnown(previewPicker(p, 100, 40), keyM)
+		Expect(m.done).To(BeFalse())
+		Expect(cmd).To(BeNil())
 		Expect(p.calls).To(BeZero())
 	})
 

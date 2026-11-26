@@ -586,7 +586,7 @@ var _ = Describe("runtime hooks", func() {
 			// restore of a module it moves names lola sync too.
 			writeTree(e.Paths.UserProfiles, map[string]string{"ops.yml": "version: 1\nmodules:\n  - {name: deploy, source: " + plugin + "}\n"})
 			act, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "ops"},
-				Options: engine.Options{Targets: []string{"claude-code"}, ForceRun: "lola profile --project ops --on --force", Trust: engine.TrustAll, Unseen: true}})
+				Options: engine.Options{Targets: []string{"claude-code"}, ForceRun: "lola profile --project on ops --force", Trust: engine.TrustAll, Unseen: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(act.Findings).To(ContainElement(And(HaveField("Code", "claude-code/runtime-hook-drift"),
 				HaveField("Hint", "restore it: "+e.SyncCommand(sc, "deploy", "--force")))))

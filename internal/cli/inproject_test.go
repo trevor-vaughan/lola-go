@@ -48,18 +48,18 @@ var _ = Describe("local entries inside a project", func() {
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\n"})
 		r := lola("sync", "-C", proj, "--trust", "-y")
 		Expect(r.code).To(Equal(0), r.err)
-		r = lola("profile", "me", "--on", "-C", proj, "-y")
+		r = lola("profile", "on", "me", "-C", proj, "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		before := read(filepath.Join(proj, ".lola", "project.yml"))
 
 		me := filepath.Join(p.UserProfiles, "me.yml")
-		r = lola("profile", "--move", "notes", "--to", "me", "-C", proj)
+		r = lola("profile", "move", "notes", "--to", "me", "-C", proj)
 		Expect(r.code).NotTo(Equal(0))
 		Expect(r.err).To(HaveSuffix("\nerror: " + refused(me) + "\n"))
 		Expect(read(me)).To(Equal("version: 1\n"))
 
 		def := filepath.Join(p.UserProfiles, "default.yml")
-		r = lola("profile", "--move", "notes", "--to", "base", "--user", "-C", proj, "--json")
+		r = lola("profile", "move", "notes", "--to", "base", "--user", "-C", proj, "--json")
 		Expect(r.code).NotTo(Equal(0))
 		var doc struct {
 			Error string   `json:"error"`

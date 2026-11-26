@@ -37,7 +37,7 @@ JSON: the module's identity and contents, as [`lola info`](info.md#lola-info) st
 `path` when `--path` gave one. With `-n`, the same object under `would_add`.
 
 A download whose server's certificate no trusted authority signed (a self-signed or private-CA
-https URL, here and for `lola market --add`) is refused with the hint `trust your certificate
+https URL, here and for `lola market add`) is refused with the hint `trust your certificate
 authority: set SSL_CERT_FILE=<path to its PEM>`; any other download failure hints
 `check the URL and your network`.
 
@@ -47,7 +47,7 @@ authority: set SSL_CERT_FILE=<path to its PEM>`; any other download failure hint
 lola cache rm <module>...
 ```
 
-Aliases: `remove`, `uninstall`, `erase`, `delete`, `del`. Remove every cached version of the
+Aliases: `remove`, `delete`, `del`, `erase`. Remove every cached version of the
 modules. Installed modules keep working: each one runs from its own module copy, and `lola
 sync` fetches the source again when it needs to. Asks first.
 
@@ -86,8 +86,8 @@ Remove what your cache no longer needs. Asks first.
 
 A version is used when a run installs it (`install`), fetches it (an `install` that applies, or
 `info`, of a source, `cache add`, `cache update`, `sync`, `update` fetching it again, `profile
---update`) or renders the version a project records (`sync`, `update`, `profile --on`, `--switch`,
-`--update`, their dry runs included); `index.yml` records the day (UTC) as `last_used`, at most
+--update`) or renders the version a project records (`sync`, `update`, `profile on`, `switch`,
+`update`, their dry runs included); `index.yml` records the day (UTC) as `last_used`, at most
 once a day.
 
 `lola info` and `install -n` of a cached name, `cache list`, `check`, `list` and
@@ -121,7 +121,7 @@ and a source that moved or is gone fails as it does after `lola cache rm`. Remov
 (`--all`) leaves your marketplaces registered but not fetched: installing from one refuses with
 `marketplace <name> is not fetched: its catalog is not in your cache`, hinting `lola market <name>
 --update`. `lola sync --update` fetches again only the catalogs of marketplaces that entries
-installed in the scope came from; for any other, run `lola market <name> --update`.
+installed in the scope came from; for any other, run `lola market update <name> `.
 
 Refusals: `--all` with `--unused-for` (cobra's `if any flags in the group [all unused-for] are set
 none of the others can be`); an age that is not one: `--unused-for "3x" is not an age; write a

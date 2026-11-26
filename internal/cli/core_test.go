@@ -813,7 +813,7 @@ var _ = Describe("core commands", func() {
 		acme := filepath.Join(tmp, "acme")
 		writeTree(acme, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"},
   "plugins": [{"name": "formatter", "source": "./formatter", "description": "Formats code"}]}`, "formatter/commands/fmt.md": "Fmt\n"})
-		Expect(lola("market", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme).code).To(Equal(0))
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
 		mpath := filepath.Join(proj, ".lola", "project.yml")
 		b, err := os.ReadFile(mpath)
@@ -1037,8 +1037,8 @@ var _ = Describe("core commands", func() {
 		Expect(v["notices"]).To(Equal([]any{
 			map[string]any{"level": "warn", "class": "safety", "text": "example comes from " + mod + ", outside the project: a teammate's sync will refuse it; " +
 				"share a module through a git repository or an https:// archive"},
-			map[string]any{"level": "info", "class": "safety", "text": "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch --json"},
-			map[string]any{"level": "info", "class": "safety", "text": "meant for every project? move it from this project into your user base: lola profile --user --move example --to base -C " + proj + " --json"}}))
+			map[string]any{"level": "info", "class": "safety", "text": "keep it to yourself: lola profile -C " + proj + " move example --to mine --switch --json"},
+			map[string]any{"level": "info", "class": "safety", "text": "meant for every project? move it from this project into your user base: lola profile --user move example --to base -C " + proj + " --json"}}))
 		Expect(v["modules"]).To(HaveLen(1))
 		Expect(withoutContext(r.out)).NotTo(ContainSubstring("null"))
 	})

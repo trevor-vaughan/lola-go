@@ -52,7 +52,7 @@ it, or `-t` leaves it on another target) keeps its picks. JSON: `picks_cleared`,
 
 Each entry removed prints a write line (`✓ removed mod1 from profile go  (<path>)`, see
 [Where an install is written](install.md#where-an-install-is-written)). An edit to a profile that is off
-says `saved to profile rust; it is not on at user scope → lola profile --user rust --switch`.
+says `saved to profile rust; it is not on at user scope → lola profile --user switch rust`.
 
 | Flag                         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 |------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

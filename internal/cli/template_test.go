@@ -92,7 +92,7 @@ var _ = Describe("template refusals", func() {
 		git(market, "add", "-A")
 		git(market, "commit", "-q", "-m", "c")
 		git(tmp, "clone", "-q", "--bare", market, filepath.Join(tmp, "srv", "plugins.git"))
-		r := lola("market", "acme", "--add", srv+"/plugins.git")
+		r := lola("market", "add", srv+"/plugins.git", "acme")
 		Expect(r.code).To(Equal(0), r.out+r.err)
 		_, hints = refusal(lola("install", "@acme/mk", "-t", "claude-code", "--json", "--no-pager"))
 		Expect(hints).To(Equal([]string{"lola check --project @acme/mk --target claude-code --json --no-pager"}))

@@ -20,7 +20,7 @@ import (
 // ProfileAction is what lola profile does to a scope's active profile.
 type ProfileAction string
 
-// The activation actions; each is also the flag lola profile takes for it.
+// The activation actions; each is also lola profile's verb for it.
 const (
 	ProfileOn     ProfileAction = "on"
 	ProfileOff    ProfileAction = "off"
@@ -28,12 +28,12 @@ const (
 )
 
 // ProfileChange is the activation a sync applies under the scope lock: Action on Name, the
-// profile's name as the user typed it; "" only for --off, which then turns off whatever profile is
+// profile's name as the user typed it; "" only for off, which then turns off whatever profile is
 // on.
 type ProfileChange struct {
 	Action ProfileAction
 	Name   string
-	// New, with --switch, makes Name first: empty, a copy of From's entries, or with Bundle (members
+	// New, with switch, makes Name first: empty, a copy of From's entries, or with Bundle (members
 	// as typed) a bundle; newProfiles.
 	New    bool
 	From   string
@@ -43,7 +43,7 @@ type ProfileChange struct {
 // Activation is what an activation's sync reports beside the sync's own result: Profile, the
 // scope's active profile after the run by qualified name (the one before when the run applied
 // nothing), null when only the base is loaded, and Changes, what the change loads, replaces and
-// unloads. Named is the qualified name of the profile the run turns on or off (for --off, the one
+// unloads. Named is the qualified name of the profile the run turns on or off (for off, the one
 // it turns off; "" when none is on), File its file ("" when it is gone), and Turned whether the run
 // changes the profile on (false when it is already as asked, which a notice reports), for human
 // output.
@@ -55,8 +55,8 @@ type Activation struct {
 	Turned  bool          `json:"-"`
 }
 
-// OtherProfileOnError refuses --on of a profile while another is on:
-// one profile is on at a time, and --on never replaces it without asking; --switch does. On and
+// OtherProfileOnError refuses on of a profile while another is on:
+// one profile is on at a time, and on never replaces it without asking; switch does. On and
 // Name are the qualified names of the profile on and of the one named; the CLI asks on a terminal.
 type OtherProfileOnError struct {
 	On, Name string
@@ -64,7 +64,7 @@ type OtherProfileOnError struct {
 	// members, as memberName names them.
 	Bundle  string
 	Members []string
-	// Into is the bundle on, as lola profile <name> --edit names it, when the one named can join it
+	// Into is the bundle on, as lola profile edit <name> names it, when the one named can join it
 	// (a bundle of yours, or a project's bundle naming a project or remote profile), and Joined its
 	// members then, as its file writes them; "" when it cannot.
 	Into   string
@@ -104,15 +104,15 @@ const baseName = "base"
 
 // activeProfile is the scope's active profile after ch, infos being
 // the profiles sc can use and cur the one on (nil for none). --switch makes the named profile the
-// one on, whatever is on; --on does when none is, or when it is the project's profile of the name
+// one on, whatever is on; on does when none is, or when it is the project's profile of the name
 // of the one on, yours or a remote one, and otherwise refuses
-// (*OtherProfileOnError), hinting --switch: it never replaces a profile without asking. --off is
-// turnOff. A remote profile a local one shadows is refused for --on and --switch (local beats
+// (*OtherProfileOnError), hinting switch: it never replaces a profile without asking. off is
+// turnOff. A remote profile a local one shadows is refused for on and switch (local beats
 // remote). The base, by base or at user scope by default, is baseChange; default at project scope
 // is refused, hinting the runs that would change something there. A profile already on is a
 // notice. It returns the new profile on, the qualified name of the profile the run turns on or
 // off and its file, and the notices. flags is the run's flags, which a hint repeating it keeps
-// (and --on's --switch hint keeps the --trust of); again is what a hint naming another run keeps
+// (and on's --switch hint keeps the --trust of); again is what a hint naming another run keeps
 // (SyncRequest.again).
 func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Active, ch ProfileChange, flags, again []string) (*ledger.Active,
 	string, string, []Notice, error) {
@@ -130,7 +130,7 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 		switch {
 		case ch.Action == ProfileSwitch:
 			if cur != nil {
-				hints = append(hints, run(sc, baseName, "--switch"))
+				hints = append(hints, run(sc, "switch", baseName))
 			}
 			user := Scope{Kind: target.User}
 			led, err := e.Ledger(user)
@@ -138,14 +138,14 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 				return nil, "", "", nil, err
 			}
 			if led.Profile != nil {
-				hints = append(hints, run(user, profile.DefaultName, "--switch"))
+				hints = append(hints, run(user, "switch", profile.DefaultName))
 			}
 		case ch.Action == ProfileOn && cur == nil:
-			// no hint: a base --on would do nothing (exact coaching)
+			// no hint: a base on would do nothing (exact coaching)
 		case ch.Action == ProfileOn:
-			hints = []string{run(sc, baseName, "--switch")}
+			hints = []string{run(sc, "switch", baseName)}
 		case cur != nil:
-			hints = []string{run(sc, "--off")}
+			hints = []string{run(sc, "off")}
 		}
 		return nil, "", "", nil, errs.WithHints(errors.New("default is user scope's base; this project's base is project.yml"), hints...)
 	case ch.Name == baseName || isDefault:
@@ -154,9 +154,9 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 		return e.turnOff(sc, infos, cur, ch.Name, flags)
 	}
 	if ch.Name == "" {
-		return nil, "", "", nil, errs.WithHints(fmt.Errorf("--%s needs the name of a profile", ch.Action), "list them: "+e.Command(sc, "profile"))
+		return nil, "", "", nil, errs.WithHints(fmt.Errorf("lola profile %s needs the name of a profile", ch.Action), "list them: "+e.Command(sc, "profile", "list"))
 	}
-	typed := append([]string{ch.Name, "--" + string(ch.Action)}, flags...)
+	typed := append([]string{string(ch.Action), ch.Name}, flags...)
 	i, err := e.resolveProfile(sc, infos, ch.Name, typed)
 	if err != nil {
 		return nil, "", "", nil, err
@@ -188,8 +188,8 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 		return &ledger.Active{Name: q, By: ledger.ByOn}, q, shown(i.Path), nil, nil
 	}
 	// The --switch hint keeps the run's --trust and --unseen, never its --force or -y: --switch
-	// removes files --on would not, so nothing may answer their removal unasked.
-	sw := []string{q, "--switch"}
+	// removes files on would not, so nothing may answer their removal unasked.
+	sw := []string{"switch", q}
 	if k := slices.IndexFunc(flags, trustArg); k >= 0 {
 		sw = append(sw, flags[k])
 	}
@@ -224,11 +224,11 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 			if !slices.Contains(p.Bundle, add) && !slices.Contains(p.Bundle, i.Qualified()) { // in either spelling
 				other.Into, other.Joined = shown(editName(infos, infos[k])), append(slices.Clone(p.Bundle), add)
 				hints = append(hints, "or add it to bundle "+bundleLabel(infos, cur.Name)+": "+e.Command(sc, "profile",
-					append([]string{other.Into, "--edit", "--bundle", strings.Join(other.Joined, ",")}, again...)...))
+					append([]string{"edit", other.Into, "--bundle", strings.Join(other.Joined, ",")}, again...)...))
 			}
 		}
 	}
-	other.err = errs.WithHints(fmt.Errorf("%s is on, and --on does not replace it without asking; --switch does", shown(cur.Name)), hints...)
+	other.err = errs.WithHints(fmt.Errorf("%s is on, and lola profile on does not replace it without asking; switch does", shown(cur.Name)), hints...)
 	return nil, "", "", nil, other
 }
 
@@ -239,7 +239,7 @@ func replaces(cur *ledger.Active, i profile.Info) bool {
 	return i.Kind == profile.KindProject && name == i.Name && replaceable(kind)
 }
 
-// turnOff is --off's half of activeProfile: name names the profile on, by
+// turnOff is off's half of activeProfile: name names the profile on, by
 // its qualified name or its bare one, whether or not its file is still there (with one profile on,
 // a bare name cannot mean another: decisions.md, row 85), or name is "": the profile on goes off.
 // A name that resolves to a profile that is not on is a notice, as is a bare name several kinds
@@ -259,7 +259,7 @@ func (e *Engine) turnOff(sc Scope, infos []profile.Info, cur *ledger.Active, nam
 	if name == "" {
 		return nil, "", "", []Notice{{Level: LevelInfo, Text: "no profile is on"}}, nil
 	}
-	i, err := e.resolveProfile(sc, infos, name, append([]string{name, "--off"}, flags...))
+	i, err := e.resolveProfile(sc, infos, name, append([]string{"off", name}, flags...))
 	if amb, ok := errors.AsType[*ambiguousProfileError](err); ok {
 		var all []string
 		for _, f := range amb.found {
@@ -277,9 +277,9 @@ func (e *Engine) turnOff(sc Scope, infos []profile.Info, cur *ledger.Active, nam
 	return cur, "", "", []Notice{{Level: LevelInfo, Text: shown(i.Qualified()) + " is not on"}}, nil
 }
 
-// baseChange is activeProfile for a name of the scope's base: --switch
-// to it turns the profile on off (a notice when none is), --on of it is a notice when none is on
-// and refused, hinting that --switch, when one is; --off of it is refused, hinting --off when a
+// baseChange is activeProfile for a name of the scope's base: switch
+// to it turns the profile on off (a notice when none is), on of it is a notice when none is on
+// and refused, hinting that switch, when one is; off of it is refused, hinting off when a
 // profile is on. again is what a hint keeps of the run.
 func (e *Engine) baseChange(sc Scope, infos []profile.Info, cur *ledger.Active, action ProfileAction, again []string) (*ledger.Active,
 	string, string, []Notice, error) {
@@ -287,16 +287,16 @@ func (e *Engine) baseChange(sc Scope, infos []profile.Info, cur *ledger.Active, 
 	case action == ProfileOff:
 		var hints []string
 		if cur != nil {
-			hints = append(hints, e.Command(sc, "profile", append([]string{"--off"}, again...)...))
+			hints = append(hints, e.Command(sc, "profile", append([]string{"off"}, again...)...))
 		}
-		return nil, "", "", nil, errs.WithHints(errors.New("the base is always loaded; lola profile --off turns off the profile over it"), hints...)
+		return nil, "", "", nil, errs.WithHints(errors.New("the base is always loaded; lola profile off turns off the profile over it"), hints...)
 	case cur == nil && action == ProfileOn:
 		return nil, "", "", []Notice{{Level: LevelInfo, Text: "the base is always loaded"}}, nil
 	case cur == nil:
 		return nil, "", "", []Notice{{Level: LevelInfo, Text: "already on the base"}}, nil
 	case action == ProfileOn:
 		return nil, "", "", nil, errs.WithHints(fmt.Errorf("the base is always loaded; %s is on over it", shown(cur.Name)),
-			e.Command(sc, "profile", append([]string{baseName, "--switch"}, again...)...))
+			e.Command(sc, "profile", append([]string{"switch", baseName}, again...)...))
 	}
 	return e.turnOff(sc, infos, cur, "", nil)
 }
@@ -420,7 +420,7 @@ func (ps pinSource) wantedVersion(w Wanted, in *ledger.Entry) string {
 type activation struct {
 	infos   []profile.Info
 	next    *ledger.Active
-	action  ProfileAction // the action as applied: --off for a --switch to the base
+	action  ProfileAction // the action as applied: off for a --switch to the base
 	report  *Activation
 	changed bool
 }

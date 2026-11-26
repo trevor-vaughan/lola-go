@@ -65,10 +65,10 @@ installing the cached name afterwards fetches nothing. It prints:
        <layer>` or `rules off`;
      - `(new)` on one the version shown adds over the one installed there (nothing is new when
        that version is no longer in your cache);
-     - then `→ change it: <command>`: `lola profile <name> --edit <module>` for a profile's or your
+     - then `→ change it: <command>`: `lola profile edit <name> <module>` for a profile's or your
        default's module, `lola install <module>` for `project.yml`'s while no profile is on there
-       (`lola profile base --edit <module>` while one is), and for a remote profile's module the
-       switch to a copy of yours (`lola profile go-mine --switch --new --from remote:go`);
+       (`lola profile edit base <module>` while one is), and for a remote profile's module the
+       switch to a copy of yours (`lola profile switch go-mine --new --from remote:go`);
      - for a git module `project.yml` provides while no profile is on there, a second line
        `→ follow another branch or tag: lola install <module> --ref <ref>` (`<ref>` is yours to
        fill in) switches it to another ref, keeping its picks and targets.
@@ -89,7 +89,7 @@ installing the cached name afterwards fetches nothing. It prints:
      ref is named by its source at the commit shown instead, so that installing it pins that
      commit in the entry (to follow a branch again, install with `--ref <branch>`).
    - What stays open: if you fetch a cached head again yourself (`lola cache update`, or
-     installing the source at a branch) or run `lola market --update` between `lola info` and
+     installing the source at a branch) or run `lola market update` between `lola info` and
      the install, a hint by cached name installs the new head.
 
    ```

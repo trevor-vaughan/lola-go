@@ -43,16 +43,16 @@ type Prompter interface {
 	// runs: Title, one row per option and Cancel last, default the first; it answers the index of
 	// the option chosen, ErrCancelled for Cancel.
 	Where(WhereStep) (int, error)
-	// Profiles asks which of a source's profiles lola profile --add adds: a filterable
+	// Profiles asks which of a source's profiles lola profile add adds: a filterable
 	// multi-select, nothing preselected.
 	Profiles(ProfileStep) ([]string, error)
 	// Members asks a bundle's members (MembersStep), answering those ticked in option order.
 	Members(MembersStep) ([]string, error)
-	// MarketName asks the name of a marketplace lola market --add adds when the one it has is
+	// MarketName asks the name of a marketplace lola market add adds when the one it has is
 	// another marketplace's, or one no marketplace can have, pre-filled with a
 	// free one.
 	MarketName(MarketNameStep) (string, error)
-	// SSHHosts asks which of the ssh hosts a catalog names lola market --add or --update allows: a
+	// SSHHosts asks which of the ssh hosts a catalog names lola market add or update allows: a
 	// filterable multi-select, nothing preselected, answering the hosts ticked; none is an answer.
 	SSHHosts(SSHHostStep) ([]string, error)
 	// MarketEntry asks which marketplace entry a bare name your cache lacks means,
@@ -185,12 +185,12 @@ type MarketNameStep struct {
 }
 
 // MarketSourceStep asks for the source of the marketplace the picker's Add a source… adds; it
-// carries nothing, since lola market --add's own questions (another name, ssh hosts) follow it.
+// carries nothing, since lola market add's own questions (another name, ssh hosts) follow it.
 type MarketSourceStep struct{}
 
 // SSHHostStep offers the ssh hosts a catalog names that you have not allowed, each with the entries
 // it would admit; nothing is preselected. Nav places it for Esc: it goes back to the name question
-// when lola market --add asked one. Strings are raw: the adapter prints them through
+// when lola market add asked one. Strings are raw: the adapter prints them through
 // untrusted.Text.
 type SSHHostStep struct {
 	Market string
@@ -309,7 +309,7 @@ type ModuleStep struct {
 	Problem   string
 	Step      Steps
 	Nav       Nav
-	// Title, when set, replaces "Install which modules?" (lola profile <name> --edit's page names
+	// Title, when set, replaces "Install which modules?" (lola profile edit <name>'s page names
 	// the profile: "profile go › modules"), and None makes an empty answer one: every module
 	// unticked.
 	Title string

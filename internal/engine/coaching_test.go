@@ -65,7 +65,7 @@ var _ = Describe("finding hints", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
 		writeTree(e.Paths.UserProfiles, map[string]string{"kit.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
 		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "kit"},
-			Options: engine.Options{ForceRun: "lola profile --project kit --on --force", Trust: engine.TrustEntries}})
+			Options: engine.Options{ForceRun: "lola profile --project on kit --force", Trust: engine.TrustEntries}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Findings).To(ContainElement(And(HaveField("Code", "required-key-missing"), HaveField("Artifact", "critic"),
 			HaveField("Hint", "add description: to the agent's frontmatter"))))

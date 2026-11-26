@@ -3,28 +3,36 @@
 Command reference, for lola users; back to [Using lola](../usage.md) and the [README](../../README.md).
 
 ```
-lola market [<name> [<entry>] | --check | [<name>] --add <source> [--ref <ref>] [--path <file-or-dir>] | <name>... --update | --update --all | <name> --remove | --known [<id>] | [<name>] --enable <id>]
+lola market [list | <name> [<entry>] | show <name> [<entry>] | check | known [<id>]]
+lola market add <source> [<name>] [--ref <ref>] [--path <file-or-dir>] | add --enable <id> [<name>]
+lola market enable <id> [<name>] | update <name>... | update --all | rm <name>
 ```
 
-Aliases: `marketplace`, `markets`. On a terminal, bare `lola market` opens [the picker](#the-picker).
+Aliases: `marketplace`, `markets`; `ls` for `list`, `get` for `add`, `upgrade` for `update`, `remove`,
+`delete`, `del` and `erase` for `rm`. On a terminal, bare `lola market` opens [the picker](#the-picker).
+`lola market <name> [<entry>]` is `lola market show <name> [<entry>]`. A word that is a verb runs
+the verb: when it also names a marketplace of yours, the run adds the note `ran check; to show the
+marketplace named check: lola market show check` (on stderr; under `--json`, in `notices`). Scope
+flags go before or after the verb.
 Six read-only paths, none of which asks:
 
 - `lola market`, off a terminal or with an off switch (`--json`, `--plain`, `--no-pager`,
-  `--no-interactive`, `market_picker: false`), lists your
+  `market_picker: false`), and `lola market list` always, list your
   [marketplaces](../guides/marketplaces.md#marketplaces): format, entries, skipped entries, when each
-  was fetched and its source.
-- `lola market --check` lists them with each git source's upstream status ([`--check`](#--check)).
+  was fetched and its source. `list` never opens the picker.
+- `lola market check` lists them with each git source's upstream status ([`check`](#check)).
 - `lola market acme` shows one: its source, pin, every entry with the source lola maps it to, and
   every entry it skips, with why. Its last line is the next step, `→ lola info @acme/<first
   entry>`, with the run's flags.
 - `lola market acme formatter` shows the entry: it is the same run as `lola info @acme/formatter`,
   with the same flags (a scope, `-t`, the output flags) and the same output, hints included.
 - `lola info @acme/formatter` (see [`lola info`](info.md#lola-info)).
-- `lola market --known` lists the [known marketplaces](../guides/marketplaces.md#known-marketplaces)
-  this lola ships; `lola market --known superpowers` shows one.
+- `lola market known` lists the [known marketplaces](../guides/marketplaces.md#known-marketplaces)
+  this lola ships; `lola market known superpowers` shows one.
 
-`--add <source>` takes the source, so the name goes before it: `lola market acme --add <source>`,
-not `lola market --add acme <source>` (refused, hinting the working order; see Refusals below).
+`add <source> [<name>]` takes the source first, then the name the marketplace is registered under
+(by default the catalog's own). `lola market add acme https://github.com/acme/plugins` is refused,
+hinting the working order (see Refusals below).
 
 It fetches a catalog (Claude Code's `marketplace.json` or a lola YAML catalog) and
 registers it. lola looks for `.claude-plugin/marketplace.json`, then `<name>.yml`, `<name>.yaml`,
@@ -32,50 +40,56 @@ registers it. lola looks for `.claude-plugin/marketplace.json`, then `<name>.yml
 lola's `lola.yml` or `lola.yaml` (`name` and `modules`, each with `name`, `description`,
 `version`, `license`, `repository`, `ref`, `path` and `tags`; `ref` is the branch, tag or commit of a git
 `repository`, and an entry that gives one for an archive is skipped), at the root or in the
-`--path` directory; `--update` fetches the named ones, or `--all`, again and reports which entries
-changed; `--remove` forgets one (asks; `-y`).
+`--path` directory; `update` fetches the named ones, or `--all`, again and reports which entries
+changed; `rm` forgets one (asks; `-y`).
 
 Cursor's and Copilot's catalogs are not searched for; read one with `--path .cursor-plugin/marketplace.json` or `--path .github/plugin/marketplace.json`, where a source written without `./` (`teaching`, `plugins/x`) is a directory under the repository root.
 
 Cursor's `.cursor-plugin/marketplace.json` and GitHub Copilot's `.github/plugin/marketplace.json`
 are the alternate catalogs: lola never reads one unasked, but names it. A source with no catalog
-at its root and an alternate is refused with one `lola market <name> --add <source> --path <file>`
+at its root and an alternate is refused with one `lola market add <source> <name> --path <file>`
 hint per alternate it holds; likewise a `--path` directory with no catalog that holds a bare
 `marketplace.json` (`--path .cursor-plugin`) is refused with the `--path` of that file. A source with none and a module's layout (`SKILL.md`, `skills/<name>/SKILL.md`, `mcps.json`,
 or `.md` files in `commands/`, `agents/` or `rules/`: what `lola install` reads) is refused as "a module, not a catalog", with
 `lola install <source>` as the hint; any other tree is refused with the places lola looked and no
 hint. When lola reads a catalog at the default location and an alternate is also there (the two can
-differ: `cursor/plugins` lists 2 entries in one and 155 in the other), `--add` adds the notice
+differ: `cursor/plugins` lists 2 entries in one and 155 in the other), `add` adds the notice
 `the source also has <file>, which lola did not read`, in the human output and the JSON `notices`
-array, with the `--add` of the alternate under a free name. `--update` reads the file the
+array, with the `add` of the alternate under a free name. `update` reads the file the
 registration recorded and says nothing of alternates.
 
-`--add` and `--update` ask nothing, but a name when
+`add` and `update` ask nothing, but a name when
 yours is taken and, on a terminal, which of the ssh hosts a catalog names to allow (below).
 
 Scope flags (`--scope`, `--user`, `--project`, `-C`, as for [`lola info`](info.md#lola-info))
 change nothing but what `lola market <name> <entry>` plans for.
 
-`add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show` and `search` are not `lola market`
-verbs: each is refused with the lola command to run instead.
+`set` and `search` are not `lola market` verbs: each is refused with the lola command to run instead
+(`set <name> --disable` is `rm <name>`; `search <query>` is `lola search <query>`). No marketplace can
+be named after a verb, an alias or one of those words: `add` and `enable` refuse it with a hint that
+names it otherwise. A marketplace already so named in `markets.yaml` still loads.
 
-| Flag                                         | What it does                                                                                                                                                      |
-|----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--add <source>`                             | Fetch the catalog at this source and register it. Alias: `--get`.                                                                                                 |
-| `--ref <ref>`                                | With `--add`: the branch, tag or commit of a git source.                                                                                                          |
-| `--path <file-or-dir>`                       | With `--add`: the catalog file, or the directory to look for it in, inside the source.                                                                            |
-| `--update`                                   | Fetch the named marketplaces' catalogs again and report what changed. Aliases: `--upgrade`, `--refresh`.                                                          |
-| `--all`                                      | With `--update`: every marketplace you have.                                                                                                                      |
-| `--remove`                                   | Forget the named marketplace and drop its cached catalog (asks; `-y`). Aliases: `--rm`, `--delete`, `--del`, `--erase`.                                           |
-| `--check`                                    | List your marketplaces with each git source's upstream status. Asks each remote for its tip; fetches no catalog. |
-| `--no-interactive`                           | List as text, never the picker. `market_picker: false` in `config.yaml` turns the picker off for every run. Refused with a name, an entry or an action, which never open the picker. |
-| `--known [<id>]`                             | List the marketplaces this lola ships, each pinned to a commit, or show the one whose id you give. Enables nothing. |
-| `--enable <id>`                              | Register the known marketplace `<id>` at its pinned commit, under the name `<name>` (default: the id). Shows what it holds and asks; `-y` skips the question. |
-| `--ssh-host <host>`                          | With `--add` or `--update` (one marketplace): let the catalog's ssh sources at this host name use your ssh keys. Repeatable. With `--remove`: stop allowing it.   |
-| `-y`, `--yes`                                | With `--remove` or `--enable`: do it without asking.                                                                                                                        |
-| `-n`, `--dry-run`                            | Report what the action would do, and write nothing.                                                                                                               |
-| `-t`, `--target <assistant>`                 | With `<name> <entry>`: the assistants to plan for, as `lola info`'s `-t`.                                                                                         |
-| `--scope`, `--user`, `--project`, `-C <dir>` | With `<name> <entry>`: the scope to plan for, as `lola info`'s. With any other action they change nothing, but one naming a scope that cannot be used is refused. |
+An old action flag (`--add <source>`, `--update`, `--remove`, `--enable <id>`, `--known`, `--check`,
+`--no-interactive` and their aliases) is refused as `--add is not a flag of lola market`, hinting the
+verb with the operands and flags you gave. A flag of another verb names the verbs that take it.
+
+| Verb and flag                                | What it does                                                                                                                                                       |
+|----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `add <source> [<name>]`                      | Fetch the catalog at this source and register it. Alias: `get`.                                                                                                    |
+| `add --ref <ref>`                            | The branch, tag or commit of a git source.                                                                                                                         |
+| `add --path <file-or-dir>`                   | The catalog file, or the directory to look for it in, inside the source.                                                                                           |
+| `add --enable <id> [<name>]`                 | `lola market enable <id> [<name>]`. With a source, `--ref`, `--path` or `--ssh-host` it is refused, hinting `enable` and `add`.                                    |
+| `update <name>...`, `update --all`           | Fetch the named marketplaces' catalogs again, or every one with `--all`, and report what changed. Alias: `upgrade`.                                                |
+| `rm <name>`                                  | Forget the named marketplace and drop its cached catalog (asks; `-y`). Aliases: `remove`, `delete`, `del`, `erase`.                                                |
+| `check`                                      | List your marketplaces with each git source's upstream status. Asks each remote for its tip; fetches no catalog.                                                   |
+| `list`                                       | List as text, never the picker. `market_picker: false` in `config.yaml` turns the picker off for a bare `lola market` in every run. Alias: `ls`.                    |
+| `known [<id>]`                               | List the marketplaces this lola ships, each pinned to a commit, or show the one whose id you give. Enables nothing.                                                |
+| `enable <id> [<name>]`                       | Register the known marketplace `<id>` at its pinned commit, under the name `<name>` (default: the id). Shows what it holds and asks; `-y` skips the question.      |
+| `--ssh-host <host>`                          | On `add`, `enable` or `update` (one marketplace): let the catalog's ssh sources at this host name use your ssh keys. Repeatable. On `rm`: stop allowing it.         |
+| `-y`, `--yes`                                | On `rm` or `enable` (and `add --enable`): do it without asking.                                                                                                    |
+| `-n`, `--dry-run`                            | On `add`, `enable`, `update` and `rm`: report what it would do, and write nothing.                                                                                 |
+| `-t`, `--target <assistant>`                 | On `show <name> <entry>` and `lola market <name> <entry>`: the assistants to plan for, as `lola info`'s `-t`.                                                      |
+| `--scope`, `--user`, `--project`, `-C <dir>` | With `<name> <entry>`: the scope to plan for, as `lola info`'s. With any other verb they change nothing, but one naming a scope that cannot be used is refused.   |
 
 A catalog's `ssh://` and `user@host:path` sources are skipped unless you allowed their host. The
 host is a name alone (no scheme, user, port or path; lower-cased; never an IP address or
@@ -87,14 +101,14 @@ a YAML catalog) when the name is the offending text. The same text in the catalo
 `description`, `version`, `owner` or `metadata` refuses the catalog. lola never rewrites a
 catalog's text.
 
-On a terminal, `--add`
-and `--update` list the hosts the catalog names that you have not allowed, with their entry
+On a terminal, `add`
+and `update` list the hosts the catalog names that you have not allowed, with their entry
 counts, all unticked. Off a terminal, with `-n` or under `--json`, nothing is asked: a notice
 gives the command with `--ssh-host`.
 
-`--update` never widens the list on its own, and a host the
-catalog stops naming stays allowed until `--ssh-host <host> --remove`, which re-applies the
-cached catalog; a plain `--remove` forgets the hosts with the marketplace. `lola market <name>`
+`update` never widens the list on its own, and a host the
+catalog stops naming stays allowed until `rm <name> --ssh-host <host>`, which re-applies the
+cached catalog; a plain `rm` forgets the hosts with the marketplace. `lola market <name>`
 shows them (`ssh hosts`, `via ssh at <host>`). Every other source must still be `https://`.
 
 Refusals:
@@ -109,21 +123,36 @@ Refusals:
   acme`, or `lola market` when `acme` is not yours.
 - `-t` without `<name> <entry>`: `--target applies to lola market <name> <entry> only`, hinting
   the run without it.
-- `--update` without names: `name the marketplaces to update, or update every one with --all`,
-  hinting `lola market --update --all`.
-- A reserved word: `ls is not a lola market verb: lola market lists your marketplaces`, hinting
-  `lola market`; `add` hints the `--add` it means (`lola market acme --add
-  https://github.com/acme/plugins`).
-- `--check` with a name, an entry or an action (`--add`, `--update`, `--remove`, `--known`,
-  `--enable`, a reserved word): `--check lists your marketplaces' upstream status; it takes no
-  name, entry or action`, hinting the run without `--check`, then `lola market --check`.
-- A source where the name goes (`lola market --add acme https://github.com/acme/plugins`): the
-  source is refused as a marketplace name, hinting the run with the two swapped (`lola market acme
-  --add https://github.com/acme/plugins`).
+- `update` without names or `--all`: `name the marketplaces to update, or update every one with --all`,
+  hinting `lola market update --all`; with both, `--all updates every marketplace you have, and takes
+  no names`, hinting `lola market update --all`, then the run without `--all`.
+- A verb missing its operand (`add`, `show`, `rm`, `enable`): `lola market rm needs a marketplace`,
+  hinting its usage and `lola market list` (or `lola market known` for a source or an id).
+- A word of another tool's `lola market` (`set`, `search`): `search is not a lola market verb: lola
+  search <query> searches your cache and every fetched catalog`, hinting `lola search <query>`.
+- An old action flag: `--add is not a flag of lola market`, hinting the verb's run: the flag's value
+  first, then every word you typed, in order, and the flags you gave that the verb takes (`lola market
+  acme --add <url> --update` hints `lola market add <url> acme` and `lola market update acme`). When the
+  verb would refuse those operands, the hint is its usage and `lola market list`.
+- A flag of another verb (`lola market acme --ref main`): `--ref applies to lola market add`, with the
+  usage of each verb that takes it and the flag (`usage: lola market add <source> [<name>] --ref
+  main`); your operands mean something else there, so they are not repeated.
+- More names than a verb takes (`lola market rm a b`): one hint per name.
+- `add --enable <id>` with a source, `--ref`, `--path` or `--ssh-host`: `add --enable registers a known
+  marketplace: it takes an id and a name, no source, --ref, --path or --ssh-host`, hinting `lola
+  market enable <id>` and, for a source, `lola market add <source>`.
+- A name that is a market verb, alias or the word `set` or `search`: `check is a lola market command,
+  so no marketplace can be named check` (for `set` and `search`, `set is a word lola market answers
+  to, …`), hinting `name it otherwise: lola market add <source> check-1`.
+- A source where the name goes (`lola market add acme https://github.com/acme/plugins`): the
+  source is refused as a marketplace name, hinting the run with the two swapped (`lola market add
+  https://github.com/acme/plugins acme`).
+- A word near a verb that names no marketplace (`lola market updat`): `unknown marketplace or command`,
+  hinting `did you mean: lola market update` and `see them: lola market list`.
 
 JSON:
 
-- Listing prints `markets` (one row per marketplace) and `notices`. With `--check`, each row adds
+- Listing prints `markets` (one row per marketplace) and `notices`. With `check`, each row adds
   `status` (`up to date`, `update available`, `upstream moved` or `unreachable`; `""` for a source
   that is a local path, a `file://` URL, an archive or a catalog file, or a catalog never fetched); without it the rows have no `status`.
 - Showing prints the marketplace's `name`, `source`, `ref`, `path`, `format`, `commit` (the commit
@@ -131,7 +160,7 @@ JSON:
   `ssh_hosts`, `entries` (each with its `ssh_host`), `skipped`, `notices` and `hints` (`lola info`
   of the first entry; `[]` without entries).
 - `<name> <entry>` prints what `lola info` prints.
-- `--add` and `--update` print:
+- `add` and `update` print:
   - `markets`, the marketplaces fetched;
   - `changes`, how the fetch changed each entry (`market`, `entry`, `change`: `added`, `removed`
     or `changed`, and `fields`, which of `source`, `path`, `ref`, `commit`, `version` and
@@ -139,15 +168,15 @@ JSON:
   - `updates`, one per marketplace of the run, in the order named (`market`, `outcome`, and for a
     failure its `error` and `hints`);
   - `notices` and `dry_run`.
-- `--remove` prints `removed` (the names forgotten), `notices` and `dry_run`.
+- `rm` prints `removed` (the names forgotten), `notices` and `dry_run`.
 
 Known limitation: a catalog entry's host is judged by the URL's text, as a [remote profile's](../guides/remote-profiles.md) is,
 and never resolved: an entry at a host name that resolves to a loopback or private address is
 mapped and fetched.
 
-## `--check`
+## `check`
 
-`lola market --check` lists your marketplaces as `lola market` does, with each git source's
+`lola market check` lists your marketplaces as `lola market` does, with each git source's
 upstream status: a `STATUS` column in the table (`-` for a source with none), the last column in
 `--plain`, `status` in `--json`. It asks each remote for the tip of the registered ref (the default
 branch when the ref is a commit), 8 at a time, 10 seconds each, and fetches no catalog. A source
@@ -158,18 +187,18 @@ statuses.
 | Status             | Meaning                                                                                                                                  |
 |--------------------|------------------------------------------------------------------------------------------------------------------------------------------|
 | `up to date`       | the remote's tip is the commit of your cached catalog                                                                                    |
-| `update available` | the tip is another commit on the branch, tag or default branch the marketplace follows: `lola market <name> --update` fetches it         |
-| `upstream moved`   | a marketplace registered at a commit (a known one on lola's pin or ahead of it, or yours added with `--ref <commit>`) whose remote has moved on: `--update` cannot move it; `u` in [the picker](#the-picker) moves it to the tip after a confirmation |
+| `update available` | the tip is another commit on the branch, tag or default branch the marketplace follows: `lola market update <name> ` fetches it         |
+| `upstream moved`   | a marketplace registered at a commit (a known one on lola's pin or ahead of it, or yours added with `--ref <commit>`) whose remote has moved on: `update` cannot move it; `u` in [the picker](#the-picker) moves it to the tip after a confirmation |
 | `unreachable`      | the check failed: no network, a host that is down, a repository gone or private, or a ref the remote does not have                      |
 
-Without `--check`, `lola market` contacts no host.
+Without `check`, `lola market` contacts no host.
 
 ## The picker
 
 On a terminal (stdin and stderr), bare `lola market` opens a picker over your marketplaces, then
 the known marketplaces you have not enabled (an enabled one is among yours, once), and
 `Add a source…` last. It does not open with `--json`, `--plain`, `--no-pager` or
-`--no-interactive`, or with `market_picker: false` in your `config.yaml`
+`list`, or with `market_picker: false` in your `config.yaml`
 ([config](../guides/config-and-selections.md)); the run lists instead. A stdout piped from a
 terminal still gets the picker: scripts should pass `--plain` or `--json`.
 
@@ -180,7 +209,7 @@ the terminal (the catalog's, or a known one's reason when the catalog has none; 
 there is neither); then its source on a line of its own, indented the same.
 
 Opening the picker, and moving, ticking and filtering in it, contact no host and show no status.
-`u` checks the ticked rows, or the cursor's when none is ticked, as `--check` does; `U` checks every
+`u` checks the ticked rows, or the cursor's when none is ticked, as `check` does; `U` checks every
 row, ticked or not, whatever the filter shows. Each row checked reads `checking…` until its answer
 comes: `up to date`, `update available`, `upstream moved` or `unreachable`. A known marketplace you
 have not enabled is checked against lola's pin. A local, archive, folder or catalog-file source
@@ -189,7 +218,7 @@ gets no status.
 Once every answer is in, the footer asks once, in place of the keys: `update acme, beta? ⏎/y yes ·
 esc/n no` (`update 3 marketplaces? …` when the names do not fit). It names the rows of yours that
 read `update available` or `upstream moved`, and those of yours it cannot check (local, archive,
-folder and catalog-file sources). Enter or `y` updates them, as `--update` does, and moves each
+folder and catalog-file sources). Enter or `y` updates them, as `update` does, and moves each
 `upstream moved` one to its remote's tip after `Update past the commit it is registered at?` (No leaves it as it was); Esc or `n` keeps
 the picker open with the statuses shown; `u` or `U` drops the question and checks again, as they do
 with none open. A known marketplace you have not enabled is never offered:
@@ -199,7 +228,7 @@ Enter enables it. With nothing to offer, a note says why (`everything checked is
 When at least two checks failed and more than half of those checked did, one banner says `Several
 sources unreachable; check your network connection`, the failed rows read `not checked`, and
 nothing is offered. Otherwise each failed row reads `unreachable`, with the error under it and what
-to do: `→ u retries · lola market <name> --remove forgets it` for one of yours, `→ u checks again`
+to do: `→ u retries · lola market rm <name> forgets it` for one of yours, `→ u checks again`
 for a known one. When the only check failed, the line starts `→ check your network connection;`.
 Nothing is removed for you.
 
@@ -211,9 +240,9 @@ Nothing is removed for you.
 | `u`       | Check the ticked rows, or the cursor's, then offer to update those of yours that need it.                       |
 | `U`       | Check every row, then offer to update those of yours that need it.                                              |
 | `o`       | Open the cursor row's web address in your browser (see [below](#entries-and-an-entry)); a row with none says `no web address for <id>`, and `Add a source…` says `nothing to open on Add a source…`. A local, archive or catalog-file source has no web address. |
-| `a`       | Add a source: asks its source and an optional ref, then runs `--add` with its questions. The new marketplace is ticked when the picker opens again. Enter on `Add a source…` does the same. |
-| Enter     | With nothing ticked and the cursor on one of yours: open its [entries](#entries-and-an-entry). On a known row you have not enabled, [preview it](#previewing-a-known-marketplace): fetch its catalog at the pin and open its entries; nothing is added. With rows ticked: enable each known one, then `Do what with these?` for yours. |
-| `m`       | The menu for the ticked rows, or the cursor's (on a known row, this is how to enable it without previewing it): enable each known one you have not enabled, asking as `--enable` does; then `Do what with these?` for yours: Browse entries (`lola install @<name>`'s picker), Update, Remove (asking as `--remove` does), Cancel. |
+| `a`       | Add a source: asks its source and an optional ref, then runs `add` with its questions. The new marketplace is ticked when the picker opens again. Enter on `Add a source…` does the same. |
+| Enter     | With nothing ticked and the cursor on one of yours: open its [entries](#entries-and-an-entry). On a known row you have not enabled, [preview it](#previewing-a-known-marketplace): fetch its catalog at the pin and open its entries; nothing is added. With rows ticked: enable each known one, asking as `enable` does, then open the entries of the ticked rows of yours and of those it enabled in `lola install @<name>...`'s picker. Tick a known row and press Enter to enable it without previewing it. |
+| `d`       | Remove the ticked rows of yours, or the cursor's, each asking as `rm` does. A known row you have not enabled is left out; with none of yours ticked or under the cursor, a note says `tick one of your marketplaces, or move to one, to remove it`. |
 | Esc, `q`  | Leave (Esc first clears a filter; `q` at the update question leaves too). Changes nothing; exit 0.              |
 | `→`       | The same as Enter on one of your marketplaces with nothing ticked: open its entries; on a known row you have not enabled, preview it as Enter does. It does nothing on `Add a source…` or with rows ticked. `←` does nothing here; it never leaves. |
 | Ctrl+C    | End the run: `✗ cancelled — nothing was changed`, exit 4, at every step but two. In a `[y/N]` question an action asks, it answers No and the picker opens again. At the ssh-host question that moving an `upstream moved` marketplace to its remote's tip can ask after `Update past the commit it is registered at?`, it writes nothing for that marketplace and the picker opens again, as No does. |
@@ -221,7 +250,7 @@ Nothing is removed for you.
 Taking the update for a marketplace registered at a commit (a known one on lola's pin or ahead of
 it, or one of yours) asks `Update past the commit it is registered at?` over the catalog changes it
 brings, then rewrites the registration's `ref` to the remote tip's full commit SHA and fetches it;
-No writes nothing. A known one then reads `ahead of pin`, and later `--update` runs stay at that
+No writes nothing. A known one then reads `ahead of pin`, and later `update` runs stay at that
 commit.
 
 After each action the picker opens again, read afresh (ticks and statuses dropped); an action that
@@ -318,7 +347,7 @@ no filter.
 
 | Page    | Prompt                                                                                         | Answers |
 |---------|------------------------------------------------------------------------------------------------|---------|
-| list    | `Choose marketplaces (numbers, comma separated; m1 for the menu; o1 for the web page): `               | One number of yours opens its entries; one known row's number previews it (below). Several numbers, or `m1`, `m1,2` (also on a known row), answer the menu for those rows. `o1` opens row 1's web address as the TUI's `o` does, with the same notes, and the prompt comes again; `o` takes one number. `Add a source…`'s number alone adds one. Each row prints its description and source under its number, as the TUI does. |
+| list    | `Choose marketplaces (numbers, comma separated; d1 removes; o1 for the web page): `                    | One number of yours opens its entries (one without entries says `<name> has no entries; fetch its catalog with lola market update <name>`); one known row's number previews it (below). Several numbers act as Enter does with those rows ticked. `d1`, or `d1,2`, removes those marketplaces of yours as `d` does; a known row's number there is refused with what `d` takes, and the prompt comes again. `o1` opens row 1's web address as the TUI's `o` does, with the same notes, and the prompt comes again; `o` takes one number. `Add a source…`'s number alone adds one. Each row prints its description and source under its number, as the TUI does. |
 | entries | `Choose an entry (number or key above): ` under the line `i<n,n…> install · d<n,n…> uninstall from project · o<n> web · Enter alone goes back` | `n` opens entry n's detail; `i<n>` installs it, `d<n>` uninstalls it, `o<n>` opens its web page. `i` and `d` take several numbers, comma separated (`i1,3,5`, `d2,4`), and act on them as the TUI's do on ticked entries, in page order, in one call; `o` takes one. `i`, `d` and `o` apply as the TUI's keys do, so an entry that does not take one prints the same note (`already installed; d uninstalls`, `not installed; i installs`, `no web page for this entry`) and the prompt comes again; so does a letter with no number, a number out of range or a number named twice in a list (`name each number once`), or any other text. |
 | detail  | `i install · o web · Enter alone goes back: ` | The letters it names: `i` or `d` (only the one that applies is named, the other prints its note), `o` when the entry has a web page. |
 
@@ -327,7 +356,7 @@ at the wrap edge (with an unknown width nothing wraps). Lines wrap at spaces onl
 split, not at a hyphen either, so an address or a flag in a note stays whole even when it is wider
 than the line. The title, the context line, entry names and descriptions and the notes wrap this way
 under their numbers or indent. The entries page prints its keys as lines of that width, each key
-whole, above the short prompt; the list and detail prompts do the same (`Choose marketplaces: `, its keys then `numbers, comma separated · m1 for the menu · o1 web`;
+whole, above the short prompt; the list and detail prompts do the same (`Choose marketplaces: `, its keys then `numbers, comma separated · d1 removes · o1 web`;
 `Choose a key above: `) only when the full prompt is not narrower than the terminal. The
 `fetching…` line drops ` from <host>` for a source with no host (a `file://` one).
 
@@ -339,7 +368,7 @@ whole address to copy; the prompt comes again either way.
 
 Enter or `→` on a known row you have not enabled, with nothing ticked, shows what it offers before
 you enable it. This is the one thing the picker does on its own that contacts a host: it fetches the
-catalog at the commit lola pins for it (what `lola market --enable <id> -n` reads), and while it runs
+catalog at the commit lola pins for it (what `lola market enable <id> -n` reads), and while it runs
 the footer says what is going on, `fetching <id> at <commit> from <host> — nothing is added or
 installed…`. The picker stays usable meanwhile (in accessible mode the line prints before the fetch starts and the prompt waits for it). Esc cancels the fetch, `q` and Ctrl+C leave and
 cancel it, and so does opening one of your marketplaces or starting another known row's fetch.
@@ -355,15 +384,15 @@ When the catalog lists entries lola does not offer (a source it does not take, a
 not allowed, a directory the tree lacks), a line says how many, `3 entries skipped · s shows why`, and `s`
 opens the [page that lists them](#skipped-entries); those entries are not in the list.
 What differs: `i` and `d` only say `not added yet; m enables <id>`, and `m` (named in the footer in
-place of `i` and `d`, and so on the accessible prompts) leaves the picker as `m` on the known row does, asking as `--enable` does. Once
-enabled, the marketplace is one of yours, with its catalog cached. A preview you fetched stays for
+place of `i` and `d`, and so on the accessible prompts) leaves the picker to enable it, asking as `enable` does; the picker then
+opens again, with nothing else opened. Once enabled, the marketplace is one of yours, with its catalog cached. A preview you fetched stays for
 the session, so going back and in again fetches nothing; it is of a pinned commit, so it cannot go
 stale.
 
 When the fetch fails (offline, a pin the repository no longer has, a catalog lola cannot read) the
 list stays, with the note `could not fetch <id>:` and the reason (`<id>: could not fetch <url>: …` when the reason already says so), wrapped so all of it shows, and a
-command that retries it (`lola market --enable <id> -n`); no empty entries page opens. A catalog with no entries says so the
-same way. A result that arrives while you type a filter or answer an update offer does not move the
+command that retries it (`lola market enable <id> -n`); no empty entries page opens. A catalog with no entries says so the
+same way, naming the command that enables it anyway (`lola market enable <id>`). A result that arrives while you type a filter or answer an update offer does not move the
 screen: it is kept, the note says `<id> fetched; ⏎ opens it`, and Enter opens it. Opening a row of
 yours without entries while a fetch runs cancels it and says so.
 
@@ -374,35 +403,33 @@ asks again. On success it prints the `previewing <id> — not added; pinned to <
 <date>` title, the context line, the entries, the skipped-entries line and any warning, then the
 entries prompt, `Choose an entry (number or key above): ` under `m enable · s skipped · o<n> web · Enter alone goes back` (`s skipped` only when the catalog skipped entries). There `i<n>`
 and `d<n>` (`i` and `d` on a detail page) print `not added yet; m enables <id>`, `o<n>` opens the page,
-and `m` answers as `m` on the known row does. A fetched preview is kept for the session; going back
+and `m` enables the marketplace, as in the TUI. A fetched preview is kept for the session; going back
 and choosing the number again fetches nothing.
 
 ## Known marketplaces
 
-`--known` lists what this lola ships: for each, its `id`, whether you have enabled it, the day the
+`known` lists what this lola ships: for each, its `id`, whether you have enabled it, the day the
 maintainers reviewed it, the first seven digits of its pin, its source and why it is listed.
-`--known <id>` shows one in full (source, path, the whole pin) and hints the next step: the
-`--enable` that registers it, or `lola market <id>` once enabled. A marketplace counts as enabled
+`known <id>` shows one in full (source, path, the whole pin) and hints the next step: the
+`enable` that registers it, or `lola market <id>` once enabled. A marketplace counts as enabled
 when one named as the id is registered from that source. An id lola does not ship is refused,
-naming the ids it does, hinting `lola market --known`. With none shipped, `--known` prints
+naming the ids it does, hinting `lola market known`. With none shipped, `known` prints
 `no known marketplaces ship with this lola` and exits 0.
 
-`--enable <id>` registers the entry at the commit it is pinned to, never a branch's head, through
-the same fetch as `--add`: the catalog is read as any other and nothing in it runs. The pin covers the catalog and the entries it keeps in the same repository; an entry whose source is another repository is fetched at the ref the pinned catalog names for it, which may be a branch. The name is the
-id, or the one `<name>` gives (`lola market mine --enable superpowers`). It fetches the pinned catalog,
+`enable <id>` registers the entry at the commit it is pinned to, never a branch's head, through
+the same fetch as `add`: the catalog is read as any other and nothing in it runs. The pin covers the catalog and the entries it keeps in the same repository; an entry whose source is another repository is fetched at the ref the pinned catalog names for it, which may be a branch. The name is the
+id, or the one `<name>` gives (`lola market enable superpowers mine`). It fetches the pinned catalog,
 shows the entry's facts and what the catalog holds (entries, and how many it skips), and asks;
-`-y` answers. Off a terminal without `-y` it refuses, `lola market --enable superpowers -y` as the hint,
+`-y` answers. Off a terminal without `-y` it refuses, `lola market enable superpowers -y` as the hint,
 having written nothing; under `--json` the refusal carries the plan, the keys `-n --json` prints.
 `-n` shows the same and writes nothing, cache included. It never asks for another name or an ssh
-host: a name another marketplace holds is refused with `--enable` under a free name as the hint,
-and `--ssh-host` allows a host. `--update` of an enabled one stays on the pin; `u` in
+host: a name another marketplace holds is refused with `enable` under a free name as the hint,
+and `--ssh-host` allows a host. `update` of an enabled one stays on the pin; `u` in
 [the picker](#the-picker) moves it past the pin, asking first.
 
-`--known` takes no other flag than the output flags, and it, `--enable`, `--add`, `--update` and
-`--remove` are one action per run. `--enable` takes `-y`, `-n` and `--ssh-host`, not `--ref` or
-`--path`: the pin and path are the entry's.
-
-JSON of `--known`: `known`, an array (`[]` for none; one element for an id) of `id`, `source`,
-`path`, `commit`, `curated`, `reason` and `enabled`; and `hints`. JSON of `--enable` is `--add`'s
+`known` takes no other flag than the output flags. `enable` takes `-y`, `-n` and `--ssh-host`, not
+`--ref` or `--path`: the pin and path are the entry's; `add --enable <id> [<name>]` is the same run.
+JSON of `known`: `known`, an array (`[]` for none; one element for an id) of `id`, `source`,
+`path`, `commit`, `curated`, `reason` and `enabled`; and `hints`. JSON of `enable` is `add`'s
 (`markets`, `changes`, `updates`, `notices`, `dry_run`) with `known`, the entry enabled, as one
 object.

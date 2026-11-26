@@ -39,8 +39,8 @@ var _ = Describe("installing from marketplaces on and off a terminal", func() {
 		other := filepath.Join(tmp, "other")
 		writeTree(other, map[string]string{".claude-plugin/marketplace.json": `{"name": "other", "owner": {"name": "O"},
   "plugins": [{"name": "formatter", "source": "./f", "description": "Another formatter"}]}`, "f/commands/other.md": "Other\n"})
-		Expect(lola("market", "--add", acme).code).To(Equal(0))
-		Expect(lola("market", "--add", other).code).To(Equal(0))
+		Expect(lola("market", "add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", other).code).To(Equal(0))
 		GinkgoT().Chdir(proj)
 	})
 	manifest := func() string {
@@ -89,7 +89,7 @@ var _ = Describe("installing from marketplaces on and off a terminal", func() {
 		for _, m := range []string{"m1", "m2"} {
 			writeTree(filepath.Join(tmp, m), map[string]string{".claude-plugin/marketplace.json": `{"name": "` + m + `", "owner": {"name": "M"}, "plugins": [` +
 				strings.Join(plugins, ", ") + `]}`, "x/commands/x.md": "X\n"})
-			Expect(lola("market", "--add", filepath.Join(tmp, m)).code).To(Equal(0))
+			Expect(lola("market", "add", filepath.Join(tmp, m)).code).To(Equal(0))
 		}
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
@@ -171,7 +171,7 @@ var _ = Describe("installing from marketplaces on and off a terminal", func() {
 		writeTree(third, map[string]string{".claude-plugin/marketplace.json": `{"name": "third", "owner": {"name": "T"},
   "plugins": [{"name": "good", "source": "./good"}, {"name": "broken", "source": "./broken"}]}`,
 			"good/commands/good.md": "Good\n", "broken/lola.yml": "name: broken\nunknown: key\n", "broken/commands/b.md": "B\n"})
-		Expect(lola("market", "--add", third).code).To(Equal(0))
+		Expect(lola("market", "add", third).code).To(Equal(0))
 		p := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("@third/broken"), mods("@third/good")},
 			review: []string{cli.ReviewApply}}
 		r := lolaP(p, "install", "--scope", "project", "-t", "claude-code")
@@ -345,7 +345,7 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 		acme = filepath.Join(tmp, "acme")
 		writeTree(acme, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"},
   "plugins": [{"name": "linter", "source": "./linter", "description": "Lints code"}]}`, "linter/commands/lint.md": "Lint\n"})
-		Expect(run(nil, "market", "--add", acme).code).To(Equal(0))
+		Expect(run(nil, "market", "add", acme).code).To(Equal(0))
 		markets = filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "markets.yaml")
 		requests.Store(0)
 	})
@@ -377,45 +377,55 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 		Expect(got).To(Equal([]engine.Check{{Index: 1, Status: engine.StatusCurrent}}), "the folder marketplace has no remote; the known one is at its pin")
 	})
 
-	It("enables a ticked known marketplace at its pin after the --enable question, and opens again with it among yours", func() {
+	It("enables a ticked known marketplace at its pin after the --enable question, then opens its entries in lola install's picker", func() {
 		before := sum()
-		p := &scripted{pickers: picks{answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Known: []string{"kn"}}), leave}, confirm: []bool{false}}
+		enter := answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Known: []string{"kn"}})
+		p := &scripted{pickers: picks{enter, leave}, confirm: []bool{false}}
 		r := run(p, "market")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"market-picker", "confirm:Enable known marketplace kn?", "market-picker"}))
+		Expect(p.calls).To(Equal([]string{"market-picker", "confirm:Enable known marketplace kn?", "market-picker"}), "a No opens nothing")
 		Expect(r.err).To(ContainSubstring("cancelled — nothing was changed"))
 		Expect(sum()).To(Equal(before), "a No changes nothing")
 
-		p = &scripted{pickers: picks{answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Known: []string{"kn"}}), leave}, confirm: []bool{true}}
+		p = &scripted{pickers: picks{enter, leave}, confirm: []bool{true}, modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){goneBack[cli.ModuleStep, cli.ModuleAnswer]}}
 		r = run(p, "market")
 		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"market-picker", "confirm:Enable known marketplace kn?", "modules", "market-picker"}))
+		Expect(p.moduleSteps[0].Markets).To(HaveLen(1))
+		Expect(p.moduleSteps[0].Markets[0].Title).To(HavePrefix("@kn"))
 		Expect(stored()).To(ContainSubstring("  - name: kn\n    source: " + url + "\n    ref: " + pin + "\n"))
 		Expect(ids(p.pickerSteps[1].Own)).To(Equal([]string{"acme", "kn"}))
 		Expect(p.pickerSteps[1].Own[1].Enabled).To(BeTrue())
 		Expect(p.pickerSteps[1].Known).To(BeEmpty())
 	})
 
-	It("removes a ticked marketplace of yours only when the --remove question is answered yes", func() {
+	It("enables a previewed known marketplace on m without opening its entries, and opens again with it among yours", func() {
+		p := &scripted{pickers: picks{answer(cli.MarketPickerAnswer{Action: cli.PickerEnable, Known: []string{"kn"}}), leave}, confirm: []bool{true}}
+		r := run(p, "market")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"market-picker", "confirm:Enable known marketplace kn?", "market-picker"}))
+		Expect(ids(p.pickerSteps[1].Own)).To(Equal([]string{"acme", "kn"}))
+	})
+
+	It("removes a marketplace of yours on d only when the --remove question is answered yes", func() {
 		before := sum()
-		enter := answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Own: []string{"acme"}})
-		p := &scripted{pickers: picks{enter, func(st cli.MarketPickerStep) (cli.MarketPickerAnswer, error) {
+		remove := answer(cli.MarketPickerAnswer{Action: cli.PickerRemove, Own: []string{"acme"}})
+		p := &scripted{pickers: picks{remove, func(st cli.MarketPickerStep) (cli.MarketPickerAnswer, error) {
 			Expect(sum()).To(Equal(before), "a No changes nothing")
 			Expect(ids(st.Own)).To(Equal([]string{"acme"}))
-			return enter(st)
-		}, leave}, where: []int{2, 2}, confirm: []bool{false, true}}
+			return remove(st)
+		}, leave}, confirm: []bool{false, true}}
 		r := run(p, "market")
 		Expect(r.code).To(Equal(0), r.err)
 		question := "confirm:Forget marketplace acme (" + acme + ") and drop its cached catalog?"
-		Expect(p.calls).To(Equal([]string{"market-picker", "where", question, "market-picker", "where", question, "market-picker"}))
-		Expect(p.whereSteps[0].Title).To(Equal("Do what with these?"))
-		Expect(p.whereSteps[0].Options).To(Equal([]string{"Browse entries", "Update", "Remove"}))
+		Expect(p.calls).To(Equal([]string{"market-picker", question, "market-picker", question, "market-picker"}))
 		Expect(p.pickerSteps[2].Own).To(BeEmpty())
 		Expect(stored()).NotTo(ContainSubstring("acme"))
 		Expect(r.out).To(ContainSubstring("✓ forgot marketplace acme and dropped its cached catalog\n"))
 	})
 
 	It("updates a known marketplace past lola's pin on u after asking, registering the remote's tip", func() {
-		Expect(run(nil, "market", "--enable", "kn", "-y").code).To(Equal(0))
+		Expect(run(nil, "market", "enable", "kn", "-y").code).To(Equal(0))
 		tip := publish(map[string]string{".claude-plugin/marketplace.json": `{"name": "kn", "owner": {"name": "K"},
   "plugins": [{"name": "formatter", "source": "./formatter", "description": "Formats code"},
     {"name": "tidier", "source": "./formatter", "description": "Tidies code"}]}`})
@@ -444,7 +454,7 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 	Describe("your own marketplace registered at a commit", func() {
 		BeforeEach(func() {
 			seed = nil
-			Expect(run(nil, "market", "pinned", "--add", url, "--ref", pin).code).To(Equal(0))
+			Expect(run(nil, "market", "add", url, "pinned", "--ref", pin).code).To(Equal(0))
 		})
 		// status is the check of the picker's row of pinned.
 		status := func(st cli.MarketPickerStep) string {
@@ -531,14 +541,23 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 		Expect(r.out).To(ContainSubstring("✓ marketplace mine: 1 entry"))
 	})
 
-	It("on mixed ticks enables the known ones first, then asks what to do with yours", func() {
-		p := &scripted{pickers: picks{answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Own: []string{"acme"}, Known: []string{"kn"}}), leave},
-			confirm: []bool{true}, where: []int{1}}
+	It("on mixed ticks enables the known ones first, then opens the entries of yours and of those it enabled", func() {
+		enter := answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Own: []string{"acme"}, Known: []string{"kn"}})
+		back := goneBack[cli.ModuleStep, cli.ModuleAnswer]
+		p := &scripted{pickers: picks{enter, leave}, confirm: []bool{true}, modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods(), back}}
 		r := run(p, "market")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"market-picker", "confirm:Enable known marketplace kn?", "where", "market-picker"}))
+		Expect(p.calls).To(Equal([]string{"market-picker", "confirm:Enable known marketplace kn?", "modules", "modules", "market-picker"}))
+		Expect(p.moduleSteps[0].Markets[0].Title).To(HavePrefix("@acme"))
+		Expect(p.moduleSteps[1].Markets[0].Title).To(HavePrefix("@kn"))
 		Expect(stored()).To(ContainSubstring("ref: " + pin))
-		Expect(r.out).To(MatchRegexp(`(?s)marketplace kn.*marketplace acme`))
+
+		Expect(run(nil, "market", "rm", "kn", "-y").code).To(Equal(0))
+		p = &scripted{pickers: picks{enter, leave}, confirm: []bool{false}, modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){back}}
+		r = run(p, "market")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"market-picker", "confirm:Enable known marketplace kn?", "modules", "market-picker"}), "one it did not enable is not opened")
+		Expect(p.moduleSteps[0].Markets[0].Title).To(HavePrefix("@acme"))
 	})
 
 	It("browses the entries of the ticked marketplaces of yours through lola install's picker", func() {
@@ -547,19 +566,19 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 		fakeAssistant(tmp, "claude", "2.1.287 (Claude Code)")
 		GinkgoT().Chdir(proj)
 		p := &scripted{pickers: picks{answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Own: []string{"acme"}}), leave},
-			where: []int{0}, modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("@acme/linter")},
-			scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, review: []string{cli.ReviewApply}}
+			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("@acme/linter")},
+			scope:   []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, review: []string{cli.ReviewApply}}
 		r := run(p, "market")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"market-picker", "where", "modules", "scope", "review", "market-picker"}), r.err)
+		Expect(p.calls).To(Equal([]string{"market-picker", "modules", "scope", "review", "market-picker"}), r.err)
 		Expect(p.moduleSteps[0].Browse).To(BeTrue())
 		Expect(p.moduleSteps[0].Markets).To(HaveLen(1))
 		Expect(filepath.Join(proj, ".claude", "commands", "lint.md")).To(BeARegularFile(), r.err)
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install @acme/linter --scope project -t claude-code"}))
 	})
 
-	It("lists as text under --json, --plain, --no-pager, --no-interactive and market_picker: false, never asking", func() {
-		for _, args := range [][]string{{"--json"}, {"--plain"}, {"--no-pager"}, {"--no-interactive"}} {
+	It("lists as text under --json, --plain, --no-pager and market_picker: false, never asking", func() {
+		for _, args := range [][]string{{"--json"}, {"--plain"}, {"--no-pager"}} {
 			p := &scripted{}
 			r := run(p, append([]string{"market"}, args...)...)
 			Expect(r.code).To(Equal(0), r.err)
@@ -584,23 +603,6 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 		Expect(sum()).To(Equal(before))
 	})
 
-	It("ends the run on Ctrl+C in Do what with these?, and goes back to the picker on its Cancel", func() {
-		before := sum()
-		enter := answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Own: []string{"acme"}})
-		p := &scripted{pickers: picks{enter}, where: []int{whereCtrlC}}
-		r := run(p, "market")
-		Expect(r.code).To(Equal(4))
-		Expect(r.err).To(ContainSubstring("cancelled — nothing was changed"))
-		Expect(p.calls).To(Equal([]string{"market-picker", "where"}))
-		Expect(sum()).To(Equal(before))
-
-		p = &scripted{pickers: picks{enter, enter, leave}, where: []int{-1, whereBack}}
-		r = run(p, "market")
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"market-picker", "where", "market-picker", "where", "market-picker"}))
-		Expect(sum()).To(Equal(before))
-	})
-
 	It("ends the run on Ctrl+C in Add a source…'s source and in --add's name question", func() {
 		priv := filepath.Join(tmp, "priv")
 		writeTree(priv, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "P"}, "plugins": []}`})
@@ -621,10 +623,10 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 	It("ends the run on Ctrl+C in the install flow that browses entries", func() {
 		before := sum()
 		p := &scripted{pickers: picks{answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Own: []string{"acme"}})},
-			where: []int{0}, modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){aborted[cli.ModuleStep, cli.ModuleAnswer]}}
+			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){aborted[cli.ModuleStep, cli.ModuleAnswer]}}
 		r := run(p, "market")
 		Expect(r.code).To(Equal(4))
-		Expect(p.calls).To(Equal([]string{"market-picker", "where", "modules"}))
+		Expect(p.calls).To(Equal([]string{"market-picker", "modules"}))
 		Expect(sum()).To(Equal(before))
 	})
 
@@ -693,7 +695,7 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 				writeTree(acme, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"},
   "plugins": [{"name": "formatter", "source": "./formatter", "description": "Formats code"},
     {"name": "linter", "source": "./linter", "description": "Lints code"}]}`, "formatter/commands/fmt.md": "Fmt\n"})
-				Expect(run(nil, "market", "acme", "--update").code).To(Equal(0))
+				Expect(run(nil, "market", "update", "acme").code).To(Equal(0))
 			})
 
 			It("installs them in one install, asking its questions once, and opens again on the first", func() {
@@ -722,7 +724,7 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 				r := run(p, "market")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(r.err).To(ContainSubstring("error: acme no longer offers ghost"))
-				Expect(r.err).To(ContainSubstring("hint: lola market acme --update"))
+				Expect(r.err).To(ContainSubstring("hint: lola market update acme"))
 				Expect(filepath.Join(proj, ".claude", "commands", "fmt.md")).NotTo(BeAnExistingFile())
 			})
 		})
@@ -757,9 +759,9 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 			Expect(p.pickerSteps[3].Resume).To(BeZero())
 		})
 
-		It("opens again with no entry after Enter's follow-up question", func() {
-			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{install, answer(cli.MarketPickerAnswer{Action: cli.PickerEnter, Own: []string{"acme"}}), leave},
-				review: []string{cli.ReviewApply}, where: []int{1}}
+		It("opens again with no entry after d's question", func() {
+			p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}, pickers: picks{install, answer(cli.MarketPickerAnswer{Action: cli.PickerRemove, Own: []string{"acme"}}), leave},
+				review: []string{cli.ReviewApply}, confirm: []bool{false}}
 			r := run(p, "market")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(p.pickerSteps).To(HaveLen(3))

@@ -26,8 +26,8 @@ const (
 
 // Market is one of the Python lola's marketplaces as lola migrate registers it:
 // Name and URL as the Python lola recorded them; Market the name lola registers it as; Source and
-// Path its url translated for lola market --add; Status what happens to it; Reason why it is not
-// registered, and Hints the lola market --add that registers it, when one can. Every string has
+// Path its url translated for lola market add; Status what happens to it; Reason why it is not
+// registered, and Hints the lola market add that registers it, when one can. Every string has
 // been through untrusted.Text.
 type Market struct {
 	Name   string   `json:"name"`
@@ -39,7 +39,7 @@ type Market struct {
 	Reason string   `json:"reason,omitempty"`
 	Hints  []string `json:"hints"`
 
-	src, path string // Source and Path as lola market --add takes them
+	src, path string // Source and Path as lola market add takes them
 	hintName  string // the name the hint adds it as, "" for no hint
 	pyName    string // the Python lola's name, by which it found the catalog in a tree
 	disabled  bool   // disabled in the Python lola
@@ -124,7 +124,7 @@ func shownURL(u string) string {
 	return source.DisplayURL(rest)
 }
 
-// translate is u, a Python marketplace url, as lola market --add takes it ([P] models.py
+// translate is u, a Python marketplace url, as lola market add takes it ([P] models.py
 // Marketplace.from_url): git+ is dropped; a git URL (git+, or http(s) ending in .git) gives its
 // #fragment as the path, as the Python lola reads the catalog file there; git's scp form is git;
 // another https:// URL is a catalog file, which lola reads only when its path ends in .json, .yml
@@ -193,10 +193,10 @@ func local(p string) (src, path, why string) {
 	return src, path, ""
 }
 
-// addRun is the lola market --add that registers m as name, keeping display, the run's output
+// addRun is the lola market add that registers m as name, keeping display, the run's output
 // flags.
 func (m Market) addRun(name string, display []string) string {
-	args := []string{name, "--add", m.src}
+	args := []string{"add", m.src, name}
 	if m.path != "" {
 		args = append(args, "--path", m.path)
 	}

@@ -21,10 +21,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// ProfileMove is lola profile --move: it moves entries between a scope's files.
+// ProfileMove is lola profile move: it moves entries between a scope's files.
 const ProfileMove ProfileAction = "move"
 
-// MoveRequest is lola profile --move. Modules move whole from the
+// MoveRequest is lola profile move. Modules move whole from the
 // layer each comes from at its scope, or from From (a profile, base, or default and project.yml for
 // the user's and the project's base), to To (a profile of yours or the project's, or base; a missing
 // name creates your profile). Scope is the scope the target is used in, the one the run's scope flag
@@ -268,7 +268,7 @@ func (e *Engine) moveStack(sc Scope) (*moveStack, error) {
 	return &moveStack{sc: sc, man: man, led: led, layers: layers, infos: infos}, nil
 }
 
-// moveSource is the layer module's entry leaves, in st: from (the layer named before --move:
+// moveSource is the layer module's entry leaves, in st: from (the layer --from names:
 // base, default for user scope's base, project.yml for a project's, or a profile), else the layer
 // its winning entry comes from. A module no layer of st lists is refused, and one from does not
 // list; so is a remote profile's entry, on, a bundle's member or named (lola does not edit them),
@@ -282,11 +282,6 @@ func (e *Engine) moveSource(st *moveStack, from, module string, off []string) (w
 		l = &st.layers[0]
 	case from != "":
 		i, err := e.resolveProfile(st.sc, st.infos, from, nil)
-		if _, unknown := errors.AsType[*unknownProfileError](err); unknown {
-			if _, isDefault := namesBase(from); !isDefault {
-				return writeTo{}, &MoveSourceError{err}
-			}
-		}
 		if err != nil {
 			return writeTo{}, err
 		}
@@ -328,14 +323,6 @@ type notListedError struct{ error }
 
 func (e *notListedError) Unwrap() error { return e.error }
 
-// MoveSourceError is a move whose source, the layer named before --move, names no profile the
-// scope can use: the CLI hints the name as one of the modules (--move a,b).
-type MoveSourceError struct{ err error }
-
-func (e *MoveSourceError) Error() string { return e.err.Error() }
-
-func (e *MoveSourceError) Unwrap() error { return e.err }
-
 // moveTarget is --to in st: base (default at user scope) is the base; a
 // profile of yours or the project's, on or off; a name no profile has creates yours (created: its
 // path, which the caller creates before the edits are built, createTarget). A remote profile and
@@ -344,7 +331,7 @@ func (e *MoveSourceError) Unwrap() error { return e.err }
 func (e *Engine) moveTarget(st *moveStack, req MoveRequest) (t writeTo, created string, err error) {
 	to := req.To
 	if to == "project.yml" && st.sc.Kind == target.User {
-		return writeTo{}, "", errors.New("project.yml is a project's base; lola profile --move never moves an entry into it from user scope")
+		return writeTo{}, "", errors.New("project.yml is a project's base; lola profile move never moves an entry into it from user scope")
 	}
 	if to == "project.yml" {
 		to = baseName
@@ -413,7 +400,7 @@ func (e *Engine) Move(ctx context.Context, req MoveRequest) (_ *MoveResult, err 
 		return nil, err
 	}
 	if req.To == "" {
-		return nil, errs.WithHints(errors.New("--move needs --to, the profile the entries move to"), e.moveHints(dst, req)...)
+		return nil, errs.WithHints(errors.New("lola profile move needs --to, the profile the entries move to"), e.moveHints(dst, req)...)
 	}
 	to, created, err := e.moveTarget(dst, req)
 	if err != nil {
@@ -440,7 +427,7 @@ func (e *Engine) Move(ctx context.Context, req MoveRequest) (_ *MoveResult, err 
 		// The hints plan the moves they name (switchTarget), each under the profiles lock it takes.
 		unlock()
 		unlock = func() {}
-		return nil, errs.WithHints(fmt.Errorf("%s comes from user scope; lola profile --move moves an entry from user scope into a profile of yours only",
+		return nil, errs.WithHints(fmt.Errorf("%s comes from user scope; lola profile move moves an entry from user scope into a profile of yours only",
 			strings.Join(shownAll(req.Modules), ", ")), e.yoursHints(ctx, req, dst)...)
 	}
 	if src == dst {
@@ -634,7 +621,7 @@ func (e *Engine) providers(ctx context.Context, req MoveRequest, dst, src *moveS
 		switch {
 		case inDst != nil && inSrc != nil:
 			hint := func(st *moveStack, t *writeTo) string {
-				flags := []string{"--to", req.To, sourceName(st, *t)}
+				flags := []string{"--to", req.To, "--from", sourceName(st, *t)}
 				if req.Yes {
 					flags = append(flags, "-y")
 				}
@@ -1357,14 +1344,13 @@ func offFlags(req MoveRequest) []string {
 	return slices.Clone(req.Options.Display)
 }
 
-// moveArgs is req as lola profile takes it, after the scope's flags: the source named, the
-// modules, --to, --switch or --keep-off, and -y as given.
+// moveArgs is req as lola profile takes it, after the scope's flags: move, the modules, --to, the
+// source named (--from), --switch or --keep-off, and -y as given.
 func moveArgs(req MoveRequest) []string {
-	var out []string
+	out := slices.Concat([]string{string(ProfileMove)}, req.Modules, []string{"--to", req.To})
 	if req.From != "" {
-		out = append(out, req.From)
+		out = append(out, "--from", req.From)
 	}
-	out = append(out, "--"+string(ProfileMove), strings.Join(req.Modules, ","), "--to", req.To)
 	switch {
 	case req.Switch:
 		out = append(out, "--switch")

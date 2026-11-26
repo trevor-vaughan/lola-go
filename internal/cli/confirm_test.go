@@ -24,6 +24,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 	// question it asks, the hint off a terminal (under --json) and what its change looks like.
 	type confirmCase struct {
 		args      []string
+		path      string // the command the refusal names, "" for lola <the case's name>
 		context   string // the context line the command prints first on stderr, "" for one that prints none
 		plan      string // the plan's first line
 		planLines int    // the plan's lines on stderr
@@ -35,6 +36,13 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		// from the result's.
 		steps, did func(map[string]any) any
 		written    func() bool
+	}
+	// path is the command the refusal names: the case's, else lola <command>.
+	path := func(c confirmCase, command string) string {
+		if c.path != "" {
+			return c.path
+		}
+		return "lola " + command
 	}
 	var tmp string
 	BeforeEach(func() {
@@ -99,8 +107,8 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 			writeTree(proj, map[string]string{"ship.md": "ship\n"})
 			id := trashRunOf(proj, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC), "lola tidy", nil, "ship.md")
 			return confirmCase{
-				args: []string{"trash", "--empty"}, plan: "will delete from the trash:", planLines: 3,
-				question: "Delete 1 trash run? This cannot be undone.", hint: "lola trash --empty --json -y", done: "deleted 1 trash run",
+				args: []string{"trash", "empty"}, path: "lola trash empty", plan: "will delete from the trash:", planLines: 3,
+				question: "Delete 1 trash run? This cannot be undone.", hint: "lola trash empty --json -y", done: "deleted 1 trash run",
 				keys: []string{"removed", "bytes_freed", "dry_run", "notices"}, steps: key("removed"), did: key("removed"),
 				written: func() bool {
 					_, err := os.Stat(filepath.Join(p.Trash, id))
@@ -177,7 +185,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 			Expect(strings.Count(r.err, "\n")).To(Equal(1), r.err)
 			Expect(r.err).NotTo(ContainSubstring(c.plan), "no human plan")
 			doc := refusal(r.err)
-			Expect(doc["error"]).To(Equal("lola " + command + " needs confirmation, and there is no terminal to ask on"))
+			Expect(doc["error"]).To(Equal(path(c, command) + " needs confirmation, and there is no terminal to ask on"))
 			Expect(doc["hints"]).To(Equal([]any{c.hint}), "the run, its flags kept, with -y")
 			for _, k := range c.keys {
 				Expect(doc).To(HaveKey(k))
@@ -195,7 +203,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 			Expect(r.code).To(Equal(3))
 			Expect(r.out).To(BeEmpty())
 			Expect(r.err).To(HavePrefix(c.context + c.plan + "\n"))
-			Expect(r.err).To(HaveSuffix("error: lola " + command + " needs confirmation, and there is no terminal to ask on\n" +
+			Expect(r.err).To(HaveSuffix("error: " + path(c, command) + " needs confirmation, and there is no terminal to ask on\n" +
 				"  hint: " + strings.Replace(c.hint, " --json", "", 1) + "\n"))
 			Expect(strings.Count(r.err, "\n")).To(Equal(c.planLines+2+strings.Count(c.context, "\n")), r.err)
 			Expect(c.written()).To(BeFalse())

@@ -16,164 +16,180 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 )
 
-// trashActions are lola trash's action flags, in the order a refusal names them.
-var trashActions = []string{"restore", "empty"}
-
-// trashFlags are the flags each lola trash action takes; one the run's action does not take, or
-// any of them without an action, is refused, since a flag that does nothing must not look
-// accepted.
-var trashFlags = map[string][]string{"restore": {"force", "dry-run"}, "empty": {"yes", "older-than", "dry-run"}}
+// trashRunGuide is the usage rule lola trash show and restore share: they need the run's id.
+var trashRunGuide = argGuide{noun: "trash run", find: "lola trash list", usage: "lola trash restore <run> [<original>...] [--force] [-n]",
+	examples: []string{"lola trash restore 20261103T120000Z", "lola trash restore 20261103T120000Z .claude/commands/ship.md -n"}}
 
 func (a *app) trashCmd() *cobra.Command {
-	var restore, empty, force, dry, yes bool
-	var olderThan string
 	cmd := &cobra.Command{
-		Use:   "trash [<run> [<original>...] --restore | [<run>...] --empty] [flags]",
+		Use:   "trash [<run>]",
 		Short: "List, restore and empty lola's trash",
-		Long: "lola tidy, lola migrate and lola profile --remove move what they take out of place into the\n" +
+		Long: "lola tidy, lola migrate and lola profile rm move what they take out of place into the\n" +
 			"trash under $XDG_STATE_HOME/lola/trash, one run per command, never deleting it.\n\n" +
-			"Without a run, list the runs, newest first. With a run, show its entries: each original path and\n" +
-			"where the trash holds it. On a terminal, bare lola trash opens a picker to restore or empty;\n" +
-			"lola shows the plan and asks before it writes.\n\n" +
-			"--restore moves the run's entries back, or only the originals you name. It restores nothing when\n" +
+			"Without a subcommand, list the runs, newest first; on a terminal, a picker to restore or empty.\n" +
+			"lola trash <run> is lola trash show <run>: its entries, each original path and where the trash\n" +
+			"holds it. lola shows the plan and asks before it writes.\n\n" +
+			"restore moves the run's entries back, or only the originals you name. It restores nothing when\n" +
 			"an original exists; --force first moves what is there into a new trash run. -n prints the plan.\n\n" +
-			"--empty deletes the named runs, or every run; --older-than 30d (or 2w) keeps the newer ones.\n" +
+			"empty deletes the named runs, or every run; --older-than 30d (or 2w) keeps the newer ones.\n" +
 			"Deleting cannot be undone: lola asks first on a terminal, and off one it needs -y.",
-		Example: "  lola trash\n  lola trash 20261103T120000Z\n  lola trash 20261103T120000Z --restore\n" +
-			"  lola trash 20261103T120000Z .claude/commands/ship.md --restore -n\n  lola trash --empty --older-than 30d -y",
-		GroupID:           groupAdditional,
-		Args:              cobra.ArbitraryArgs,
-		ValidArgsFunction: a.completeTrash,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := coachTrashVerb(cmd, args); err != nil {
-				return err
-			}
-			act, err := trashAction(cmd, args)
-			if err != nil {
-				return err
-			}
+		Example: "  lola trash\n  lola trash show 20261103T120000Z\n  lola trash restore 20261103T120000Z\n" +
+			"  lola trash restore 20261103T120000Z .claude/commands/ship.md -n\n  lola trash empty --older-than 30d -y",
+		GroupID:                    groupAdditional,
+		Args:                       cobra.ArbitraryArgs,
+		SuggestionsMinimumDistance: 2,
+		ValidArgsFunction:          a.completeTrashRuns,
+	}
+	ns := nounSpec{
+		noun: "trash run",
+		bare: func(cmd *cobra.Command) error {
 			eng, err := a.engine()
 			if err != nil {
 				return err
 			}
-			switch act {
-			case "restore":
-				return a.restoreTrash(cmd, eng, args, force, dry)
-			case "empty":
-				return a.emptyTrash(cmd, eng, args, olderThan, dry, yes, Nav{})
+			return a.listTrash(cmd, eng, true)
+		},
+		show: a.showTrash,
+		exists: func(_ *cobra.Command, name string) bool {
+			eng, err := a.engine()
+			if err != nil {
+				return false
 			}
-			if len(args) > 1 {
-				return errs.WithHints(errors.New("lola trash shows one run at a time"), "show one: "+runWithout(cmd, args[:1]),
-					"restore those from "+args[0]+": "+runWithout(cmd, args)+" --restore")
-			}
-			if len(args) == 1 {
-				show, err := eng.ShowTrash(args[0], outputFlags(cmd))
-				if err != nil {
-					return err
-				}
-				again := runWithout(cmd, args) + " --restore"
-				return a.emit(cmd, func(w io.Writer, s style) { printTrashShow(w, s, show, again) }, show)
-			}
-			list, err := eng.ListTrash()
+			runs, err := eng.TrashNames()
+			return err == nil && slices.ContainsFunc(runs, func(r engine.TrashName) bool { return r.ID == name })
+		},
+	}
+	cmd.RunE = a.nounRunE(ns)
+	cmd.AddCommand(a.trashListCmd(), a.trashShowCmd(), a.trashRestoreCmd(), a.trashEmptyCmd())
+	a.noteVerbWins(cmd, ns)
+	a.coachFlags(cmd, ns, map[string]oldFlag{"restore": {verb: "restore"}, "undo": {verb: "restore"}, "recover": {verb: "restore"},
+		"empty": {verb: "empty"}, "purge": {verb: "empty"}, "clear": {verb: "empty"}})
+	return cmd
+}
+
+func (a *app) trashListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "list",
+		Aliases:           []string{"ls"},
+		Short:             "List the trash's runs, newest first",
+		Long:              "List the runs, newest first, as text: never the picker bare lola trash opens on a terminal.",
+		Example:           "  lola trash list\n  lola trash list --json",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			eng, err := a.engine()
 			if err != nil {
 				return err
 			}
-			if len(list.Runs) > 0 && !a.json && !a.plain {
-				if p := a.prompter(cmd); p.Interactive() {
-					return a.pickTrash(cmd, eng, p, list)
-				}
-			}
-			return a.emit(cmd, func(w io.Writer, s style) { printTrashList(w, s, list) }, list)
+			return a.listTrash(cmd, eng, false)
 		},
 	}
-	cmd.Flags().BoolVar(&restore, "restore", false, "move the run's entries, or the originals named, back where they were")
-	cmd.Flags().BoolVar(&empty, "empty", false, "delete the named runs, or every run")
-	cmd.Flags().BoolVar(&force, "force", false, "with --restore, first move what is where an original was into a new trash run")
-	cmd.Flags().StringVar(&olderThan, "older-than", "", "with --empty, only runs older than this: <n>d or <n>w")
+}
+
+// trashShowGuide is trashRunGuide for show, which names its own usage.
+var trashShowGuide = argGuide{noun: "trash run", find: "lola trash list", usage: "lola trash show <run>",
+	examples: []string{"lola trash show 20261103T120000Z"}}
+
+func (a *app) trashShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "show <run>",
+		Short:             "Show a run's entries",
+		Long:              "Show a run: each entry's original path and where the trash holds it, and the command that restores them.",
+		Example:           trashShowGuide.example(),
+		Args:              trashShowGuide.args(1),
+		ValidArgsFunction: a.completeTrashRuns,
+		RunE:              func(cmd *cobra.Command, args []string) error { return a.showTrash(cmd, args) },
+	}
+}
+
+func (a *app) trashRestoreCmd() *cobra.Command {
+	var force, dry bool
+	cmd := &cobra.Command{
+		Use:     "restore <run> [<original>...]",
+		Aliases: []string{"undo", "recover"},
+		Short:   "Move a run's entries, or the originals named, back where they were",
+		Long: "Move the run's entries back, or only the originals you name. It restores nothing when an\n" +
+			"original exists; --force first moves what is there into a new trash run. -n prints the plan.",
+		Example:           trashRunGuide.example(),
+		Args:              trashRunGuide.args(1),
+		ValidArgsFunction: a.completeTrashRestore,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			eng, err := a.engine()
+			if err != nil {
+				return err
+			}
+			return a.restoreTrash(cmd, eng, args, force, dry)
+		},
+	}
+	cmd.Flags().BoolVar(&force, "force", false, "first move what is where an original was into a new trash run")
+	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and change nothing")
+	return cmd
+}
+
+func (a *app) trashEmptyCmd() *cobra.Command {
+	var dry, yes bool
+	var olderThan string
+	cmd := &cobra.Command{
+		Use:     "empty [<run>...]",
+		Aliases: []string{"purge", "clear"},
+		Short:   "Delete the named runs, or every run",
+		Long: "Delete the named runs, or every run; --older-than 30d (or 2w) keeps the newer ones.\n" +
+			"Deleting cannot be undone: lola asks first on a terminal, and off one it needs -y.",
+		Example:           "  lola trash empty --older-than 30d -y\n  lola trash empty 20261103T120000Z -n\n  lola trash empty -y",
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: a.completeTrashRuns,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			eng, err := a.engine()
+			if err != nil {
+				return err
+			}
+			return a.emptyTrash(cmd, eng, args, olderThan, dry, yes, Nav{})
+		},
+	}
+	cmd.Flags().StringVar(&olderThan, "older-than", "", "only runs older than this: <n>d or <n>w")
 	_ = cmd.RegisterFlagCompletionFunc("older-than", cobra.FixedCompletions([]cobra.Completion{cobra.CompletionWithDesc("7d", "7 days"),
 		cobra.CompletionWithDesc("30d", "30 days"), cobra.CompletionWithDesc("2w", "2 weeks")}, cobra.ShellCompDirectiveNoFileComp|cobra.ShellCompDirectiveKeepOrder))
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and change nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
-	// Aliases for muscle memory; additive and stable. The published table is pinned in store_test.go.
-	aliasFlags(cmd, map[string][]string{"restore": {"undo", "recover"}, "empty": {"purge", "clear"}})
 	return cmd
 }
 
-// coachTrashVerb refuses lola trash restore and lola trash empty, which read as verbs: the action
-// is a flag. Its hint is the run that works, with the flags it takes; with no run named, the
-// listing, since --empty alone would delete every run.
-func coachTrashVerb(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 || !slices.Contains(trashActions, args[0]) {
-		return nil
+// listTrash is lola trash list, and bare lola trash: the runs as text, or, with picker, on a
+// terminal with runs to pick from, the picker.
+func (a *app) listTrash(cmd *cobra.Command, eng *engine.Engine, picker bool) error {
+	list, err := eng.ListTrash()
+	if err != nil {
+		return err
 	}
-	verb, runs := args[0], args[1:]
-	err := fmt.Errorf("%s is not a lola trash verb: the action is a flag: lola trash <run> --%s", verb, verb)
-	if len(runs) == 0 && verb == "empty" && cmd.Flags().Changed("older-than") {
-		// --older-than bounds what --empty deletes, so the run that keeps it never deletes every run.
-		return errs.WithHints(err, runWithout(cmd, nil, "restore", "empty", "force", "yes")+" --empty")
-	}
-	if len(runs) == 0 {
-		return errs.WithHints(err, "see the runs: "+runWithout(cmd, nil, "restore", "empty", "force", "yes", "older-than", "dry-run"))
-	}
-	// The action flags go, and the flags the other action takes alone, which the run would refuse.
-	drop := slices.Clone(trashActions)
-	for _, other := range trashActions {
-		for _, f := range trashFlags[other] {
-			if !slices.Contains(trashFlags[verb], f) {
-				drop = append(drop, f)
-			}
+	if picker && len(list.Runs) > 0 && !a.json && !a.plain {
+		if p := a.prompter(cmd); p.Interactive() {
+			return a.pickTrash(cmd, eng, p, list)
 		}
 	}
-	return errs.WithHints(err, runWithout(cmd, runs, drop...)+" --"+verb)
+	return a.emit(cmd, func(w io.Writer, s style) { printTrashList(w, s, list) }, list)
 }
 
-// trashAction is the run's action ("" to list or show), refusing two actions and a flag the action
-// does not take, each with the run that drops it.
-func trashAction(cmd *cobra.Command, args []string) (string, error) {
-	var set []string
-	for _, act := range trashActions {
-		if cmd.Flags().Changed(act) {
-			set = append(set, act)
-		}
+// showTrash is lola trash show <run>, and lola trash <run>: one run's entries, and the restore that
+// returns them. More than one run is refused, hinting each way out.
+func (a *app) showTrash(cmd *cobra.Command, args []string) error {
+	if len(args) > 1 {
+		return errs.WithHints(errors.New("lola trash shows one run at a time"),
+			"show one: "+runAs(strings.Fields("lola trash show"), cmd, args[:1]),
+			"restore those from "+args[0]+": "+runAs(strings.Fields("lola trash restore"), cmd, args))
 	}
-	if len(set) > 1 {
-		var hints []string
-		for _, keep := range set {
-			drop := slices.DeleteFunc(slices.Clone(set), func(s string) bool { return s == keep })
-			for _, other := range drop {
-				for _, f := range trashFlags[other] {
-					if !slices.Contains(trashFlags[keep], f) {
-						drop = append(drop, f)
-					}
-				}
-			}
-			hints = append(hints, runWithout(cmd, args, drop...))
-		}
-		return "", errs.WithHints(errors.New("--restore and --empty cannot be combined; lola trash takes one action per run"), hints...)
+	eng, err := a.engine()
+	if err != nil {
+		return err
 	}
-	act := ""
-	if len(set) == 1 {
-		act = set[0]
+	show, err := eng.ShowTrash(args[0], outputFlags(cmd))
+	if err != nil {
+		return err
 	}
-	for _, f := range []string{"force", "yes", "older-than", "dry-run"} {
-		if !cmd.Flags().Changed(f) || slices.Contains(trashFlags[act], f) {
-			continue
-		}
-		var takes []string
-		for _, a := range trashActions {
-			if slices.Contains(trashFlags[a], f) {
-				takes = append(takes, "--"+a)
-			}
-		}
-		return "", errs.WithHints(fmt.Errorf("--%s applies to %s only", f, strings.Join(takes, " and ")), "drop it: "+runWithout(cmd, args, f))
-	}
-	if act == "restore" && len(args) == 0 {
-		return "", errs.WithHints(errors.New("--restore needs the run to restore from"), "see the runs: "+runWithout(cmd, nil, "restore", "force", "dry-run"))
-	}
-	return act, nil
+	again := runAs(strings.Fields("lola trash restore"), cmd, args)
+	return a.emit(cmd, func(w io.Writer, s style) { printTrashShow(w, s, show, again) }, show)
 }
 
-// restoreTrash is lola trash <run> [<original>...] --restore: its plan with -n, else the restore.
+// restoreTrash is lola trash restore <run> [<original>...]: its plan with -n, else the restore.
 func (a *app) restoreTrash(cmd *cobra.Command, eng *engine.Engine, args []string, force, dry bool) error {
 	req := engine.TrashRestoreRequest{Run: args[0], Force: force, DryRun: dry, Display: outputFlags(cmd)}
 	for _, o := range args[1:] {
@@ -196,7 +212,7 @@ func (a *app) restoreTrash(cmd *cobra.Command, eng *engine.Engine, args []string
 	return a.emit(cmd, func(w io.Writer, s style) { printTrashRestore(w, s, res) }, res)
 }
 
-// emptyTrash is lola trash [<run>...] --empty: its plan with -n, else asked about at nav (-y
+// emptyTrash is lola trash empty [<run>...]: its plan with -n, else asked about at nav (-y
 // answers), then deleted.
 func (a *app) emptyTrash(cmd *cobra.Command, eng *engine.Engine, args []string, olderThan string, dry, yes bool, nav Nav) error {
 	// Given empty, it must not read as not given. The hint corrects the age and keeps it: one
@@ -229,10 +245,10 @@ func (a *app) emptyTrash(cmd *cobra.Command, eng *engine.Engine, args []string, 
 
 // pickTrash is bare lola trash on a terminal: the picker of list's runs,
 // newest first, each a [whole run] row followed by its files, then the plan of what was ticked,
-// shown before anything is written. Restore ticked restores, from each run, what lola trash <run>
-// [<original>...] --restore would (a run ticked whole, every entry), after asking; when an
+// shown before anything is written. Restore ticked restores, from each run, what lola trash restore <run>
+// [<original>...] would (a run ticked whole, every entry), after asking; when an
 // original exists, the only restore offered is --force's, and lola asks again before moving what
-// is there. Empty ticked runs is lola trash <run>... --empty, which asks. A tick the action cannot
+// is there. Empty ticked runs is lola trash empty <run>..., which asks. A tick the action cannot
 // take, or Cancel at the review, asks the picker again, saying why, its ticks and action kept; so
 // does going back (Esc) from any question after it. Each file shows its credentials mark first,
 // then its path relative to the run's project (whole when the run has none), so a cut to the
@@ -327,8 +343,8 @@ func trashTicked(shows []*engine.TrashShow, picked []string) (map[int]bool, map[
 	return whole, files, nil
 }
 
-// restorePicked is pickTrash's Restore ticked: each run's plan, as lola trash <run> [<original>...]
-// --restore makes it (the files ticked named by identity, so two whose paths print alike stay
+// restorePicked is pickTrash's Restore ticked: each run's plan, as lola trash restore <run>
+// [<original>...] makes it (the files ticked named by identity, so two whose paths print alike stay
 // apart), shown, then Restore, or, when an original exists, Restore with --force, which re-plans
 // those runs with --force and asks before moving what is there. It answers why the picker asks
 // again when two runs would restore one original, and ErrBack for Cancel at the review and for
@@ -469,7 +485,7 @@ func printTrashList(w io.Writer, s style, list *engine.TrashList) {
 	}
 }
 
-// printTrashShow prints lola trash <run>: the run, then each entry, original first, with the run
+// printTrashShow prints lola trash show <run>: the run, then each entry, original first, with the run
 // that restores them all (again); --plain rows are the run's row, then entry, original, trash path
 // and whether it may hold credentials.
 func printTrashShow(w io.Writer, s style, show *engine.TrashShow, again string) {

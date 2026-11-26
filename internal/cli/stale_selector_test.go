@@ -84,7 +84,7 @@ var _ = Describe("the hint of a stale selector removes it, wherever it is saved"
 
 	It("in the entry of the profile that provides the module", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + ", skip: [skill/gone]}\n"})
-		Expect(lola("profile", "user:go", "--switch", "-C", proj, "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "user:go", "-C", proj, "-y").code).To(Equal(0))
 		r := syncs()
 		hint := hintOf(r)
 		got := runHint(hint)
@@ -95,14 +95,14 @@ var _ = Describe("the hint of a stale selector removes it, wherever it is saved"
 
 	It("in the project section while a profile is on and project.yml provides the module", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		Expect(lola("profile", "user:go", "--switch", "-C", proj, "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "user:go", "-C", proj, "-y").code).To(Equal(0))
 		selections("projects:\n  " + proj + ":\n    kit:\n      skip: [skill/gone]\n")
 		removes(syncs())
 	})
 
 	It("from an install, in the entry of the profile that provides the module", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + ", skip: [skill/gone]}\n"})
-		Expect(lola("profile", "user:go", "--switch", "-C", proj, "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "user:go", "-C", proj, "-y").code).To(Equal(0))
 		r := lola("install", kit, "-C", proj, "-t", "claude-code", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		hint := hintOf(r)

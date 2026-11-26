@@ -218,7 +218,7 @@ keys, named first in its key help: `esc back · q quit`.
     move and keep pickers or `lola migrate`'s "Migrate?" after two mapping questions; a yes or no
     question with no steps before it quits at once.
   - A command that names what its cancel left (`lola sync`'s `✗ cancelled — the project was not
-    changed`, a `lola profile --update` that updated some profiles before it stopped) prints that
+    changed`, a `lola profile update` that updated some profiles before it stopped) prints that
     instead, in the same form.
   - In a text input, and while you type a filter after `/`, `q` is typed as text (a text input's
     key help says `ctrl+c quits` in its place); Esc first sets,
@@ -231,7 +231,7 @@ keys, named first in its key help: `esc back · q quit`.
     source… go back to their picker.
   - `lola tidy`'s keep-list goes back to the move picker; `lola migrate`'s questions about a
     missing root or assistant go back to the one before, and its "Migrate?" to the last of them,
-    your answers kept; `lola market --add`'s "Allow ssh to which hosts?" goes back to the name
+    your answers kept; `lola market add`'s "Allow ssh to which hosts?" goes back to the name
     question it asked; Choose… goes back to `lola sync`'s trust question.
   - On a page of several lists (a component page, the module picker with marketplace groups), Esc
     first moves to the list before, as Shift+Tab does.
@@ -259,7 +259,7 @@ and `--scope project` without `-C` use the nearest parent with a `.lola/`, else 
 directory. `--scope user -C <dir>` is an error.
 
 **Commands that write** (`install`, `sync`, `update`, `uninstall`, `tidy`, and `lola profile`
-with `--on`, `--off`, `--switch` or `--remove`) never pick a scope silently. lola reads the table
+with `on`, `off`, `switch` or `rm`) never pick a scope silently. lola reads the table
 top to bottom and takes the first row that applies, so on a terminal the picker asks even inside
 a `.lola/` project:
 
@@ -286,12 +286,12 @@ or off it. `default_scope` does not apply to them, and every row names its scope
 those two cannot be read (a damaged `default.yml`, say), `list` fails with a hint naming the other
 scope's own command, such as `lola list --project` (`lola profile --project` for `lola profile`).
 
-`lola profile --add` and `--update` never ask either: the remote profile they write is shared by
-every scope. For `--add` a scope flag only names the scope its content is compared with; without
-one, it is the project found walking up, else user scope. `--update` without a scope flag applies
+`lola profile add` and `update` never ask either: the remote profile they write is shared by
+every scope. For `add` a scope flag only names the scope its content is compared with; without
+one, it is the project found walking up, else user scope. `update` without a scope flag applies
 in the project found walking up, then user scope, as `sync --scope both` does, and a scope flag
-narrows it to that scope ([Remote profiles](remote-profiles.md)). `--add` refuses `--scope both`;
-`--update` takes it as every known scope, and refuses it when there is no `.lola/` project.
+narrows it to that scope ([Remote profiles](remote-profiles.md)). `add` refuses `--scope both`;
+`update` takes it as every known scope, and refuses it when there is no `.lola/` project.
 
 `check` acts on the one scope the flags name, else on the nearest parent with a `.lola/`, else
 the current directory, and never asks; `--scope both` is refused as above. It reads
@@ -349,7 +349,7 @@ with your run plus `-y`, which answers yes; `--force` does not, and `-n` asks no
 
 After a project install saves picks to `selections.yaml`, the run adds one line saying they are
 yours alone. When the project has exactly one project profile, the line is the working command that
-moves the module into it (`lola profile --move <module> --to project:<profile>`, with your scope
+moves the module into it (`lola profile move <module> --to project:<profile>`, with your scope
 flags); otherwise it names `<project>/.lola/profiles`, where a project profile is a file you write,
 and the `lola profile` run that lists the profiles you can use.
 
@@ -387,7 +387,7 @@ say so once per module, with the command that adds them where the module comes f
 
 ```
 → cc-skills-golang adds skill/golang-x, not installed (only: in selections.yaml projects[/p]) → lola install -C /p cc-skills-golang --unskip skill/golang-x
-→ cc-skills-golang adds skill/golang-x, not installed (only: in profile go-review) → lola profile --user go-review --edit cc-skills-golang --unskip skill/golang-x
+→ cc-skills-golang adds skill/golang-x, not installed (only: in profile go-review) → lola profile --user edit go-review cc-skills-golang --unskip skill/golang-x
 ```
 
 At most five are named, then `and N more`. Nothing is named when no `only:` list is in force,
@@ -412,10 +412,10 @@ go-review here`).
 
 `lola info <module>` lists, per scope, each component as its picks leave it and ends with the run
 that changes them (`→ change it: …`). For a module `project.yml` provides that is
-`lola install <module>` while no profile is on, and `lola profile --project base --edit <module>`
+`lola install <module>` while no profile is on, and `lola profile --project edit base <module>`
 while one is (a profile, over the scope's base: see [Profiles](profiles.md)) (on a terminal either reopens the component page; `--skip`, `--unskip` and
 `--only` work off one), and for a module a profile or your default provides it is
-`lola profile <name> --edit <module>`, which writes that profile. A `projects[<dir>]` entry of
+`lola profile edit <name> <module>`, which writes that profile. A `projects[<dir>]` entry of
 `selections.yaml` for a module a profile provides is ignored, and every sync says so, naming the
 profile's edit; delete the entry once its picks are in the profile.
 

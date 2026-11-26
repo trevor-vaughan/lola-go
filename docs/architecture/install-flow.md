@@ -73,7 +73,7 @@ names each component the planned version adds that only the `only:` list leaves 
 
 It returns before reading the cache when no `only:` list is in force. A sync's hint is `repickRun`'s
 (target.go): the edit of the profile that provides the module (named by `editArg`), `lola install`
-for `project.yml`'s while no profile is on (else `lola profile base --edit`), and for a remote
+for `project.yml`'s while no profile is on (else `lola profile edit base`), and for a remote
 profile's the switch to a copy; an install's keeps its own target (`installRun`).
 
 **Re-pick visibility.** `ignoredSection` (resolve.go) warns at plan time (sync, install) that a

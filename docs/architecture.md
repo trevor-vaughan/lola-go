@@ -608,7 +608,7 @@ the same guards; a file whose name would not print as itself is skipped with a w
 never read).
 
 A `url` is shown only through `shownURL` (`source.DisplayURL`: no user info, password, query or
-fragment), and `translate` puts every source through the rule `--add` applies (`source.Validate` for
+fragment), and `translate` puts every source through the rule `market add` applies (`source.Validate` for
 git, `source.CheckURL` for a catalog file), so one with credentials or a query is `not-registered`
 with no hint; only `source.IsSCP` text is git's scp form, so `ext::…` or `a:/b` is refused, never a
 folder under the working directory. Every name the plan may register is claimed before any slug is
@@ -619,7 +619,7 @@ chosen.
 stats to tell a folder from the catalog file in it (`--path`), on this machine and the user's own; a
 `url` lola cannot read is `not-registered` with its reason and no hint; a name `market.ValidateName`
 refuses, or one of yours has from another source, is `not-registered` with a `market.FreeName`
-slug's `--add`; a disabled one with its `--add`; the same name, source and (when the url names one)
+slug's `market add`; a disabled one with its `market add`; the same name, source and (when the url names one)
 path is `already-registered`.
 
 The run's `registerMarkets` calls `engine.AddMarket` for each planned one, after the destinations
@@ -629,8 +629,8 @@ and before the home's decision, with `PythonName` for a tree whose url names no 
 `.yml`/`.yaml` but `.pre-commit-config.yaml`) instead of `catalogIn`, and the registration records
 that file.
 
-A failure is that marketplace's `failed` outcome (its hints, then its `--add`, or for a lookup url a
-command that reruns `lola migrate`, since an `--add` would not read the Python lola's file; nothing
+A failure is that marketplace's `failed` outcome (its hints, then its `market add`, or for a lookup url a
+command that reruns `lola migrate`, since a `market add` would not read the Python lola's file; nothing
 for `ErrNoPythonCatalog`), never the run's.
 
 A skipped one whose hint needs that file is fetched for it in the run (`engine.PythonCatalog`); a

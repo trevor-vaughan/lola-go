@@ -24,7 +24,7 @@ package cli_test
 // also pinned (consent: later --ctrl+c--> cancelled): misc2_paths_test.go "consent: start --run (lola sync, nothing to install)--> later"
 // also pinned (market picker: start --run (a terminal)--> picker; market picker: picker --esc or q--> left): marketflow_test.go "opens without contacting a host, and leaving it changes nothing"
 // also pinned (market picker: start --run (a terminal)--> picker): market_picker_internal_test.go "makes no check on open and shows no status"
-// also pinned (market picker: start --run (--json, --plain, --no-pager, --no-interactive or market_picker: false)--> list): marketflow_test.go "lists as text under --json, --plain, --no-pager, --no-interactive and market_picker: false, never asking"
+// also pinned (market picker: start --run (--json, --plain, --no-pager or market_picker: false)--> list): marketflow_test.go "lists as text under --json, --plain, --no-pager and market_picker: false, never asking"
 // also pinned (market picker: start --run (no terminal)--> list): marketflow_test.go "lists as text off a terminal"
 // also pinned (market picker: start --run (no terminal)--> list): market_picker_internal_test.go "never asks off a terminal"
 // also pinned (market picker: start --run (accessible mode)--> numbers; market picker: numbers --answer--> next step): market_picker_internal_test.go "lists the rows numbered, with no status, and answers the numbers chosen"
@@ -62,9 +62,12 @@ package cli_test
 // also pinned (market picker: offer --no--> picker): market_picker_internal_test.go "declines with esc or n at the offer and stays open with the statuses shown"
 // also pinned (market picker: offer --u or U--> picker): market_picker_internal_test.go "drops the update offer and checks again on u or U, as the unreachable row's hint says"
 // also pinned (market picker: offer --another key--> offer; market picker: offer --q--> left; market picker: offer --ctrl+c--> cancelled): market_picker_internal_test.go "ignores other keys at the offer, and q or Ctrl+C there change nothing"
-// also pinned (market picker: picker --Enter (known rows ticked)--> enable; market picker: enable --yes--> picker; market picker: enable --no--> picker): marketflow_test.go "enables a ticked known marketplace at its pin after the --enable question, and opens again with it among yours"
-// also pinned (market picker: picker --Enter (rows of yours ticked)--> action; market picker: action --Remove--> remove; market picker: remove --yes--> picker; market picker: remove --no--> picker): marketflow_test.go "removes a ticked marketplace of yours only when the --remove question is answered yes"
-// also pinned (market picker: picker --Enter (rows of yours and known ones ticked)--> enable; market picker: action --Update--> picker): marketflow_test.go "on mixed ticks enables the known ones first, then asks what to do with yours"
+// also pinned (market picker: picker --Enter (known rows ticked)--> enable; market picker: enable --yes--> browse; market picker: enable --no--> picker): marketflow_test.go "enables a ticked known marketplace at its pin after the --enable question, then opens its entries in lola install's picker"
+// also pinned (market picker: enable --yes (m in a preview)--> picker): marketflow_test.go "enables a previewed known marketplace on m without opening its entries, and opens again with it among yours"
+// also pinned (market picker: picker --d--> remove; market picker: remove --yes--> picker; market picker: remove --no--> picker): marketflow_test.go "removes a marketplace of yours on d only when the --remove question is answered yes"
+// also pinned (market picker: picker --d--> remove): market_picker_internal_test.go "removes the cursor row on d when nothing is ticked, and the ticked rows of yours when some are"
+// also pinned (market picker: picker --d (no row of yours ticked, nor under the cursor)--> picker): market_picker_internal_test.go "says what d removes, and removes nothing, on a known row you have not enabled, on Add a source… and with only known rows ticked"
+// also pinned (market picker: picker --Enter (rows of yours and known ones ticked)--> enable; market picker: enable --no (rows of yours ticked)--> browse): marketflow_test.go "on mixed ticks enables the known ones first, then opens the entries of yours and of those it enabled"
 // also pinned (market picker: picker --Enter (on Add a source…)--> source; market picker: picker --a--> source): market_picker_internal_test.go "adds a source with a, or Enter on Add a source…"
 // also pinned (market picker: picker --a--> source; market picker: source --answer--> picker; market picker: source --esc--> picker): marketflow_test.go "adds a source on a, asking --add's questions, and opens again with the new marketplace ticked"
 // also pinned (market picker: source --answer--> picker): market_picker_internal_test.go "ticks the rows Preselect names on open"
@@ -72,13 +75,12 @@ package cli_test
 // also pinned (market picker: picker --esc or q--> left; market picker: picker --ctrl+c--> cancelled): market_picker_internal_test.go "cancels with esc and q, and Ctrl+C aborts"
 // also pinned (market picker: picker --esc or q--> left; market picker: picker --ctrl+c--> cancelled): market_picker_internal_test.go "stops its checks on leaving and reads no result after"
 // also pinned (market picker: picker --ctrl+c--> cancelled): marketflow_test.go "ends the run on Ctrl+C in the picker, changing nothing"
-// also pinned (market picker: action --Browse entries--> browse; market picker: browse --answer--> picker): marketflow_test.go "browses the entries of the ticked marketplaces of yours through lola install's picker"
+// also pinned (market picker: picker --Enter (rows of yours ticked)--> browse; market picker: browse --answer--> picker): marketflow_test.go "browses the entries of the ticked marketplaces of yours through lola install's picker"
 // also pinned (market picker: browse --ctrl+c--> cancelled): marketflow_test.go "ends the run on Ctrl+C in the install flow that browses entries"
-// also pinned (market picker: action --ctrl+c--> cancelled; market picker: action --Cancel--> picker; market picker: action --esc--> picker): marketflow_test.go "ends the run on Ctrl+C in Do what with these?, and goes back to the picker on its Cancel"
 // also pinned (market picker: start --run (--scope both)--> refused): marketflow_test.go "refuses --scope both before opening, since it acts on one scope"
 // also pinned (market picker: picker --Enter (nothing ticked, a row of yours with entries)--> entries): market_picker_internal_test.go "opens a marketplace's entries on Enter with nothing ticked, under the context line"
-// also pinned (market picker: picker --Enter (nothing ticked, a row of yours without entries)--> picker): market_picker_internal_test.go "acts on a known row on m, and says a row without entries has none"
-// also pinned (market picker: picker --m--> next step): market_picker_internal_test.go "keeps the menu on Enter with a row ticked, and on m"
+// also pinned (market picker: picker --Enter (nothing ticked, a row of yours without entries)--> picker): market_picker_internal_test.go "answers a ticked known row on Enter, and says a row without entries has none"
+// also pinned (market picker: picker --Enter (rows of yours ticked)--> browse): market_picker_internal_test.go "answers the ticked rows on Enter, not the cursor's, and takes m as no key on the list"
 // also pinned (market picker: entries --/--> entryfilter; market picker: entryfilter --answer--> entries; market picker: entries --esc (a filter kept)--> entries): market_picker_internal_test.go "filters entries by name, description and tag, shows none for no match, and opens nothing then"
 // also pinned (market picker: entries --Enter--> detail; market picker: entries --esc--> picker; market picker: detail --esc--> entries): market_picker_internal_test.go "goes back a page on Esc, restoring the cursor and the filter, and cancels from the list"
 // also pinned (market picker: entries --q--> left; market picker: entries --ctrl+c--> cancelled; market picker: detail --q--> left; market picker: detail --ctrl+c--> cancelled): market_picker_internal_test.go "quits on q at either page and aborts on Ctrl+C"
@@ -102,7 +104,8 @@ package cli_test
 // also pinned (market picker: handoff --ctrl+c--> cancelled): marketflow_test.go "ends the run on Ctrl+C in the install's own question"
 // also pinned (market picker: numbers --answer (one number, a row of yours with entries)--> entries; market picker: entries --answer (accessible mode, a number from 1 to N)--> detail; market picker: detail --answer (accessible mode, i or d)--> handoff): market_picker_internal_test.go "drills into an entry's detail and uninstalls it"
 // also pinned (market picker: numbers --answer (one number, a row of yours without entries)--> numbers): market_picker_internal_test.go "says a marketplace has no entries and asks again"
-// also pinned (market picker: numbers --m<N>--> next step): market_picker_internal_test.go "keeps m<N> for the menu answer"
+// also pinned (market picker: numbers --d<N>--> remove): market_picker_internal_test.go "removes the marketplaces of yours d<N> names, and enables and opens several numbers"
+// also pinned (market picker: numbers --d<N> (refused)--> numbers): market_picker_internal_test.go "says what d takes when it names no marketplace of yours, and asks again"
 // also pinned (market picker: entries --empty submit (accessible mode)--> numbers; market picker: detail --empty submit (accessible mode)--> entries): market_picker_internal_test.go "goes back one level on an empty answer and then cancels"
 // also pinned (market picker: entries --end of input (accessible mode)--> refused; market picker: detail --end of input (accessible mode)--> refused): market_picker_internal_test.go "refuses when input ends at the entries or the detail prompt"
 // also pinned (market picker: picker --Enter (nothing ticked, a known row not yet previewed)--> fetch; market picker: picker --→ (nothing ticked, a known row)--> fetch): market_picker_preview_internal_test.go "starts the fetch from a command on Enter, never in Update, and says plainly what is going on"
@@ -119,7 +122,7 @@ package cli_test
 // also pinned (market picker: fetch --Enter (the cursor on another known row, nothing ticked)--> fetch): market_picker_preview_internal_test.go "cancels the fetch of one known row when another is opened, and starts that one's"
 // also pinned (market picker: picker --Enter (nothing ticked, a known row already previewed)--> entries): market_picker_preview_internal_test.go "keeps the preview for the session: going back and in again fetches nothing"
 // also pinned (market picker: entries --i or d (a preview)--> entries; market picker: detail --i or d (a preview)--> detail): market_picker_preview_internal_test.go "answers i and d with a note, on the entries page and the detail page, and never leaves the picker"
-// also pinned (market picker: entries --m (a preview)--> enable; market picker: detail --m (a preview)--> enable): market_picker_preview_internal_test.go "answers m on the entries page and on the detail page as m on the known row does"
+// also pinned (market picker: entries --m (a preview)--> enable; market picker: detail --m (a preview)--> enable): market_picker_preview_internal_test.go "enables the known row on m on the entries page and on the detail page"
 // also pinned (market picker: entries --x or space (not a preview)--> entries): market_picker_ticks_internal_test.go "draws a checkbox before each entry, its description two spaces past its name, ticked with x and space"
 // also pinned (market picker: entries --ctrl+a (not a preview)--> entries): market_picker_ticks_internal_test.go "ticks all the entries the filter shows with ctrl+a, then none, and keeps ticks across a filter and a detail page"
 // also pinned (market picker: entries --x or space (a preview)--> entries): market_picker_ticks_internal_test.go "offers no checkbox in a preview, and ignores x there"
@@ -189,7 +192,7 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: start --run--> done", func() {
 		sp := &scripted{}
-		r := lolaP(sp, "market", "--add", acme)
+		r := lolaP(sp, "market", "add", acme)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(BeEmpty(), "a free name and no ssh host: nothing asked")
 		Expect(r.out).To(HavePrefix("✓ marketplace acme: 2 entries (Claude marketplace.json) from " + acme + "\n"))
@@ -198,10 +201,10 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: start --run (the name is another source's)--> name", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{"mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name", "ssh-hosts"}))
 		Expect(sp.nameSteps[0]).To(Equal(cli.MarketNameStep{Why: "priv is already a marketplace, from " + acme, Value: "priv-2"}))
@@ -209,19 +212,19 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: start --run (the name is this marketplace already)--> refused", func() {
-		Expect(lola("market", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme).code).To(Equal(0))
 		before := markets()
 		sp := &scripted{}
-		r := lolaP(sp, "market", "acme", "--add", acme)
+		r := lolaP(sp, "market", "add", acme, "acme")
 		Expect(r.code).To(Equal(1))
 		Expect(sp.calls).To(BeEmpty())
-		Expect(r.err).To(Equal("error: acme is already this marketplace\n  hint: lola market acme --update\n"))
+		Expect(r.err).To(Equal("error: acme is already this marketplace\n  hint: lola market update acme\n"))
 		Expect(markets()).To(Equal(before))
 	})
 
 	It("market add: start --run (ssh hosts not allowed)--> ssh", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"ssh-hosts"}))
 		Expect(sp.sshSteps[0].Market).To(Equal("priv"))
@@ -231,46 +234,46 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: start --run (--ssh-host)--> ssh", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){func(cli.SSHHostStep) ([]string, error) { return nil, nil }}}
-		r := lolaP(sp, "market", "--add", priv, "--ssh-host", "git.corp.test")
+		r := lolaP(sp, "market", "add", priv, "--ssh-host", "git.corp.test")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.sshSteps[0].Hosts).To(Equal([]cli.SSHHostChoice{{Host: "other.test", Entries: 1}}), "only the hosts --ssh-host left")
 		Expect(markets()).To(ContainSubstring("ssh_hosts:\n      - git.corp.test\n"))
 		sp = &scripted{}
-		r = lolaP(sp, "market", "both", "--add", priv, "--ssh-host", "git.corp.test", "--ssh-host", "other.test")
+		r = lolaP(sp, "market", "add", priv, "both", "--ssh-host", "git.corp.test", "--ssh-host", "other.test")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(BeEmpty(), "nothing left to ask")
 	})
 
 	It("market add: start --run (no terminal or --json, a taken name)--> refused", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{}
-		r := lolaP(sp, "market", "--add", priv, "--json")
+		r := lolaP(sp, "market", "add", priv, "--json")
 		Expect(r.code).To(Equal(1))
 		Expect(sp.calls).To(BeEmpty())
 		Expect(r.err).To(MatchJSON(`{"error": "priv is already a marketplace, from ` + acme + `",
-			"hints": ["lola market priv-2 --add ` + priv + ` --path .claude-plugin/marketplace.json --json"]}`))
+			"hints": ["lola market add ` + priv + ` priv-2 --path .claude-plugin/marketplace.json --json"]}`))
 		Expect(markets()).To(Equal(before))
 	})
 
 	It("market add: start --run (no terminal or --json, ssh hosts)--> done", func() {
 		sp := &scripted{}
-		r := lolaP(sp, "market", "--add", priv, "--json")
+		r := lolaP(sp, "market", "add", priv, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(BeEmpty())
-		Expect(r.out).To(ContainSubstring("lola market priv --update --ssh-host git.corp.test --ssh-host other.test --json"))
+		Expect(r.out).To(ContainSubstring("lola market update priv --ssh-host git.corp.test --ssh-host other.test --json"))
 		Expect(markets()).NotTo(ContainSubstring("ssh_hosts"))
 	})
 
 	It("market add: start --run (-n)--> done", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{}
-		r := lolaP(sp, "market", "other", "--add", priv, "-n")
+		r := lolaP(sp, "market", "add", priv, "other", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(BeEmpty(), "a dry run asks nothing")
 		Expect(r.out).To(HavePrefix("→ would add marketplace other: "))
-		r = lolaP(sp, "market", "--add", priv, "-n")
+		r = lolaP(sp, "market", "add", priv, "-n")
 		Expect(r.code).To(Equal(1), "a taken name is refused as off a terminal")
 		Expect(sp.calls).To(BeEmpty())
 		Expect(markets()).To(Equal(before))
@@ -278,19 +281,19 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: name --answer--> ssh", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		sp := &scripted{names: []string{"mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		Expect(lolaP(sp, "market", "--add", priv).code).To(Equal(4))
+		Expect(lolaP(sp, "market", "add", priv).code).To(Equal(4))
 		Expect(sp.calls).To(Equal([]string{"market-name", "ssh-hosts"}))
 		Expect(sp.sshSteps[0].Market).To(Equal("mine"))
 	})
 
 	It("market add: name --answer (no ssh host to ask)--> done", func() {
-		Expect(lola("market", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme).code).To(Equal(0))
 		other := filepath.Join(tmp, "other")
 		writeTree(other, map[string]string{".claude-plugin/marketplace.json": marketCatalog, "tools/formatter/x.md": "x"})
 		sp := &scripted{names: []string{"mine"}}
-		r := lolaP(sp, "market", "--add", other)
+		r := lolaP(sp, "market", "add", other)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name"}))
 		Expect(r.out).To(ContainSubstring("→ the catalog calls itself acme; it is your marketplace mine\n"))
@@ -298,10 +301,10 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: name --ctrl+c--> cancelled", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{cancelRun}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name"}))
 		Expect(markets()).To(Equal(before))
@@ -310,7 +313,7 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: ssh --answer--> done", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){func(cli.SSHHostStep) ([]string, error) { return []string{"other.test"}, nil }}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ allowed ssh hosts: other.test\n"))
 		Expect(markets()).To(ContainSubstring("ssh_hosts:\n      - other.test\n"))
@@ -319,28 +322,28 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: ssh --empty submit--> done", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){func(cli.SSHHostStep) ([]string, error) { return nil, nil }}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(markets()).To(ContainSubstring("- name: priv\n"))
 		Expect(markets()).NotTo(ContainSubstring("ssh_hosts"), "no host allowed")
-		Expect(r.out + r.err).To(ContainSubstring("lola market priv --update --ssh-host git.corp.test --ssh-host other.test"))
+		Expect(r.out + r.err).To(ContainSubstring("lola market update priv --ssh-host git.corp.test --ssh-host other.test"))
 	})
 
 	It("market add: ssh --ctrl+c--> cancelled", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{"mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(markets()).To(Equal(before), "the name answered is not registered")
 		Expect(filepath.Join(p.MarketCache, "mine")).NotTo(BeAnExistingFile())
 	})
 
 	It("market add: name --answer (refused)--> name", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{"Bad Name", "priv", "mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name", "market-name", "market-name", "ssh-hosts"}))
 		why := "priv is already a marketplace, from " + acme
@@ -352,11 +355,11 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: ssh --esc (after the name question)--> name", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{"mine", "theirs"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){goneBack[cli.SSHHostStep, []string],
 			func(cli.SSHHostStep) ([]string, error) { return []string{"git.corp.test"}, nil }}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name", "ssh-hosts", "market-name", "ssh-hosts"}))
 		Expect(sp.sshSteps[0].Nav).To(Equal(cli.Nav{Back: true, Answered: 1}), "Esc has the name question to go back to")
@@ -370,7 +373,7 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: ssh --esc (first screen)--> ssh", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"ssh-hosts"}))
 		Expect(sp.sshSteps[0].Nav).To(Equal(cli.Nav{}), "a first screen: Esc stays")

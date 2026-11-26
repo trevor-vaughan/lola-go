@@ -18,7 +18,7 @@ import (
 // MarketRemove is lola market's action that forgets a marketplace.
 const MarketRemove MarketAction = "remove"
 
-// MarketRemoveRequest is one lola market <name> --remove. Confirm asks whether to
+// MarketRemoveRequest is one lola market rm <name>. Confirm asks whether to
 // forget the marketplace; nil means it cannot ask, and the run is refused. The CLI passes one that
 // says yes for -y.
 type MarketRemoveRequest struct {
@@ -29,7 +29,7 @@ type MarketRemoveRequest struct {
 	Display []string
 }
 
-// MarketRemoveResult is what lola market --remove reports.
+// MarketRemoveResult is what lola market rm reports.
 type MarketRemoveResult struct {
 	Removed []string `json:"removed"`
 	Notices []Notice `json:"notices"`
@@ -58,9 +58,9 @@ func (e *Engine) RemoveMarket(req MarketRemoveRequest) (*MarketRemoveResult, err
 		// Never with -y, which answered the removal of another name.
 		run := func(n string) []string {
 			if req.DryRun {
-				return []string{n, "--remove", "-n"}
+				return []string{"rm", n, "-n"}
 			}
-			return []string{n, "--remove"}
+			return []string{"rm", n}
 		}
 		return nil, noMarket(reg, req.Name, run, req.Display)
 	}
@@ -71,8 +71,8 @@ func (e *Engine) RemoveMarket(req MarketRemoveRequest) (*MarketRemoveResult, err
 		return res, nil
 	}
 	if req.Confirm == nil {
-		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola market --remove asks before it forgets a marketplace, and there is no terminal to ask on")),
-			MarketRun(append([]string{r.Name, "--remove", "-y"}, req.Display...)...))
+		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola market rm asks before it forgets a marketplace, and there is no terminal to ask on")),
+			MarketRun(append([]string{"rm", r.Name, "-y"}, req.Display...)...))
 	}
 	c, _ := e.loadMarket(*r) // only for the question's row: an unreadable cache is removed all the same
 	ok, err := req.Confirm(e.marketRow(*r, c))

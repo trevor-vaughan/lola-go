@@ -11,18 +11,18 @@ what the answers mean.
 ## Surfaces
 
 - [Install](#install): `lola install`
-- [Profile edit](#profile-edit): `lola profile [<name>] --edit [<module>...]` on a terminal
+- [Profile edit](#profile-edit): `lola profile edit [<name>] [<module>...]` on a terminal
 - [Scope picker](#scope-picker): the `<Verb> where?` question of `lola sync`, `update`, `tidy`,
-  `repair`, `uninstall` and `lola profile --on/--off/--switch/--move/--split/--remove`
+  `repair`, `uninstall` and `lola profile on/off/switch/move/split/rm`
 - [Trust question](#trust-question): `Trust these changes?`, its Choose… lists, the removals
   question and the `Proceed?` receipt, on `lola sync`, `update` and `lola profile`'s activations,
-  `--move` and `--split`
+  `move` and `split`
 - [Tidy](#tidy): `lola tidy`'s pickers and its closing question
-- [Trash](#trash): bare `lola trash`'s picker and the questions after it, and `lola trash --empty`
+- [Trash](#trash): bare `lola trash`'s picker and the questions after it, and `lola trash empty`
 - [Cache clean](#cache-clean): `lola cache clean`'s plan and question
 - [Init](#init): `lola init` without a directory or `-y`, and the background question that can come
   before any command's first form
-- [Market add](#market-add): the name and ssh host questions of `lola market [<name>] --add <source>`
+- [Market add](#market-add): the name and ssh host questions of `lola market add <source> [<name>]`
 - [Market picker](#market-picker): bare `lola market`'s picker on a terminal and the questions its
   actions ask
 - [Migrate](#migrate): `lola migrate`'s mapping questions, its plan and `Migrate?`
@@ -335,18 +335,18 @@ commands.
 
 ## Profile edit
 
-`lola profile [<name>] --edit [<module>...]` is `profileEdit` (`internal/cli/profile_edit.go`).
+`lola profile edit [<name>] [<module>...]` is `profileEdit` (`internal/cli/profile_edit.go`).
 What the name means is settled first, by the engine (`engine.EditArgs`, `engine.EditTarget` in
 `internal/engine/profile_edit.go` and `internal/engine/target.go`), asking on a terminal when the
 name is both a profile and a module, or when the write target needs a choice. Then:
 
 - with modules, the edit is the [install flow](#install) (`runInstall`) into that profile, applied
   in each scope the profile is on (`engine.EditScopes`);
-- bare `--edit` of a profile opens its module page (`editPage`), which is the install flow's
+- bare `edit` of a profile opens its module page (`editPage`), which is the install flow's
   module picker with the profile's modules ticked; a module unticked there is removed from the
   profile;
-- bare `--edit` of a bundle opens its members page, then sets the members (`editBundle`);
-- bare `--edit` of a name no profile has asks what the new profile is: a module page or a members
+- bare `edit` of a bundle opens its members page, then sets the members (`editBundle`);
+- bare `edit` of a name no profile has asks what the new profile is: a module page or a members
   page;
 - `--new` without a module makes the profile, and `--bundle <members>` sets a bundle's members,
   without a page.
@@ -444,13 +444,13 @@ profile opens go back to it.
 |------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | which                                          | `<m> names profile <p> (<path>) and a module.` (`Edit profile <p>` for each such profile, `Edit module <m> in <target>`, Cancel)                                                                   | the first name is a profile here and reads as a module, on a terminal                                                                                 |
 | where                                          | the write target's question, with Cancel: `<bundle> is a bundle. Which profile gets <m>?`, `<m> comes from <base> (base), loaded under every profile at <scope>.`, `<remote> is read-only.`        | the profile edits go to is a bundle or a remote profile, or the module comes from the base                                                            |
-| new profile                                    | `New profile <n>:` (Lists modules, Bundles profiles, Cancel)                                                                                                                                       | bare `--edit` of a name no profile has                                                                                                                |
-| modules                                        | `<label> › modules`, the profile's modules ticked, one your cache lacks labelled `(in <label>; not in your cache)`; nothing ticked is an answer                                                    | bare `--edit` of a profile, or Lists modules (`new profile <n> › modules`, nothing ticked)                                                            |
+| new profile                                    | `New profile <n>:` (Lists modules, Bundles profiles, Cancel)                                                                                                                                       | bare `edit` of a name no profile has                                                                                                                |
+| modules                                        | `<label> › modules`, the profile's modules ticked, one your cache lacks labelled `(in <label>; not in your cache)`; nothing ticked is an answer                                                    | bare `edit` of a profile, or Lists modules (`new profile <n> › modules`, nothing ticked)                                                            |
 | assistants, version, components, no components | as [Install](#states)                                                                                                                                                                              | as Install                                                                                                                                            |
 | review                                         | as Install; below the summary, `Remove <m> from <label>, as you unticked …` and its plan for each module unticked; for a new profile with nothing ticked, `would make profile <n> (<path>, empty)` | as Install, and a new profile with nothing ticked                                                                                                     |
 | remove                                         | the removal plan, then `Remove <m> from <label>?`                                                                                                                                                  | the page unticked modules, nothing else changes (so there is no review), and no `-y` or `--force`                                                     |
 | remove there                                   | the removals, then `Remove these there too? No changes nothing`                                                                                                                                    | the profile is on in a later scope too, whose sync would remove files; asked before anything is written in any scope, and not under `-n` or `--force` |
-| members                                        | `<label> › members` (`new bundle <n> › members`), the members ticked, one that names no profile labelled `(names no profile here)`; nothing ticked is an answer                                    | bare `--edit` of a bundle, or Bundles profiles                                                                                                        |
+| members                                        | `<label> › members` (`new bundle <n> › members`), the members ticked, one that names no profile labelled `(names no profile here)`; nothing ticked is an answer                                    | bare `edit` of a bundle, or Bundles profiles                                                                                                        |
 | trust                                          | the trust diff, then `Trust these changes?` (all or nothing)                                                                                                                                       | the bundle is a project's whose member list a pull changed, and `--trust` does not cover it                                                           |
 | apply removals                                 | the removals, then `Remove these and apply? No applies nothing`                                                                                                                                    | the bundle is on and its new members remove files, and no `-y` or `--force`                                                                           |
 
@@ -542,7 +542,7 @@ profile opens go back to it.
 | exit       | when                                                                        | on disk                                                                                                                                                                        | output, exit code                                                                                                                                                                          |
 |------------|-----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | done       | Apply, a yes, or a run that does not review                                 | the profile's file (or the base's, or `selections.yaml` for picks alone, as the where answer says), the files it installs or removes in each scope it is on, their `lock.json` | as Install's done, then `✓ removed <m> from <label>` and the uninstall for each module removed, and each later scope's sync under its name; a No at remove prints `kept <m> in <label>`; 0 |
-| created    | `--new`, Apply on a new profile with nothing ticked, a new bundle's members | the new profile's file; nothing applied                                                                                                                                        | `✓ new profile <n> (<path>, empty)` or `✓ new bundle <n> (<members>)`, and the `--switch` that turns it on; 0                                                                              |
+| created    | `--new`, Apply on a new profile with nothing ticked, a new bundle's members | the new profile's file; nothing applied                                                                                                                                        | `✓ new profile <n> (<path>, empty)` or `✓ new bundle <n> (<members>)`, and the `switch` that turns it on; 0                                                                              |
 | unchanged  | only modules your cache lacks are kept and nothing unticked                 | nothing                                                                                                                                                                        | `→ <label> is unchanged…`, with the `lola cache add` to run; 0                                                                                                                             |
 | up to date | the plan changes nothing                                                    | nothing                                                                                                                                                                        | `✓ already up to date`; 0                                                                                                                                                                  |
 | cancelled  | Ctrl+C, q, Quit, Cancel, a No that cancels                                  | nothing                                                                                                                                                                        | as Install's cancelled; 4                                                                                                                                                                  |
@@ -611,12 +611,12 @@ every command: Esc there stays, its key help saying `first step — q quits`.
 | `lola tidy`             | `Tidy where?`                           | no                                | accepted                         |
 | `lola repair`           | `Repair where?`                         | no                                | accepted                         |
 | `lola uninstall`        | `Uninstall from where?`                 | no                                | accepted                         |
-| `lola profile --on`     | `Turn it on where?`                     | no                                | refused                          |
-| `lola profile --off`    | `Turn it off where?`                    | no                                | refused                          |
-| `lola profile --switch` | `Switch where?`                         | no                                | refused                          |
-| `lola profile --move`   | `Move where?`                           | no                                | refused                          |
-| `lola profile --split`  | `Split where?`                          | no                                | refused                          |
-| `lola profile --remove` | `Check which scope before removing it?` | no                                | refused                          |
+| `lola profile on`     | `Turn it on where?`                     | no                                | refused                          |
+| `lola profile off`    | `Turn it off where?`                    | no                                | refused                          |
+| `lola profile switch` | `Switch where?`                         | no                                | refused                          |
+| `lola profile move`   | `Move where?`                           | no                                | refused                          |
+| `lola profile split`  | `Split where?`                          | no                                | refused                          |
+| `lola profile rm` | `Check which scope before removing it?` | no                                | refused                          |
 
 ### States
 
@@ -637,12 +637,12 @@ directory, which is offered without a `.lola/`.
 | start     | run        | lola tidy                               | scope     | `Tidy where?`                                                                                                              |
 | start     | run        | lola repair                             | scope     | `Repair where?`                                                                                                            |
 | start     | run        | lola uninstall                          | scope     | `Uninstall from where?`                                                                                                    |
-| start     | run        | lola profile --on                       | scope     | `Turn it on where?`                                                                                                        |
-| start     | run        | lola profile --off                      | scope     | `Turn it off where?`                                                                                                       |
-| start     | run        | lola profile --switch                   | scope     | `Switch where?`                                                                                                            |
-| start     | run        | lola profile --move                     | scope     | `Move where?` (with `--user` and `-C` together, no picker)                                                                 |
-| start     | run        | lola profile --split                    | scope     | `Split where?`                                                                                                             |
-| start     | run        | lola profile --remove                   | scope     | `Check which scope before removing it?`                                                                                    |
+| start     | run        | lola profile on                       | scope     | `Turn it on where?`                                                                                                        |
+| start     | run        | lola profile off                      | scope     | `Turn it off where?`                                                                                                       |
+| start     | run        | lola profile switch                   | scope     | `Switch where?`                                                                                                            |
+| start     | run        | lola profile move                     | scope     | `Move where?` (with `--user` and `-C` together, no picker)                                                                 |
+| start     | run        | lola profile split                    | scope     | `Split where?`                                                                                                             |
+| start     | run        | lola profile rm                   | scope     | `Check which scope before removing it?`                                                                                    |
 | start     | scope flag |                                         | next step | `--project`, `--user`, `-C <dir>` or `--scope`: nothing asked                                                              |
 | start     | run        | -n or --force                           | scope     | neither names a scope; `-y` opens no picker (below)                                                                        |
 | start     | run        | --json                                  | next step | nothing asked: the project found from here, else `default_scope`, else refused with the runs that name a scope             |
@@ -694,8 +694,8 @@ asks:
 3. the receipt, `Proceed?`, after the list of what `--trust` covers, when `--trust` covers
    something and `-y` is not given.
 
-An activation (`--on`, `--off`, `--switch`) and `--move` apply all they planned or nothing, so
-their trust question offers no Choose…; `--split` and `lola sync`/`update` offer it. A run of
+An activation (`on`, `off`, `switch`) and `move` apply all they planned or nothing, so
+their trust question offers no Choose…; `split` and `lola sync`/`update` offer it. A run of
 several scopes (`--scope both`, or both ticked) asks each scope's questions in turn and shows one
 receipt for all of them; a No in one scope stops the scopes after it.
 
@@ -753,7 +753,7 @@ Esc there stays.
 | state    | what the user sees                                                                                                                                                                                               | asked when                                                                                                     |
 |----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
 | trust    | the trust diff, then `Trust these changes?` (`Trust all N changes` or `Trust this change`, Choose…, `Cancel (the project is not changed)`), the cursor on Cancel, or on the answer given before when asked again | a project's files changed since you last trusted them, in a kind `--trust` does not cover, on a terminal       |
-| choose   | one list per kind of change (`Added (n)`, …), nothing ticked, or the entries chosen before when asked again                                                                                                      | Choose… is picked; not offered by an activation or `--move`, or when the top-level targets are the only change |
+| choose   | one list per kind of change (`Added (n)`, …), nothing ticked, or the entries chosen before when asked again                                                                                                      | Choose… is picked; not offered by an activation or `move`, or when the top-level targets are the only change |
 | removals | the removals, then the command's removals question                                                                                                                                                               | the run removes files, without `-y` or `--force`                                                               |
 | receipt  | `trusting, as --trust=<kinds> allows:` and what it covers, then `Proceed?` (default No)                                                                                                                          | `--trust` covers a change, on a terminal, without `-y`                                                         |
 
@@ -785,7 +785,7 @@ Esc there stays.
 | removals | no               |                         | declined  | nothing applied; the trust you gave is recorded, and the message says so: the next sync asks only the removals (and again about what lola records only once it writes it)                                                                                                                                   |
 | removals | no               | several scopes          | declined  | the scopes after it are not synced                                                                                                                                                                                                                                                                          |
 | removals | no               | an activation           | declined  | the message names the activation to run again                                                                                                                                                                                                                                                               |
-| removals | esc              | after a trust answer    | trust     | `lola sync`, `update` and the activations: the trust question again, its answer under the cursor and Choose…'s ticks kept, `→ back to the trust question: the answer above no longer stands` printed; nothing is written until the removals are answered. `--move` and `--split` stay, as on a first screen |
+| removals | esc              | after a trust answer    | trust     | `lola sync`, `update` and the activations: the trust question again, its answer under the cursor and Choose…'s ticks kept, `→ back to the trust question: the answer above no longer stands` printed; nothing is written until the removals are answered. `move` and `split` stay, as on a first screen |
 | removals | esc              | first screen            | removals  | key help note                                                                                                                                                                                                                                                                                               |
 | removals | ctrl+c           |                         | cancelled |                                                                                                                                                                                                                                                                                                             |
 | receipt  | yes              |                         | done      |                                                                                                                                                                                                                                                                                                             |
@@ -934,8 +934,8 @@ Bare `lola trash` on a terminal, with runs in the trash and without `--json` or 
 `pickTrash` (`internal/cli/cmd_trash.go`): the picker of every run and its files, then, for
 Restore ticked, the plan of each run ticked and `restorePicked`'s questions, or for Empty ticked
 runs, `emptyTrash`'s plan and question. Nothing is written before the last question is answered.
-`lola trash [<run>...] --empty` asks `emptyTrash`'s question alone, as a first screen;
-`lola trash <run> [<original>...] --restore` asks nothing.
+`lola trash empty [<run>...]` asks `emptyTrash`'s question alone, as a first screen;
+`lola trash restore <run> [<original>...]` asks nothing.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {
@@ -958,9 +958,9 @@ stateDiagram-v2
   direction TB
 
   [*] --> pick: runs in the trash, on a terminal
-  [*] --> empty: --empty
-  [*] --> done: an empty trash, no terminal, --json, --plain, --restore, --empty -y or -n
-  [*] --> refused: --empty with no terminal, --restore over what is there
+  [*] --> empty: empty
+  [*] --> done: an empty trash, no terminal, --json, --plain, restore, empty -y or -n
+  [*] --> refused: empty with no terminal, restore over what is there
   pick --> pick: a problem
   pick --> restore: Restore ticked
   pick --> empty: Empty ticked runs
@@ -1000,12 +1000,12 @@ stays. Esc at any question after it goes back to the picker, never to the questi
 | start   | run                  | runs in the trash, on a terminal  | pick      |                                                                                                                                |
 | start   | run                  | the trash is empty                | done      | `✓ the trash is empty`; nothing asked                                                                                          |
 | start   | run                  | --json, --plain or no terminal    | done      | the runs listed; nothing asked                                                                                                 |
-| start   | run                  | --restore                         | done      | restores the run's entries, or the originals named; nothing asked                                                              |
-| start   | run                  | --restore, an original in the way | refused   | names it and hints the run with `--force`                                                                                      |
-| start   | run                  | --empty                           | empty     | first screen: Esc stays                                                                                                        |
-| start   | run                  | --empty -y                        | done      | deletes the runs; nothing asked                                                                                                |
-| start   | run                  | --empty -n                        | done      | prints the plan; deletes nothing                                                                                               |
-| start   | run                  | --empty, no terminal              | refused   | the plan, then the error hinting `-y`                                                                                          |
+| start   | run                  | restore                           | done      | restores the run's entries, or the originals named; nothing asked                                                              |
+| start   | run                  | restore, an original in the way   | refused   | names it and hints the run with `--force`                                                                                      |
+| start   | run                  | empty                             | empty     | first screen: Esc stays                                                                                                        |
+| start   | run                  | empty -y                          | done      | deletes the runs; nothing asked                                                                                                |
+| start   | run                  | empty -n                          | done      | prints the plan; deletes nothing                                                                                               |
+| start   | run                  | empty, no terminal                | refused   | the plan, then the error hinting `-y`                                                                                          |
 | pick    | Restore ticked       |                                   | restore   | each run's plan printed first                                                                                                  |
 | pick    | Restore ticked       | an original in the way            | restore   | the only restore offered is `Restore with --force: …`; `--force` is never implied                                              |
 | pick    | Restore ticked       | two runs hold one original        | pick      | problem naming the path and both runs, `; untick one`; ticks and action kept; no plan shown                                    |
@@ -1028,7 +1028,7 @@ stays. Esc at any question after it goes back to the picker, never to the questi
 | empty   | yes                  |                                   | done      | the runs deleted                                                                                                               |
 | empty   | no                   |                                   | cancelled | nothing deleted                                                                                                                |
 | empty   | esc                  | from the picker                   | pick      | the ticks and action kept                                                                                                      |
-| empty   | esc                  | --empty                           | empty     | first screen: key help note                                                                                                    |
+| empty   | esc                  | empty                             | empty     | first screen: key help note                                                                                                    |
 | empty   | ctrl+c               |                                   | cancelled |                                                                                                                                |
 
 ### Exits
@@ -1038,7 +1038,7 @@ stays. Esc at any question after it goes back to the picker, never to the questi
 | done      | an answer that restores or deletes, a run that asks nothing, or nothing left to restore | restored files back at their originals, a run emptied by its restore removed; what `--force` moved, in a new trash run; deleted runs gone from `$XDG_STATE_HOME/lola/trash/` | `✓ restored N items from trash run <run>`, `✓ deleted N trash runs, freeing <size>`, the listing, or `→ nothing to restore, so nothing changed`; 0 |
 | failed    | a run's restore fails                                                                   | the runs restored before it, restored; that run and the runs after it, as they were                                                                                          | the results so far, then `error: …`; 1                                                                                                             |
 | cancelled | No, Ctrl+C, q                                                                           | nothing                                                                                                                                                                      | `✗ cancelled — nothing was changed`; 4                                                                                                             |
-| refused   | a restore over what is there, or `--empty` with no terminal to ask on                   | nothing                                                                                                                                                                      | `error: …` with `hint:` lines; 3                                                                                                                   |
+| refused   | a restore over what is there, or `empty` with no terminal to ask on                   | nothing                                                                                                                                                                      | `error: …` with `hint:` lines; 3                                                                                                                   |
 
 ### Re-entry
 
@@ -1046,7 +1046,7 @@ stays. Esc at any question after it goes back to the picker, never to the questi
 |--------------------------------------------------------------------|-------------------------------|--------------------------|----------------------------------------------------|
 | a problem                                                          | the picker, saying why        | the ticks and the action |                                                    |
 | Cancel on restore; Esc on restore, force or empty after the picker | the picker                    | the ticks and the action | the plans: each is made again from the next answer |
-| Esc on the picker, or on empty after `--empty`                     | nothing: a first screen stays |                          |                                                    |
+| Esc on the picker, or on empty after `empty`                     | nothing: a first screen stays |                          |                                                    |
 
 ## Cache clean
 
@@ -1206,7 +1206,7 @@ The question also goes to `cancelled` on `ctrl+c` or `q`. It is a first screen: 
 
 ## Market add
 
-`lola market [<name>] --add <source>` (`marketAdd`, `internal/cli/cmd_market.go`) calls
+`lola market add <source> [<name>]` (`marketAdd`, `internal/cli/cmd_market.go`) calls
 `engine.AddMarket` (`internal/engine/market.go`), which checks the name and every `--ssh-host`
 before any network contact, fetches the catalog, and only then asks: the name (`askName`), when
 the one it has will not do, then which ssh hosts to allow (`chooseSSH`,
@@ -1265,11 +1265,11 @@ Esc there stays; so is the ssh question when the run asked no name.
 | start | run          |                                                  | done      | fetches the catalog and registers it; nothing asked                                                     |
 | start | run          | the name is another source's                     | name      | pre-filled with the first free name                                                                     |
 | start | run          | the catalog's own name cannot name a marketplace | name      | pre-filled with its slug                                                                                |
-| start | run          | the name is this marketplace already             | refused   | `<name> is already this marketplace`, hinting its `--update`; nothing asked                             |
+| start | run          | the name is this marketplace already             | refused   | `<name> is already this marketplace`, hinting its `update`; nothing asked                             |
 | start | run          | ssh hosts not allowed                            | ssh       |                                                                                                         |
 | start | run          | --ssh-host                                       | ssh       | the hosts given are allowed; the picker offers only the others, and is not asked when none is left      |
-| start | run          | no terminal or --json, a taken name              | refused   | the hint is the `--add` of the first free name, with the catalog file found                             |
-| start | run          | no terminal or --json, ssh hosts                 | done      | their entries are skipped; a notice gives the `--update` that allows them                               |
+| start | run          | no terminal or --json, a taken name              | refused   | the hint is the `add` run with the first free name, with the catalog file found                             |
+| start | run          | no terminal or --json, ssh hosts                 | done      | their entries are skipped; a notice gives the `update --ssh-host` run that allows them                               |
 | start | run          | -n                                               | done      | `→ would add marketplace …`; asks nothing and writes nothing; a taken name is refused as off a terminal |
 | name  | answer       |                                                  | ssh       | the hosts offered for the name given                                                                    |
 | name  | answer       | no ssh host to ask                               | done      | registers under the name: `→ the catalog calls itself <x>; it is your marketplace <name>`               |
@@ -1277,7 +1277,7 @@ Esc there stays; so is the ssh question when the run asked no name.
 | name  | esc          |                                                  | name      | first screen: key help note                                                                             |
 | name  | ctrl+c       |                                                  | cancelled |                                                                                                         |
 | ssh   | answer       |                                                  | done      | allows the hosts ticked: `→ allowed ssh hosts: …`, and their entries are listed                         |
-| ssh   | empty submit |                                                  | done      | allows no host: their entries stay skipped, with the `--update` notice                                  |
+| ssh   | empty submit |                                                  | done      | allows no host: their entries stay skipped, with the `update --ssh-host` notice                                  |
 | ssh   | esc          | after the name question                          | name      | pre-filled with the name given; then this question again, for the name answered                         |
 | ssh   | esc          | first screen                                     | ssh       | key help note                                                                                           |
 | ssh   | ctrl+c       |                                                  | cancelled | the name answered is not registered                                                                     |
@@ -1303,8 +1303,8 @@ Esc there stays; so is the ssh question when the run asked no name.
 Bare `lola market` on a terminal (`marketPick`, `internal/cli/cmd_market.go`) opens the picker of
 `internal/cli/market_picker.go`, a Bubble Tea model, over `engine.PickerRows`: your marketplaces,
 then the known marketplaces you have not enabled; an enabled known one is among yours, once. It
-opens when stdin and stderr are a terminal, none of `--json`, `--plain`, `--no-pager` and
-`--no-interactive` is given, and `market_picker` in your `config.yaml` is not `false`
+opens when stdin and stderr are a terminal, none of `--json`, `--plain` and
+`--no-pager` is given, and `market_picker` in your `config.yaml` is not `false`
 (`marketPickerOpens`); otherwise the run prints the listing. A stdout that is not a terminal does
 not keep it from opening. Opening it contacts no host. `u` and `U` start `engine.CheckMarkets` on
 their rows, which asks each git row's remote for its tip (`git ls-remote`), 8 at a time, 10 seconds
@@ -1313,8 +1313,9 @@ of yours that need it. Each answer runs an action, then the picker opens again w
 again and no status, until Esc, `q` or Ctrl+C.
 
 Enter on a row of yours with nothing ticked opens that marketplace's entries (`engine.PickerEntries`,
-read from the cached catalogs, contacting no host), and Enter on an entry its detail page; `m`, or Enter
-with rows ticked, keeps the `Do what with these?` menu. The four pages (`picker`, `entries`, `detail`, `skipped`)
+read from the cached catalogs, contacting no host), and Enter on an entry its detail page; Enter with
+rows ticked enables the known ones and opens the entries of the rest, and of those it enabled, in
+`lola install`'s picker; `d` removes. The four pages (`picker`, `entries`, `detail`, `skipped`)
 are one Bubble Tea model (`internal/cli/market_picker_entries.go`) and `q` quits from any of them. An
 entry's installed state is read for one scope, the context line's (`--scope user` or `--scope project`,
 `--user`, `--project` or `-C`, else the nearest project with a `.lola/` directory, else user scope; it
@@ -1347,7 +1348,7 @@ Enter or `→` on a known row you have not enabled, with nothing ticked, preview
 fetches its catalog at the pinned commit, in a command (`engine.PreviewKnown`; `MarketPickerStep.Preview`,
 `internal/cli/market_picker_preview.go`), and the footer says so while it runs (`fetching <id> at <commit>
 from <host> — nothing is added or installed…`). It is the one place the picker contacts a host on its
-own account. The fetch is the dry run of `lola market --enable <id>`: it writes nothing to
+own account. The fetch is the dry run of `lola market enable <id>`: it writes nothing to
 `markets.yaml` or the marketplace cache, and the tree it fetches lives in a staging directory that is
 removed when the fetch ends. Esc cancels it, and `q` and Ctrl+C quit the picker and cancel it; so does
 opening a row of yours or starting the fetch of another known row. Its entries then open on the same
@@ -1412,9 +1413,10 @@ stateDiagram-v2
   picker --> source: a, or Enter on Add a source…
   source --> picker
   picker --> enable: Enter, known rows ticked
-  enable --> action: own rows ticked too
-  enable --> picker
-  picker --> action: Enter, own rows ticked, or m
+  enable --> browse: yes, or own rows ticked
+  enable --> picker: m in a preview, or no with none of yours
+  picker --> browse: Enter, own rows ticked
+  picker --> remove: d
   picker --> entries: Enter or →, nothing ticked, own row with entries, or a known row already previewed
   picker --> fetch: Enter or →, nothing ticked, known row not yet previewed
   fetch --> entries: the catalog has entries
@@ -1437,13 +1439,11 @@ stateDiagram-v2
   detail --> detail: o
   handoff --> entries: begun on the entries
   handoff --> detail: begun on the detail
-  action --> browse: Browse entries
-  action --> remove: Remove
-  action --> picker: Update, Cancel, esc
   browse --> picker
   remove --> picker
   numbers --> enable
-  numbers --> action
+  numbers --> browse
+  numbers --> remove: d<N>
   numbers --> source
   numbers --> entries
   picker --> left: esc, q
@@ -1458,7 +1458,7 @@ stateDiagram-v2
 ```
 
 `ctrl+c` goes to `cancelled` from the picker, `fetch`, the entries, the detail page, the skipped page, the offer, Add a source…'s
-questions and `lola market --add`'s ([Market add](#market-add)), `Do what with these?`, the install
+questions and `lola market add`'s ([Market add](#market-add)), the install
 flow and the questions of `handoff`. In a yes/no
 question (`enable`, `remove`, `move`) it reads as No (`app.confirm` cannot tell them apart): the
 question's cancel line, then the picker again. In `filter`, typed keys are filter text (`a`, `o`, `u`,
@@ -1469,22 +1469,21 @@ question's cancel line, then the picker again. In `filter`, typed keys are filte
 
 | state   | what the user sees | asked when |
 |---------|--------------------|------------|
-| picker  | `Marketplaces`, the context line, then `Your marketplaces` and `Known marketplaces`, each row up to three lines: the name or id, its ref (a known row you have not enabled: `pin <commit>`), its entries, `known`, `ahead of pin` and its status; then, dim and indented, its description (the catalog's, else a known row's reason it is listed; none when neither), wrapped to the terminal's width; then, dim and indented the same, its source; then `Add a source…` and, in at most two rows, the keys `u check+update · U all · x tick · / filter · a add · ⏎ open · o web · m menu · q quit` (Esc leaves too, and is not listed), a note above them when a key or a check run has one. A failed check adds its reason and what to do under the row; the network banner `✗ Several sources unreachable; check your network connection` sits under the title. The rows of the marketplaces Add a source… added are ticked | bare `lola market` on a terminal, with no off switch; again after every action |
+| picker  | `Marketplaces`, the context line, then `Your marketplaces` and `Known marketplaces`, each row up to three lines: the name or id, its ref (a known row you have not enabled: `pin <commit>`), its entries, `known`, `ahead of pin` and its status; then, dim and indented, its description (the catalog's, else a known row's reason it is listed; none when neither), wrapped to the terminal's width; then, dim and indented the same, its source; then `Add a source…` and, in at most two rows, the keys `u check+update · U all · x tick · / filter · a add · ⏎ open · d remove · o web · q quit` (Esc leaves too, and is not listed), a note above them when a key or a check run has one. A failed check adds its reason and what to do under the row; the network banner `✗ Several sources unreachable; check your network connection` sits under the title. The rows of the marketplaces Add a source… added are ticked | bare `lola market` on a terminal, with no off switch; again after every action |
 | filter  | the picker with `/<text>█` under the title; only the rows whose name, source, reason or catalog description holds it, ignoring case, and `Add a source…`; the keys `⏎ keep filter · esc clear · ↑↓ move` | `/` |
 | offer   | the picker, its statuses shown, with one footer line in place of the keys: `update <name>, <name>? ⏎/y yes · esc/n no`, or `update N marketplaces? …` when the names do not fit | a check run of `u` or `U` ended with rows of yours to update, no banner and no filter being typed |
 | source  | Add a source…'s source, then its optional ref | `a`, or Enter on `Add a source…` |
 | fetch   | the picker, a footer line `fetching <id> at <commit> from <host> — nothing is added or installed…` above its keys; every key of the picker works, and Esc cancels the fetch | Enter or `→` on a known row you have not enabled, nothing ticked, its preview not fetched yet |
-| enable  | `lola market --enable <id>`'s plan, then `Enable known marketplace <id>? [y/N]` | Enter with a known row you have not enabled ticked, one at a time |
+| enable  | `lola market enable <id>`'s plan, then `Enable known marketplace <id>? [y/N]` | Enter with a known row you have not enabled ticked, one at a time, or `m` in its preview |
 | entries | the marketplace's id (a preview: `previewing <id> — not added; pinned to <commit>, curated <date>`), the context line (`user scope: …` or `project <root>: …`), then each entry as a checkbox (`[ ]` or `[x]`; a preview has none), a name and version, `installed` or `cached`, and, under it and two columns right of its name, its description, wrapped, the cursor on one; the keys `i install` (an entry that is not installed) or `d uninstall from <scope>` (one that is), `<scope>` being `user` or `project`, for the cursor's entry, `x tick`, then `o web` only when the entry has a web page, and `s skipped · ⏎/→ open · ←/esc back · / filter · q quit` (`⏎/→ open` only with an entry under the cursor; `s skipped` only when the catalog skipped entries), with entries ticked the keys start `N ticked` (`N ticked (M hidden)` when the filter hides M of them) and name `i install` when a ticked entry is not installed and `d uninstall from <scope>` when one is, in place of the cursor entry's, above them the line `N entries skipped · s shows why` when it did, and a note when a key has one; in a preview `m enable` replaces `i install` and `d uninstall` | Enter or `→` on a row of yours with nothing ticked and entries cached, or on a known row you have not enabled once its preview is fetched |
 | entryfilter | the entries with `/<text>█` under the context line, only those whose name, description or tag holds the text, ignoring case; the keys `⏎ keep filter · esc clear · ↑↓ move` | `/` on the entries |
 | skipped | the marketplace's id and `N skipped entries` (`entry` for one; a preview's title is not used), the context line, then for each skipped entry its name and, under it, indented two spaces and wrapped with that indent, the reason; the keys `↑↓ scroll · ←/esc back · q quit`; read only, scrolled from its top | `s` on the entries page of a marketplace whose catalog skipped entries |
 | detail  | the marketplace's id and the context line, then the entry's name and version, and under it, indented two spaces and wrapped with that indent, its description, `tags:`, `url:` (the entry's source address, without user info, query or fragment) and `license:` (as its catalog entry states it) when it has them, and `installed` with the commit or digest it was recorded at (a commit's first seven digits), or `not installed`, then `· in your cache` when its source is cached, one blank line between those three blocks as far as the entry has them; the keys `i install to <scope> · o web · ←/esc back · q quit` for an entry that is not installed, `d uninstall from <scope> · o web · ←/esc back · q quit` for one that is (`o web` only when it has a web page) | Enter or `→` on an entry |
 | handoff | the usual questions and output of `lola install @<market>/<entry>` or `lola uninstall <entry>`, the install in the scope flags `lola market` was given or the one `lola install` resolves, the uninstall in the context line's scope; with entries ticked, one call for all of them | `i` or `d` on the entries page or the detail page |
-| action  | `Do what with these?`: Browse entries, Update, Remove, Cancel | Enter or `m` with rows of yours ticked, after any `enable` |
-| browse  | `lola install @<name>...`'s flow, its module picker offering those marketplaces' entries | Browse entries |
-| remove  | `Forget marketplace <name> (<source>) and drop its cached catalog? [y/N]` | Remove, once per marketplace |
+| browse  | `lola install @<name>...`'s flow, its module picker offering those marketplaces' entries | Enter with rows of yours ticked, or with known rows ticked once one is enabled |
+| remove  | `Forget marketplace <name> (<source>) and drop its cached catalog? [y/N]` | `d`, once per marketplace |
 | move    | the catalog changes the move brings, then `Update past the commit it is registered at? [y/N]` | the offer taken with a marketplace of yours registered at a commit in it |
-| numbers | accessible mode: the rows numbered, each with its description and source under its number, no status, `Add a source…` last, then `Choose marketplaces (numbers, comma separated; m1 for the menu; o1 for the web page): ` | bare `lola market` with `LOLA_ACCESSIBLE=1` or `TERM=dumb` |
+| numbers | accessible mode: the rows numbered, each with its description and source under its number, no status, `Add a source…` last, then `Choose marketplaces (numbers, comma separated; d1 removes; o1 for the web page): ` | bare `lola market` with `LOLA_ACCESSIBLE=1` or `TERM=dumb` |
 
 In accessible mode `entries` and `detail` are numbered line prompts, not screens: the entries list
 under the marketplace's id and the context line, then the keys as lines of the terminal's width, no key
@@ -1499,15 +1498,15 @@ one column and not at all when the width is unknown (`wrapSpaces`, `huhForms.say
 `internal/cli/market_picker.go`; `ansi.Wrap` and `ansi.Wordwrap` break at hyphens and split long
 words, which would cut an address or a flag), and the TUI's notes use the same helper. Without a
 known scope (`MarketPickerStep.ScopeKind`; the command always sets it) neither `i` nor `d` is offered or
-acts. A Ctrl+C during a fetch ends the run without a blank line under the status. `m<N>` at
-the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews it.
+acts. A Ctrl+C during a fetch ends the run without a blank line under the status. `d<N>` at
+the list removes: `d1`, or `d1,2`; one known row's number alone previews it.
 
 ### Transitions
 
 | from    | input                  | guard                                                                 | to        | effects |
 |---------|------------------------|-----------------------------------------------------------------------|-----------|---------|
 | start   | run                    | a terminal                                                            | picker    | reads markets.yaml, the cached catalogs and lola's known list; contacts no host, shows no status and writes nothing |
-| start   | run                    | --json, --plain, --no-pager, --no-interactive or market_picker: false | list      | the listing, as off a terminal; nothing asked |
+| start   | run                    | --json, --plain, --no-pager or market_picker: false | list      | the listing, as off a terminal; nothing asked |
 | start   | run                    | no terminal                                                           | list      | the listing; nothing asked |
 | start   | run                    | accessible mode                                                       | numbers   |  |
 | start   | run                    | --scope both                                                          | refused   | `the market picker acts on one scope, and --scope both names two`, with hints `lola market --scope project` and `--scope user`; nothing opens |
@@ -1527,10 +1526,10 @@ the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews 
 | picker  | checks end             | rows of yours to update                                               | offer     | offers yours that read `update available` or `upstream moved`, and yours it cannot check; never one up to date or unreachable, never a known one you have not enabled |
 | picker  | checks end             | at least two failed, and more than half of those checked              | picker    | the network banner; the failed rows read `not checked`, with no hint; `nothing to update until the checks get through; u checks again`; nothing offered |
 | picker  | checks end             | nothing to update                                                     | picker    | `everything checked is up to date`, `nothing to update; N unreachable`, or `nothing to update; ⏎ enables a known marketplace` |
-| picker  | checks end             | a row of yours failed, no banner                                      | picker    | it reads `unreachable`, its reason under it, then `→ u retries · lola market <name> --remove forgets it` |
+| picker  | checks end             | a row of yours failed, no banner                                      | picker    | it reads `unreachable`, its reason under it, then `→ u retries · lola market rm <name> forgets it` |
 | picker  | checks end             | a known row you have not enabled failed, no banner                    | picker    | it reads `unreachable`, its reason under it, then `→ u checks again` |
 | picker  | checks end             | the only check failed                                                 | picker    | its hint starts `→ check your network connection; ` |
-| offer   | yes                    |                                                                       | picker    | Enter or `y`: updates the rows offered as `lola market <name>... --update` does, then opens again |
+| offer   | yes                    |                                                                       | picker    | Enter or `y`: updates the rows offered as `lola market update <name>... ` does, then opens again |
 | offer   | yes                    | one registered at a commit                                            | move      | learns the remote's tip and reads the catalog there, writing nothing; the rest of the offer updates after it |
 | offer   | no                     |                                                                       | picker    | Esc or `n`: the statuses stay; nothing written |
 | offer   | u or U                 |                                                                       | picker    | drops the offer and checks again, as in the picker; nothing written |
@@ -1538,21 +1537,22 @@ the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews 
 | offer   | q                      |                                                                       | left      |  |
 | offer   | ctrl+c                 |                                                                       | cancelled |  |
 | picker  | Enter                  | known rows ticked                                                     | enable    | the known ones first, one at a time |
-| picker  | Enter                  | rows of yours ticked                                                  | action    |  |
-| picker  | Enter                  | rows of yours and known ones ticked                                   | enable    | then `action` for yours |
+| picker  | Enter                  | rows of yours ticked                                                  | browse    | runs `lola install @<name>...` for them; never the entries page |
+| picker  | Enter                  | rows of yours and known ones ticked                                   | enable    | then `browse` for yours and the known ones it enabled |
 | picker  | Enter                  | nothing ticked, a known row not yet previewed                         | fetch     | starts the fetch of its catalog at the pinned commit in a command; the footer names the commit and host; nothing is added, installed or written |
 | picker  | Enter                  | nothing ticked, a known row already previewed                         | entries   | its preview, kept from the session's earlier fetch; contacts no host |
 | picker  | →                      | nothing ticked, a known row                                           | fetch     | as Enter: the fetch, or the entries when already previewed |
 | picker  | Enter                  | nothing ticked, a row of yours with entries                           | entries   | saves the list's cursor, scroll and filter; the ticks are none |
 | picker  | Enter                  | nothing ticked, a row of yours without entries                        | picker    | the note `<name> has no entries; u fetches its catalog`; contacts no host |
 | picker  | →                      | nothing ticked, a row of yours with entries                           | entries   | as Enter |
-| picker  | →                      | rows ticked, Add a source… or a row without entries                   | picker    | nothing, or the note `<name> has no entries; u fetches its catalog`; never the menu or an action |
+| picker  | →                      | rows ticked, Add a source… or a row without entries                   | picker    | nothing, or the note `<name> has no entries; u fetches its catalog`; never leaves the picker |
 | picker  | ←                      |                                                                       | picker    | nothing: it never leaves |
 | picker  | o                      | the row has a web address                                             | picker    | starts the browser on it, through the step's opener, from a command; the note `opened <address>`, cut to fit |
 | picker  | o                      | the row has no web address                                            | picker    | the note `no web address for <id>`; nothing started |
 | picker  | o                      | the cursor on Add a source…                                           | picker    | the note `nothing to open on Add a source…`; nothing started |
 | picker  | o                      | the address is not a plain http(s) one                                | picker    | the note `refusing to open <id>'s address: it is not a plain http(s) address`; nothing started |
-| picker  | m                      |                                                                       | next step | as Enter with the cursor's row ticked, or the ticked rows: the menu (`enable` for known rows, then `action`), never the entries |
+| picker  | d                      |                                                                       | remove    | the ticked rows of yours, else the cursor's; a ticked known row is left out |
+| picker  | d                      | no row of yours ticked, nor under the cursor                          | picker    | the note `tick one of your marketplaces, or move to one, to remove it`; nothing removed |
 | picker  | Enter                  | on Add a source…                                                      | source    |  |
 | picker  | a                      |                                                                       | source    |  |
 | picker  | esc or q               |                                                                       | left      | stops a check running |
@@ -1560,7 +1560,7 @@ the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews 
 | fetch   | result                 | the catalog has entries                                               | entries   | opens the preview; the list's cursor, scroll and filter are saved for Esc |
 | fetch   | result                 | the fetch failed                                                      | picker    | the note `could not fetch <id>: <reason>`, or `<id>: <reason>` when the reason already begins `could not fetch` (up to 1024 bytes, wrapped) and the first hint (a command that retries or checks it); no entries page |
 | fetch   | result                 | the filter is typed or an update is offered                           | picker    | the preview is kept, and the note `<id> fetched; ⏎ opens it`; the screen does not move |
-| fetch   | result                 | the catalog has no entry                                              | picker    | the note `<id> at <commit> offers no entries; m enables it anyway` |
+| fetch   | result                 | the catalog has no entry                                              | picker    | the note `<id> at <commit> offers no entries; lola market enable <id> enables it anyway` |
 | fetch   | esc                    |                                                                       | picker    | cancels the fetch: the note `cancelled fetching <id>`; a result that still arrives is dropped |
 | fetch   | Enter                  | the cursor on a row of yours with entries                             | entries   | cancels the fetch |
 | fetch   | Enter                  | the cursor on a row of yours without entries                          | picker    | cancels the fetch: the note `cancelled fetching <id>; <name> has no entries; u fetches its catalog` |
@@ -1568,19 +1568,21 @@ the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews 
 | fetch   | Enter                  | the cursor on another known row, nothing ticked                       | fetch     | cancels this fetch and starts that row's |
 | fetch   | q                      |                                                                       | left      | cancels the fetch |
 | fetch   | ctrl+c                 |                                                                       | cancelled | cancels the fetch |
-| source  | answer                 |                                                                       | picker    | runs `lola market --add <source> [--ref <ref>]`, asking its name and ssh host questions when they apply; opens with the new marketplace ticked. An empty source adds nothing |
+| source  | answer                 |                                                                       | picker    | runs `lola market add <source> [--ref <ref>]`, asking its name and ssh host questions when they apply; opens with the new marketplace ticked. An empty source adds nothing |
 | source  | esc                    |                                                                       | picker    |  |
-| source  | ctrl+c                 |                                                                       | cancelled | also on `--add`'s name question; nothing registered |
-| enable  | yes                    |                                                                       | picker    | registers it at lola's pin, as `--enable` does; it opens among yours, marked `known` |
+| source  | ctrl+c                 |                                                                       | cancelled | also on `add`'s name question; nothing registered |
+| enable  | yes                    |                                                                       | browse    | registers it at lola's pin, as `enable` does, then opens its entries with those of the rows of yours ticked |
+| enable  | yes                    | m in a preview                                                        | picker    | registers it at lola's pin, as `enable` does; it opens among yours, marked `known`; nothing else opens |
 | enable  | no                     |                                                                       | picker    | `✗ cancelled — nothing was changed`; nothing written |
+| enable  | no                     | rows of yours ticked                                                  | browse    | `✗ cancelled — nothing was changed`; the entries of the rows of yours open without it |
 | entries | /                      |                                                                       | entryfilter |  |
 | entryfilter | answer             |                                                                       | entries   | Enter keeps the filter; the cursor goes to the first match |
 | entries | esc                    | a filter kept                                                         | entries   | clears the filter |
 | entries | esc                    |                                                                       | picker    | the list's cursor, scroll and filter as they were |
 | entries | i or d                 | a preview                                                             | entries   | the note `not added yet; m enables <id>`; never leaves the picker |
-| entries | m                      | a preview                                                             | enable    | leaves the picker with the known row, as `m` on it does |
+| entries | m                      | a preview                                                             | enable    | leaves the picker to enable the known row; nothing opens after it |
 | detail  | i or d                 | a preview                                                             | detail    | the note `not added yet; m enables <id>`; never leaves the picker |
-| detail  | m                      | a preview                                                             | enable    | leaves the picker with the known row, as `m` on it does |
+| detail  | m                      | a preview                                                             | enable    | leaves the picker to enable the known row; nothing opens after it |
 | entries | Enter                  |                                                                       | detail    | the entry under the cursor; nothing when no entry matches the filter |
 | entries | →                      |                                                                       | detail    | as Enter |
 | entries | ←                      |                                                                       | picker    | as esc with no filter kept: the list's cursor, scroll and filter as they were, whether or not an entries filter is kept |
@@ -1629,12 +1631,6 @@ the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews 
 | handoff | answer                 | begun on the entries page                                             | entries   | the install or uninstall ran with its usual questions; the picker opens again on the entries, the cursor on this entry (the first, after several), its installed state read again, the ticks dropped |
 | handoff | answer                 | begun on the entries page, the action failed                          | entries   | its error and hints are printed first; the entry is as it was |
 | handoff | ctrl+c                 |                                                                       | cancelled | in the action's own question; what the run's earlier actions wrote stays |
-| action  | Browse entries         |                                                                       | browse    |  |
-| action  | Update                 |                                                                       | picker    | updates them as `lola market <name>... --update` does |
-| action  | Remove                 |                                                                       | remove    |  |
-| action  | Cancel                 |                                                                       | picker    |  |
-| action  | esc                    |                                                                       | picker    |  |
-| action  | ctrl+c                 |                                                                       | cancelled |  |
 | browse  | answer                 |                                                                       | picker    | installs what was picked, as `lola install @<name>` does |
 | browse  | ctrl+c                 |                                                                       | cancelled | nothing installed |
 | remove  | yes                    |                                                                       | picker    | `✓ forgot marketplace <name> and dropped its cached catalog`; the next one is asked |
@@ -1646,11 +1642,12 @@ the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews 
 | numbers | answer                 | one number, a row of yours with entries                               | entries   | numbered entries, the keys line `i<n,n…> install · d<n,n…> uninstall from <scope> · o<n> web · Enter alone goes back`, then `Choose an entry (number or key above): ` |
 | numbers | answer                 | one number, a known row                                               | entries   | prints `fetching <id> at <commit> from <host> — nothing is added or installed…`, then fetches the catalog at the pin; a preview kept from before opens at once, fetching nothing; the entries open under the preview title, `N entries skipped; …` and the catalog's first warning |
 | numbers | answer                 | one number, a known row, the fetch failed                             | numbers   | the note `could not fetch <id>: <reason>`, then `→ ` and its first hint; asks again; nothing is kept |
-| numbers | answer                 | one number, a known row, the catalog has no entry                     | numbers   | the note `<id> at <commit> offers no entries; m enables it anyway`; asks again |
+| numbers | answer                 | one number, a known row, the catalog has no entry                     | numbers   | the note `<id> at <commit> offers no entries; lola market enable <id> enables it anyway`; asks again |
 | numbers | ctrl+c                 | a known row's fetch running                                           | cancelled | cancels the fetch without waiting for it; `✗ cancelled — nothing was changed`; 4 |
-| numbers | answer                 | one number, a row of yours without entries                            | numbers   | says `<name> has no entries; fetch its catalog with m<n> (Update), or lola market <name> --update` and asks again |
+| numbers | answer                 | one number, a row of yours without entries                            | numbers   | says `<name> has no entries; fetch its catalog with lola market update <name>` and asks again |
 | numbers | o<N>                   |                                                                       | numbers   | as `o` in the picker, with its notes, the address whole; `o` alone, or with more than one number, is refused with `o takes one number: o1`; asks again |
-| numbers | m<N>                   |                                                                       | next step | `m1`, or `m1,2`: the menu for those rows, as `m` in the picker; `m` alone is refused with `m takes numbers: m1, or m1,2` |
+| numbers | d<N>                   |                                                                       | remove    | `d1`, or `d1,2`, numbers of rows of yours: as `d` with those rows ticked |
+| numbers | d<N>                   | refused                                                               | numbers   | `d takes numbers of your marketplaces: d1, or d1,2`, `d removes your marketplaces: answer numbers from 1 to N, comma separated` (a known row's number, too), or `d removes your marketplaces, and none is listed`; asks again |
 | entries | answer                 | accessible mode, a number from 1 to N                                 | detail    | numbered; any other answer says `answer a number from 1 to N` and asks again |
 | entries | answer                 | accessible mode, i<N> of an entry not installed                       | handoff   | answers install for the entry, as `i` on the entries page does |
 | entries | answer                 | accessible mode, d<N> of an entry installed                           | handoff   | answers uninstall for the entry, as `d` on the entries page does |
@@ -1663,7 +1660,7 @@ the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews 
 | entries | answer                 | accessible mode, o<N> of an entry with a web page                     | entries   | starts the browser through the step's opener on the checked address; the note `opened <address>`, whole, or the failure with the address; asks again |
 | entries | answer                 | accessible mode, a letter alone, a bad number or another letter       | entries   | `<letter> takes an entry's number: <letter>1`, or `answer a number from 1 to N`; asks again |
 | entries | answer                 | accessible mode, a preview, i<N> or d<N>                              | entries   | the note `not added yet; m enables <id>`; asks again |
-| entries | answer                 | accessible mode, a preview, m                                         | enable    | leaves the picker with the known row, as `m` on it does |
+| entries | answer                 | accessible mode, a preview, m                                         | enable    | leaves the picker to enable the known row; nothing opens after it |
 | entries | empty submit           | accessible mode                                                       | numbers   | a preview is left, as Esc leaves it |
 | detail  | answer                 | accessible mode, i or d                                               | handoff   | the letter that applies is the prompt's (`i install to <scope> · Enter alone goes back: ` or `d uninstall from <scope> · …`); the other prints its note and asks again |
 | detail  | answer                 | accessible mode, o                                                    | detail    | the prompt names it only for an entry with a web page; opens as at the entries prompt, with its notes; asks again |
@@ -1690,7 +1687,7 @@ the list keeps the menu: `m1`, or `m1,2`; one known row's number alone previews 
 | way back                                  | asks again                      | keeps                               | drops                                           |
 |-------------------------------------------|---------------------------------|-------------------------------------|-------------------------------------------------|
 | the picker after an action                | the picker, its rows read again | the marketplaces just added, ticked | the ticks, the filter, every status and the banner |
-| Esc on source, or Cancel or Esc on action | the picker                      |                                     | the ticks and the filter                        |
+| Esc on source, or on browse's picker      | the picker                      |                                     | the ticks and the filter                        |
 | Esc or `n` at the offer                   | nothing: the picker stays       | the ticks, the filter and the statuses | the offer                                    |
 | Esc on the entries                        | nothing: the list is read again from the screen | the list's cursor, scroll and filter | the entries' filter                 |
 | Esc on the detail page                    | nothing                         | the entries' cursor on the entry and their filter | the detail page                  |

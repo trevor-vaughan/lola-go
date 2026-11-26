@@ -86,7 +86,7 @@ are.
 
 These picks are yours: `selections.yaml` lives in your config directory, so a teammate who
 clones the project does not get them. A [project profile](profiles.md) is how a team shares
-picks: its entries' `only:` and `skip:` are committed with the project, and `lola profile --move
+picks: its entries' `only:` and `skip:` are committed with the project, and `lola profile move
 <module> --to project:<name>` moves a module, picks included, into one.
 
 An install

@@ -77,7 +77,7 @@ func trashCommand(args ...string) string {
 
 // noTrashRun refuses id, which names no run of the trash, hinting the listing.
 func noTrashRun(id string, display []string) error {
-	return errs.WithHints(fmt.Errorf("there is no trash run %s", shown(id)), "see the runs: "+trashCommand(display...))
+	return errs.WithHints(fmt.Errorf("there is no trash run %s", shown(id)), "see the runs: "+trashCommand(append([]string{"list"}, display...)...))
 }
 
 // readTrashRun reads the run id names: one name, a real directory directly under the trash (a
@@ -115,7 +115,7 @@ func (e *Engine) openTrashRun(id string, display []string) (string, trash.Run, e
 	}
 	read, err := trash.ReadRun(dir)
 	if err != nil {
-		return "", trash.Run{}, errs.WithHints(err, "see the runs: "+trashCommand(display...))
+		return "", trash.Run{}, errs.WithHints(err, "see the runs: "+trashCommand(append([]string{"list"}, display...)...))
 	}
 	return dir, read, nil
 }
@@ -194,7 +194,7 @@ func (e *Engine) ShowTrash(id string, display []string) (*TrashShow, error) {
 	return show, nil
 }
 
-// RestoreHint is the hint that ends lola trash <run>: restore, the run's restore command, which
+// RestoreHint is the hint that ends lola trash show <run>: restore, the run's restore command, which
 // works only while no original exists; else that command with --force, saying what it replaces
 // and where that goes.
 func (s *TrashShow) RestoreHint(restore string) string {
@@ -219,7 +219,7 @@ func (s *TrashShow) Ref(i int) TrashEntryRef {
 	return TrashEntryRef{original: s.raw[i].Original, trash: s.raw[i].Trash}
 }
 
-// TrashRestoreRequest is lola trash <run> [<original>...] --restore.
+// TrashRestoreRequest is lola trash restore <run> [<original>...].
 type TrashRestoreRequest struct {
 	Run       string   // the run's id
 	Originals []string // the entries to restore, by absolute original path; none restores every one
@@ -260,7 +260,7 @@ func (e *Engine) PlanTrashRestore(req TrashRestoreRequest) (*TrashRestoreResult,
 		return nil, err
 	}
 	res := &TrashRestoreResult{Run: r.view.ID, Restored: []TrashEntry{}, Existing: []string{}, DryRun: true, Notices: r.notices(), req: req, run: r}
-	see := "see the run's entries: " + trashCommand(append([]string{req.Run}, req.Display...)...)
+	see := "see the run's entries: " + trashCommand(append([]string{"show", req.Run}, req.Display...)...)
 	picked := r.read.Entries
 	if len(req.Originals) > 0 || len(req.Entries) > 0 {
 		picked = nil
@@ -294,7 +294,7 @@ func (e *Engine) PlanTrashRestore(req TrashRestoreRequest) (*TrashRestoreResult,
 			if overlaps(a.Original, b.Original) {
 				return nil, errs.WithHints(fmt.Errorf("trash run %s holds %s and %s, which one restore cannot both put back; restore one at a time",
 					shown(req.Run), shown(a.Original), shown(b.Original)),
-					"restore one: "+trashCommand(append([]string{req.Run, a.Original, "--restore"}, req.Display...)...), see)
+					"restore one: "+trashCommand(append([]string{"restore", req.Run, a.Original}, req.Display...)...), see)
 			}
 		}
 	}
@@ -362,7 +362,7 @@ func existVerb(paths []string) string {
 
 // forceRestore is req's run with --force: what a restore refused for existing originals hints.
 func (e *Engine) forceRestore(req TrashRestoreRequest) string {
-	return trashCommand(slices.Concat([]string{req.Run}, req.Originals, []string{"--restore", "--force"}, req.Display)...)
+	return trashCommand(slices.Concat([]string{"restore", req.Run}, req.Originals, []string{"--force"}, req.Display)...)
 }
 
 // RestoreTrash applies plan, a PlanTrashRestore. An original that exists
@@ -386,7 +386,7 @@ func (e *Engine) RestoreTrash(plan *TrashRestoreResult) (*TrashRestoreResult, er
 	if len(existing) > 0 && !req.Force {
 		return nil, errs.WithHints(fmt.Errorf("lola trash restores nothing over what is there: %s%s", andJoin(res.Existing), existVerb(res.Existing)),
 			"move what is there to a new trash run, then restore: "+e.forceRestore(req),
-			"see the run's entries: "+trashCommand(append([]string{req.Run}, req.Display...)...))
+			"see the run's entries: "+trashCommand(append([]string{"show", req.Run}, req.Display...)...))
 	}
 	if len(existing) > 0 {
 		id, err := e.displace(req, r, existing)
@@ -408,7 +408,7 @@ func (e *Engine) RestoreTrash(plan *TrashRestoreResult) (*TrashRestoreResult, er
 			_, ferr := trash.Forget(r.dir, done)
 			return nil, errs.WithHints(errors.Join(fmt.Errorf("cannot restore %s from trash run %s after restoring %d of %d: %w", shown(en.Original),
 				shown(req.Run), len(res.Restored), len(plan.picked), untrusted.CleanErr(err)), ferr),
-				"see what the run still holds: "+trashCommand(append([]string{req.Run}, req.Display...)...))
+				"see what the run still holds: "+trashCommand(append([]string{"show", req.Run}, req.Display...)...))
 		}
 		done = append(done, en)
 		res.Restored = append(res.Restored, r.entry(en))
@@ -429,7 +429,7 @@ func (e *Engine) RestoreTrash(plan *TrashRestoreResult) (*TrashRestoreResult, er
 // into a new trash run, made by this restore, and returns its id.
 func (e *Engine) displace(req TrashRestoreRequest, r *trashRun, existing []trash.Entry) (string, error) {
 	t, err := trash.OpenTrash(e.Paths.Trash, e.Now(), trash.RunRecord{
-		Command: trashCommand(slices.Concat([]string{req.Run}, req.Originals, []string{"--restore", "--force"})...),
+		Command: trashCommand(slices.Concat([]string{"restore", req.Run}, req.Originals, []string{"--force"})...),
 		Scope:   r.read.Scope, Root: r.read.Root})
 	if err != nil {
 		return "", err
@@ -451,7 +451,7 @@ func (e *Engine) displace(req TrashRestoreRequest, r *trashRun, existing []trash
 	return filepath.Base(t.Dir), t.Close()
 }
 
-// TrashEmptyRequest is lola trash [<run>...] --empty [--older-than <age>].
+// TrashEmptyRequest is lola trash empty [<run>...] [--older-than <age>].
 type TrashEmptyRequest struct {
 	Runs      []string // the runs to delete by id; none means every run
 	OlderThan string   // only runs older than this age (config.ParseAge), "" for any
@@ -497,7 +497,7 @@ func (e *Engine) PlanTrashEmpty(req TrashEmptyRequest) (*TrashEmptyResult, error
 		}
 		cutoff = e.Now().AddDate(0, 0, -days)
 	}
-	again := slices.Concat(req.Runs, []string{"--empty"})
+	again := slices.Concat([]string{"empty"}, req.Runs)
 	if req.OlderThan != "" {
 		again = append(again, "--older-than", req.OlderThan)
 	}
@@ -564,7 +564,7 @@ func (e *Engine) EmptyTrash(plan *TrashEmptyResult) (*TrashEmptyResult, error) {
 		}
 		if err := root.RemoveAll(r.id); err != nil {
 			return nil, errs.WithHints(fmt.Errorf("cannot delete trash run %s after deleting %d of %d: %w", r.ID, len(res.Removed), len(plan.Removed),
-				untrusted.CleanErr(err)), "see the runs left: "+trashCommand(plan.display...))
+				untrusted.CleanErr(err)), "see the runs left: "+trashCommand(append([]string{"list"}, plan.display...)...))
 		}
 		res.Removed = append(res.Removed, r)
 		res.BytesFreed += r.SizeBytes

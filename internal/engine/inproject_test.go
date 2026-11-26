@@ -79,7 +79,7 @@ var _ = Describe("local entries inside a project", func() {
 	}
 	me := func() string { return filepath.Join(p.UserProfiles, "me.yml") }
 	projectYML := func() string { return filepath.Join(proj, ".lola", "project.yml") }
-	Describe("lola profile --move", func() {
+	Describe("lola profile move", func() {
 		It("refuses moving a project.yml folder entry into a profile of yours, writing nothing", func() {
 			project("mods/notes")
 			before := read(projectYML())
@@ -148,16 +148,16 @@ var _ = Describe("local entries inside a project", func() {
 	})
 
 	// An override copies a project file's entry into a file of yours as a move carries it.
-	Describe("lola install --override and lola profile --edit --override into a profile of yours", func() {
+	Describe("lola install --override and lola profile edit --override into a profile of yours", func() {
 		// override edits notes at project scope into me with --only commands/notes, as lola install
-		// notes --profile me --override, or as lola profile me notes --edit --override (edit); notes is
+		// notes --profile me --override, or as lola profile edit me notes --override (edit); notes is
 		// named by the arguments given, else by its name.
 		override := func(edit bool, arg ...string) error {
 			GinkgoHelper()
 			t := engine.TargetRequest{Profile: "me", Override: true}
 			if edit {
 				t.Edit, t.Rerun = true, func(extra ...string) string {
-					return e.Command(sc, "profile", append([]string{"me", "notes", "--edit"}, extra...)...)
+					return e.Command(sc, "profile", append([]string{"edit", "me", "notes"}, extra...)...)
 				}
 			}
 			spec := engine.InstallSpec{Cwd: proj, Modules: []engine.InstallRequest{{Arg: append(arg, "notes")[0]}}, Options: engine.Options{Target: t},

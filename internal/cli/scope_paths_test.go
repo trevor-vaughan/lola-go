@@ -227,12 +227,12 @@ var _ = Describe("scope picker paths", func() {
 		Entry("scope picker: start --run (lola tidy)--> scope", []string{"tidy"}, "Tidy where?", true),
 		Entry("scope picker: start --run (lola repair)--> scope", []string{"repair"}, "Repair where?", true),
 		Entry("scope picker: start --run (lola uninstall)--> scope", []string{"uninstall", "kit"}, "Uninstall from where?", true),
-		Entry("scope picker: start --run (lola profile --on)--> scope", []string{"profile", "go", "--on"}, "Turn it on where?", true),
-		Entry("scope picker: start --run (lola profile --off)--> scope", []string{"profile", "--off"}, "Turn it off where?", true),
-		Entry("scope picker: start --run (lola profile --switch)--> scope", []string{"profile", "go", "--switch"}, "Switch where?", true),
-		Entry("scope picker: start --run (lola profile --move)--> scope", []string{"profile", "--move", "kit", "--to", "go"}, "Move where?", true),
-		Entry("scope picker: start --run (lola profile --split)--> scope", []string{"profile", "go", "--split"}, "Split where?", true),
-		Entry("scope picker: start --run (lola profile --remove)--> scope", []string{"profile", "go", "--remove"}, "Check which scope before removing it?", true),
+		Entry("scope picker: start --run (lola profile --on)--> scope", []string{"profile", "on", "go"}, "Turn it on where?", true),
+		Entry("scope picker: start --run (lola profile --off)--> scope", []string{"profile", "off"}, "Turn it off where?", true),
+		Entry("scope picker: start --run (lola profile --switch)--> scope", []string{"profile", "switch", "go"}, "Switch where?", true),
+		Entry("scope picker: start --run (lola profile --move)--> scope", []string{"profile", "move", "kit", "--to", "go"}, "Move where?", true),
+		Entry("scope picker: start --run (lola profile --split)--> scope", []string{"profile", "split", "go"}, "Split where?", true),
+		Entry("scope picker: start --run (lola profile --remove)--> scope", []string{"profile", "rm", "go"}, "Check which scope before removing it?", true),
 	)
 
 	It("scope picker: start --scope flag--> next step", func() {
@@ -293,8 +293,8 @@ var _ = Describe("scope picker paths", func() {
 
 	It("scope picker: scope --answer (Project is the home directory, refused)--> scope", func() {
 		GinkgoT().Chdir(home)
-		for _, args := range [][]string{{"sync"}, {"update"}, {"profile", "go", "--on"}, {"profile", "--off"}, {"profile", "go", "--switch"},
-			{"profile", "--move", "kit", "--to", "go"}, {"profile", "go", "--split"}, {"profile", "go", "--remove"}} {
+		for _, args := range [][]string{{"sync"}, {"update"}, {"profile", "on", "go"}, {"profile", "off"}, {"profile", "switch", "go"},
+			{"profile", "move", "kit", "--to", "go"}, {"profile", "split", "go"}, {"profile", "rm", "go"}} {
 			sp := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject), aborted[cli.ScopeStep, []string]}}
 			r := lolaP(sp, args...)
 			Expect(r.code).To(Equal(4), r.err)

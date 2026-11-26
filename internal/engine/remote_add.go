@@ -16,10 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// ProfileAdd is lola profile's action that fetches a remote profile and keeps it; like the activation actions, it is also the flag lola profile takes for it.
-const ProfileAdd ProfileAction = "add"
-
-// ProfileAddRequest is one lola profile --add: fetch Source at Ref (a git branch,
+// ProfileAddRequest is one lola profile add: fetch Source at Ref (a git branch,
 // tag or commit) and read profiles/<Name>.yml under its root, or under Path. Name is as typed: go
 // or remote:go. Scope is the scope a scope flag named, nil for none: it only picks the scope whose
 // lock.json annotates the content shown, since the profile is shared by every scope and adding
@@ -72,7 +69,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	// that one, so it is left out.
 	kept := slices.DeleteFunc(slices.Clone(req.Rerun), trustArg)
 	// typed is the run's arguments, the name aside, which every hint that repeats it keeps.
-	typed := []string{"--add", untrusted.Text(req.Source, untrusted.MaxName)}
+	typed := []string{"add", untrusted.Text(req.Source, untrusted.MaxName)}
 	for _, f := range [][2]string{{"--ref", req.Ref}, {"--path", req.Path}} {
 		if f[1] != "" {
 			typed = append(typed, f[0], f[1])
@@ -80,8 +77,8 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	}
 	if kind, bare, qualified := strings.Cut(name, ":"); qualified {
 		if kind != string(profile.KindRemote) {
-			args := slices.Concat([]string{bare}, typed, req.Rerun)
-			return nil, errs.WithHints(fmt.Errorf("--add keeps remote profiles; %s names another kind", untrusted.Text(name, untrusted.MaxName)),
+			args := slices.Concat(addNamed(typed, bare), req.Rerun)
+			return nil, errs.WithHints(fmt.Errorf("lola profile add keeps remote profiles; %s names another kind", untrusted.Text(name, untrusted.MaxName)),
 				"add it as a remote profile: "+e.ProfileRun(given, args...))
 		}
 		// remote: names a profile, never none: it does not start the picker.
@@ -94,7 +91,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 		if err := remoteName(name); err != nil {
 			return nil, err
 		}
-		typed = append([]string{name}, typed...)
+		typed = addNamed(typed, name)
 	}
 	spec, err := e.remoteSpec(req.Source, req.Ref, req.Path)
 	if err != nil {
@@ -102,7 +99,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	}
 	covered := req.Trust.Covers(TrustProfiles)
 	if req.Consent == nil && !covered && !req.DryRun {
-		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola profile --add shows the profile and asks before adding it, and there is no terminal to ask on")),
+		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola profile add shows the profile and asks before adding it, and there is no terminal to ask on")),
 			"see it: "+e.ProfileRun(given, slices.Concat(typed, []string{"-n"}, display)...),
 			"then add it unasked: "+e.ProfileRun(given, slices.Concat(typed, []string{TrustProfiles.Arg()}, display)...))
 	}
@@ -176,7 +173,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 		for _, rp := range res.Profiles {
 			args := slices.DeleteFunc(slices.Concat(typed, req.Rerun), func(f string) bool { return f == "-n" })
 			if name == "" {
-				args = append([]string{rp.name}, args...)
+				args = addNamed(args, rp.name)
 			}
 			text := "to add " + rp.Profile + ": " + e.ProfileRun(given, args...)
 			if !covered {
@@ -244,13 +241,13 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 				", which is used instead; to use both, bundled: " + both})
 			continue
 		}
-		lead, args := "turn it on", []string{rp.Profile, "--on"}
+		lead, args := "turn it on", []string{"on", rp.Profile}
 		if led.Profile != nil {
 			clause, ok := e.addSwitch(ctx, sc, infos, rp)
 			if !ok {
 				continue
 			}
-			args = []string{rp.Profile, "--switch"} // no -y: it names another command, which asks
+			args = []string{"switch", rp.Profile} // no -y: it names another command, which asks
 			if clause != "" {
 				lead += " (" + clause + ")"
 			}
@@ -260,8 +257,8 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	return res, nil
 }
 
-// addSwitch judges the --switch to rp, just added, that the hint after --add names while a profile
-// is on at sc (--on refuses there), infos being the profiles sc can use:
+// addSwitch judges the --switch to rp, just added, that the hint after add names while a profile
+// is on at sc (on refuses there), infos being the profiles sc can use:
 // ok when its dry run, planned as the sync plans it, succeeds and needs no trust or hook's consent,
 // which no hint answers, and clause what it turns off (switchesOff), which the switch asks before
 // it removes.
@@ -298,7 +295,13 @@ func (e *Engine) refuseKept(given []Scope, name string, flags []string) error {
 			"move it out of "+shown(e.Paths.RemoteProfiles)+", then run this again")
 	}
 	q := string(profile.KindRemote) + ":" + name
-	return errs.WithHints(fmt.Errorf("you already have a remote profile %s", shown(q)), "fetch it again: "+e.ProfileRun(given, slices.Concat([]string{q, "--update"}, flags)...))
+	return errs.WithHints(fmt.Errorf("you already have a remote profile %s", shown(q)), "fetch it again: "+e.ProfileRun(given, slices.Concat([]string{"update", q}, flags)...))
+}
+
+// addNamed is typed, the words of an add (add, its source, then its flags), with the profile name
+// after the source.
+func addNamed(typed []string, name string) []string {
+	return slices.Insert(slices.Clone(typed), 2, name)
 }
 
 // pickRemote is the profiles of the fetched tree to add, when none was named: the
@@ -323,7 +326,7 @@ func (e *Engine) pickRemote(given []Scope, tree string, typed, display []string,
 		}
 		var hints []string
 		for _, n := range names {
-			hints = append(hints, verb+n+": "+e.ProfileRun(given, slices.Concat([]string{n}, typed, []string{flag}, display)...))
+			hints = append(hints, verb+n+": "+e.ProfileRun(given, slices.Concat(addNamed(typed, n), []string{flag}, display)...))
 		}
 		return nil, errs.WithHints(fmt.Errorf("name the profile to add; the source has %s", andJoin(names)), hints...)
 	}

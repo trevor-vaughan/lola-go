@@ -22,7 +22,7 @@ type TrustKinds uint8
 // hooks in consent.json, by digest.
 const (
 	TrustEntries      TrustKinds = 1 << iota // changed entries and top-level targets of project.yml
-	TrustProfiles                            // project profiles, a profile's replacement, a remote profile --add or --update shows
+	TrustProfiles                            // project profiles, a profile's replacement, a remote profile lola profile add or update shows
 	TrustScripts                             // a project's pre- and post-install scripts
 	TrustHooks                               // module install hooks
 	TrustRuntimeHooks                        // module runtime hooks
@@ -200,13 +200,13 @@ func withheldInstead(hints []string, what, why, file string) []string {
 		", then consent to it unseen: "+run+" --unseen")
 }
 
-// CommandTrust is the kinds a command can ask: command is the command after
-// lola, "profile --add" for that action of profile. A command that asks none has none.
+// CommandTrust is the kinds a command can ask: command is the command's path after lola
+// ("profile add"). A command that asks none has none.
 func CommandTrust(command string) TrustKinds {
 	switch command {
-	case "sync", "update", "profile":
+	case "sync", "update", "profile on", "profile off", "profile switch", "profile edit", "profile move", "profile split", "profile update":
 		return TrustAll
-	case "profile --add":
+	case "profile add":
 		return TrustProfiles
 	case "install":
 		return TrustScripts | TrustHooks | TrustRuntimeHooks

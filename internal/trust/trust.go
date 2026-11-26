@@ -67,7 +67,7 @@ type Entry struct {
 }
 
 // MemberView is the remote profile an entry of a project file comes from: its qualified name and the source and pin of its source.json. Another
-// pin (after lola profile --update) or another source of that name is a change to every entry it
+// pin (after lola profile update) or another source of that name is a change to every entry it
 // gives.
 type MemberView struct {
 	Name   string `json:"name"`

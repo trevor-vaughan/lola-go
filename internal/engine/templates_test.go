@@ -90,7 +90,7 @@ var _ = Describe("Templates", func() {
 		Expect(err).NotTo(HaveOccurred())
 		return string(b)
 	}
-	// activate records name as the scope's active profile, as lola profile --on does; "" turns off
+	// activate records name as the scope's active profile, as lola profile on does; "" turns off
 	// whatever is on.
 	activate := func(s engine.Scope, name string) {
 		GinkgoHelper()

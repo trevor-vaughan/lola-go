@@ -36,13 +36,13 @@ the engine's.
     and a typed name that is already this marketplace (`sameMarket`).
   - After the fetch, a name another marketplace has (typed or the catalog's) goes to
     `takenName`: `Rename` asks a free name on a terminal (`askName`, which asks again until the
-    answer is a valid name no marketplace has, pre-filled with the refused answer as typed), else the hint is `market.FreeName`'s `--add`.
+    answer is a valid name no marketplace has, pre-filled with the refused answer as typed), else the hint is `market.FreeName`'s `add`.
   - A catalog's own name that no marketplace can have is asked the same way, pre-filled with its
-    free slug, else refused with the slug's `--add`.
+    free slug, else refused with the slug's `add`.
   - Those hints name the catalog file found with `--path` for a tree source, as another name
     would look for its own `<name>.yml`.
   - A typed name that breaks the rule is refused with `module.ValidateName`'s account of what
-    breaks it, and the `--add` of its lowercase form when that is a name.
+    breaks it, and the `add` of its lowercase form when that is a name.
   - `noMarket` refuses a marketplace you do not have, naming `CloseMarkets` and hinting the
     caller's run with each (`ShowMarket`, `UpdateMarkets`, `RemoveMarket`, never `-y`).
   - `fetchMarket` downloads a catalog file (`source.FetchFile`, 8 MiB, the source URL rules, and
@@ -56,7 +56,7 @@ the engine's.
     - binds it (`market.Bind`).
   - Then, under the exclusive lock, with the name checked again, it writes the cache, then the
     registration, so a failed registration leaves a cache directory that listings, driven by
-    `markets.yaml`, ignore, and the next `--add` replaces.
+    `markets.yaml`, ignore, and the next `add` replaces.
 - **`UpdateMarkets`** checks every name before any network contact.
   - It then fetches each registration at its source, ref and recorded catalog file
     (`updateMarket`), replacing its cache under the exclusive lock.
@@ -64,7 +64,7 @@ the engine's.
     the others are written.
   - `marketChanges` compares the old and new models by entry name.
   - `Markets` and `ShowMarket` only read; a cache that cannot be read lists as not fetched with a
-    notice naming `--update`.
+    notice naming `update`.
   - Errors from the source, file and lock layers lose their prose hints on the way out
     (`unhinted`), as a marketplace's hints are commands only; their messages still say what
     failed.
@@ -154,7 +154,7 @@ the engine's.
     - none without the marketplace, the message then saying to edit the entry
       (`Unresolved.Coached` drops that text for an entry with a hint).
   - An unreadable `markets.yaml` gives no hint.
-  - `ProfileState` (`lola profile <name>`), `UpdateProfile`, `RemoveProfile`, `market --remove`'s
+  - `ProfileState` (`lola profile <name>`), `UpdateProfile`, `RemoveProfile`, `market rm`'s
     count (its warning, after `→`) and migrate's plan (`NewPlan`, with the run's output flags)
     coach the same way; an error a reader already coached is left as it is.
   - An install replaces: `replacingNames` are the entries its addresses install, and
@@ -183,18 +183,22 @@ the engine's.
     keep today's rule (residual).
   - `resolveSync` then takes the catalog's commit pin through `followPin` (`fetchEntry`'s
     reachability check, a fetch by the commit, `headIfAbsent`).
-- **`CoachMarketVerb`** refuses the Python lola's verbs, which the CLI routes to it whenever
-  the first argument is one (`market.Verbs`); the translation is a hint only when it would run:
-  a name you do not have gets the listing, one that cannot be a marketplace and a missing
-  operand get none. The hidden `--disable` flag exists only for `set`; `--enable` is the known
-  marketplaces' action and takes an id, so `set <name> --enable` is read as `set --enable <name>`
-  (`marketVerb`) and `set --enable` alone is cobra's missing-value refusal.
-- **`Known`, `ShowKnown` and `EnableKnown`** (`internal/engine/market_known.go`) serve `--known` and
-  `--enable`. `EnableKnown` is `AddMarket` with the seed's source and path and its pinned commit as
+- **`CoachMarketVerb`** refuses the words of another tool's `lola market` that lola has no subcommand
+  for (`engine.CoachedMarketWords`: `set`, `search`), which the CLI routes to it when the first
+  argument is one; the translation is a hint only when it would run: a name you do not have gets
+  its close names and the listing, one that cannot be a marketplace and a missing operand get none.
+  `set <name> --disable` is read from the unknown-flag error and the arguments pflag never parsed
+  (`marketCmd`), and `set <name> --enable` is "already active". `add`, `rm`, `update`, `show` and `list` are real subcommands.
+- **`RefuseReserved`** (`internal/engine/market_verbs.go`) refuses, before any fetch, a name that
+  is a word of the noun's command (`Engine.Reserved`, set from the built tree by `NewRootCmd`:
+  every verb name and alias, plus the coached words), hinting the run with `<name>-1`. Loading
+  `markets.yaml` is unchanged (`market.ValidateName`).
+- **`Known`, `ShowKnown` and `EnableKnown`** (`internal/engine/market_known.go`) serve `known` and
+  `enable`. `EnableKnown` is `AddMarket` with the seed's source and path and its pinned commit as
   the ref. Given a `KnownConfirm`, it refuses a taken name first, runs `AddMarket` as a dry run,
   hands the result to the confirm (the CLI's `app.confirm`: the question, or the refusal that
   carries the plan under `--json`), and only then adds. The CLI passes none under `-y` or `-n`,
-  and never a `Rename` or `PickSSH`: collisions are refused with the `--enable` under a free name.
+  and never a `Rename` or `PickSSH`: collisions are refused with the `enable` under a free name.
 - **`PreviewKnown`** (`internal/engine/market_known.go`) serves the picker's preview of a known
   marketplace you have not enabled: it fetches the seed's source at its pin through `fetchMarket`,
   as `AddMarket`'s dry run does, and returns the entries as `PickerEntry` (the same derivation as
@@ -207,13 +211,13 @@ the engine's.
   cache or the module cache) and removed on return. Quitting the picker with `q` or Ctrl+C
   mid-fetch cancels the fetch, but the process may end before it removes its `run-*` directory,
   which then stays in staging until the next run's `sweepRuns`. It also returns how many catalog
-  entries lola skips (`KnownPreview.Skipped`), which `--enable -n` reports. Its failures carry the
-  dry-run `--enable` and `--known` as hints, being commands that show the same error; a cancelled
+  entries lola skips (`KnownPreview.Skipped`), which `enable -n` reports. Its failures carry the
+  dry-run `enable` and `known` as hints, being commands that show the same error; a cancelled
   context is returned as is. Every git run lola makes has its locale pinned to English
   (`LC_ALL=C`, `LANGUAGE` empty, `gitEnv`), since lola tells a missing commit and a missing
   repository from other failures by git's English messages (`checkoutCommit` says `did not serve
   commit` only for them, else `could not fetch <url>: <git's reason>`).
-- **The picker's rows and `--check`** (`internal/engine/market_picker.go`) never fetch; `PreviewKnown` is the one call of the picker that does.
+- **The picker's rows and `check`** (`internal/engine/market_picker.go`) never fetch; `PreviewKnown` is the one call of the picker that does.
   - `PickerRows` is `Markets` split in two: your marketplaces, an enabled known one (the seed's id
     as its name, the seed's source) marked `Known`, `Enabled` and `AheadOfPin` (registered at a
     full commit other than the seed's); then the seed entries not enabled, in seed order. A known
@@ -227,7 +231,7 @@ the engine's.
     available`; any error is `unreachable` with its
     `untrusted.CleanErr` reason. Cancelling the context drops the checks not yet started.
   - `Classify` is the banner rule: at least two `unreachable` and more than half of the checks.
-  - `CheckedMarkets` serves `--check`: your rows with every check waited for; rows not checked keep
+  - `CheckedMarkets` serves `check`: your rows with every check waited for; rows not checked keep
     `""`.
   - `UpdateKnownPastPin` (`market_known.go`) moves a git marketplace, known or yours, to its
     remote's tip: a dry `updateMarkets` at the tip for the confirm, then `market.SetRef` rewrites the
@@ -241,17 +245,17 @@ the engine's.
     `Classify` and, without the banner, offers the run's rows of yours that read `update
     available` or `upstream moved`, or that are not `Checkable`; the answer is `PickerUpdate`, and
     `marketPickUpdate` moves each one registered at a commit (`AtCommit`, the rule `checkRow`'s
-    `upstream moved` uses) with `UpdateKnownPastPin` and updates the rest as `--update`. `pickerSaid` prints an action's error or a declined question's
+    `upstream moved` uses) with `UpdateKnownPastPin` and updates the rest as `update`. `pickerSaid` prints an action's error or a declined question's
     cancel line and goes back to the picker; `pickerEnded` ends the run on Ctrl+C. The states are in
     [TUI flows](tui-flows.md#market-picker).
 - **Hints** are bare commands (`MarketRun`, quoted by `errs.ShellJoin`, every argument through
   `untrusted.Text`), carrying the run's output flags (`--json`, `--plain`, `--no-pager`, as lola
   profile's hints do; `Display`) and exactly these other flags:
-  - `--ref`, `--path` and `-n` for the `--add` hints of a slug, of a collision and of two
+  - `--ref`, `--path` and `-n` for the `add` hints of a slug, of a collision and of two
     catalogs;
-  - `-n` for the `--update` hint of the same source;
+  - `-n` for the `update` hint of the same source;
   - `--ref`, `--path`, `-n` and (for `rm` and `remove`, when typed) `-y` for the verb
     translations;
-  - `-y` for `--remove`'s own refusal off a terminal;
-  - none for the listing and `--update` hints.
+  - `-y` for `rm`'s own refusal off a terminal;
+  - none for the listing and `update` hints.
   - A refusal with no working command has no hint, and its message says what to do.

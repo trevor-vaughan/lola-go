@@ -111,7 +111,7 @@ flowchart TD
     replaces it, reported as replaced; for a symbolic link you can instead replace the link with
     a directory.
 - **Marketplaces.** Each registration in `~/.lola/market/<name>.yml` is registered with
-  [`lola market --add`](marketplaces.md#marketplaces) under its name, its catalog fetched during
+  [`lola market add`](marketplaces.md#marketplaces) under its name, its catalog fetched during
   the run (never by `--dry-run`). The plan lists each one first (`register general from
   https://example.com/market.git`).
   - Its `url` is translated: `git+https://…` and `git+ssh://…` lose the `git+`, and a `#path`
@@ -123,21 +123,21 @@ flowchart TD
   - In a repository whose `url` names no file, the run reads the catalog the Python lola read
     (`<name>.yml` or `.yaml`, then `marketplace.yml` or `.yaml`, else the only `.yml` or `.yaml`
     file at the root other than `.pre-commit-config.yaml`) and registers it with that `--path`.
-    `lola market --add` itself keeps its own lookup.
+    `lola market add` itself keeps its own lookup.
   - A disabled marketplace stays unregistered, since every marketplace lola registers is enabled, and is listed
-    with the `lola market <name> --add <source> [--path …]` that registers it.
+    with the `lola market add <source> <name> [--path …]` that registers it.
   - So is one whose name lola cannot use (uppercase, a space, one of the Python lola's verbs),
     that one of yours has from another source, or that an earlier one of the Python lola's
     marketplaces has: it is listed with the command that registers it under a free slug of the
-    name (`lola market lola-general --add …`).
+    name (`lola market add …`). lola-general
   - When only a fetch can tell that command's `--path`, `--dry-run` says the run gives it, and
     the run fetches to name it.
   - A `url` lola cannot read at all (plain `http://` off loopback, a relative path, credentials
     or a query, which lola never records) is listed with the reason and no command.
   - A `url` is only ever shown without its user, password, query and fragment, in every output.
   - One whose fetch fails is listed with the reason, the command that shows what the server says
-    when there is one, and its `--add`. It gets `lola migrate` itself instead when its `url`
-    named no file (an `--add` would not look for the file the Python lola read), and no command
+    when there is one, and its `market add`. It gets `lola migrate` itself instead when its `url`
+    named no file (a `market add` would not look for the file the Python lola read), and no command
     when the repository holds no file the Python lola would read (two `.yml` files at its root,
     say). The migration goes on without it, and the next `lola migrate` tries it again.
   - One you already have from the same source is `already registered` (when its `url` names no
@@ -249,8 +249,8 @@ The trash is `$XDG_STATE_HOME/lola/trash/<UTC time>/`:
 - the Python home as `python-home/`;
 - `manifest.txt`, one `original<TAB>trash path` line per entry.
 
-`lola trash` lists the runs, and `lola trash <run>` shows a run's entries. `lola trash <run>
---restore` moves them back, or only the originals you name, and `lola trash --empty` deletes
+`lola trash` lists the runs. `lola trash show <run>`
+shows a run, `lola trash restore <run>` moves them back, or only the originals you name, and `lola trash empty` deletes
 runs you no longer need; lola never deletes the trash on its own
 ([`lola trash`](../reference/trash.md#lola-trash)).
 
@@ -335,9 +335,10 @@ scope, lola has no `default.yml`, user scope's base, and `lola sync --user` says
 
 ## Python lola commands
 
-The Python lola's `lola market` verbs are coached rather than accepted: `lola market add <name>
-<url>` is refused with `lola market <name> --add <url>`, `rm` with `--remove`, `update` with
-`--update --all` ([Marketplaces](marketplaces.md#marketplaces)).
+The Python lola's `lola market` verbs `add`, `rm` and `update` are verbs here too, with lola's operands: the
+source goes first (`lola market add <url> <name>`; `lola market add <name> <url>` is refused with that
+order), `rm` takes one name, and `update` takes names or `--all`. `set` and `search` are coached
+([Marketplaces](marketplaces.md#marketplaces)).
 
 `lola install @market/module` works as there, but records the module's real source and pin, so
 the marketplace is never needed again to install what `project.yml` lists. The Python lola's

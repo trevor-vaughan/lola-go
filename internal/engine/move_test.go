@@ -22,7 +22,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("lola profile --move", func() {
+var _ = Describe("lola profile move", func() {
 	var (
 		tmp, proj, url, work, bare string
 		p                          paths.Paths
@@ -85,11 +85,11 @@ var _ = Describe("lola profile --move", func() {
 		req.Trust = trustAll
 		// The run without --to and its consent flags, as the CLI gives it: each hint names its own --to.
 		req.Options.Target.Rerun = func(extra ...string) string {
-			return e.Command(req.Scope, "profile", append([]string{"--move", req.Modules[0]}, extra...)...)
+			return e.Command(req.Scope, "profile", append([]string{"move", req.Modules[0]}, extra...)...)
 		}
 		return e.Move(ctx, req)
 	}
-	// keepRemote writes a remote profile as lola profile --add does: profile.yml and its source.json.
+	// keepRemote writes a remote profile as lola profile add does: profile.yml and its source.json.
 	keepRemote := func(name, content string) {
 		GinkgoHelper()
 		dir := filepath.Join(p.RemoteProfiles, name)
@@ -164,8 +164,8 @@ var _ = Describe("lola profile --move", func() {
 		_, err = e.Move(ctx, engine.MoveRequest{Scope: sc, Modules: []string{"notes"}, To: "team", ConfirmRemovals: yes})
 		Expect(err).To(MatchError(HavePrefix("lola profile needs your trust for changes to "+filepath.Join(".lola", "profiles", "team.yml")+
 			", and there is no terminal to ask on")), "the run is lola profile's, not lola sync's")
-		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --project --move notes --to team -n",
-			"then accept them: lola profile --project --move notes --to team --trust=profiles -y"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --project move notes --to team -n",
+			"then accept them: lola profile --project move notes --to team --trust=profiles -y"}))
 		Expect(read(projectYML())).To(Equal(pulled), "a refused move writes nothing")
 		Expect(read(filepath.Join(proj, ".lola", "profiles", "team.yml"))).To(Equal("version: 1\n"))
 
@@ -231,7 +231,7 @@ var _ = Describe("lola profile --move", func() {
 		Expect(installed(sc)).To(BeNil())
 		_, err = e.Move(ctx, engine.MoveRequest{Scope: sc, From: "team", Modules: []string{"other"}, To: "me", ConfirmRemovals: yes})
 		Expect(err).To(MatchError("other is in profile team, which is off in this project; lola copies or moves out of a project only what it installed as you trusted it"))
-		Expect(errs.Hints(err)).To(Equal([]string{"review it first: lola profile --project team --switch"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"review it first: lola profile --project switch team"}))
 		Expect(read(me)).To(Equal("version: 1\n"))
 
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: "project:team"},
@@ -290,7 +290,7 @@ var _ = Describe("lola profile --move", func() {
 		activate(user, "user:me")
 		_, err = move(engine.MoveRequest{Scope: user, From: "base", Modules: []string{"notes"}, To: "me"})
 		Expect(err).To(MatchError("profile me lists notes already; lola needs to know whether to replace its entry, and there is no terminal to ask on"))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user --move notes --to me -y"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user move notes --to me -y"}))
 		var asked []string
 		_, err = move(engine.MoveRequest{Scope: user, From: "base", Modules: []string{"notes"}, To: "me",
 			Replace: func(module, label string) (bool, error) {
@@ -312,7 +312,7 @@ var _ = Describe("lola profile --move", func() {
 		_, err := move(engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "remote:team"})
 		Expect(err).To(MatchError(HavePrefix("no profile remote:team")))
 		_, err = move(engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "project.yml"})
-		Expect(err).To(MatchError("project.yml is a project's base; lola profile --move never moves an entry into it from user scope"))
+		Expect(err).To(MatchError("project.yml is a project's base; lola profile move never moves an entry into it from user scope"))
 		_, err = move(engine.MoveRequest{Scope: user, Modules: []string{"gone"}, To: "base"})
 		Expect(err).To(MatchError("gone: no layer at user scope lists it"))
 
@@ -327,12 +327,12 @@ var _ = Describe("lola profile --move", func() {
 		for _, from := range []string{"", "remote:team"} {
 			_, err = move(engine.MoveRequest{Scope: user, From: from, Modules: []string{"notes"}, To: "base"})
 			Expect(err).To(MatchError("notes comes from remote:team, which is read-only; lola does not edit remote profiles"), from)
-			Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user --off",
-				"or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team"}), from)
+			Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user off",
+				"or switch to a copy of yours: lola profile --user switch team-mine --new --from remote:team"}), from)
 		}
 		_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "base"})
-		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user --off",
-			"or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team"}), "a run that cannot ask hints no -y it was not given")
+		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user off",
+			"or switch to a copy of yours: lola profile --user switch team-mine --new --from remote:team"}), "a run that cannot ask hints no -y it was not given")
 	})
 
 	// hinted runs the move each hint names (its --to), as the hint would.
@@ -354,19 +354,19 @@ var _ = Describe("lola profile --move", func() {
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = move(engine.MoveRequest{Scope: user, Modules: []string{"notes"}})
-		Expect(err).To(MatchError("--move needs --to, the profile the entries move to"))
+		Expect(err).To(MatchError("lola profile move needs --to, the profile the entries move to"))
 		Expect(errs.Hints(err)).To(BeEmpty(), "the entry is in the base, and no profile is on")
 
 		activate(user, "user:me")
 		_, err = move(engine.MoveRequest{Scope: user, Modules: []string{"notes"}})
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user --move notes --to me"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user move notes --to me"}))
 		_, err = move(engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "remote:team"})
 		Expect(err).To(MatchError("remote:team is read-only; lola does not edit remote profiles"))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user --move notes --to me"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user move notes --to me"}))
 		hinted(engine.MoveRequest{Scope: user, Modules: []string{"notes"}}, errs.Hints(err))
 
 		_, err = move(engine.MoveRequest{Scope: user, Modules: []string{"notes"}})
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user --move notes --to base"}), "now in me, the profile on")
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user move notes --to base"}), "now in me, the profile on")
 		hinted(engine.MoveRequest{Scope: user, Modules: []string{"notes"}}, errs.Hints(err))
 	})
 
@@ -425,8 +425,8 @@ var _ = Describe("lola profile --move", func() {
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\n"})
 		_, err = move(engine.MoveRequest{Scope: sc, Modules: []string{"notes"}, To: "me", Options: engine.Options{Force: true}})
 		Expect(err).To(MatchError("me is not on in this project; lola needs to know whether to switch to it, and there is no terminal to ask on"))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project --move notes --to me --switch",
-			"lola profile --project --move notes --to me --keep-off -y"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project move notes --to me --switch",
+			"lola profile --project move notes --to me --keep-off -y"}))
 		Expect(read(projectYML())).To(ContainSubstring("notes"), "nothing was written")
 		Expect(installed(sc)).NotTo(BeNil())
 	})
@@ -464,7 +464,7 @@ var _ = Describe("lola profile --move", func() {
 		planned, dryAct, dryNotices := res.Syncs[0].Removals, res.Syncs[0].Activation, res.Syncs[0].Notices
 		Expect(dryNotices).NotTo(ContainElement(HaveField("Text", ContainSubstring("fresh"))), "the profile it would create is not gone")
 		Expect(dryAct).NotTo(BeNil(), "the dry run shows the switch, which is why other goes")
-		Expect(res.Syncs[0].ToApply).To(Equal("lola profile --project --move notes --to fresh --switch"), "the run it previews keeps --switch")
+		Expect(res.Syncs[0].ToApply).To(Equal("lola profile --project move notes --to fresh --switch"), "the run it previews keeps --switch")
 		Expect(planned).To(ConsistOf(HaveField("Module", "other")), "the switch leaves me, whose other goes; notes moves along")
 
 		var asked []engine.Removal
@@ -526,8 +526,8 @@ var _ = Describe("lola profile --move", func() {
 		_, err = e.Move(ctx, engine.MoveRequest{Scope: sc, Modules: []string{"notes"}, To: "me", KeepOff: true, Trust: trustAll})
 		Expect(err).To(HaveOccurred())
 		Expect(err).To(MatchError("lola profile needs your confirmation to remove notes, and there is no terminal to ask on"))
-		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --project --move notes --to me --keep-off -n",
-			"then confirm them: lola profile --project --move notes --to me --keep-off -y"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --project move notes --to me --keep-off -n",
+			"then confirm them: lola profile --project move notes --to me --keep-off -y"}))
 		Expect(read(projectYML())).To(Equal(before))
 		Expect(read(filepath.Join(p.UserProfiles, "me.yml"))).To(Equal("version: 1\n"))
 		Expect(installed(sc)).NotTo(BeNil())
@@ -540,13 +540,13 @@ var _ = Describe("lola profile --move", func() {
 		activate(sc, "user:me")
 		req := engine.MoveRequest{Scope: sc, Modules: []string{"notes"}, To: "default", Options: engine.Options{Target: engine.TargetRequest{
 			Rerun: func(extra ...string) string {
-				return strings.Join(append([]string{"lola profile --move notes"}, extra...), " ")
+				return strings.Join(append([]string{"lola profile move notes"}, extra...), " ")
 			},
-			UserRun: func() string { return "lola profile --move notes --to default --user" },
+			UserRun: func() string { return "lola profile move notes --to default --user" },
 		}}}
 		_, err := e.Move(ctx, req)
 		Expect(err).To(MatchError("default is user scope's base; this project's base is project.yml"))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --move notes --to base", "lola profile --move notes --to default --user"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile move notes --to base", "lola profile move notes --to default --user"}))
 		// The hints are alternatives (me.yml is one file at both scopes): each runs from where the refusal was.
 		me := read(filepath.Join(p.UserProfiles, "me.yml"))
 		_, err = move(engine.MoveRequest{Scope: sc, Modules: []string{"notes"}, To: "base"})
@@ -555,7 +555,7 @@ var _ = Describe("lola profile --move", func() {
 		_, err = move(engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "default"})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = e.Move(ctx, req)
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --move notes --to me"}), "notes is in both bases now: only me takes it")
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile move notes --to me"}), "notes is in both bases now: only me takes it")
 	})
 
 	It("moves a folder entry project.yml trusts into a project profile without asking again", func() {
@@ -600,7 +600,7 @@ var _ = Describe("lola profile --move", func() {
 		Expect(res.Created).To(BeEmpty())
 		Expect(res.Syncs[0].Removals).To(BeEmpty(), "the dry run reads the entry where it goes")
 		Expect(res.Syncs[0].Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
-			Text: "profile user:me is on but no longer exists → lola profile --user user:me --off"}), "lock.json has me on, and its file is gone")
+			Text: "profile user:me is on but no longer exists → lola profile --user off user:me"}), "lock.json has me on, and its file is gone")
 
 		// lock.json's directory refuses the apply's write, after the profile was created.
 		Expect(os.Chmod(filepath.Dir(p.UserLedger), 0o500)).To(Succeed())
@@ -735,7 +735,7 @@ var _ = Describe("lola profile --move", func() {
 				"me.yml": "version: 1\n"})
 			_, err := move(engine.MoveRequest{Scope: user, Other: &sc, Across: true, Modules: []string{"notes"}, To: "me"})
 			Expect(err).To(MatchError("notes is in default (base) at user scope and in project.yml (base) in this project; name the layer it moves from"))
-			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user --move notes --to me default", "lola profile --user --move notes --to me project.yml"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user move notes --to me --from default", "lola profile --user move notes --to me --from project.yml"}))
 		})
 
 		It("refuses modules of both scopes in one run, and those of two layers of the other scope, hinting a run for each", func() {
@@ -746,14 +746,14 @@ var _ = Describe("lola profile --move", func() {
 			_, err := move(engine.MoveRequest{Scope: user, Other: &sc, Modules: []string{"notes", "other"}, To: "base"})
 			Expect(err).To(MatchError("notes is in project.yml (base) and other in profile team in this project; " +
 				"a move between scopes takes the modules of one layer"))
-			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user project.yml --move notes --to base", "lola profile --user team --move other --to base"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user move notes --to base --from project.yml", "lola profile --user move other --to base --from team"}))
 
 			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: other, source: " + otherURL + "}\n",
 				"me.yml": "version: 1\n"})
 			activate(user, "user:me")
 			_, err = move(engine.MoveRequest{Scope: user, Other: &sc, Modules: []string{"notes", "other"}, To: "me"})
 			Expect(err).To(MatchError("other is listed at user scope and notes in this project; a move takes the modules of one scope"))
-			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user --move other --to me", "lola profile --user --move notes --to me"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user move other --to me", "lola profile --user move notes --to me"}))
 		})
 
 		It("refuses a typo as the target scope does, and a move from user scope into a file of the project", func() {
@@ -767,17 +767,17 @@ var _ = Describe("lola profile --move", func() {
 			writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\n"})
 			for _, to := range []string{"base", "project.yml", "team"} {
 				_, err = move(engine.MoveRequest{Scope: sc, Other: &user, Modules: []string{"other"}, To: to})
-				Expect(err).To(MatchError("other comes from user scope; lola profile --move moves an entry from user scope into a profile of yours only"), to)
+				Expect(err).To(MatchError("other comes from user scope; lola profile move moves an entry from user scope into a profile of yours only"), to)
 				Expect(errs.Hints(err)).To(BeEmpty(), "you have no profile to move it into")
 			}
 
 			// With a profile of yours, the hint is the move into it: with --switch while it is off, as is when it is on.
 			writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\n"})
 			_, err = move(engine.MoveRequest{Scope: sc, Other: &user, Modules: []string{"other"}, To: "base"})
-			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project --move other --to me --switch"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project move other --to me --switch"}))
 			activate(sc, "user:me")
 			_, err = move(engine.MoveRequest{Scope: sc, Other: &user, Modules: []string{"other"}, To: "base"})
-			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project --move other --to me"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project move other --to me"}))
 			_, err = move(engine.MoveRequest{Scope: sc, Other: &user, Modules: []string{"other"}, To: "me"}) // the hint's run
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read(filepath.Join(p.UserProfiles, "me.yml"))).To(ContainSubstring("name: other"))
@@ -790,7 +790,7 @@ var _ = Describe("lola profile --move", func() {
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
 			Expect(err).NotTo(HaveOccurred())
 			_, err = move(engine.MoveRequest{Scope: sc, Other: &user, Modules: []string{"other"}, To: "base"})
-			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project --move other --to user:me --switch"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project move other --to user:me --switch"}))
 			_, err = move(engine.MoveRequest{Scope: sc, Other: &user, Modules: []string{"other"}, To: "user:me", Switch: true}) // the hint's run
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read(filepath.Join(p.UserProfiles, "me.yml"))).To(ContainSubstring("name: other"))
@@ -807,7 +807,7 @@ var _ = Describe("lola profile --move", func() {
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: trustAll})
 			Expect(err).NotTo(HaveOccurred())
 			_, err = move(engine.MoveRequest{Scope: sc, Other: &user, Modules: []string{"other"}, To: "base"})
-			Expect(errs.Hints(err)).To(Equal([]string{"switches team off, removing its modules: lola profile --project --move other --to me --switch"}),
+			Expect(errs.Hints(err)).To(Equal([]string{"switches team off, removing its modules: lola profile --project move other --to me --switch"}),
 				"you is a bundle")
 		})
 
@@ -842,7 +842,7 @@ var _ = Describe("lola profile --move", func() {
 				".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: notes, source: " + url + "}\n"})
 			_, err = move(engine.MoveRequest{Scope: user, Other: &sc, From: "team", Modules: []string{"notes"}, To: "base"})
 			Expect(err).To(MatchError("notes is in profile team, which is off in this project; lola copies or moves out of a project only what it installed as you trusted it"))
-			Expect(errs.Hints(err)).To(Equal([]string{"review it first: lola profile --project team --switch"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"review it first: lola profile --project switch team"}))
 			untouched()
 		})
 
@@ -897,7 +897,7 @@ var _ = Describe("lola profile --move", func() {
 			Expect(os.WriteFile(filepath.Join(proj, "ci", "check.sh"), []byte("#!/bin/sh\necho changed\n"), 0o755)).To(Succeed()) // its consent was for the old digest
 			_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Other: &sc, Modules: []string{"notes"}, To: "base", ConfirmRemovals: yes})
 			Expect(err).To(MatchError("removing notes in this project needs your trust (--trust=scripts), and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(Equal([]string{"then accept it: lola profile --user --move notes --to base --trust=scripts"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"then accept it: lola profile --user move notes --to base --trust=scripts"}))
 			untouched()
 			Expect(installed(sc)).NotTo(BeNil())
 
@@ -919,7 +919,7 @@ var _ = Describe("lola profile --move", func() {
 			Expect(errors.As(err, new(*engine.RemovalsDeclinedError))).To(BeTrue(), "%v", err)
 			_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Other: &sc, Modules: []string{"notes"}, To: "base", Trust: trustAll})
 			Expect(err).To(MatchError("lola profile needs your confirmation to remove notes, and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --user --move notes --to base -n", "then confirm them: lola profile --user --move notes --to base -y"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --user move notes --to base -n", "then confirm them: lola profile --user move notes --to base -y"}))
 			Expect(read(projectYML())).To(Equal(before))
 			Expect(filepath.Join(p.UserProfiles, "default.yml")).NotTo(BeAnExistingFile())
 			Expect(installed(user)).To(BeNil())
@@ -936,7 +936,7 @@ var _ = Describe("lola profile --move", func() {
 					return true, nil
 				}})
 			Expect(err).To(MatchError("notes changed in this project while lola was moving it; nothing was written"))
-			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user --move notes --to base"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user move notes --to base"}))
 			untouched()
 			Expect(read(projectYML())).To(Equal(edited))
 			Expect(installed(sc)).NotTo(BeNil())
@@ -949,8 +949,8 @@ var _ = Describe("lola profile --move", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Syncs).To(HaveLen(2))
 			Expect(res.Syncs[1].Removals).To(HaveExactElements(HaveField("Module", "notes")))
-			Expect(res.Syncs[0].ToApply).To(Equal("lola profile --user --move notes --to base"))
-			Expect(res.Syncs[0].OffTerminal).To(Equal("lola profile --user --move notes --to base -y"), "off a terminal the removals it lists need -y")
+			Expect(res.Syncs[0].ToApply).To(Equal("lola profile --user move notes --to base"))
+			Expect(res.Syncs[0].OffTerminal).To(Equal("lola profile --user move notes --to base -y"), "off a terminal the removals it lists need -y")
 			Expect(res.Syncs[1].ToApply).To(BeEmpty(), "one run applies both")
 			Expect(read(projectYML())).To(Equal(before))
 			Expect(filepath.Join(p.UserProfiles, "default.yml")).NotTo(BeAnExistingFile())
@@ -984,7 +984,7 @@ var _ = Describe("lola profile --move", func() {
 			DeferCleanup(func() { _ = os.Chmod(commands, 0o700) })
 			_, err := move(engine.MoveRequest{Scope: user, Other: &sc, Modules: []string{"notes"}, To: "base"})
 			Expect(err).To(MatchError(HavePrefix("notes was added to default (base) at user scope but is still in project.yml (base) in this project: ")))
-			Expect(errs.Hints(err)).To(HaveExactElements("finish the move: lola profile --user project.yml --move notes --to base -y"))
+			Expect(errs.Hints(err)).To(HaveExactElements("finish the move: lola profile --user move notes --to base --from project.yml -y"))
 			Expect(read(defaultYML())).To(ContainSubstring("name: notes"))
 			Expect(read(projectYML())).To(ContainSubstring("name: notes"))
 			Expect(installed(user)).NotTo(BeNil())

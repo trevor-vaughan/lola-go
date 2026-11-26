@@ -77,7 +77,7 @@ var _ = Describe("shell completion", func() {
 		Expect(got).To(Equal([]string{"command/b", "command/o"}))
 		got, _ = completions("install", "--skip", "")
 		Expect(got).To(BeEmpty(), "no module named, nothing to offer")
-		got, _ = completions("profile", "go", "--edit", "kit", "--only", "")
+		got, _ = completions("profile", "edit", "go", "kit", "--only", "")
 		Expect(got).To(Equal([]string{"skill/a", "command/b"}))
 		got, _ = completions("install", kitDir, "--skip", "")
 		Expect(got).To(Equal([]string{"skill/a", "command/b"}), "a local folder is read in place")
@@ -85,12 +85,12 @@ var _ = Describe("shell completion", func() {
 		Expect(got).To(BeEmpty())
 	})
 
-	It("profile --edit offers the profiles first, then the modules to edit", func() {
-		got, _ := completions("profile", "--edit", "")
+	It("profile edit offers the profiles first, then the modules to edit", func() {
+		got, _ := completions("profile", "edit", "")
 		Expect(got).To(ContainElements("go", "kit", "other"))
-		got, _ = completions("profile", "go", "--edit", "")
+		got, _ = completions("profile", "edit", "go", "")
 		Expect(got).To(ConsistOf("kit", "other"))
-		got, _ = completions("profile", "go", "--edit", "k")
+		got, _ = completions("profile", "edit", "go", "k")
 		Expect(got).To(Equal([]string{"kit"}))
 	})
 
@@ -107,41 +107,47 @@ var _ = Describe("shell completion", func() {
 	})
 
 	It("every flag that takes a profile offers the profiles, and base where the scope's base is one", func() {
-		for _, args := range [][]string{{"install", "kit", "--profile"}, {"uninstall", "kit", "--profile"}, {"profile", "--move", "kit", "--to"}} {
+		for _, args := range [][]string{{"install", "kit", "--profile"}, {"uninstall", "kit", "--profile"}, {"profile", "move", "kit", "--to"}} {
 			got, d := completions(append(args, "")...)
 			Expect(got).To(Equal([]string{"base", "go"}), strings.Join(args, " "))
 			Expect(d).To(Equal(dirNoFile))
 		}
-		got, _ := completions("profile", "x", "--switch", "--new", "--from", "")
+		got, _ := completions("profile", "switch", "x", "--new", "--from", "")
 		Expect(got).To(Equal([]string{"go"}))
-		got, _ = completions("profile", "x", "--switch", "--new", "--bundle", "go,")
+		got, _ = completions("profile", "switch", "x", "--new", "--bundle", "go,")
 		Expect(got).To(BeEmpty(), "go is named already")
-		got, _ = completions("profile", "x", "--switch", "--new", "--bundle", "")
+		got, _ = completions("profile", "switch", "x", "--new", "--bundle", "")
 		Expect(got).To(Equal([]string{"go"}))
 	})
 
-	It("--move offers the modules of the profile named, else of the scope", func() {
-		got, d := completions("profile", "go", "--move", "")
+	It("move offers the modules of the profile --from names, else of the scope, minus those given", func() {
+		got, d := completions("profile", "move", "--from", "go", "")
 		Expect(got).To(Equal([]string{"other"}))
 		Expect(d).To(Equal(dirNoFile))
-		got, _ = completions("profile", "-C", proj, "--move", "")
+		got, _ = completions("profile", "move", "-C", proj, "")
 		Expect(got).To(Equal([]string{"kit"}))
+		got, _ = completions("profile", "move", "-C", proj, "kit", "")
+		Expect(got).To(BeEmpty(), "kit is given")
 	})
 
 	It("lola trash offers its runs, newest first with their command, then a run's originals", func() {
 		writeTree(proj, map[string]string{"notes.md": "n\n", "old.md": "o\n"})
 		at := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
 		older := trashRunOf(proj, at, "lola tidy", nil, "old.md")
-		newer := trashRunOf(proj, at.Add(time.Hour), "lola profile go --remove", nil, "notes.md")
+		newer := trashRunOf(proj, at.Add(time.Hour), "lola profile rm go", nil, "notes.md")
 		got, d := completions("trash", "")
-		Expect(got).To(Equal([]string{newer + "\tlola profile go --remove", older + "\tlola tidy"}))
+		Expect(got).To(ContainElements(newer+"\tlola profile rm go", older+"\tlola tidy"))
 		Expect(d).To(Equal(dirOrdered))
-		got, d = completions("trash", newer, "")
+		got, _ = completions("trash", "show", "")
+		Expect(got).To(Equal([]string{newer + "\tlola profile rm go", older + "\tlola tidy"}))
+		got, _ = completions("trash", "show", newer, "")
+		Expect(got).To(BeEmpty(), "show takes one run")
+		got, d = completions("trash", "restore", newer, "")
 		Expect(got).To(Equal([]string{filepath.Join(proj, "notes.md")}))
 		Expect(d).To(Equal(dirNoFile))
-		got, _ = completions("trash", "--empty", newer, "")
-		Expect(got).To(Equal([]string{older + "\tlola tidy"}), "--empty takes more runs")
-		got, _ = completions("trash", "nope", "")
+		got, _ = completions("trash", "empty", newer, "")
+		Expect(got).To(Equal([]string{older + "\tlola tidy"}), "empty takes more runs")
+		got, _ = completions("trash", "restore", "nope", "")
 		Expect(got).To(BeEmpty())
 	})
 
@@ -170,7 +176,7 @@ var _ = Describe("shell completion", func() {
 	})
 
 	It("value flags offer no file names, but for a path", func() {
-		for _, args := range [][]string{{"install", "--ref"}, {"info", "kit", "--ref"}, {"cache", "add", "--ref"}, {"market", "--ssh-host"},
+		for _, args := range [][]string{{"install", "--ref"}, {"info", "kit", "--ref"}, {"cache", "add", "--ref"}, {"market", "add", "--ssh-host"},
 			{"migrate", "--map-root"}, {"cache", "search"}} {
 			_, d := completions(append(args, "")...)
 			Expect(d).To(Equal(dirNoFile), strings.Join(args, " "))
@@ -179,7 +185,7 @@ var _ = Describe("shell completion", func() {
 			_, d := completions(append(args, "")...)
 			Expect(d).To(Equal(dirFilterDirs), strings.Join(args, " "))
 		}
-		got, d := completions("trash", "--empty", "--older-than", "")
+		got, d := completions("trash", "empty", "--older-than", "")
 		Expect(got).To(ContainElements("30d\t30 days", "2w\t2 weeks"))
 		Expect(d).To(Equal(dirOrdered))
 		got, _ = completions("cache", "clean", "--unused-for", "")
@@ -224,8 +230,8 @@ var _ = Describe("shell completion", func() {
 		id := trashRunOf(proj, time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC), "lola tidy", nil, "notes.md")
 		before := tree(tmp)
 		for _, args := range [][]string{{"install", "-C", proj, ""}, {"install", "kit", "--skip", ""}, {"install", "--profile", ""},
-			{"sync", "-C", proj, "--at", "kit="}, {"trash", ""}, {"trash", id, ""}, {"install", "-t", ""}, {"profile", "go", "--move", ""},
-			{"profile", "-C", proj, "--move", ""}, {"uninstall", "-C", proj, ""}, {"sync", "-C", proj, ""}} {
+			{"sync", "-C", proj, "--at", "kit="}, {"trash", ""}, {"trash", id, ""}, {"install", "-t", ""}, {"profile", "move", "--from", "go", ""},
+			{"profile", "move", "-C", proj, ""}, {"uninstall", "-C", proj, ""}, {"sync", "-C", proj, ""}} {
 			completions(args...)
 		}
 		Expect(tree(tmp)).To(Equal(before))

@@ -191,23 +191,23 @@ after the run, keeping your comments and order; a declined question writes nothi
 the project's path), each item mirrored below the scope's root (its real path, past symbolic
 links), and `manifest.txt`, one `original<TAB>trash path` line per item, written before the item
 moves. The run prints the directory and its size; lola deletes it only when you run `lola trash
---empty`.
+empty`.
 
 `lola trash` lists the runs, newest first, each by its directory name (`20261103T120000Z`, the
-UTC time), and `lola trash <run>` shows a run's items. Restore a
-file or directory with `lola trash <run> <original> --restore`, or every item of the run without
+UTC time), and `lola trash show <run>` shows a run's items. Restore a
+file or directory with `lola trash restore <run> <original>`, or every item of the run without
 naming one ([`lola trash`](../reference/trash.md#lola-trash)):
 
 ```sh
-lola trash 20261103T120000Z /home/me/work/app/.claude/skills/old-review --restore
+lola trash restore 20261103T120000Z /home/me/work/app/.claude/skills/old-review
 ```
 
 An MCP server is removed from its file in place, keeping every other byte, comments included; the
 file as lola read it is copied into the trash first, at mode 0600, since it may hold credentials
 (the run says so, naming the file; `--json` lists each copy's trash path in `trash_credentials`).
-`lola trash <run> <path>/.mcp.json --restore --force` puts the whole file back at mode 0600,
+`lola trash restore <run> <path>/.mcp.json --force` puts the whole file back at mode 0600,
 first moving the current file into a new trash run. To restore one server instead, copy it out of
-the copy, whose path `lola trash <run>` shows. For example, this `jq` command prints the entry of
+the copy, whose path `lola trash show <run>` shows. For example, this `jq` command prints the entry of
 a server named `legacy`:
 
 ```sh

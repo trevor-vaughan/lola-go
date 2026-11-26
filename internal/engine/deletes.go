@@ -11,7 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/target"
 )
 
-// DeletesRefusedError is an install, or lola profile --edit, whose plan deletes files, refused
+// DeletesRefusedError is an install, or lola profile edit, whose plan deletes files, refused
 // because it cannot ask: there is no terminal and neither -y nor
 // --force answered. Removals is what the plan deletes, for the CLI to print; Plan is the dry
 // run's result, the plan a --json refusal carries.

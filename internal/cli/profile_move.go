@@ -17,43 +17,29 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// profileMove runs lola profile --move: the target's scope from the scope
-// flags (the found project, or user scope), the source layer from the one name given, and the
-// move with the run's questions: replace it (Confirm), removals (sync's), trust (sync's).
-func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules []string, to string, keepOff, switchTo bool, f syncFlags) error {
-	if switchTo && keepOff {
-		return errs.WithHints(errors.New("--switch and --keep-off cannot be combined; pick one"),
-			"keep --switch: "+runWithout(cmd, args, "keep-off"), "keep --keep-off: "+runWithout(cmd, args, "switch"))
-	}
-	if len(modules) == 0 {
-		return errors.New("--move needs the modules to move")
-	}
-	if len(args) > 1 {
-		return errs.WithHints(errors.New("--move takes one source layer, named first; the modules go after --move"),
-			runWithout(cmd, args[:1], "move")+" --move "+strings.Join(append(slices.Clone(modules), args[1:]...), ","))
-	}
-	sc, other, err := a.moveScopes(cmd, eng, args)
+// profileMove runs lola profile move <module>...: the target's scope from the scope flags (the found
+// project, or user scope), the source layer from --from, else each module's own, and the move with
+// the run's questions: replace it (Confirm), removals (sync's), trust (sync's).
+func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, modules []string, from, to string, keepOff, switchTo bool, f syncFlags) error {
+	sc, other, err := a.moveScopes(cmd, eng, modules)
 	if err != nil {
 		return err
 	}
 	a.printContext(cmd, eng, []engine.Scope{sc}, &engine.TargetRequest{Profile: to})
 	p := a.prompter(cmd)
-	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd), ForceRun: forceRun(cmd, args), RenderRun: renderRun(cmd, args), AskWhere: a.askWhere(p, nil),
+	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd), ForceRun: forceRun(cmd, modules), RenderRun: renderRun(cmd, modules), AskWhere: a.askWhere(p, nil),
 		Target: engine.TargetRequest{
 			Rerun: func(extra ...string) string {
-				return strings.Join(append([]string{runWithout(cmd, args, append([]string{"to"}, consentFlags...)...)}, extra...), " ")
+				return strings.Join(append([]string{runWithout(cmd, modules, append([]string{"to"}, consentFlags...)...)}, extra...), " ")
 			},
 			UserRun: func() string {
-				return runWithout(cmd, args, slices.Concat(scopeFlags, consentFlags)...) + " --user"
+				return runWithout(cmd, modules, slices.Concat(scopeFlags, consentFlags)...) + " --user"
 			},
 		}}
 	opts.Trust, opts.Unseen, opts.Receipt = f.trust, f.unseen, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
-	req := engine.MoveRequest{Scope: sc, Other: other, Across: a.namesBothScopes(), Modules: modules, To: to, Switch: switchTo, KeepOff: keepOff, Yes: f.yes, Options: opts}
+	req := engine.MoveRequest{Scope: sc, Other: other, Across: a.namesBothScopes(), Modules: modules, From: from, To: to, Switch: switchTo, KeepOff: keepOff, Yes: f.yes, Options: opts}
 	req.Source = func(o engine.Scope) { a.addContext(cmd, eng, o, nil) } // the source's file is the move's to name
-	if len(args) == 1 {
-		req.From = args[0]
-	}
 	// Trust is a project's: its diff names the project's base, the source's in a move from one.
 	name, run := manifestName(sc), "lola profile"
 	if other != nil && sc.Kind == target.User {
@@ -70,12 +56,8 @@ func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules 
 		}
 	}
 	res, err := eng.Move(cmd.Context(), req)
-	if _, ok := errors.AsType[*engine.MoveSourceError](err); ok {
-		// The name before --move was meant as a module: --move a b reads b as the source.
-		err = errs.WithHints(err, "move them all: "+runWithout(cmd, nil, "move")+" --move "+strings.Join(append(slices.Clone(modules), args...), ","))
-	}
 	if flagErr, ok := errors.AsType[*engine.MoveFlagError](err); ok {
-		err = errs.WithHints(err, "drop it: "+runWithout(cmd, args, flagErr.Flag))
+		err = errs.WithHints(err, "drop it: "+runWithout(cmd, modules, flagErr.Flag))
 	}
 	stderr := style{color: a.color(cmd.ErrOrStderr()), bold: a.bold(cmd.ErrOrStderr())}
 	if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !a.json {
@@ -117,7 +99,7 @@ func (a *app) namesBothScopes() bool {
 	return a.user && a.root != "" && a.scopeFlag == "" && !a.project
 }
 
-// moveScopes is the target scope of lola profile --move and the other scope its modules may come
+// moveScopes is the target scope of lola profile move and the other scope its modules may come
 // from: with --user and -C, user scope and that project, which must be one
 // (ResolveScope's project, with .lola/, not your home directory); else the scope the flags or the
 // picker name, and the other: user scope from a project, the project found from here, when it has
@@ -153,7 +135,7 @@ func (a *app) moveScopes(cmd *cobra.Command, eng *engine.Engine, args []string) 
 	if err != nil {
 		return engine.Scope{}, nil, err
 	}
-	sreq.User, sreq.Command = false, cmd.Name()
+	sreq.User, sreq.Command = false, commandWords(cmd)
 	res, err := eng.ResolveScope(sreq)
 	if err != nil {
 		return engine.Scope{}, nil, err

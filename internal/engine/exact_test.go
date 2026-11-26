@@ -447,22 +447,22 @@ var _ = Describe("new components an only: list leaves out", func() {
 		exactShip(user)
 		writeTree(src, map[string]string{"commands/lint.md": "Lint\n"})
 		Expect(adds(sync(user).Notices)).To(Equal([]engine.Notice{{Level: engine.LevelInfo,
-			Text: "example adds command/lint, not installed (only: in default (base)) → lola profile --user default --edit example --unskip command/lint"}}),
+			Text: "example adds command/lint, not installed (only: in default (base)) → lola profile --user edit default example --unskip command/lint"}}),
 			"your default provides it: its edit, not an install")
 
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: example, source: " + src + ", only: [command/ship]}\n",
 			"example.yml": "version: 1\nmodules:\n  - {name: example, source: " + src + ", only: [command/ship]}\n"})
 		switchTo(user, "go")
 		writeTree(src, map[string]string{"commands/lint2.md": "Lint\n"})
-		Expect(adds(sync(user).Notices)[0].Text).To(HaveSuffix("(only: in profile go) → lola profile --user go --edit example --unskip command/lint2"))
+		Expect(adds(sync(user).Notices)[0].Text).To(HaveSuffix("(only: in profile go) → lola profile --user edit go example --unskip command/lint2"))
 		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\nbundle: [go]\n"})
 		switchTo(user, "work")
 		writeTree(src, map[string]string{"commands/lint5.md": "Lint\n"})
-		Expect(adds(sync(user).Notices)[0].Text).To(HaveSuffix("(only: in profile go) → lola profile --user go --edit example --unskip command/lint5"),
+		Expect(adds(sync(user).Notices)[0].Text).To(HaveSuffix("(only: in profile go) → lola profile --user edit go example --unskip command/lint5"),
 			"under a bundle, the member whose entry wins is the provider")
 		switchTo(user, "example")
 		writeTree(src, map[string]string{"commands/lint3.md": "Lint\n"})
-		Expect(adds(sync(user).Notices)[0].Text).To(HaveSuffix("(only: in profile example) → lola profile --user user:example --edit example --unskip command/lint3"),
+		Expect(adds(sync(user).Notices)[0].Text).To(HaveSuffix("(only: in profile example) → lola profile --user edit user:example example --unskip command/lint3"),
 			"a profile named as the module is qualified, so the edit reads it as the profile")
 
 		exactShip(sc)
@@ -470,7 +470,7 @@ var _ = Describe("new components an only: list leaves out", func() {
 			"over.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " + src + ", only: [command/ship]}\n"})
 		switchTo(sc, "empty")
 		writeTree(src, map[string]string{"commands/lint4.md": "Lint\n"})
-		Expect(adds(sync(sc).Notices)[0].Text).To(HaveSuffix("→ lola profile --project base --edit example --unskip command/lint4"),
+		Expect(adds(sync(sc).Notices)[0].Text).To(HaveSuffix("→ lola profile --project edit base example --unskip command/lint4"),
 			"project.yml provides it under a profile on: an install would ask where the change goes")
 		switchTo(sc, "over")
 		writeTree(src, map[string]string{"commands/lint6.md": "Lint\n"})
@@ -486,7 +486,7 @@ var _ = Describe("new components an only: list leaves out", func() {
 			Options: engine.Options{Targets: claude.Targets, Trust: engine.TrustAll}, ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(src, map[string]string{"commands/lint.md": "Lint\n"})
-		Expect(adds(sync(sc).Notices)[0].Text).To(HaveSuffix("(only: in profile user:go) → lola profile -C " + proj + " user:go --edit example --unskip command/lint"))
+		Expect(adds(sync(sc).Notices)[0].Text).To(HaveSuffix("(only: in profile user:go) → lola profile -C " + proj + " edit user:go example --unskip command/lint"))
 	})
 
 	It("hints -C for a project that is not the one found from the working directory", func() {

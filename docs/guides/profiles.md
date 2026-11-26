@@ -23,44 +23,43 @@ keeps](../usage.md#files-lola-keeps)). In these examples `go` and `docs` are pro
 your `$XDG_CONFIG_HOME/lola/profiles/go.yml`:
 
 ```sh
-lola profile go --switch             # go is the profile on, whatever was on; never asks which
-lola profile go --on                 # turn go on when none is; with another on, asks (or refuses off a terminal)
-lola profile --off                   # turn off the profile on; asks before removing files (-y)
-lola profile base --switch           # the same: back to the base alone
-lola profile go --switch --dry-run   # show what it would change
+lola profile switch go             # go is the profile on, whatever was on; never asks which
+lola profile on go                 # turn go on when none is; with another on, asks (or refuses off a terminal)
+lola profile off                   # turn off the profile on; asks before removing files (-y)
+lola profile switch base           # the same: back to the base alone
+lola profile switch go --dry-run   # show what it would change
 ```
 
 Every scope command (`install`, `uninstall`, `sync`, `update`, `list`, `info`, `check` when it reads
-the scope's entries, `tidy`, `repair`, and `lola profile` listing, showing, `--on`, `--off` and
-`--switch`) starts with a context line on stderr naming the scope, its base and the profile on
+the scope's entries, `tidy`, `repair`, and `lola profile` listing, showing, `on`, `off` and
+`switch`) starts with a context line on stderr naming the scope, its base and the profile on
 (`project /home/me/src/acme: profile go over project.yml`); `--json` carries it as `context`. After
 a change of the profile on, the summary ends with the new one (`now: user scope: profile go over
 default`).
 
-The actions have aliases for muscle memory from other tools: `--on` (`--enable`, `--activate`),
-`--off` (`--disable`, `--deactivate`), `--switch` (`--use`), and for [remote
-profiles](remote-profiles.md) `--add` (`--get`), `--update` (`--upgrade`) and `--remove` (`--rm`,
-`--delete`, `--del`, `--erase`, `--uninstall`); help shows them beside each flag, and messages use
-the canonical names.
+The subcommands have aliases for muscle memory from other tools: `list` (`ls`), `on` (`enable`,
+`activate`), `off` (`disable`, `deactivate`), `switch` (`use`), `edit` (`pick`, `modify`), `move`
+(`mv`), and for [remote profiles](remote-profiles.md) `add` (`get`), `update` (`upgrade`) and `rm`
+(`remove`, `delete`, `del`, `erase`); help shows them beside each subcommand, and messages use the
+canonical names.
 
-An action names one profile (`--off` may name none); two names refuse, and so do two actions in
-one run (`--on and --off cannot be combined; pick one`). To have two profiles on, combine them into a
-[bundle](#bundles): `--switch` and `--on` with two names refuse with the command that does
+A subcommand names one profile (`off` may name none); two names refuse. To have two profiles on, combine them into a
+[bundle](#bundles): `switch` and `on` with two names refuse with the command that does
 (`one profile is on at a time; to combine go and docs make a bundle`, hinting `lola profile
-go-docs --switch --new --bundle go,docs`), and `--off` with two names refuses with `--off` for each
-(`one profile is on at a time; --off takes one name`).
+switch go-docs --new --bundle go,docs`), and `off` with two names refuses with `off` for each
+(`one profile is on at a time; off takes one name`).
 
-`--switch` is the way scripts change the
+`switch` is the way scripts change the
 profile on: it never asks which.
 
-`--on` with another profile on asks on a terminal (`user:go is
+`on` with another profile on asks on a terminal (`user:go is
 on.` with up to four answers: switch to the named profile, combine both into a bundle and switch to
-that, add it to the bundle on, which stays on, or cancel) and off one refuses, hinting `--switch`,
+that, add it to the bundle on, which stays on, or cancel) and off one refuses, hinting `switch`,
 the bundle of both and, when the profile on is a bundle of yours or the project's that can take
 another member, adding it to that bundle.
 
-`--switch go docs` still refuses, hinting the bundle.
-`--switch` is the way that never asks. It resolves its scope as
+`switch go docs` still refuses, hinting the bundle.
+`switch` is the way that never asks. It resolves its scope as
 `sync` does ([Choosing a scope](choosing-what-to-install.md#choosing-a-scope)) and applies only what
 the change moves: each module is loaded, replaced (another layer's entry wins now) or unloaded (no
 layer wants it any more; never one another layer still wants).
@@ -70,7 +69,7 @@ synced, is left to `lola sync`, with a notice (`2 other changes are pending → 
 Whenever the change removes files it asks first, on a terminal; `-y` confirms, `--force` removes
 without asking (edited files too), and off a terminal without either it refuses, naming the
 command that would, with the profile by its qualified name. Neither `-y` nor `--force` answers
-`--on`'s question.
+`on`'s question.
 
 `--trust` and its [kinds](choosing-what-to-install.md#trust-kinds) work as for `lola sync` (a
 project profile's changes are `profiles`), except that the trust question offers only Trust all or
@@ -85,9 +84,9 @@ reservation that names `user:base` refuses with the same rename and the `lock.js
 follows it.
 
 A profile already on (`user:go is already on`) or not on is a notice and changes nothing. The base
-is named `base` (at user scope `default` too): `--on base` is a notice (`the base is always
-loaded`), refused while a profile is on; `base --switch` with none on is a notice (`already on the
-base`); `--off base` is refused; at project scope `default` is refused (`default is user scope's
+is named `base` (at user scope `default` too): `on base` is a notice (`the base is always
+loaded`), refused while a profile is on; `switch base` with none on is a notice (`already on the
+base`); `off base` is refused; at project scope `default` is refused (`default is user scope's
 base; this project's base is project.yml`).
 
 The summary names the profile the run turns on or off with its file (`Profile user:go (<path>) →
@@ -99,21 +98,21 @@ load|replace|unload, from, over}`). Each change line names the version installed
 an entry of yours keeps the commit its pin records (`~ cc-skills-golang  897c0d803c71  …`).
 
 An active profile whose file is gone is a warning (`profile user:go is on but no longer exists →
-lola profile --user user:go --off`), and the run treats it as off; `--off` takes it by either
+lola profile --user off user:go`), and the run treats it as off; `off` takes it by either
 name.
 
-**Removing a profile of yours.** `lola profile user:try --remove` (or `try`, when no remote profile
+**Removing a profile of yours.** `lola profile rm user:try` (or `try`, when no remote profile
 has the name) moves the file to lola's trash (`$XDG_STATE_HOME/lola/trash`), asking first on a
 terminal (`-y`); a link goes as a link. It is refused while the profile is on, in the bundle on, or
-in a bundle the one on nests, hinting the `--off` that frees it (`--force` removes it anyway and
+in a bundle the one on nests, hinting the `off` that frees it (`--force` removes it anyway and
 answers the question).
 
 A bundle of yours that lists the removed profile then refuses to load; the
-warning prints the run that takes it out (`lola profile mine --edit --bundle …`), and `--off` and
-`--edit --bundle` still work on it.
+warning prints the run that takes it out (`lola profile edit mine --bundle …`), and `off` and
+`edit --bundle` still work on it.
 
 A project's profile is committed: `git rm` it. The base is
-never removed. Modules the profile installed stay until each scope's next `lola sync`. `--remove`
+never removed. Modules the profile installed stay until each scope's next `lola sync`. `rm`
 of a remote profile works as in [Remote profiles](remote-profiles.md).
 
 ## Writing a profile
@@ -150,7 +149,7 @@ bundle: [go-review, docs, remote:go]
 
 A bundle has no `targets:` (its members' apply) and lists at most 64 names, each once. lola
 refuses a file with both `bundle:` and `modules:`, naming the line, and offers to split it
-(`lola profile <name> --split`; see [Bundles](#bundles)). The `extends:` key is gone: a file
+(`lola profile split <name>`; see [Bundles](#bundles)). The `extends:` key is gone: a file
 that still has it refuses at its line with the edit that keeps what it did (`extends: is no
 longer a key; a bundle combines profiles now`).
 
@@ -198,7 +197,7 @@ flowchart LR
   - At project scope: `project.yml`, then the profile on (a bundle's members, in order);
     `default` never applies to a project.
   - A profile cannot hide a module its base gives: to have a module in some profiles only, move
-    it out of the base into those profiles (`lola profile --move <module> --to <profile>`; see
+    it out of the base into those profiles (`lola profile move <module> --to <profile>`; see
     [Moving a module](#moving-a-module)).
   - An install writes the file [Where your edits go](#where-your-edits-go) names; where a higher
     layer lists the module, that entry keeps winning: the install writes its entry, installs
@@ -231,8 +230,8 @@ lola install go-style --profile base        # into project.yml, or default.yml a
 ```
 
 A profile that is off is written and nothing is applied: `saved to profile docs; it is not on at
-user scope → lola profile --user docs --switch`. Its move hints name that profile as the move's
-source (`lola profile --user docs --move go-style --to base`), and a move into a profile that is
+user scope → lola profile --user switch docs`. Its move hints name that profile as the move's
+source (`lola profile --user move go-style --to base --from docs`), and a move into a profile that is
 off keeps it off (`--keep-off`); nothing of the module is installed here to move. After a write to
 a project's profile that is off, no move is hinted.
 
@@ -281,11 +280,11 @@ confirmation.
 
 ## Editing a profile
 
-`lola profile <name> --edit` is `lola install` of the modules into that profile
+`lola profile edit <name>` is `lola install` of the modules into that profile
 (`lola install --profile <name>`), so it asks and refuses what an install does. Its aliases are
-`--pick` and `--modify`.
+`pick` and `modify`.
 
-- **`lola profile go-review --edit cc-skills-golang --only skill/golang-testing`** writes
+- **`lola profile edit go-review cc-skills-golang --only skill/golang-testing`** writes
   go-review's entry as `lola install --profile go-review` would, and applies it where go-review is
   on (saved where it is off).
   - `--only` means what it means for `lola install`: the entry skips
@@ -317,22 +316,22 @@ confirmation.
   - On a terminal it asks first, then opens the module's component page titled with the
     file your answer writes (`profile go-review › cc-skills-golang › skills`, or
     `default (base) › cc-skills-golang › skills`).
-  - Off a terminal, `lola profile base --edit
-    <module> …` changes it there and `lola profile <name> --edit <module> … --override` gives the
+  - Off a terminal, `lola profile edit base
+    <module> …` changes it there and `lola profile edit <name> <module> … --override` gives the
     profile its own.
   - `--override` is
     refused for a project's entry its own sync has not trusted, and for one whose folder lies inside
-    a project, whether it is `lola profile --edit` or `lola install` that copies it.
+    a project, whether it is `lola profile edit` or `lola install` that copies it.
 - **Narrowing picks removes files**, asked on a terminal as `lola uninstall` asks; off one it
   refuses, printing the files and hinting the same command with `-y`, and `--force` answers without
   asking. `-n` shows the plan and writes nothing. A change that only
   adds components asks nothing. A file you edited by hand is kept and refused, hinting `--force`.
 - **`--new`** makes the profile: with modules, written with them; without, empty, a copy
   (`--from <profile>`) or a bundle (`--bundle a,b`). Nothing is switched on. On a terminal,
-  `lola profile <new-name> --edit` (no module, no `--new`) asks whether the new profile lists
+  `lola profile edit <new-name>` (no module, no `--new`) asks whether the new profile lists
   modules or bundles profiles, and Esc on the page that opens asks it again; one left with no
   module ticked is shown in the review before it is made.
-- **`lola profile work --edit --bundle go-review,docs`** sets a bundle's members in place, in
+- **`lola profile edit work --bundle go-review,docs`** sets a bundle's members in place, in
   order (`''` for none), making an empty profile of each bare member that names no profile, and applies them where the
   bundle is on or nested in the bundle on; what that removes asks first. It refuses a profile that
   lists modules, the base and a remote profile, each with a run that works. A project's bundle is
@@ -346,20 +345,20 @@ confirmation.
   terminal and is refused off one, hinting each qualified (`user:go`).
 
 Hints that add a member to a bundle or take one out are runs of this command
-(`lola profile work --edit --bundle go-review`).
+(`lola profile edit work --bundle go-review`).
 
 ## Moving a module
 
 An install that landed in the wrong file is fixed by moving the entry, not by uninstalling and
-installing again: `lola profile --move <module>... --to <name>` (alias `--mv`) takes whole entries
+installing again: `lola profile move <module>... --to <name>` (alias `mv`) takes whole entries
 out of the layer each comes from and puts them into `<name>`, in one transaction, and applies it.
 The version installed is kept, so nothing is fetched again and no installed file changes.
 
 ```sh
-lola profile --move my-notes --to me --user               # from where it comes from into your profile me
-lola profile --move a,b --to base --user                  # the base: default.yml, or project.yml in a project
-lola profile default --move my-notes --to me --user       # from default, named first
-lola profile --move my-notes --to me --user --switch -n   # and switch to it (-n shows it, writes nothing)
+lola profile move my-notes --to me --user               # from where it comes from into your profile me
+lola profile move a b --to base --user                  # the base: default.yml, or project.yml in a project
+lola profile move my-notes --to me --from default --user       # from default, named first
+lola profile move my-notes --to me --user --switch -n   # and switch to it (-n shows it, writes nothing)
 ```
 
 ```
@@ -372,7 +371,7 @@ Profile user:me (/home/me/.config/lola/profiles/me.yml) → on
 now: user scope: profile me over default
 ```
 
-- **The source.** The layer the module's entry comes from, or the one you name before `--move`: a
+- **The source.** The layer the module's entry comes from, or the one you name before `move`: a
   profile, `base`, or `default` / `project.yml` for a base. A module no layer lists is refused.
 - **Picks.** The entry takes its `only:` and `skip:` with it. A module moved out of `project.yml`
   into a profile takes its picks from the project's section of `selections.yaml` ([Component flags](choosing-what-to-install.md#component-flags)): they become the
@@ -396,14 +395,14 @@ now: user scope: profile me over default
 - **A target that is off.** The move must say what happens to a profile it adds to:
   a terminal asks whether to switch to it or keep it off; off a terminal the run refuses and
   hints both forms.
-  - `--switch` switches to the target too: the profile that was on goes off, and what only it
-    wanted is removed, asked as `lola profile --switch` asks.
+  - `switch` switches to the target too: the profile that was on goes off, and what only it
+    wanted is removed, asked as `lola profile switch` asks.
   - `--keep-off` leaves the target off, so the moved modules' files are removed in this scope
     (asked; `-y`).
   - Neither answers the other: both together are refused. `-y` and `--force` do not answer the
     question. Both are refused with `--to base`, which is always loaded.
 - **Across scopes.** A module that only the other scope provides moves from there:
-  `lola profile --move <module> --to base --user` from a project, or `--to user:<name> -C <dir>`
+  `lola profile move <module> --to base --user` from a project, or `--to user:<name> -C <dir>`
   (`-C` is `--root`: the project at that directory) from user scope, into a project's profile of yours.
   - It applies twice: first the target's, then
     the source's, under both scope locks (projects first, user scope last). A failure between
@@ -414,7 +413,7 @@ now: user scope: profile me over default
   - Moving out of a project moves only what it
     installed as you trusted; anything the project's trust record does not cover is refused with
     `lola sync` as the way to review it first, and an entry of a project profile that is off with
-    `lola profile <name> --switch`.
+    `lola profile switch <name>`.
   - The source is read again under the locks after every question:
     one that changed meanwhile is refused, and nothing is written.
 - **Into a profile of yours in a project.** What a profile of yours lists is yours, so nothing asks
@@ -441,14 +440,14 @@ shown in the state the install leaves:
 
 ```
 ✓ added extra to default (base)  (/home/me/.config/lola/profiles/default.yml)
-→ meant for another profile? lola profile --user --move extra --to me
+→ meant for another profile? lola profile --user move extra --to me
 ```
 
 The hint names a profile of yours that lists none of the modules (at most two, then a listing),
-or the base, or, after a write to a shared file, a new profile; it adds `--switch` when that
+or the base, or, after a write to a shared file, a new profile; it adds `switch` when that
 profile is off, and never `-y`: the move asks before it removes anything, and off a terminal it is
 refused with a hint that adds `-y`. A switch that turns another profile off says so in the hint. A hint never names `project.yml`, a project profile or a bundle as the target and never
-carries `--trust`. One install's added modules share one line (`--move a,b,c`).
+carries `--trust`. One install's added modules share one line (`move a,b,c`).
 
 ## Bundles
 
@@ -508,8 +507,8 @@ A bundle combines profiles into one. It has its own page: [Bundles](bundles.md).
     - The refusal reads `go is ambiguous: your profile user:go (<file>) and the project's
       project:go (<file>) are both named go`.
     - It has a hint for each that is your command, flags included, with the name qualified
-      (`yours: lola profile --project user:go --on`).
-  - With `--off`, a bare name turns off the profile on when it has that name, whichever kind it
+      (`yours: lola profile --project on user:go`).
+  - With `off`, a bare name turns off the profile on when it has that name, whichever kind it
     is and whether or not its file is still there; when neither of them is on, nothing changes
     and lola says so (`neither user:go nor project:go is on`).
 
@@ -540,14 +539,14 @@ Worked examples of profile commands. It has its own page: [Walkthroughs](profile
 ## Remote profiles
 
 Profiles fetched from a git repository or an https archive, and shared by every scope, are
-covered in [Remote profiles](remote-profiles.md): adding one with `lola profile --add`, fetching
-it again with `--update`, and deleting it with `--remove`.
+covered in [Remote profiles](remote-profiles.md): adding one with `lola profile add`, fetching
+it again with `update`, and deleting it with `rm`.
 
 ## Project profiles
 
 A project can commit profiles for its team in `.lola/profiles/<name>.yml`, in the same format.
 They are listed and used at that project's scope only, by their file name or as `project:<name>`
-(`lola profile project:go --on`), and turned on per checkout like any profile: committing one
+(`lola profile on project:go`), and turned on per checkout like any profile: committing one
 turns nothing on. A project cannot define `default`: a `default.yml` there is not a profile, and
 every listing says so (`a project cannot define default; rename <path>`).
 
@@ -581,9 +580,9 @@ A project profile came with the project, so lola treats it as it treats `project
 - **Never replacing yours silently.** When a project gains a profile with the name of one of
   yours that is on there (`user:go`), lola leaves yours on.
   - `lola sync` (with or without `--trust`), other `lola profile` actions and listings say
-    `project:go also exists → lola profile project:go --on` (with the scope's flag).
-  - Turning it on, by `--on` or `--switch` naming it, puts it in your profile's place (the one
-    case where `--on` replaces the profile on).
+    `project:go also exists → lola profile on project:go` (with the scope's flag).
+  - Turning it on, by `on` or `switch` naming it, puts it in your profile's place (the one
+    case where `on` replaces the profile on).
   - The action's diff shows `~ project:go now replaces user:go (a, b)` with the modules it
     changes, and its trust question (Trust all or Cancel), or `--trust`, covers it.
   - Cancel, and yours stays on.

@@ -14,9 +14,9 @@ on it.
 `default` is never a project layer. `Engine.loadStack` resolves the active profile (and an
 activation's old one, in the same read) against `Engine.visible` (`profile.Visible`, and at project
 scope `profile.Project`) and reads each profile once per run; a stored name with no
-file is a warning naming `lola profile <scope flag> <name> --off` (built by `Engine.Command`, e.g.
+file is a warning naming `lola profile off <scope flag> <name>` (built by `Engine.Command`, e.g.
 
-`lola profile --user user:go --off`) and counts as off, and a profile that does not load refuses the
+`lola profile --user off user:go`) and counts as off, and a profile that does not load refuses the
 run. A profile's relative local sources are resolved against its directory before
 anything else sees them: made absolute for the user's own profiles, so `lock.json` records them
 absolute, and joined to `.lola/profiles` for a project's, so they stay relative to the root as
@@ -144,7 +144,7 @@ read as untrusted input and written only by lola.
     leading comment.
   - `pins.lock` (`paths.PinsLock`) is taken last, only around read, check and write, and released as
     soon as `plan.Apply` returns.
-  - `writePinsNow` is the write of `--add`, `--update` and `--remove`, under the profiles lock: it
+  - `writePinsNow` is the write of `add`, `update` and `rm`, under the profiles lock: it
     touches `remotes:` only.
 - **Lock order.** Selections lock, then each scope's lock in `lockOrder` (project roots by canonical
   key, then the user scope), with the profiles lock before the scopes' and `pins.lock` last.
@@ -183,22 +183,22 @@ committed `lock.json` could name them; `InstallCoaching` refuses a tracked `lock
 reads them.
 
 A project profile with the name of an active `user:` profile replaces it only through an
-activation that names it: `--on project:go` or `--switch` naming it
-makes it the profile on in `user:go`'s place (`replaces` lets `--on` do so without the switch
+activation that names it: `on project:go` or `switch` naming it
+makes it the profile on in `user:go`'s place (`replaces` lets `on` do so without the switch
 question).
 
 `replaced` finds that pair between the old and the new profile on, and `replacingOf`
 adds it to the activation's trust report (`TrustReport.Replacements`, with the modules it
 changes); a pending replacement forces the trust question, which for an activation is all or none.
 `lola sync` never swaps them: `syncLayers` keeps the profile on and adds
-`replacementNotices` (`project:go also exists → lola profile project:go --on`), as activations
+`replacementNotices` (`project:go also exists → lola profile on project:go`), as activations
 and the listing do. Nothing about a declined replacement is stored.
 
 **Remote profiles** (`$XDG_DATA_HOME/lola/profiles/<name>/`) are listed by
 `Engine.visible` beside the local ones (`profile.Remote`) and read with `profile.LoadRemote`. Their
 layers are the user's own (`Layer.Key` empty, so `own()`): the consent was given when the profile
 was fetched, so no project's trust view holds them; every entry is pinned, so nothing is
-written back, and `ownPin` coaches a pin problem with `lola profile remote:<name> --update`.
+written back, and `ownPin` coaches a pin problem with `lola profile update remote:<name>`.
 
 Local beats remote (decision 4): `resolveProfile` looks for a bare name among the local profiles
 first, refuses a name that local profiles of two or more kinds define (`ambiguousProfileError`,
@@ -208,11 +208,11 @@ on and listings report (`ProfileRow.ShadowedBy`).
 
 An active `remote:<name>` whose name a user profile has is read as that profile (`userShadow`),
 with the notice `user:go now replaces remote:go`, on every run: the stored name is never rewritten,
-so the remote profile is used again once the user's file goes, and `--on user:go` leaves the profile
+so the remote profile is used again once the user's file goes, and `on user:go` leaves the profile
 on as it is (`user:go is already on, in place of remote:go`).
 
 A project profile is never swapped in by a sync: the `replaced`/`replacements` pairs take an active
-`remote:` profile as they take a `user:` one, and `--on project:go` takes the active namesake's
+`remote:` profile as they take a `user:` one, and `on project:go` takes the active namesake's
 place. `validateSync` refuses a remote profile's entry that still parses as local (a Windows drive
 path, the one local form a remote source check can miss).
 
@@ -222,7 +222,7 @@ lock any run takes.
 `readProfiles` takes it shared for every run that reads the remote profiles (`Sync`, `Install`,
 `Uninstall`, `lola list` (`Status`), `lola profile`'s listing and state (`Profiles`,
 `ProfileState`), the install coaching and completion (`InstallCoaching`, `SyncNames`), and
-`--add`/`--update`/`--remove` while they fetch, show and ask), and lists them under it: when a
+`add`/`update`/`rm` while they fetch, show and ask), and lists them under it: when a
 killed writer left a directory behind (a `.new-`, `.old-` or `.del-` directory; any other name
 starting with `.` is not lola's and is left alone), it lets go, takes the lock exclusively, finishes
 that work (`sweepRemote`) and starts again, so a crash between an update's two renames never makes a
@@ -241,7 +241,7 @@ directory is never that project (`IsHome`), and is skipped with a notice.
 
 Hints that repeat the run are built by `ProfileRun`, which carries the scope flag only when one was
 given, and the run's own flags (`ProfileAddRequest.Rerun`; a hint that sets `-n` or `--trust` itself
-keeps the others, and `refuseKept`'s `--update` hint never `--trust`, which answered the add's
+keeps the others, and `refuseKept`'s `update` hint never `--trust`, which answered the add's
 content); a found project that cannot be read refuses with the run at user scope as
 one more hint.
 
@@ -319,7 +319,7 @@ naming the project up front (`--project … --trust`) avoids it.
 
 Then each profile is handled on its own (`updateRun`): `fetch` reads the kept profile
 (`profile.LoadRemote`), checks its recorded source again (`remoteSpec`), fetches `profiles/` as
-`--add` does into a run directory of its own and compares: an unchanged `Origin` is a notice;
+`add` does into a run directory of its own and compares: an unchanged `Origin` is a notice;
 otherwise `remoteContent` diffs the old entries against the new, with the whole content of each
 changed one. `Consent` is asked once per changed profile.
 
@@ -413,13 +413,13 @@ kept. `pins.yaml` is not written: the next user-scope apply drops the pins no fi
 `namingBundles` adds a notice per bundle of yours that still names the profile, with the take-out
 run (`unlistRuns` / `unbundleRun`).
 
-**Editing a profile** (`lola profile [<name>] --edit`) is `lola install` of
+**Editing a profile** (`lola profile edit [<name>]`) is `lola install` of
 the modules into a named profile. `EditArgs` is the one place a name and modules are told apart (the
 first name is the profile when a profile has it and no module does, `base`, `default`, a qualified
 name or `--new`; a name that is both is asked in `bothRead`).
 
 `EditTarget` builds the `TargetRequest` (`Edit`, `New`) that `installRun` words as the install it
-is, so the questions and hints name `lola profile … --edit` (`placeEdit`'s flag forms are `base` and
+is, so the questions and hints name `lola profile edit …` (`placeEdit`'s flag forms are `base` and
 `--override`); `madeTarget` is the write target of `--new`, and `MakeProfile` makes a profile alone.
 `--override` and a copy out of a project file pass the one `carriedOut` guard (the move's trust
 guard and `refuseInProject`), as `lola install --override` does. A profile of yours on in several
@@ -432,7 +432,7 @@ expansion's `seen` to find where the bundle is on or nested. A project bundle's 
 it; `-y` and `--force` never answer it.
 
 A bundle that does not load because of a member that resolves to nothing in another bundle is passed
-over with a warning naming its take-out (`Engine.recovering`), so `--off` and `--edit --bundle`
+over with a warning naming its take-out (`Engine.recovering`), so `off` and `edit --bundle`
 always work; an edit that newly reaches such a bundle judges it in full. The CLI's `editTarget`
 makes the request and `Rerun` the hints; the module page keeps the unticked modules in
 `installFlags.keep`, and `dropped`, `askDrop` and `removeDropped` ask once and remove what was
@@ -459,7 +459,7 @@ depth or a cap refuses with no hint, the file and line saying what to edit.
 
 Each placed layer carries `Layer.Bundle` (the bundle on it comes through), `chain` (the `bundleRef`s
 it comes through: qualified name, trust key for a project bundle, member list as written), and
-`listed` (every bundle file that lists it, for `--remove` hints). A later layer's entry replaces an
+`listed` (every bundle file that lists it, for `rm` hints). A later layer's entry replaces an
 earlier one whole, with the notice `profile over overrides profile go-review in bundle dup`
 (`Wanted.Over` names the replaced layers).
 
@@ -487,8 +487,8 @@ again by the engine's `coachExtends`, which knows the remote profiles and so pic
 `<name>-modules`) with the edit that keeps what it did; `lock.json` naming `user:base` is refused by
 `ledger.ReservedError`, and a `base.yml` is listed as reserved, never as a profile.
 
-**Making and splitting profiles** (`internal/engine/new.go`, `split.go`). `lola profile <name>
---switch --new` and `--split` write profile files in the same transaction as the sync that
+**Making and splitting profiles** (`internal/engine/new.go`, `split.go`). `lola profile switch
+<name> --new` and `split` write profile files in the same transaction as the sync that
 applies them. `profileWrites` collects the files a run makes (`fileEdit` with `data`, and a `check`
 that the path is still missing or unchanged), what to read in place of the disk, the `profile.Info`
 of each (so a listing sees them before they exist) and, per project file, the trust the run takes as
@@ -521,7 +521,7 @@ writes and asks nothing, and the list is asked about at switch-on.
 
 When the profile is on, directly or as a member (`splitOn`, decided through the expansion),
 the transaction is the scope's sync. Any read of a mixed file is a `*profile.MixedError`;
-`mixedError` turns it into a `SplitOfferError` hinting the `--split`, and the CLI's `offerSplit`
+`mixedError` turns it into a `SplitOfferError` hinting the `split`, and the CLI's `offerSplit`
 (`internal/cli/profile_split.go`), wrapped round commands by `offerSplits`, shows the plan and asks
 `Split <name> now?` on a terminal, then runs the command again; its own questions are wired through
 `syncQuestions`, so the command's `-y` never answers the split's trust.
@@ -548,7 +548,7 @@ commit.
 
 A project profile's entry is checked against its profile's part of the trust record and
 its folder content as `project.yml`'s is. An entry from a remote profile is left as installed
-under `update`, with a notice to run `lola profile <name> --update`, because the pin lives in a
+under `update`, with a notice to run `lola profile update <name>`, because the pin lives in a
 file lola does not write.
 
 `Profiles` and `ProfileState` (`internal/engine/profileview.go`) are what `lola profile` reads, per
@@ -572,7 +572,7 @@ their kind, and a bare name no local profile has names the remote one; an unknow
 profiles the scope can use).
 
 It then builds the scope's layers with the profile in place of the active one when it
-is off, as `--switch` would, and reports each of its modules' winning layer (`From`) and the layers
+is off, as `switch` would, and reports each of its modules' winning layer (`From`) and the layers
 that entry replaced (`Overrides`, from `Wanted.Over`).
 
 The profile is read once, by `layers`. Over several scopes, one the name does not resolve in is left
@@ -580,13 +580,13 @@ out; when it resolves in none, the first refusal is returned.
 
 `lola profile` (`internal/cli/cmd_profile.go`) resolves its scopes with `ResolveReadScope`, as
 `list` does, and prints a table whose rows name their scope; `ProfileNames` completes its argument
-from the profiles directory's listing alone. Its action flags' aliases (`--enable`, `--use`, …) are
-one flag each: `aliasFlags` (`internal/cli/help.go`) records them in the flag's `lola_aliases`
+from the profiles directory's listing alone. Its actions are cobra subcommands (`on`, `off`,
+`switch`, `edit`, `move`, `split`, `add`, `update`, `rm`, `show`, `list`), so the parser allows one
+action per run and scopes each verb's flags, help and completion; an alias (`enable`, `use`, …) is
+the subcommand's own cobra alias. A flag's aliases (`--create` for `--new` of `switch` and `edit`)
+are one flag each: `aliasFlags` (`internal/cli/help.go`) records them in the flag's `lola_aliases`
 annotation and installs a pflag normalize function mapping each alias to its canonical name, and the
-usage template renders `.LocalFlags` through `aliasedFlagUsages` (`--on (--enable, --activate)`).
-
-With an action flag, `profileAction` checks the one-action rule on canonical flag names after cobra
-has parsed, and `profileApply` resolves one scope as every writing command does
+usage template renders `.LocalFlags` through `aliasedFlagUsages` (`--new (--create)`). `profileApply` resolves one scope as every writing command does
 (the picker on a terminal; `both` refused), then runs `syncScope` with the `ProfileChange`: the same
 trust and removal questions as `lola sync`, `-y` and `--trust` as answers. The summary
 (`printProfileAction`: the profile the run turned on or off, each change, `printSync`'s lines, then
@@ -595,7 +595,7 @@ trust and removal questions as `lola sync`, `-y` and `--trust` as answers. The s
 
 `Uninstall` refuses a module any profile layer lists (`refuseProfileModule`), even when the manifest
 lists it too, since uninstalling would leave it wanted: each profile's hint is `turn the profile
-off: lola profile <scope flag> <name> --off`, keeping the run's output flags, and for `default`,
+off: lola profile off <scope flag> <name>`, keeping the run's output flags, and for `default`,
 which no command turns off, the error text says to remove it from `default.yml` and adds no hint.
 
 `InstallCoaching` counts the not-installed entries of every layer and names the layers they come

@@ -48,9 +48,9 @@ var _ = Describe("the context line", func() {
 		Entry("repair", []string{"repair", "-n"}),
 		Entry("profile", []string{"profile"}),
 		Entry("profile <name>", []string{"profile", "go"}),
-		Entry("profile --on", []string{"profile", "go", "--on", "-n"}),
-		Entry("profile --switch", []string{"profile", "go", "--switch", "-n"}),
-		Entry("profile --off", []string{"profile", "--off"}),
+		Entry("profile --on", []string{"profile", "on", "go", "-n"}),
+		Entry("profile --switch", []string{"profile", "switch", "go", "-n"}),
+		Entry("profile --off", []string{"profile", "off"}),
 	)
 
 	It("lola info prints it for the scope it plans, lola check once it read the scope's entries", func() {
@@ -65,7 +65,7 @@ var _ = Describe("the context line", func() {
 	})
 
 	It("prints a line per scope, naming the profile on", func() {
-		Expect(lola("profile", "go", "--switch", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user").code).To(Equal(0))
 		r := lola("list", "--scope", "both", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(HavePrefix(projectContext(proj) + "user scope: profile go over default\n"))
@@ -74,7 +74,7 @@ var _ = Describe("the context line", func() {
 	It("names a bundle on and its members, grouping a nested bundle's and cutting the list at six", func() {
 		writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "go-lint.yml": "version: 1\n",
 			"go-all.yml": "version: 1\nbundle: [go, go-lint]\n", "work.yml": "version: 1\nbundle: [go, docs]\n"})
-		Expect(lola("profile", "work", "--switch", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "--user").code).To(Equal(0))
 		r := lola("list", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(HavePrefix("user scope: bundle work (go, docs) over default\n"))
@@ -163,7 +163,7 @@ var _ = Describe("the context line", func() {
 	})
 
 	It("names a profile on whose file is gone, and the command still runs", func() {
-		Expect(lola("profile", "go", "--switch", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user").code).To(Equal(0))
 		Expect(os.Remove(filepath.Join(p.UserProfiles, "go.yml"))).To(Succeed())
 		r := lola("list", "--user")
 		Expect(r.code).To(Equal(0), r.err)
@@ -212,7 +212,7 @@ var _ = Describe("the context line", func() {
 	})
 
 	It("names a profile on whose file does not load, and tidy and repair still run", func() {
-		Expect(lola("profile", "go", "--switch", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user").code).To(Equal(0))
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: [\n"})
 		line := "user scope: profile go (unreadable: " + filepath.Join(p.UserProfiles, "go.yml") +
@@ -249,7 +249,7 @@ var _ = Describe("the context line", func() {
 	})
 
 	It("names the profile on in JSON, members [] for a profile and no error when it loads", func() {
-		Expect(lola("profile", "go", "--switch", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user").code).To(Equal(0))
 		r := lola("list", "--user", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var doc map[string]any
@@ -263,7 +263,7 @@ var _ = Describe("the context line", func() {
 
 	It("prints a context row per scope on stderr under --plain, so stdout keeps the command's rows", func() {
 		writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n"})
-		Expect(lola("profile", "work", "--switch", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "--user").code).To(Equal(0))
 		named := filepath.Join(tmp, "context") // a module named context
 		writeTree(named, map[string]string{"lola.yml": "name: context\n", "commands/c.md": "C\n"})
 		Expect(lola("install", named, "-C", proj, "-t", "claude-code", "-y").code).To(Equal(0))
@@ -306,7 +306,7 @@ var _ = Describe("the context line", func() {
 			"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n",
 			"docs.yml":    "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: notes, source: " + notes + "}\n",
 			"work.yml":    "version: 1\nbundle: [go, docs]\n"})
-		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
 		r := lola("list", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(MatchRegexp(`user\s+kit\s.*\s` + regexpQuote(kit) + `\s+default\n`))
@@ -316,7 +316,7 @@ var _ = Describe("the context line", func() {
 		Expect(r.out).To(ContainSubstring("\tuser\tprofile:user:docs\t\t-\n"))
 
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: notes, source: " + notes + "}\n"})
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		Expect(lola("list", "--user").out).To(MatchRegexp(`user\s+notes\s.*\s` + regexpQuote(notes) + `\s+profile go\n`))
 	})
 })

@@ -18,7 +18,7 @@ recorded counts as stale, and a folder source is read on every run.
 installed with a `not-in-manifest` warning hinting `lola sync`, which would remove it. A module
 whose entry asks for other assistants than the ones installed is left as installed, with a
 `targets-differ` finding; `lola sync` applies the change. An entry that comes from a remote
-profile is left too, with a notice to run `lola profile <name> --update`. A module named but not
+profile is left too, with a notice to run `lola profile update <name>`. A module named but not
 installed in the scope is refused. To render again at the installed versions, fetching nothing,
 run `lola sync`.
 

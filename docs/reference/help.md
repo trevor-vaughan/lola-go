@@ -28,3 +28,30 @@ tag's docs, any other build to `main`.
 The flags belong to `lola help` (`lola help --all install`), not to `lola install --help`; together they are refused: `--all and --short cannot be combined`.
 
 Refusals: `no help topic "nope"; see: lola help`.
+
+## JSON
+
+Under `--json` every form prints one JSON document instead of prose, built from lola's command
+tree, so it always matches the commands you have. `--plain` without `--json` keeps the prose. Errors (`no help
+topic`, `--all` with `--short`) print as JSON on stderr with nothing on stdout.
+
+| Key | Short | Long | All |
+|---|---|---|---|
+| `path`, `name`, `aliases`, `group`, `short`, `usage`, `flags` | ✓ | ✓ | ✓ |
+| `long`, `examples`, `reference_url` | – | ✓ | ✓ |
+| `global_flags` | – | ✓ | the top document only |
+| `environment` (`name`, `description`) | – | the root only | the root only |
+| `commands` | `path`, `name`, `aliases`, `short` of each | as Short | each command's document, nested |
+
+`group` is the title the command is listed under (`Core`), `""` when none; `usage` is the usage
+line; `examples` is one example per line. Each flag has `name`, `shorthand`, `aliases`, `type`
+(`bool`, `string`, `stringSlice`, …), `value` (the placeholder help shows, `""` for a bool),
+`usage`, `default` and `value_optional`: when `true` (bools and `--trust`), `--flag foo` reads
+`foo` as an argument, not the flag's value; give a value with `=`.
+
+On `-h` and `--help`, `--json` wins over `--plain`; `lola help --json --plain` is refused, as
+every other command refuses them together.
+
+```
+lola help --all --json | jq -r '.. | .path? // empty'
+```

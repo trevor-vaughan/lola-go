@@ -16,7 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// editFlags are lola profile --edit's flags beside syncFlags: the install flags it passes on
+// editFlags are lola profile edit's flags beside syncFlags: the install flags it passes on
 // (picks, assistants, --override) and --new.
 type editFlags struct {
 	targets, skips, onlys, unskips []string
@@ -26,7 +26,7 @@ type editFlags struct {
 	members                        []string // --bundle (nil when not given; [] for --bundle "")
 }
 
-// profileEdit runs lola profile [<name>] --edit [<module>...]: the arguments are split into the
+// profileEdit runs lola profile edit [<name>] [<module>...]: the arguments are split into the
 // profile and the modules at the one scope the run takes without asking (EditArgs, which asks which
 // a name is when it is both); with modules, the edit is lola install of them into that profile (its
 // --profile), or into the one edits go to when it names none, applied in each scope the profile is
@@ -63,16 +63,20 @@ func (a *app) profileEdit(cmd *cobra.Command, args []string, ef editFlags, f syn
 	req := editTarget(cmd, lead, modules, ef.create)
 	req.Profile, req.Catalog, req.CatalogPartial = name, catalog, !complete
 	if ef.create && name == "" {
-		return errs.WithHints(errors.New("--new makes the profile --edit names, and none was named: name it, as in lola profile <name> --edit --new"),
-			"see the profiles: "+eng.Command(sc, "profile", outputFlags(cmd)...))
+		return errs.WithHints(errors.New(profileEditNewMsg), "see the profiles: "+eng.Command(sc, "profile", outputFlags(cmd)...))
+	}
+	if ef.create {
+		if err := refuseProfileName(eng, name, func(n string) string { return runWithout(cmd, append([]string{n}, modules...)) }); err != nil {
+			return err
+		}
 	}
 	bundle := cmd.Flags().Changed("bundle")
 	if err := editModifiers(cmd, eng, sc, lead, modules, ef, req); err != nil {
 		a.printContext(cmd, eng, []engine.Scope{sc}, nil)
 		return err
 	}
-	g := argGuide{noun: "module", find: "lola cache list", usage: "lola profile [<name>] --edit <module>...",
-		examples: []string{"lola profile go-review --edit cc-skills-golang --only skill/golang-testing"}}
+	g := argGuide{noun: "module", find: "lola cache list", usage: "lola profile edit [<name>] <module>...",
+		examples: []string{"lola profile edit go-review cc-skills-golang --only skill/golang-testing"}}
 	// The pages ask for no flag they would drop: picks and a source's --ref/--path name a module.
 	picks := len(ef.skips)+len(ef.onlys)+len(ef.unskips) > 0 || ef.exact || cmd.Flags().Changed("ref") || cmd.Flags().Changed("path")
 	if len(modules) == 0 && !ef.create && !bundle && !picks && !a.json && a.prompter(cmd).Interactive() {
@@ -107,7 +111,7 @@ func (a *app) profileEdit(cmd *cobra.Command, args []string, ef editFlags, f syn
 		edit: lead, create: ef.create, scopes: scopes, catalog: catalog, catalogPartial: !complete})
 }
 
-// editModifiers refuses --from and --bundle where lola profile <name> --edit cannot take them: the
+// editModifiers refuses --from and --bundle where lola profile edit <name> cannot take them: the
 // two together (a new profile copies one, or bundles several), beside modules (each makes or edits
 // the profile's own file), and --from without --new. Each hint is a run that works as the name
 // reads at sc (req.Profile): one that makes the profile only when no profile has the name, one that
@@ -164,7 +168,7 @@ func editModifiers(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, lead
 			hints = append(hints, "or drop --"+flag+": "+without(append(slices.Clone(lead), modules...), flag))
 		}
 	case name == "":
-		msg = errors.New("--from makes a new profile and goes with --new: name it, as in lola profile <name> --edit --new --from " +
+		msg = errors.New("--from makes a new profile and goes with --new: name it, as in lola profile edit <name> --new --from " +
 			untrusted.Text(ef.from, untrusted.MaxName))
 	case exists:
 		msg = fmt.Errorf("--from makes a new profile and goes with --new, and %s exists", untrusted.Text(name, untrusted.MaxName))
@@ -181,7 +185,7 @@ func editModifiers(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, lead
 	return errs.WithHints(msg, hints...)
 }
 
-// editPage is lola profile [<name>] --edit with no module on a terminal: what it edits is asked as
+// editPage is lola profile edit [<name>] with no module on a terminal: what it edits is asked as
 // an install asks it (the member question under a bundle); a profile's page is the module picker
 // with its modules ticked, then each ticked module's component page, a module unticked being
 // removed from it once asked, applied in each scope it is on (EditScopes); a bundle's is its
@@ -287,7 +291,7 @@ func (a *app) membersPage(cmd *cobra.Command, eng *engine.Engine, sc engine.Scop
 	return out, nil
 }
 
-// editTarget is the TargetRequest of lola profile <lead> --edit <modules>: its
+// editTarget is the TargetRequest of lola profile edit <lead> <modules>: its
 // hints are the run, the profile it names taken from extra's "--profile <name>" (base included) in
 // place of lead, and --override as given; --new kept only when create and the name is the run's own.
 func editTarget(cmd *cobra.Command, lead, modules []string, create bool) engine.TargetRequest {
@@ -303,7 +307,7 @@ func editTarget(cmd *cobra.Command, lead, modules []string, create bool) engine.
 	}}
 }
 
-// nameAModule refuses lola profile [<name>] --edit without a module: it names the form, and hints
+// nameAModule refuses lola profile edit [<name>] without a module: it names the form, and hints
 // what shows the profile's modules and the cache's.
 func (a *app) nameAModule(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, req engine.TargetRequest) error {
 	t, err := eng.EditTarget(sc, req, a.askWhere(a.prompter(cmd), nil))
@@ -315,15 +319,15 @@ func (a *app) nameAModule(cmd *cobra.Command, eng *engine.Engine, sc engine.Scop
 		show = eng.Command(sc, "list")
 	}
 	if t.Bundle {
-		return errs.WithHints(fmt.Errorf("%s lists profiles, not modules (%s): --bundle sets them, as in lola profile %s --edit --bundle %s",
+		return errs.WithHints(fmt.Errorf("%s lists profiles, not modules (%s): --bundle sets them, as in lola profile edit %s --bundle %s",
 			t.Label, strings.Join(t.Members, ", "), untrusted.Text(t.Name, untrusted.MaxName), strings.Join(append(slices.Clone(t.Members), "<profile>"), ",")),
 			"see it: "+show, "see the profiles: "+eng.Command(sc, "profile", outputFlags(cmd)...))
 	}
-	return errs.WithHints(fmt.Errorf("lola profile --edit edits %s by its modules: name one, as in lola profile %s --edit <module> --only <kind/name>",
+	return errs.WithHints(fmt.Errorf("lola profile edit edits %s by its modules: name one, as in lola profile edit %s <module> --only <kind/name>",
 		t.Label, untrusted.Text(t.Name, untrusted.MaxName)), "see what it lists: "+show, "see your cache: lola cache list")
 }
 
-// makeProfile runs lola profile <name> --edit --new with no module: the profile is made, empty, a
+// makeProfile runs lola profile edit <name> --new with no module: the profile is made, empty, a
 // copy (--from) or a bundle (--bundle), and nothing is applied.
 func (a *app) makeProfile(cmd *cobra.Command, eng *engine.Engine, req engine.MakeRequest) error {
 	res, err := eng.MakeProfile(cmd.Context(), req)
@@ -338,11 +342,11 @@ func (a *app) makeProfile(cmd *cobra.Command, eng *engine.Engine, req engine.Mak
 	}, res)
 }
 
-// editBundle runs lola profile <name> --edit --bundle <members> at read's scope: the bundle's members
+// editBundle runs lola profile edit <name> --bundle <members> at read's scope: the bundle's members
 // are set, and each scope it reaches applies them (EditScopes), each scope's context line
 // printed first, with sync's questions: removals asked (-y, --force), trust asked or refused off a
 // terminal (--trust). force is the edit with --force, which a refusal --force
-// overrides hints; render is the same as a real run (no -n), which renders a forceable skip; said says read's context line is printed already (--on's question), so only
+// overrides hints; render is the same as a real run (no -n), which renders a forceable skip; said says read's context line is printed already (on's question), so only
 // the other scopes' lines are printed; back says the members page came before, so Esc on the
 // removals question goes back to it (ErrBack, before anything is written).
 func (a *app) editBundle(cmd *cobra.Command, eng *engine.Engine, read engine.ScopeChoice, name string, members []string, req engine.TargetRequest, f syncFlags,
@@ -390,7 +394,7 @@ func (a *app) editBundle(cmd *cobra.Command, eng *engine.Engine, read engine.Sco
 	return a.emit(cmd, func(w io.Writer, s style) { printBundleEdit(w, s, sc, res) }, res)
 }
 
-// printBundleEdit prints an --edit --bundle at sc: under -n the trust question it would ask first,
+// printBundleEdit prints an edit --bundle at sc: under -n the trust question it would ask first,
 // when the bundle is off (an on bundle's apply shows it), the profiles it made (printCreated), the write line
 // of the bundle (under -n, "would change …"), its notices, then the apply of each scope it applied
 // in, each headed by its scope when there are several. --plain rows are created (or would-create)

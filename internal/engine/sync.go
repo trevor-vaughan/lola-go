@@ -92,10 +92,10 @@ type SyncRequest struct {
 	// held says the caller holds the profiles lock and this scope's lock (a cross-scope Move, which
 	// takes both scopes' in lockOrder): the run takes neither, and restores nothing.
 	held bool
-	// write, when set, is the profile files a --split, an --edit --bundle or an --edit --new writes
+	// write, when set, is the profile files a split, an edit --bundle or an edit --new writes
 	// in this run's transaction, which its layers are read with (profileWrites); writeOnly limits the
 	// run to them: it applies nothing. profileArgs is the lola profile arguments that run it again (name,
-	// --split, --to; name, --edit, --bundle), which the run's hints repeat: lola sync cannot stand
+	// split, --to; name, edit, --bundle), which the run's hints repeat: lola sync cannot stand
 	// in for it (it cannot load the file a split fixes, nor writes what an edit writes).
 	write       *profileWrites
 	writeOnly   bool
@@ -532,7 +532,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		e.creating = req.write
 		defer func() { e.creating = nil }()
 	}
-	// --off (and a --switch to the base, which is --off) mends a bundle on that names a profile you
+	// off (and a switch to the base, which is off) mends a bundle on that names a profile you
 	// no longer have: it turns it off all the same.
 	if ch := req.Profiles; ch != nil && e.recovering == nil {
 		if isBase, isDefault := namesBase(ch.Name); ch.Action == ProfileOff || ch.Action == ProfileSwitch && (isBase || isDefault) {
@@ -666,7 +666,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			return res, nil
 		}
 		// Hints that repeat the run name the profile as resolved, and a switch to the base as the
-		// --off it is.
+		// off it is.
 		req.Profiles = &ProfileChange{Action: act.action, Name: act.report.Named, New: req.Profiles.New, From: req.Profiles.From, Bundle: req.Profiles.Bundle}
 		pl, err := e.loadStack(sc, act.infos, led.Profile, act.next)
 		if err != nil {
@@ -2717,7 +2717,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 				// --update of a remote profile applies what it moves itself; a hand edit needs a sync.
 				never, then := "lola never writes pins into", editPin+", then: "+e.SyncCommand(sc, name)
 				if remoteLayer(w.From) {
-					never, then = "only lola profile --update changes", editPin
+					never, then = "only lola profile update changes", editPin
 				}
 				if req.Installed { // lola update leaves it as installed
 					kept = append(kept, Notice{Level: LevelInfo, Text: shown(name) + ": its pin is in " + pinFile + "; " + then})
@@ -3258,12 +3258,12 @@ func (e *Engine) pinnedIn(sc Scope, se *syncEntry) (file, repin string) {
 
 // ownPin is where the pin of an entry from a profile of the user's own, or from a remote profile,
 // is, as a message names it, and how to change it: from is the entry's layer and path its file. A
-// remote profile's pin changes only with lola profile remote:<name> --update; any other's is edited
+// remote profile's pin changes only with lola profile update remote:<name>; any other's is edited
 // by hand.
 func (e *Engine) ownPin(sc Scope, from, path string) (file, repin string) {
 	q := strings.TrimPrefix(from, ledger.FromProfile(""))
 	if remoteLayer(from) {
-		return shown(q), "update it: " + e.Command(sc, "profile", q, "--update")
+		return shown(q), "update it: " + e.Command(sc, "profile", "update", q)
 	}
 	return shown(path), "edit the pin in " + shown(path)
 }

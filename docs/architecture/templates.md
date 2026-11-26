@@ -90,7 +90,7 @@ timeout or the run budget.
 A plan pass (`templateRun`) holds the profiles every template sees (`default`, then the active
 profile) and a budget of 20 s of rendering and 32 MiB rendered, charged for every render, failed or
 not. sync's trust diff and its first pass share one; the pass after a partial trust answer starts a
-fresh one; every profile one `lola profile --add` or `--update` diffs renders under one.
+fresh one; every profile one `lola profile add` or `update` diffs renders under one.
 
 The diff renders the version installed with the profiles and vars `rendered_with` recorded, so a
 changed list or vars edit shows in its hooks; without a valid record it renders the defaults, never

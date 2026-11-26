@@ -84,7 +84,7 @@ func (a *app) markerScopes(cmd *cobra.Command, eng *engine.Engine) []engine.Scop
 	if err != nil {
 		return nil
 	}
-	req.Command, req.Both = cmd.Name(), true // a.scope refuses --scope both
+	req.Command, req.Both = commandWords(cmd), true // a.scope refuses --scope both
 	res, err := eng.ResolveScope(req)
 	if err != nil {
 		return nil
@@ -159,22 +159,25 @@ func (a *app) completeProfiles(base bool) cobra.CompletionFunc {
 	}
 }
 
-// completeMove offers the modules lola profile [<from>] --move takes: those of the profile named,
-// else of the scope, as a comma-separated list.
+// completeMove offers the modules lola profile move takes: those of the profile --from names, else
+// of the scope, minus those given.
 func (a *app) completeMove(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	eng, sc, err := a.session(cmd)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	from := ""
-	if len(args) > 0 {
-		from = args[0]
-	}
+	from, _ := cmd.Flags().GetString("from")
 	names, err := eng.MoveNames(sc, from)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	return offerList(toComplete, names), cobra.ShellCompDirectiveNoFileComp
+	var out []cobra.Completion
+	for _, n := range names {
+		if strings.HasPrefix(n, toComplete) && !slices.Contains(args, n) {
+			out = append(out, n)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
 // completeAt offers --at's <module>=<version>: <module>= for each module installed in the scope,
@@ -204,26 +207,12 @@ func (a *app) completeAt(cmd *cobra.Command, _ []string, toComplete string) ([]c
 	return out, cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveNoSpace
 }
 
-// completeTrash offers lola trash's arguments: the runs, newest first, with the command that made
-// each; after a run, the originals of its entries, for a restore of some of them; with --empty,
-// more runs.
-func (a *app) completeTrash(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+// trashRunCompletions is the trash's runs as completions, newest first with the command that made
+// each, less the ones in skip.
+func (a *app) trashRunCompletions(toComplete string, skip []string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	eng, err := a.engine()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	if len(args) > 0 && !cmd.Flags().Changed("empty") {
-		originals, err := eng.TrashOriginals(args[0])
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		var out []cobra.Completion
-		for _, o := range originals {
-			if strings.HasPrefix(o, toComplete) && !slices.Contains(args[1:], o) && untrusted.IsPlain(o) {
-				out = append(out, o)
-			}
-		}
-		return out, cobra.ShellCompDirectiveNoFileComp
 	}
 	runs, err := eng.TrashNames()
 	if err != nil {
@@ -231,7 +220,7 @@ func (a *app) completeTrash(cmd *cobra.Command, args []string, toComplete string
 	}
 	var out []cobra.Completion
 	for _, r := range runs {
-		if strings.HasPrefix(r.ID, toComplete) && !slices.Contains(args, r.ID) && untrusted.IsPlain(r.ID) {
+		if strings.HasPrefix(r.ID, toComplete) && !slices.Contains(skip, r.ID) && untrusted.IsPlain(r.ID) {
 			c := r.ID
 			if r.Command != "" && untrusted.IsPlain(r.Command) {
 				c = cobra.CompletionWithDesc(r.ID, r.Command)
@@ -240,6 +229,37 @@ func (a *app) completeTrash(cmd *cobra.Command, args []string, toComplete string
 		}
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveKeepOrder
+}
+
+// completeTrashRuns offers the runs: for lola trash and show, one; for empty, more of them.
+func (a *app) completeTrashRuns(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	if len(args) > 0 && cmd.Name() != "empty" {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return a.trashRunCompletions(toComplete, args)
+}
+
+// completeTrashRestore offers lola trash restore's run, then the originals of that run's entries,
+// for a restore of some of them.
+func (a *app) completeTrashRestore(_ *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	if len(args) == 0 {
+		return a.trashRunCompletions(toComplete, nil)
+	}
+	eng, err := a.engine()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	originals, err := eng.TrashOriginals(args[0])
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var out []cobra.Completion
+	for _, o := range originals {
+		if strings.HasPrefix(o, toComplete) && !slices.Contains(args[1:], o) && untrusted.IsPlain(o) {
+			out = append(out, o)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
 // completeKinds offers the kind/ a tidy selector starts with, leaving the cursor after the slash:

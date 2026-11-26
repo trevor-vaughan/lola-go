@@ -15,7 +15,7 @@ import (
 )
 
 // installMoveHints is what follows the entries a.modules, which an install added to a.t at
-// a.sp's scope: each line one lola profile --move of
+// a.sp's scope: each line one lola profile move of
 // them all that runs as printed in the state the install leaves. Into another profile of yours
 // visible there that lists none of them (with --switch when it is off, and only when switchTarget
 // takes it), then at user scope into the base when t is a profile and the base lists none: two at

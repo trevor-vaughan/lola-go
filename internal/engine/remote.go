@@ -26,14 +26,14 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// RemoteProfile is a remote profile as lola profile --add or --update shows and writes it: its
+// RemoteProfile is a remote profile as lola profile add or update shows and writes it: its
 // qualified name and the file lola keeps it in, which every scope shares, the source, ref and
 // --path it comes from and its pin (source.json), its description, and Changes, its entries as a
-// trust diff against the entries it had (none for --add). Every added or changed entry lists the
+// trust diff against the entries it had (none for add). Every added or changed entry lists the
 // whole content its pinned version brings, files, MCP servers and hooks, whatever a scope has
 // installed: ComparedWith names the scope ("user scope", "project <dir>") whose lock.json only
 // annotates it (FilesNote). PreviousCommit and PreviousDigest are the pin an --update replaces (""
-// for --add). Written says lola wrote it. Every string has been through untrusted.Text.
+// for add). Written says lola wrote it. Every string has been through untrusted.Text.
 type RemoteProfile struct {
 	Profile        string        `json:"profile"`
 	File           string        `json:"file"`
@@ -54,18 +54,18 @@ type RemoteProfile struct {
 	entries        []manifest.Entry // the profile's entries, which a staged update gives its layer
 }
 
-// RemoteResult is what lola profile --add and --update report: the remote profiles shown, and
+// RemoteResult is what lola profile add and update report: the remote profiles shown, and
 // written unless DryRun, and the notices.
 type RemoteResult struct {
 	Profiles []RemoteProfile `json:"remote_profiles"`
 	Notices  []Notice        `json:"notices"`
 	DryRun   bool            `json:"dry_run"`
-	// Trusted is what the run's --trust covers, as Result's: [] for --add and
-	// --update, absent for --remove, which takes no --trust.
+	// Trusted is what the run's --trust covers, as Result's: [] for add and
+	// --update, absent for rm, which takes no --trust.
 	Trusted []Consent `json:"trusted,omitzero"`
 }
 
-// consentRemote is the answer to keeping rps, remote profiles an --add or an --update fetched:
+// consentRemote is the answer to keeping rps, remote profiles an add or an --update fetched:
 // when --trust covers profiles, show shows them as a record (an error it returns is the answer's)
 // and receipt is shown what is trusted, items, once; otherwise ask asks.
 func consentRemote(rps []RemoteProfile, items []Consent, covered bool, ask func([]RemoteProfile) (bool, error),
@@ -231,9 +231,9 @@ func (e *Engine) remoteEntry(ctx context.Context, sc Scope, q string, ent manife
 
 // readProfiles takes the profiles lock shared, for a run that reads the remote profiles (sync,
 // activation, install, uninstall, list, lola profile's listing and state, the install
-// coaching and completion, and --add, --update and --remove until they write), so it reads the
+// coaching and completion, and add, update and rm until they write), so it reads the
 // set once. It lists the remote profiles under the lock: when
-// a killed --add, --update or --remove left a directory behind (leftover), it takes the lock
+// a killed add, update or rm left a directory behind (leftover), it takes the lock
 // exclusively, finishes that work (sweepRemote) and starts again, so a profile that was being
 // replaced is never read as gone. A dry run writes nothing: it does not sweep, and
 // when no lola has made the lock file yet, none has written a remote profile, so it takes none.
@@ -278,7 +278,7 @@ func readSwept(lockPath, dir string, valid func(string) error, dry bool) (func()
 
 // lockProfiles takes the profiles lock, first of every lock: shared by the
 // runs that read the remote profiles (readProfiles), and exclusive for the ones that write them,
-// only while they check again and write (--add, --update, --remove), so no question is ever asked
+// only while they check again and write (add, update, rm), so no question is ever asked
 // under it.
 func (e *Engine) lockProfiles(exclusive bool) (func(), error) {
 	return lockAt(e.Paths.ProfilesLock, exclusive)
@@ -399,7 +399,7 @@ func writeSynced(path string, data []byte) error {
 	return errors.Join(err, f.Close())
 }
 
-// sweepRemote finishes what a killed --add, --update or --remove left under paths.RemoteProfiles
+// sweepRemote finishes what a killed add, update or rm left under paths.RemoteProfiles
 // (sweepDir). The caller holds the profiles lock exclusively.
 func (e *Engine) sweepRemote() error { return sweepDir(e.Paths.RemoteProfiles, remoteName) }
 
@@ -451,7 +451,7 @@ func scopeName(sc Scope) string {
 	return "project " + shown(sc.ProjectDir)
 }
 
-// knownScopes are the scopes lola profile --add and --update know of when no scope flag names one,
+// knownScopes are the scopes lola profile add and update know of when no scope flag names one,
 // as the read-only commands do: the project found from the working directory, when there is one,
 // then user scope. They never ask: the profile file is shared by every scope. A .lola/ found in the
 // home directory is no project: user scope installs there, and a sync refuses it; the notice says
@@ -474,7 +474,7 @@ func (e *Engine) IsHome(sc Scope) bool {
 	return sc.Kind == target.Project && sc.Key() == (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}).Key()
 }
 
-// ProfileRun is the lola profile command a hint names to repeat a run of --add or --update with
+// ProfileRun is the lola profile command a hint names to repeat a run of add or update with
 // args: with the scope flags that name given, the scopes the flags named (one, or for --update
 // --scope both the project and user scope), or with none when given is empty, since such a run
 // picks its scopes itself and asks for none. Each argument goes through untrusted.Text and is

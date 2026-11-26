@@ -69,7 +69,7 @@ func (e *Engine) MarketGroups(display []string) ([]MarketGroup, []string, error)
 		switch {
 		case err != nil:
 			warnings = append(warnings, shown(r.Name)+": "+shown(untrusted.CleanErr(err).Error())+" → "+
-				MarketRun(append([]string{r.Name, "--update"}, display...)...))
+				MarketRun(append([]string{"update", r.Name}, display...)...))
 			continue
 		case c == nil:
 			continue

@@ -37,6 +37,22 @@ func (t *trustFlag) Set(v string) error {
 	return nil
 }
 
+// Append, Replace and GetSlice make --trust a pflag.SliceValue: a flag set reset and given values
+// again (verbAccepts) holds those values alone.
+func (t *trustFlag) Append(v string) error { return t.Set(v) }
+
+func (t *trustFlag) Replace(vs []string) error {
+	t.values, t.at, t.kinds = nil, nil, 0
+	for _, v := range vs {
+		if err := t.Set(v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *trustFlag) GetSlice() []string { return slices.Clone(t.values) }
+
 // trustShownKey is the annotation of --trust that holds what help shows after its name
 // (aliasedFlagUsages): pflag would show its NoOptDefVal, engine.TrustBareValue, which no one types.
 const trustShownKey = "lola_trust_shown"

@@ -12,7 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 )
 
-// KnownEntry is a known marketplace as lola market --known lists it: the maintainers' entry and
+// KnownEntry is a known marketplace as lola market known lists it: the maintainers' entry and
 // whether you have enabled it, that is, a marketplace of its id is registered from its source.
 type KnownEntry struct {
 	market.KnownMarket
@@ -176,7 +176,7 @@ func (e *Engine) PreviewKnown(ctx context.Context, id string, sc Scope, display 
 			return KnownPreview{}, ctx.Err()
 		}
 		return KnownPreview{}, errs.WithHints(err, append(errs.Hints(err),
-			MarketRun(append([]string{"--enable", k.ID, "-n"}, display...)...), MarketRun(append([]string{"--known"}, display...)...))...)
+			MarketRun(append([]string{"enable", k.ID, "-n"}, display...)...), MarketRun(append([]string{"known"}, display...)...))...)
 	}
 	g, warnings := e.groupOf(k.ID, f.cat, display)
 	entries := make([]PickerEntry, len(g.Entries))
@@ -254,7 +254,7 @@ func (e *Engine) pastPinTarget(name string, display []string) (market.Registrati
 	}
 	r := reg.Find(name)
 	if r == nil {
-		return market.Registration{}, noMarket(reg, name, func(c string) []string { return []string{c, "--update"} }, display)
+		return market.Registration{}, noMarket(reg, name, func(c string) []string { return []string{"update", c} }, display)
 	}
 	if market.IsCatalogURL(r.Source) || !source.IsGitForm(r.Source) {
 		return market.Registration{}, fmt.Errorf("%s is not a git repository, so no commit pins it", shown(r.Name))
@@ -273,12 +273,12 @@ func unknownKnown(id string, seed []market.KnownMarket, display []string) error 
 		list = "the known ones are " + strings.Join(ids, ", ")
 	}
 	return errs.WithHints(fmt.Errorf("%s is not a known marketplace; %s", shown(id), list),
-		MarketRun(append([]string{"--known"}, display...)...))
+		MarketRun(append([]string{"known"}, display...)...))
 }
 
 // knownNameFree refuses name when a marketplace that is not k at its pin already has it, hinting
-// the --enable of k under the first free name. The same marketplace passes: AddMarket coaches
-// its --update.
+// the enable of k under the first free name. The same marketplace passes: AddMarket coaches
+// its update.
 func (e *Engine) knownNameFree(k market.KnownMarket, name string, req MarketAddRequest) error {
 	reg, _, err := e.registry()
 	if err != nil {
@@ -293,7 +293,7 @@ func (e *Engine) knownNameFree(k market.KnownMarket, name string, req MarketAddR
 	if free == "" {
 		return refusal
 	}
-	hint := []string{free, "--enable", k.ID}
+	hint := []string{"enable", k.ID, free}
 	if req.DryRun {
 		hint = append(hint, "-n")
 	}

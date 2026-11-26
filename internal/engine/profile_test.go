@@ -61,7 +61,7 @@ var _ = Describe("profiles", func() {
 		}
 		return filepath.Join(s.ProjectDir, ".lola", "lock.json")
 	}
-	// activate turns name on the way lola profile --on records it, in lock.json; "" turns off
+	// activate turns name on the way lola profile on records it, in lock.json; "" turns off
 	// whatever is on.
 	activate := func(s engine.Scope, name string) {
 		GinkgoHelper()
@@ -343,7 +343,7 @@ var _ = Describe("profiles", func() {
 		Expect(installed(user)).To(HaveKeyWithValue("a", "profile:user:go"))
 
 		Expect(os.Remove(gone)).To(Succeed())
-		missing := engine.Notice{Level: engine.LevelWarn, Text: "profile user:go is on but no longer exists → lola profile --user user:go --off"}
+		missing := engine.Notice{Level: engine.LevelWarn, Text: "profile user:go is on but no longer exists → lola profile --user off user:go"}
 		rows, notices, err := e.Status(ctx, user, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notices).To(ConsistOf(missing))
@@ -857,7 +857,7 @@ var _ = Describe("profiles", func() {
 		Expect(rows[1]).To(And(HaveField("Name", "default"), HaveField("Kind", "default"), HaveField("Active", true), HaveField("State", "base")))
 		Expect(rows[2]).To(And(HaveField("Name", "go"), HaveField("Active", false), HaveField("State", "off")))
 		Expect(notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
-			Text: "profile user:gone is on but no longer exists → lola profile --user user:gone --off"}))
+			Text: "profile user:gone is on but no longer exists → lola profile --user off user:gone"}))
 	})
 
 	It("lists the bundle on, the profiles and nested bundles it reaches as members, each bundle's members, and a file that does not load with a notice", func() {
@@ -890,7 +890,7 @@ var _ = Describe("profiles", func() {
 		Expect(rows).To(ContainElement(And(HaveField("Name", "go"), HaveField("In", "work"), HaveField("Active", true))))
 		Expect(notices).To(ContainElements(
 			engine.Notice{Level: engine.LevelWarn, Text: "user:broken does not load: " + broken + ":2: broken has both bundle: and modules:; " +
-				"a bundle combines profiles and a profile lists modules → lola profile --user broken --split"},
+				"a bundle combines profiles and a profile lists modules → lola profile --user split broken"},
 			engine.Notice{Level: engine.LevelWarn, Text: "user:loop does not expand: " + filepath.Join(p.UserProfiles, "loop2.yml") +
 				":2: bundle: loop closes a cycle: loop → loop2 → loop"}))
 
@@ -957,7 +957,7 @@ var _ = Describe("profiles", func() {
 		Expect(os.RemoveAll(p.UserProfiles)).To(Succeed())
 		_, _, err = e.ProfileState(ctx, []engine.Scope{user}, "go")
 		Expect(errs.Hints(err)).To(Equal([]string{"write one: " + filepath.Join(p.UserProfiles, "<name>.yml") +
-			"; lola profile --add fetches a remote one"}))
+			"; lola profile add fetches a remote one"}))
 	})
 
 	It("refuses a profile that does not load, naming the file and line", func() {
@@ -1043,8 +1043,8 @@ var _ = Describe("profiles", func() {
 		Expect(ok).To(BeTrue(), "%v", err)
 		Expect(other.On).To(Equal("user:go"))
 		Expect(other.Name).To(Equal("user:docs"))
-		Expect(err).To(MatchError("user:go is on, and --on does not replace it without asking; --switch does"))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user user:docs --switch", "lola profile --user go-docs --switch --new --bundle go,docs"}))
+		Expect(err).To(MatchError("user:go is on, and lola profile on does not replace it without asking; switch does"))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user switch user:docs", "lola profile --user switch go-docs --new --bundle go,docs"}))
 		Expect(os.ReadFile(p.UserLedger)).To(Equal(before), "a refusal changes nothing")
 
 		res, err = turn(user, engine.ProfileSwitch, "docs")
@@ -1077,7 +1077,7 @@ var _ = Describe("profiles", func() {
 	It("refuses a lock.json with the profiles list of an older lola, hinting the switch to its last profile", func() {
 		writeTree(filepath.Dir(p.UserLedger), map[string]string{filepath.Base(p.UserLedger): `{"version":1,` +
 			`"profiles":[{"name":"user:go","by":"on"},{"name":"user:docs","by":"on"}],"modules":{},"created":[]}`})
-		coach := []string{"remove the profiles key from " + p.UserLedger + ", then turn your profile on again: lola profile --user user:docs --switch"}
+		coach := []string{"remove the profiles key from " + p.UserLedger + ", then turn your profile on again: lola profile --user switch user:docs"}
 		_, err := sync(user)
 		Expect(err).To(MatchError(p.UserLedger + ": profiles is not a key lola reads any more; lock.json records the one profile on as profile"))
 		Expect(errs.Hints(err)).To(Equal(coach))
@@ -1143,7 +1143,7 @@ var _ = Describe("profiles", func() {
 		unchanged("a No")
 		err = off(nil)
 		Expect(err).To(MatchError("lola profile needs your confirmation to remove a, and there is no terminal to ask on"))
-		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --user user:go --off -n", "then confirm them: lola profile --user user:go --off -y"}),
+		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --user off user:go -n", "then confirm them: lola profile --user off user:go -y"}),
 			"hints name the profile as resolved")
 		unchanged("a refusal off a terminal")
 		Expect(off(func([]engine.Removal) (bool, error) { return false, context.Canceled })).To(MatchError(context.Canceled))
@@ -1202,8 +1202,8 @@ var _ = Describe("profiles", func() {
 		}
 		Expect(activeProfile(user)).To(Equal(&ledger.Active{Name: "user:p64", By: ledger.BySwitch}))
 		_, err := turn(user, engine.ProfileOn, names[0])
-		Expect(err).To(MatchError("user:p64 is on, and --on does not replace it without asking; --switch does"))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user user:p0 --switch", "lola profile --user p64-p0 --switch --new --bundle p64,p0"}))
+		Expect(err).To(MatchError("user:p64 is on, and lola profile on does not replace it without asking; switch does"))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user switch user:p0", "lola profile --user switch p64-p0 --new --bundle p64,p0"}))
 		Expect(activeProfile(user)).To(Equal(&ledger.Active{Name: "user:p64", By: ledger.BySwitch}))
 	})
 
@@ -1242,15 +1242,15 @@ var _ = Describe("profiles", func() {
 			Expect(err).NotTo(HaveOccurred(), name)
 			Expect(res.Notices).To(ConsistOf(engine.Notice{Level: engine.LevelInfo, Text: "already on the base"}), name)
 			_, err = turn(user, engine.ProfileOff, name)
-			Expect(err).To(MatchError("the base is always loaded; lola profile --off turns off the profile over it"), name)
+			Expect(err).To(MatchError("the base is always loaded; lola profile off turns off the profile over it"), name)
 			Expect(errs.Hints(err)).To(BeEmpty(), "%s: no profile is on to turn off", name)
 		}
 		Expect(turn(user, engine.ProfileOn, "go")).Error().NotTo(HaveOccurred())
 		_, err := turn(user, engine.ProfileOn, "base")
 		Expect(err).To(MatchError("the base is always loaded; user:go is on over it"))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user base --switch"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user switch base"}))
 		_, err = turn(user, engine.ProfileOff, "default")
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user --off"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user off"}))
 
 		res, err := turn(user, engine.ProfileOn, "go")
 		Expect(err).NotTo(HaveOccurred())
@@ -1272,7 +1272,7 @@ var _ = Describe("profiles", func() {
 			dry, err := e.Sync(ctx, engine.SyncRequest{Scope: user, Options: engine.Options{DryRun: true},
 				Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: name}})
 			Expect(err).NotTo(HaveOccurred(), name)
-			Expect(dry.ToApply).To(Equal("lola profile --user user:go --off"), "%s: the run that applies it turns go off", name)
+			Expect(dry.ToApply).To(Equal("lola profile --user off user:go"), "%s: the run that applies it turns go off", name)
 			res, err := turn(user, engine.ProfileSwitch, name)
 			Expect(err).NotTo(HaveOccurred(), name)
 			Expect(res.Activation.Named).To(Equal("user:go"), name)
@@ -1292,13 +1292,13 @@ var _ = Describe("profiles", func() {
 		Expect(errs.Hints(err)).To(BeEmpty(), "no profile is on in either scope")
 		Expect(turn(user, engine.ProfileOn, "go")).Error().NotTo(HaveOccurred())
 		_, err = turn(sc, engine.ProfileSwitch, "default")
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user default --switch"}), "a profile is on at user scope only")
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user switch default"}), "a profile is on at user scope only")
 		Expect(turn(sc, engine.ProfileOn, "go")).Error().NotTo(HaveOccurred())
 		_, err = turn(sc, engine.ProfileSwitch, "default")
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project base --switch", "lola profile --user default --switch"}), "on in both")
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project switch base", "lola profile --user switch default"}), "on in both")
 		Expect(turn(user, engine.ProfileOff, "")).Error().NotTo(HaveOccurred())
 		_, err = turn(sc, engine.ProfileSwitch, "default")
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project base --switch"}), "a profile is on in the project only")
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project switch base"}), "a profile is on in the project only")
 		Expect(turn(sc, engine.ProfileOff, "")).Error().NotTo(HaveOccurred())
 
 		_, err = turn(sc, engine.ProfileOn, "user:default")
@@ -1309,9 +1309,9 @@ var _ = Describe("profiles", func() {
 
 		Expect(turn(sc, engine.ProfileOn, "go")).Error().NotTo(HaveOccurred())
 		_, err = turn(sc, engine.ProfileOn, "default")
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project base --switch"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project switch base"}))
 		_, err = turn(sc, engine.ProfileOff, "default")
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project --off"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project off"}))
 		res, err := turn(sc, engine.ProfileSwitch, "base")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Activation.Named).To(Equal("user:go"))
@@ -1325,7 +1325,7 @@ var _ = Describe("profiles", func() {
 		_, err := turn(sc, engine.ProfileSwitch, "default")
 		Expect(err).To(MatchError(p.UserLedger + ": profiles is not a key lola reads any more; lock.json records the one profile on as profile"))
 		Expect(errs.Hints(err)).To(Equal([]string{"remove the profiles key from " + p.UserLedger +
-			", then turn your profile on again: lola profile --user user:go --switch"}))
+			", then turn your profile on again: lola profile --user switch user:go"}))
 	})
 
 	It("turns off an active profile whose file is gone, by either name", func() {
@@ -1349,7 +1349,7 @@ var _ = Describe("profiles", func() {
 		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: true},
 			Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "go"}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.ToApply).To(Equal("lola profile --project user:go --on"))
+		Expect(res.ToApply).To(Equal("lola profile --project on user:go"))
 		Expect(res.Activation.Changes).To(ConsistOf(HaveField("Action", "load")))
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory(), "a dry run writes nothing")
 

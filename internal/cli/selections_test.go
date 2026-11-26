@@ -115,7 +115,7 @@ var _ = Describe("selections.yaml in list, check and sync", func() {
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\nmodules: []\n"})
 		r := lola("install", mod, "-C", proj, "--skip", "command/test")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(MatchRegexp(`→ these picks are yours alone; to share them, move the module into the project's profile: lola profile .*--move example --to project:team\n`))
+		Expect(r.out).To(MatchRegexp(`→ these picks are yours alone; to share them, move the module into the project's profile: lola profile .*move example --to project:team\n`))
 		Expect(r.out).NotTo(ContainSubstring("<"))
 
 		writeTree(proj, map[string]string{".lola/profiles/docs.yml": "version: 1\nmodules: []\n"})

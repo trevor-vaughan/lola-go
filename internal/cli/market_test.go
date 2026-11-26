@@ -67,7 +67,7 @@ var _ = Describe("lola market", func() {
 	})
 
 	It("adds, lists, shows and updates a marketplace, for people, --plain and --json", func() {
-		r := lola("market", "--add", url)
+		r := lola("market", "add", url)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("✓ marketplace acme: 2 entries (Claude marketplace.json) from " + url + " at " + commit[:7] + "\n" +
 			"⚠ 1 entry skipped: 1 npm source → lola market acme\n→ browse: lola install @acme\n"))
@@ -108,18 +108,18 @@ var _ = Describe("lola market", func() {
 		Expect(show.Skipped).To(Equal([]map[string]any{{"name": "npmx", "reason": "npm sources are not supported: installing one runs a package manager"}}))
 
 		publish(map[string]string{".claude-plugin/marketplace.json": strings.Replace(marketCatalog, `"1.0.0"`, `"1.1.0"`, 1)})
-		r = lola("market", "acme", "--refresh", "-n")
+		r = lola("market", "update", "acme", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("→ would update marketplace acme: 2 entries (Claude marketplace.json) from "+url+" at "+commit[:7]+"\n"+
 			"  ~ formatter (commit, version)\n"), "the skipped entries have not changed since the add reported them")
-		r = lola("market", "--upgrade", "--all", "--plain")
+		r = lola("market", "upgrade", "--all", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("updated\tacme\nchange\tchanged\tacme\tformatter\tcommit,version\n"))
 	})
 
-	Describe("--check", func() {
+	Describe("check", func() {
 		BeforeEach(func() {
-			Expect(lola("market", "--add", url).code).To(Equal(0))
+			Expect(lola("market", "add", url).code).To(Equal(0))
 		})
 
 		It("leaves lola market --json without a status key unless asked", func() {
@@ -129,7 +129,7 @@ var _ = Describe("lola market", func() {
 		})
 
 		It("adds each market's upstream status to --json, and a changed remote to update available", func() {
-			r := lola("market", "--json", "--check")
+			r := lola("market", "check", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			var list struct {
 				Markets []map[string]any `json:"markets"`
@@ -140,15 +140,15 @@ var _ = Describe("lola market", func() {
 			Expect(list.Markets[0]).To(HaveKeyWithValue("commit", commit))
 
 			publish(map[string]string{"README": "more"})
-			r = lola("market", "--json", "--check")
+			r = lola("market", "check", "--json")
 			Expect(json.Unmarshal([]byte(r.out), &list)).To(Succeed())
 			Expect(list.Markets[0]).To(HaveKeyWithValue("status", "update available"))
 		})
 
 		It("says upstream moved, not update available, for a marketplace registered at a commit the remote has left", func() {
-			Expect(lola("market", "pinned", "--add", url, "--ref", commit).code).To(Equal(0))
+			Expect(lola("market", "add", url, "pinned", "--ref", commit).code).To(Equal(0))
 			publish(map[string]string{"README": "more"})
-			r := lola("market", "--json", "--check")
+			r := lola("market", "check", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			var list struct {
 				Markets []map[string]any `json:"markets"`
@@ -160,17 +160,17 @@ var _ = Describe("lola market", func() {
 		})
 
 		It("says upstream moved for a commit ref written in upper case in markets.yaml by hand", func() {
-			Expect(lola("market", "pinned", "--add", url, "--ref", commit).code).To(Equal(0))
+			Expect(lola("market", "add", url, "pinned", "--ref", commit).code).To(Equal(0))
 			markets := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "markets.yaml")
 			b, err := os.ReadFile(markets)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(b)).To(ContainSubstring("ref: " + commit + "\n"))
 			upper := strings.ToUpper(commit)
 			Expect(os.WriteFile(markets, []byte(strings.Replace(string(b), "ref: "+commit, "ref: "+upper, 1)), 0o600)).To(Succeed())
-			r := lola("market", "pinned", "--update")
+			r := lola("market", "update", "pinned")
 			Expect(r.code).To(Equal(0), r.err)
 			publish(map[string]string{"README": "more"})
-			r = lola("market", "--json", "--check")
+			r = lola("market", "check", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring(`"ref": "` + upper + `"`))
 			var list struct {
@@ -182,7 +182,7 @@ var _ = Describe("lola market", func() {
 
 		It("says unreachable when the remote is gone", func() {
 			Expect(os.RemoveAll(filepath.Join(tmp, "srv", "plugins.git"))).To(Succeed())
-			r := lola("market", "--json", "--check")
+			r := lola("market", "check", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring(`"status": "unreachable"`))
 		})
@@ -190,9 +190,9 @@ var _ = Describe("lola market", func() {
 		It("leaves the status of a folder marketplace empty in --json", func() {
 			dir := filepath.Join(tmp, "local")
 			writeTree(dir, map[string]string{".claude-plugin/marketplace.json": `{"name": "local", "owner": {"name": "L"}, "plugins": []}`})
-			r := lola("market", "--add", dir)
+			r := lola("market", "add", dir)
 			Expect(r.code).To(Equal(0), r.err)
-			r = lola("market", "--json", "--check")
+			r = lola("market", "check", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			var list struct {
 				Markets []map[string]any `json:"markets"`
@@ -203,48 +203,49 @@ var _ = Describe("lola market", func() {
 		})
 
 		It("prints the status in the table and as the last --plain column", func() {
-			r := lola("market", "--check")
+			r := lola("market", "check")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(MatchRegexp(`^NAME +FORMAT +ENTRIES +SKIPPED +FETCHED +SOURCE +STATUS\nacme +claude +2 +1 +just now +` + regexpQuote(url) + ` +up to date\n$`))
-			r = lola("market", "--check", "--plain")
+			r = lola("market", "check", "--plain")
 			Expect(r.out).To(HaveSuffix("\t.claude-plugin/marketplace.json\tup to date\n"))
 		})
 
-		It("is refused with a name, an entry, or an action, and the hint is the run without it", func() {
-			for _, args := range [][]string{{"acme"}, {"acme", "formatter"}, {"--known"}, {"acme", "--update"}, {"--add", url}, {"set", "acme"}} {
-				r := lola(append([]string{"market", "--check"}, args...)...)
+		It("takes no name, entry or flag but its output flags", func() {
+			for _, args := range [][]string{{"acme"}, {"acme", "formatter"}, {"--known"}, {"--ref", "main"}} {
+				r := lola(append([]string{"market", "check"}, args...)...)
 				Expect(r.code).NotTo(Equal(0), strings.Join(args, " "))
-				Expect(r.err).To(ContainSubstring("--check lists your marketplaces' upstream status"), strings.Join(args, " "))
-				Expect(r.err).To(ContainSubstring("hint: lola market --check\n"), strings.Join(args, " "))
 			}
+			r := lola("market", "check", "acme")
+			Expect(r.err).To(Equal("error: unknown command \"acme\" for \"lola market check\"\n"))
+			Expect(lola("market", "--check").err).To(ContainSubstring("hint: lola market check\n"), "the old flag names its verb")
 		})
 	})
 
-	It("refuses --no-interactive with a name, an entry or an action, and the hint is the run without it", func() {
-		Expect(lola("market", "--add", url).code).To(Equal(0))
-		for _, tc := range []struct{ args []string }{
-			{[]string{"acme"}}, {[]string{"acme", "formatter"}}, {[]string{"acme", "--update"}}, {[]string{"--add", url}},
-			{[]string{"acme", "--remove"}}, {[]string{"--enable", "kn"}}, {[]string{"--known"}}, {[]string{"set", "acme"}},
-		} {
-			args := append([]string{"market"}, tc.args...)
-			r := lola(append(args, "--no-interactive")...)
-			what := strings.Join(tc.args, " ")
-			Expect(r.code).NotTo(Equal(0), what)
-			Expect(r.err).To(ContainSubstring("--no-interactive applies to a bare lola market only"), what)
-			Expect(r.err).To(ContainSubstring("hint: lola "+strings.Join(args, " ")+"\n"), what)
-		}
-		r := lola("market", "--no-interactive", "--check")
-		Expect(r.code).To(Equal(0), r.err)
+	It("lists with market list, never the picker, and coaches the old --no-interactive to it", func() {
+		Expect(lola("market", "add", url).code).To(Equal(0))
+		Expect(lola("market", "list", "--json")).To(Equal(lola("market", "--json")))
+		r := lola("market", "--no-interactive", "--json")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("--no-interactive is not a flag of lola market"))
+		Expect(r.err).To(ContainSubstring("lola market list"))
+		r = lola("market", "list", "acme")
+		Expect(r.err).To(ContainSubstring(`unknown command "acme" for "lola market list"`))
 	})
 
-	It("lists --no-interactive among its flags", func() {
+	It("parses scope flags before the verb", func() {
+		Expect(lola("market", "--user", "list", "--json").code).To(Equal(0))
+	})
+
+	It("lists its subcommands in help", func() {
 		r := lola("help", "market")
-		Expect(r.out).To(ContainSubstring("--no-interactive"))
-		Expect(r.out).To(ContainSubstring("--check"))
+		for _, verb := range []string{"list", "show", "add", "enable", "known", "update", "rm", "check"} {
+			Expect(r.out).To(MatchRegexp(`(?m)^\s+`+verb+`\s`), verb)
+		}
+		Expect(r.out).NotTo(ContainSubstring("--no-interactive"))
 	})
 
 	It("installs @market/module, showing where it resolved before anything is asked, and records where it came from", func() {
-		Expect(lola("market", "--add", url).code).To(Equal(0))
+		Expect(lola("market", "add", url).code).To(Equal(0))
 		r := lola("install", "@acme/formatter", "--user", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(HavePrefix(userContext + "→ @acme/formatter → " + url + " path tools/formatter @ " + commit + "\n"))
@@ -272,7 +273,7 @@ var _ = Describe("lola market", func() {
 		named := filepath.Join(tmp, "named")
 		writeTree(named, map[string]string{".claude-plugin/marketplace.json": `{"name": "named", "owner": {"name": "N"},
   "plugins": [{"name": "tool", "source": "./tool"}]}`, "tool/lola.yml": "name: other\n", "tool/commands/o.md": "O\n"})
-		Expect(lola("market", "--add", named).code).To(Equal(0))
+		Expect(lola("market", "add", named).code).To(Equal(0))
 		r := lola("install", "@named/tool", "--user", "-t", "claude-code", "-y")
 		Expect(r.code).To(Equal(1))
 		hint := "lola install " + named + " --target claude-code --user --yes --path tool"
@@ -283,73 +284,81 @@ var _ = Describe("lola market", func() {
 		Expect(filepath.Join(os.Getenv("HOME"), ".claude", "commands", "o.md")).To(BeARegularFile())
 	})
 
-	It("market flags: one action, --ref/--path only with --add, names xor --all, -n writes nothing", func() {
+	It("market verbs and flags: each verb takes its own, an old action flag names its verb, -n writes nothing", func() {
 		for args, want := range map[string][2]string{
-			"acme --add " + url + " --update": {"--add and --update cannot be combined; lola market takes one action per run",
-				"  hint: lola market acme --add " + url + "\n  hint: lola market acme --update\n"},
-			"--update --ref main":       {"--ref applies to --add only", "  hint: lola market --update\n"},
-			"acme --path x":             {"--path applies to --add only", "  hint: lola market acme\n"},
-			"--add " + url + " --all":   {"--all applies to --update only", "  hint: lola market --add " + url + "\n"},
-			"--all":                     {"--all applies to --update only", "  hint: lola market\n"},
-			"acme --path x --all":       {"--path applies to --add only; --all applies to --update only", "  hint: lola market acme\n"},
-			"acme --update --all":       {"--all updates every marketplace; drop the names or --all", "  hint: lola market acme --update\n  hint: lola market --update --all\n"},
-			"--update":                  {"name the marketplaces to update, or update every one with --all", "  hint: lola market --update --all\n"},
-			"a b --add " + url:          {"--add registers one marketplace; give it one name", "  hint: lola market a --add " + url + "\n  hint: lola market b --add " + url + "\n"},
-			"a b c":                     {"lola market <name> <entry> shows one entry, and 2 were given: b, c", "  hint: lola market\n"},
-			"acme --remove --update":    {"--update and --remove cannot be combined; lola market takes one action per run", "  hint: lola market acme --update\n  hint: lola market acme --remove\n"},
-			"acme -y":                   {"--yes applies to --remove and --enable only", "  hint: lola market acme\n"},
-			"acme --add " + url + " -y": {"--yes applies to --remove and --enable only", "  hint: lola market acme --add " + url + "\n"},
-			"a b --remove":              {"--remove forgets one marketplace; name it", ""},
-			"--disable acme":            {"unknown flag: --disable", ""},
-			"acme --add " + url + " --update --remove": {"--add, --update and --remove cannot be combined; lola market takes one action per run",
-				"  hint: lola market acme --add " + url + "\n  hint: lola market acme --update\n  hint: lola market acme --remove\n"},
+			"acme --add " + url + " --update":      {"--add is not a flag of lola market", "  hint: lola market add " + url + " acme\n  hint: lola market update acme\n"},
+			"acme --update":                        {"--update is not a flag of lola market", "  hint: lola market update acme\n"},
+			"--update acme":                        {"--update is not a flag of lola market", "  hint: lola market update acme\n"},
+			"--add " + url + " acme --ref main -n": {"--add is not a flag of lola market", "  hint: lola market add " + url + " acme --ref main -n\n"},
+			"--update":                             {"--update is not a flag of lola market", "  hint: usage: lola market update [<name>...]\n  hint: find one: lola market list\n"},
+			"update acme --ref main":               {"--ref applies to lola market add", "  hint: usage: lola market add <source> [<name>] --ref main\n"},
+			"acme --ref main":                      {"--ref applies to lola market add", "  hint: usage: lola market add <source> [<name>] --ref main\n"},
+			"acme --all":                           {"--all applies to lola market update", "  hint: usage: lola market update [<name>...] --all\n"},
+			"update acme --all": {"--all updates every marketplace you have, and takes no names",
+				"  hint: lola market update --all\n  hint: lola market update acme\n"},
+			"update":              {"name the marketplaces to update, or update every one with --all", "  hint: lola market update --all\n"},
+			"add " + url + " a b": {"add registers one marketplace; give it one name", "  hint: lola market add " + url + " a\n  hint: lola market add " + url + " b\n"},
+			"acme beta gamma":     {"lola market <name> <entry> shows one entry, and 2 were given: beta, gamma", "  hint: lola market\n"},
+			"acme -y": {"--yes applies to lola market add, enable and rm",
+				"  hint: usage: lola market add <source> [<name>] --yes\n  hint: usage: lola market enable <id> [<name>] --yes\n  hint: usage: lola market rm <name> --yes\n"},
+			"add " + url + " -y": {"--yes applies to add --enable only: add asks nothing to answer", "  hint: lola market add " + url + "\n"},
+			"rm a b":             {"rm forgets one marketplace; name it", "  hint: lola market rm a\n  hint: lola market rm b\n"},
+			"acme --remove -y":   {"--remove is not a flag of lola market", "  hint: lola market rm acme -y\n"},
+			"add":                {"lola market add needs a source", "  hint: usage: lola market add <source> [<name>] [--ref <ref>] [--path <path>] [-n]\n  hint: find one: lola market known\n  hint: example: lola market add https://github.com/acme/plugins acme\n"},
+			"rm":                 {"lola market rm needs a marketplace", "  hint: usage: lola market rm <name> [-y] [-n]\n  hint: find one: lola market list\n  hint: example: lola market rm acme -y\n"},
 		} {
 			r := lola(append([]string{"market"}, strings.Fields(args)...)...)
 			Expect(r.code).To(Equal(1), args)
 			Expect(r.err).To(Equal("error: "+want[0]+"\n"+want[1]), args)
+			for line := range strings.SplitSeq(want[1], "\n") {
+				if h, ok := strings.CutPrefix(line, "  hint: "); ok && !strings.HasPrefix(h, "usage:") && !strings.HasPrefix(h, "find one:") &&
+					!strings.HasPrefix(h, "example:") {
+					expectRunnable(h)
+				}
+			}
 		}
-		r := lola("market", "--add", url, "-n")
+		r := lola("market", "add", url, "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("→ would add marketplace acme: 2 entries"))
 		for _, f := range []string{p.Markets, p.MarketCache, p.MarketsLock} {
 			Expect(f).NotTo(BeAnExistingFile(), "-n writes nothing")
 		}
-		Expect(lola("market", "--add", url, "--scope", "both").code).To(Equal(0), "scope flags change nothing")
+		Expect(lola("market", "add", url, "--scope", "both").code).To(Equal(0), "scope flags change nothing")
 		Expect(lola("market", "--user").out).To(HavePrefix("NAME"))
 		r = lola("market", "-C", filepath.Join(tmp, "nope"))
 		Expect(r.err).To(ContainSubstring("-C " + filepath.Join(tmp, "nope") + ": not a directory"))
 	})
 
 	It("asks another name on a terminal when the name is another source's, pre-filled with a free one", func() {
-		Expect(lola("market", "--add", url).code).To(Equal(0))
+		Expect(lola("market", "add", url).code).To(Equal(0))
 		other := filepath.Join(tmp, "authoring")
 		writeTree(other, map[string]string{".claude-plugin/marketplace.json": marketCatalog, "tools/formatter/x.md": "x"})
-		r := lola("market", "--add", other)
+		r := lola("market", "add", other)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: acme is already a marketplace, from " + url + "\n  hint: lola market acme-2 --add " + other + " --path .claude-plugin/marketplace.json\n"))
+		Expect(r.err).To(Equal("error: acme is already a marketplace, from " + url + "\n  hint: lola market add " + other + " acme-2 --path .claude-plugin/marketplace.json\n"))
 		sp := &scripted{names: []string{"acme", "mine"}}
-		r = lolaP(sp, "market", "--add", other)
+		r = lolaP(sp, "market", "add", other)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.nameSteps).To(Equal([]cli.MarketNameStep{{Why: "acme is already a marketplace, from " + url, Value: "acme-2"},
 			{Why: "acme is already a marketplace, from " + url, Value: "acme", Problem: "acme is already a marketplace, from " + url}}))
 		Expect(r.out).To(HavePrefix("✓ marketplace mine: 2 entries (Claude marketplace.json) from " + other + "\n"))
 		Expect(r.out).To(ContainSubstring("→ the catalog calls itself acme; it is your marketplace mine\n"))
-		r = lola("market", "acme", "--add", url)
-		Expect(r.err).To(Equal("error: acme is already this marketplace\n  hint: lola market acme --update\n"))
-		r = lola("market", "acme", "--add", url, "--json")
-		Expect(r.err).To(MatchJSON(`{"error": "acme is already this marketplace", "hints": ["lola market acme --update --json"]}`),
+		r = lola("market", "add", url, "acme")
+		Expect(r.err).To(Equal("error: acme is already this marketplace\n  hint: lola market update acme\n"))
+		r = lola("market", "add", url, "acme", "--json")
+		Expect(r.err).To(MatchJSON(`{"error": "acme is already this marketplace", "hints": ["lola market update acme --json"]}`),
 			"a hint keeps the run's output flags")
 	})
 
 	It("asks a name on a terminal for a catalog whose own name no marketplace can have, pre-filled with its slug", func() {
 		py := filepath.Join(tmp, "py")
 		writeTree(py, map[string]string{"marketplace.yml": "name: Lola General Marketplace\nmodules: []\n"})
-		r := lola("market", "--add", py)
+		r := lola("market", "add", py)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: the catalog names itself Lola General Marketplace, which cannot name a marketplace; give a name before --add\n"+
-			"  hint: lola market lola-general-marketplace --add "+py+" --path marketplace.yml\n"), "off a terminal, refused with the slug's --add")
+		Expect(r.err).To(Equal("error: the catalog names itself Lola General Marketplace, which cannot name a marketplace; give a name when you add it\n"+
+			"  hint: lola market add "+py+" lola-general-marketplace --path marketplace.yml\n"), "off a terminal, refused with the slug's --add")
 		sp := &scripted{names: []string{"general"}}
-		r = lolaP(sp, "market", "--add", py)
+		r = lolaP(sp, "market", "add", py)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.nameSteps).To(Equal([]cli.MarketNameStep{{Why: "the catalog names itself Lola General Marketplace, which cannot name a marketplace",
 			Value: "lola-general-marketplace"}}))
@@ -360,17 +369,17 @@ var _ = Describe("lola market", func() {
 		py := filepath.Join(tmp, "py")
 		writeTree(py, map[string]string{"marketplace.yml": "name: py\nmodules:\n  - name: hooked\n    repository: https://lola.test/h.git\n" +
 			"    hooks: {pre-install: scripts/pre.sh}\n"})
-		r := lola("market", "--add", py, "--json", "-n")
+		r := lola("market", "add", py, "--json", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).NotTo(ContainSubstring("null"))
 		Expect(r.out).To(ContainSubstring(`"notices": []`))
-		r = lola("market", "--add", py, "--json")
+		r = lola("market", "add", py, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(`"text": "browse: lola install @py --json"`), "the browse line keeps the run's output flags")
 		Expect(lola("market", "py").out).To(ContainSubstring("→ hooked: catalog install scripts are ignored\n"))
 
 		writeTree(py, map[string]string{"marketplace.yml": "name: py\n"})
-		r = lola("market", "py", "--update")
+		r = lola("market", "update", "py")
 		Expect(r.code).To(Equal(1))
 		Expect(r.out).To(Equal("✗ marketplace py was not updated (the error says why)\n"))
 		Expect(r.err).To(Equal("error: the catalog marketplace.yml has no modules\n"))
@@ -379,13 +388,13 @@ var _ = Describe("lola market", func() {
 	It("reports every marketplace an --update --all could not update, in one error", func() {
 		for _, n := range []string{"a", "b", "c"} {
 			writeTree(filepath.Join(tmp, n), map[string]string{"marketplace.yml": "name: " + n + "\nmodules: []\n"})
-			r := lola("market", "--add", filepath.Join(tmp, n))
+			r := lola("market", "add", filepath.Join(tmp, n))
 			Expect(r.code).To(Equal(0), r.err)
 		}
 		for _, n := range []string{"b", "c"} {
 			writeTree(filepath.Join(tmp, n), map[string]string{"marketplace.yml": "name: " + n + "\n"})
 		}
-		r := lola("market", "--update", "--all")
+		r := lola("market", "update", "--all")
 		Expect(r.code).To(Equal(1))
 		Expect(r.out).To(ContainSubstring("✗ marketplace b was not updated (the error says why)\n"))
 		Expect(r.out).To(ContainSubstring("✗ marketplace c was not updated (the error says why)\n"))
@@ -393,12 +402,12 @@ var _ = Describe("lola market", func() {
 			"c: the catalog marketplace.yml has no modules\n"))
 
 		writeTree(filepath.Join(tmp, "c"), map[string]string{"marketplace.yml": "name: c\nmodules: []\n"})
-		r = lola("market", "--update", "--all")
+		r = lola("market", "update", "--all")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: 1 of 3 marketplaces was not updated: b: the catalog marketplace.yml has no modules\n"))
 
 		writeTree(filepath.Join(tmp, "c"), map[string]string{"marketplace.yml": "name: c\n"})
-		r = lola("market", "--update", "--all", "--json")
+		r = lola("market", "update", "--all", "--json")
 		Expect(r.code).To(Equal(1))
 		var doc struct {
 			Error   string `json:"error"`
@@ -430,7 +439,7 @@ var _ = Describe("lola market", func() {
   {"name": "npma", "source": {"source": "npm", "package": "a"}},
   {"name": "cmd", "source": {"source": "command", "command": "x"}}
 ]}`})
-		r := lola("market", "--add", url)
+		r := lola("market", "add", url)
 		Expect(r.code).To(Equal(0), r.err)
 		GinkgoT().Setenv("COLUMNS", "66")
 		r = lola("market", "acme")
@@ -487,7 +496,7 @@ var _ = Describe("lola market", func() {
   {"name": "alpha", "version": "1.0.0", "source": {"source": "url", "url": "https://lola.test/a.git"}, "description": "Short"},
   {"name": "beta", "version": "` + version + `", "source": {"source": "url", "url": "https://lola.test/b.git"}, "description": "Short"}
 ]}`})
-		r := lola("market", "--add", url)
+		r := lola("market", "add", url)
 		Expect(r.code).To(Equal(0), r.err)
 		GinkgoT().Setenv("COLUMNS", "80")
 		r = lola("market", "acme")
@@ -519,7 +528,7 @@ var _ = Describe("lola market", func() {
 		}
 		publish(map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"}, "description": "` + long +
 			`", "plugins": [` + strings.Join(plugins, ",\n") + `]}`})
-		r := lola("market", "--add", url)
+		r := lola("market", "add", url)
 		Expect(r.code).To(Equal(0), r.err)
 		for _, cols := range []int{60, 80, 120} {
 			GinkgoT().Setenv("COLUMNS", strconv.Itoa(cols))
@@ -574,13 +583,13 @@ var _ = Describe("lola market", func() {
 		r := lola("market")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(MatchRegexp(`acme +- +- +- +not fetched +` + regexpQuote(url)))
-		Expect(r.out).To(ContainSubstring("→ acme is not fetched → lola market acme --update\n"))
-		Expect(r.out).To(ContainSubstring("⚠ broken: " + filepath.Join(p.MarketCache, "broken", "source.json") + ": version 0 is not 1 → lola market broken --update\n"))
+		Expect(r.out).To(ContainSubstring("→ acme is not fetched → lola market update acme\n"))
+		Expect(r.out).To(ContainSubstring("⚠ broken: " + filepath.Join(p.MarketCache, "broken", "source.json") + ": version 0 is not 1 → lola market update broken\n"))
 		r = lola("market", "acme")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HaveSuffix("→ not fetched → lola market acme --update\n"))
-		Expect(lola("market", "acme", "--update").code).To(Equal(0))
-		Expect(lola("market", "broken", "--update").code).To(Equal(0))
+		Expect(r.out).To(HaveSuffix("→ not fetched → lola market update acme\n"))
+		Expect(lola("market", "update", "acme").code).To(Equal(0))
+		Expect(lola("market", "update", "broken").code).To(Equal(0))
 		Expect(lola("market").out).NotTo(ContainSubstring("not fetched"))
 	})
 })
@@ -597,48 +606,112 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 		GinkgoT().Chdir(tmp)
 		url = filepath.Join(tmp, "acme")
 		writeTree(url, map[string]string{".claude-plugin/marketplace.json": marketCatalog, "tools/formatter/x.md": "x"})
-		Expect(lola("market", "--add", url).code).To(Equal(0))
+		Expect(lola("market", "add", url).code).To(Equal(0))
 	})
 
-	It("market --remove asks, refuses off a terminal without -y, and drops cache and registration", func() {
-		r := lola("market", "acme", "--remove")
+	It("keeps the run's output flags in market rm's find one hint, never -y", func() {
+		r := lola("market", "rm", "--json", "-y")
+		Expect(r.code).To(Equal(1))
+		var d map[string]any
+		Expect(json.Unmarshal([]byte(r.out+r.err), &d)).To(Succeed(), r.out+r.err)
+		Expect(d["hints"]).To(ContainElement("find one: lola market list --json"))
+		expectRunnable("find one: lola market list --json")
+	})
+
+	It("market rm asks, refuses off a terminal without -y, and drops cache and registration", func() {
+		r := lola("market", "rm", "acme")
 		Expect(r.code).To(Equal(3))
-		Expect(r.err).To(Equal("error: lola market --remove asks before it forgets a marketplace, and there is no terminal to ask on\n" +
-			"  hint: lola market acme --remove -y\n"))
+		Expect(r.err).To(Equal("error: lola market rm asks before it forgets a marketplace, and there is no terminal to ask on\n" +
+			"  hint: lola market rm acme -y\n"))
 		sp := &scripted{confirm: []bool{false}}
-		r = lolaP(sp, "market", "acme", "--del")
+		r = lolaP(sp, "market", "del", "acme")
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(Equal("✗ cancelled — nothing was changed\n"))
 		Expect(sp.calls).To(Equal([]string{"confirm:Forget marketplace acme (" + url + ") and drop its cached catalog?"}))
-		r = lola("market", "acme", "--erase", "-n")
+		r = lola("market", "erase", "acme", "-n")
 		Expect(r.out).To(Equal("→ would forget marketplace acme and drop its cached catalog\n"))
-		r = lola("market", "acme", "--rm", "-y", "--json")
+		r = lola("market", "remove", "acme", "-y", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(MatchJSON(`{"removed": ["acme"], "notices": [], "dry_run": false}`))
 		Expect(filepath.Join(p.MarketCache, "acme")).NotTo(BeAnExistingFile())
 		Expect(lola("market").out).To(HavePrefix("no marketplaces yet"))
 	})
 
-	It("python market verbs are refused with the translated command", func() {
+	It("hints the swapped order when a name looks like a source", func() {
+		for _, src := range []string{"https://example.com/c.git", "git@example.com:acme/c", "./c.git"} {
+			r := lola("market", "add", "acme2", src, "-n")
+			Expect(r.code).To(Equal(1), src)
+			Expect(r.err).To(HaveSuffix("  hint: lola market add "+src+" acme2 -n\n"), src)
+			expectRunnable("lola market add " + src + " acme2 -n")
+		}
+	})
+
+	It("words each verb's flag help for that verb", func() {
+		Expect(lola("market", "add", "--help").out).To(MatchRegexp(`-y, --yes +do it without asking \(only beside --enable\)\n`))
+		Expect(lola("market", "show", "--help").out).To(MatchRegexp(`--target .*with an entry: assistants to plan for, as install's -t`))
+		Expect(lola("market", "--help").out).To(ContainSubstring("with <name> <entry>: assistants to plan for"), "the noun's -t is for its shorthand")
+	})
+
+	It("refuses to name a marketplace after a market verb or alias, and still loads one already so named", func() {
+		for _, w := range []string{"known", "check", "enable", "get", "upgrade", "list", "ls", "set", "search", "rm", "update", "add", "show"} {
+			r := lola("market", "add", url, w)
+			Expect(r.code).NotTo(Equal(0), w)
+			what := " is a lola market command"
+			if w == "set" || w == "search" {
+				what = " is a word lola market answers to"
+			}
+			Expect(r.err).To(ContainSubstring(w+what+", so no marketplace can be named "+w), w)
+			Expect(r.err).To(ContainSubstring("hint: name it otherwise: lola market add "+url+" "+w+"-1"), w)
+			expectRunnable("lola market add " + url + " " + w + "-1")
+		}
+		b, err := os.ReadFile(p.Markets)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).NotTo(ContainSubstring("name: check"), "nothing was written")
+
+		Expect(os.WriteFile(p.Markets, append(b, []byte("  - name: check\n    source: "+url+"\n    path: .claude-plugin/marketplace.json\n")...), 0o600)).To(Succeed())
+		Expect(lola("market", "list").out).To(ContainSubstring("check"), "an existing file still loads")
+	})
+
+	It("runs the verb, and notes how to show the marketplace, when a marketplace is named like it", func() {
+		b, err := os.ReadFile(p.Markets)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(p.Markets, append(b, []byte("  - name: check\n    source: "+url+"\n    path: .claude-plugin/marketplace.json\n")...), 0o600)).To(Succeed())
+		note := "ran check; to show the marketplace named check: lola market show check"
+		r := lola("market", "check")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).To(ContainSubstring(note))
+		Expect(lola("market", "check", "--json").out).To(ContainSubstring(note), "in the notices of --json")
+		Expect(lola("market", "show", "check").code).To(Equal(0), "show is how to see it")
+		expectRunnable("lola market show check")
+		Expect(lola("market", "list").out + lola("market", "list").err).NotTo(ContainSubstring("ran list"))
+	})
+
+	It("coaches --add to the add subcommand, keeping its value and flags", func() {
+		r := lola("market", "--add", url, "-n")
+		Expect(r.err).To(ContainSubstring("--add is not a flag of lola market"))
+		Expect(r.err).To(ContainSubstring("lola market add " + url + " -n"))
+		expectRunnable("lola market add " + url + " -n")
+	})
+
+	It("answers the Python lola's set and search with the lola command, and add and ls as lola's own", func() {
+		const set = "error: set is not a lola market verb: lola market rm <name> forgets a marketplace; lola has no disabled state\n"
 		for args, want := range map[string]string{
-			"add general " + url: "error: add is not a lola market verb: lola market <name> --add <source> adds a marketplace\n" +
-				"  hint: lola market general --add " + url + "\n",
-			"update --all": "error: update is not a lola market verb: lola market --update --all updates every marketplace\n" +
-				"  hint: lola market --update --all\n",
-			"ls":         "error: ls is not a lola market verb: lola market lists your marketplaces\n  hint: lola market\n",
-			"ls acme":    "error: ls is not a lola market verb: lola market <name> shows a marketplace\n  hint: lola market acme\n",
-			"rm acme -y": "error: rm is not a lola market verb: lola market <name> --remove forgets a marketplace\n  hint: lola market acme --remove -y\n",
-			"set --disable acme -y": "error: set is not a lola market verb: lola market <name> --remove forgets a marketplace; lola has no disabled state\n" +
-				"  hint: lola market acme --remove\n",
-			"set acme":          "error: set is not a lola market verb: lola market <name> --remove forgets a marketplace; lola has no disabled state\n",
-			"set --enable acme": "error: acme is already active; lola has no disabled state\n  hint: lola market acme\n",
-			"acme --disable":    "error: unknown flag: --disable\n",
-			"add --add " + url: "error: marketplace name add is reserved: lola market add answers with the lola command to run instead, " +
-				"so it cannot name a marketplace\n",
-			"search": "error: search is not a lola market verb: lola search <query> searches your cache and every fetched catalog\n",
+			"set --disable acme": set + "  hint: lola market rm acme\n",
+			"set acme --disable": set + "  hint: lola market rm acme\n",
+			"set acme":           set,
+			"set --enable acme":  "error: acme is already active; lola has no disabled state\n  hint: lola market acme\n",
+			"acme --disable":     "error: unknown flag: --disable\n  hint: see: lola market --help\n",
+			"search":             "error: search is not a lola market verb: lola search <query> searches your cache and every fetched catalog\n",
+			"search fmt":         "error: search is not a lola market verb: lola search <query> searches your cache and every fetched catalog\n  hint: lola search fmt\n",
+			"add acme " + url:    "error: marketplace name \"" + url + "\" is invalid: ':' and '/' are not allowed; use 1-64 characters from a-z, 0-9, '.', '_' and '-', starting with a letter or digit, with no '..'\n",
 		} {
 			r := lola(append([]string{"market"}, strings.Fields(args)...)...)
 			Expect(r.code).To(Equal(1), args)
+			if strings.HasPrefix(args, "add acme") {
+				Expect(r.err).To(HavePrefix("error: marketplace name"), args)
+				Expect(r.err).To(HaveSuffix("  hint: lola market add "+url+" acme\n"), args)
+				continue
+			}
 			Expect(r.err).To(Equal(want), args)
 		}
 	})
@@ -658,7 +731,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 		py := filepath.Join(tmp, "py")
 		writeTree(py, map[string]string{"marketplace.yml": "name: py\nmodules:\n  - name: hooked\n    repository: " + mods + "/h.git\n" +
 			"    hooks: {pre-install: touch " + marker + ", post-install: touch " + marker + "}\n"})
-		Expect(lola("market", "--add", py).code).To(Equal(0))
+		Expect(lola("market", "add", py).code).To(Equal(0))
 		r := lola("install", "@py/hooked", "--user", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ hooked: catalog install scripts are ignored\n"))
@@ -707,38 +780,34 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 				"near/commands/n.md": "N\n", "deps/commands/d.md": "D\n", "ren/lola.yml": "name: renamed-other\n", "ren/commands/r.md": "R\n"})
 		}
 		pinsCatalog("main")
-		Expect(lola("market", "--add", pins).code).To(Equal(0))
+		Expect(lola("market", "add", pins).code).To(Equal(0))
 		for _, args := range [][]string{
-			{"market", "x", "--add", files.URL + "/m.json", "--ref", "main", "--path", "a"}, // a catalog file: neither flag
-			{"market", "--add", slugged},                  // a slug with a catalog of its own name: --path names the one found
-			{"market", "update", "acme", "--all"},         // names and --all: both forms
-			{"market", "acme", "--add", url, "-n"},        // the same marketplace: its --update
-			{"market", "acme", "--add", other},            // another source: a free name's --add
-			{"market", "--add", general, "-n"},            // a catalog name lola cannot use: its slug
-			{"market", "--add", general, "--path", "two"}, // two catalogs: one --path per file
-			{"market", "--add", "work/marketplace.json"},  // a local catalog file: the folder that holds it
-			{"market", "--add", general, "--ref", "main"}, // --ref of a folder: the run without it
-			{"market", "--update"},                        // neither names nor --all
-			{"market", "acme", "--update", "--all", "-n"}, // both
-			{"market", "nope"},                            // no such marketplace: the listing
-			{"market", "nope", "--update"},                // the same, before any fetch
-			{"market", "acmee"},                           // a typo: its close name, then the listing
-			{"market", "acmee", "--update", "-n"},         // the same, keeping -n
-			{"market", "acmee", "--remove", "-y"},         // the same, never with -y
-			{"market", "Acme_X", "--add", other, "-n"},    // a name with uppercase: its lowercase form
-			{"market", "add", "x", other, "-n"},           // the Python verbs
-			{"market", "ls", "acme"},
+			{"market", "add", files.URL + "/m.json", "x", "--ref", "main", "--path", "a"}, // a catalog file: neither flag
+			{"market", "add", slugged},                  // a slug with a catalog of its own name: --path names the one found
+			{"market", "update", "acme", "--all"},       // names and --all: both forms
+			{"market", "add", url, "acme", "-n"},        // the same marketplace: its --update
+			{"market", "add", other, "acme"},            // another source: a free name's --add
+			{"market", "add", general, "-n"},            // a catalog name lola cannot use: its slug
+			{"market", "add", general, "--path", "two"}, // two catalogs: one --path per file
+			{"market", "add", "work/marketplace.json"},  // a local catalog file: the folder that holds it
+			{"market", "add", general, "--ref", "main"}, // --ref of a folder: the run without it
+			{"market", "update"},                        // neither names nor --all
+			{"market", "update", "acme", "--all", "-n"}, // both
+			{"market", "nope"},                          // no such marketplace: the listing
+			{"market", "update", "nope"},                // the same, before any fetch
+			{"market", "acmee"},                         // a typo: its close name, then the listing
+			{"market", "update", "acmee", "-n"},         // the same, keeping -n
+			{"market", "rm", "acmee", "-y"},             // the same, never with -y
+			{"market", "add", other, "Acme_X", "-n"},    // a name with uppercase: its lowercase form
+			{"market", "add", "x", other, "-n"},         // the Python verbs
 			{"market", "show", "nope"},
 			{"market", "rm", "acme"},
-			{"market", "update"},
-			{"market", "update", "acme"},
 			{"market", "search", "fmt"},
 			{"market", "set", "--disable", "acme"},
-			{"market", "set", "--enable", "acme"},
 			{"market", "acme", "formatter", "npmx"},                            // two entries: one run for each
 			{"market", "acme", "-t", "claude-code"},                            // -t without an entry: the run without it
-			{"market", "acme", "--remove", "-y", "--update"},                   // two actions: its --remove -y runs
-			{"market", "acme", "--remove"},                                     // off a terminal: its own --remove -y
+			{"market", "acme", "--remove", "-y"},                               // the old flag: its rm -y runs
+			{"market", "rm", "acme"},                                           // off a terminal: its own rm -y
 			{"install", "formatter", "--user", "-t", "claude-code"},            // a bare name only a catalog lists: its address
 			{"install", "@nope/formatter", "--user", "-t", "claude-code"},      // no such marketplace: the listing
 			{"install", "@acme/formater", "--user", "-t", "claude-code", "-n"}, // no such entry: the marketplace, naming close ones
@@ -757,12 +826,12 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 		} {
 			// acme is added again when a hint run before forgot it.
 			if lola("market", "acme").code != 0 {
-				Expect(lola("market", "--add", url).code).To(Equal(0))
+				Expect(lola("market", "add", url).code).To(Equal(0))
 			}
 			r := lola(args...)
 			Expect(r.code).To(BeElementOf(1, 3), strings.Join(args, " "))
 			// The one hint that may add -y approves exactly the --remove refused off a terminal.
-			ownY := slices.Contains(args, "--remove") && strings.Contains(r.err, "there is no terminal to ask on")
+			ownY := slices.Contains(args, "rm") && strings.Contains(r.err, "there is no terminal to ask on")
 			for _, asJSON := range []bool{false, true} {
 				run, hints, refused := args, []string{}, r.err
 				if asJSON {
@@ -784,6 +853,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 				for _, h := range hints {
 					words := shellWords(h)
 					Expect(words[0]).To(Equal("lola"), h)
+					expectRunnable(h)
 					Expect(slices.Contains(words, "--json")).To(Equal(asJSON), "a hint keeps the run's output flags: "+h)
 					switch {
 					case ownY:
@@ -791,7 +861,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 					case !slices.Contains(args, "-y"):
 						Expect(words).NotTo(ContainElement("-y"), h)
 					}
-					if slices.Contains(args, "-n") && slices.Contains(words, "--add") {
+					if slices.Contains(args, "-n") && slices.Contains(words, "add") {
 						Expect(words).To(ContainElement("-n"), h)
 					}
 					again := lola(words[1:]...)
@@ -800,7 +870,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 					Expect(again.err).NotTo(Or(ContainSubstring("unknown flag"), ContainSubstring("applies to"),
 						ContainSubstring("cannot be combined"), ContainSubstring("is not a lola market verb")), h)
 					if lola("market", "acme").code != 0 {
-						Expect(lola("market", "--add", url).code).To(Equal(0))
+						Expect(lola("market", "add", url).code).To(Equal(0))
 					}
 					// What a hint fetched leaves the cache, so a bare name is refused again.
 					lola("cache", "rm", "formatter", "-y")
@@ -835,7 +905,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 			{func() { // an @ source in a profile: the marketplace, which shows the source to copy
 				Expect(os.Remove(filepath.Join(p.UserProfiles, "default.yml"))).To(Or(Succeed(), MatchError(os.ErrNotExist)))
 				writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-				Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+				Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 				writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: near, source: '@pins/near'}\n"})
 			}, []string{"sync", "--user"}, []string{}, false},
 		} {
@@ -877,7 +947,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 		}
 
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--off", "--user").code).To(Equal(0))
+		Expect(lola("profile", "off", "go", "--user").code).To(Equal(0))
 		Expect(os.WriteFile(filepath.Join(p.UserProfiles, "default.yml"), defYML, 0o600)).To(Succeed())
 
 		// Hints a run that succeeds gives in its notices (text → command) run too.
@@ -888,10 +958,10 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 			{nil, []string{"install", "@pins/deps", "--user", "-t", "claude-code"}}, // a dependency the marketplace offers: its install
 			{func() { // a ref the catalog moved: sync --update's install of the address
 				pinsCatalog("main")
-				Expect(lola("market", "pins", "--update").code).To(Equal(0))
+				Expect(lola("market", "update", "pins").code).To(Equal(0))
 				Expect(lola("install", "@pins/moved", "--user", "-t", "claude-code").code).To(Equal(0))
 				pinsCatalog("fork")
-				Expect(lola("market", "pins", "--update").code).To(Equal(0))
+				Expect(lola("market", "update", "pins").code).To(Equal(0))
 			}, []string{"sync", "--update", "moved", "--user"}},
 		} {
 			for _, asJSON := range []bool{false, true} {
@@ -939,7 +1009,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(pins, map[string]string{".claude-plugin/marketplace.json": strings.Replace(string(catalog),
 			`"url": "`+mods+`/kit.git", "ref": "fork"`, `"url": "`+mods+`/other.git", "ref": "fork"`, 1)})
-		Expect(lola("market", "pins", "--update").code).To(Equal(0))
+		Expect(lola("market", "update", "pins").code).To(Equal(0))
 		r := lola("sync", "--update", "moved", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("your marketplace pins lists moved from " + mods + "/other.git; moved updates from its own source (lola caches one moved per machine"))
@@ -976,7 +1046,7 @@ var _ = Describe("lola market --ssh-host", func() {
 	})
 
 	It("--add --ssh-host allows the host, and lola market <name> lists it and marks the entries it admits", func() {
-		r := lola("market", "priv", "--add", dir, "--ssh-host", "git.corp.test")
+		r := lola("market", "add", dir, "priv", "--ssh-host", "git.corp.test")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ allowed ssh hosts: git.corp.test\n"))
 		r = lola("market", "priv")
@@ -1001,7 +1071,7 @@ var _ = Describe("lola market --ssh-host", func() {
 
 		acme := filepath.Join(filepath.Dir(dir), "acme")
 		writeTree(acme, map[string]string{".claude-plugin/marketplace.json": marketCatalog, "tools/formatter/x.md": "x"})
-		Expect(lola("market", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme).code).To(Equal(0))
 		r = lola("market", "acme", "--json")
 		var none map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &none)).To(Succeed())
@@ -1010,75 +1080,71 @@ var _ = Describe("lola market --ssh-host", func() {
 	})
 
 	It("off a terminal asks nothing: the ssh entries are skipped and the hint is the --update that allows their hosts", func() {
-		r := lola("market", "priv", "--add", dir)
+		r := lola("market", "add", dir, "priv")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out + r.err).To(ContainSubstring("lola market priv --update --ssh-host git.corp.test --ssh-host other.test"))
+		Expect(r.out + r.err).To(ContainSubstring("lola market update priv --ssh-host git.corp.test --ssh-host other.test"))
 		Expect(stored()).NotTo(ContainSubstring("ssh_hosts"))
 	})
 
 	It("-n previews the hosts --ssh-host allows and writes nothing", func() {
-		r := lola("market", "priv", "--add", dir, "--ssh-host", "git.corp.test", "-n")
+		r := lola("market", "add", dir, "priv", "--ssh-host", "git.corp.test", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("would allow ssh hosts: git.corp.test"))
 		Expect(p.Markets).NotTo(BeAnExistingFile())
 	})
 
-	It("--ssh-host without an action is refused, naming the actions that take it, with the run without it", func() {
-		Expect(lola("market", "priv", "--add", dir).code).To(Equal(0))
+	It("--ssh-host without a verb is refused, naming the verbs that take it, each with its usage", func() {
+		Expect(lola("market", "add", dir, "priv").code).To(Equal(0))
 		for args, want := range map[string]string{
-			"priv --ssh-host x.test": "error: --ssh-host applies to --add, --update, --remove and --enable only\n  hint: lola market priv\n",
-			"priv --ssh-host x.test --ssh-host y.test --ref main": "error: --ref applies to --add only; " +
-				"--ssh-host applies to --add, --update, --remove and --enable only\n  hint: lola market priv\n",
-			"priv --ssh-host x.test -n": "error: --ssh-host applies to --add, --update, --remove and --enable only; " +
-				"--dry-run applies to --add, --update, --remove and --enable only\n  hint: lola market priv\n",
+			"priv --ssh-host x.test": "error: --ssh-host applies to lola market add, enable, update and rm\n" +
+				"  hint: usage: lola market add <source> [<name>] --ssh-host x.test\n  hint: usage: lola market enable <id> [<name>] --ssh-host x.test\n" +
+				"  hint: usage: lola market update [<name>...] --ssh-host x.test\n  hint: usage: lola market rm <name> --ssh-host x.test\n",
 		} {
 			r := lola(append([]string{"market"}, strings.Fields(args)...)...)
 			Expect(r.code).To(Equal(1), args)
 			Expect(r.err).To(Equal(want), args)
-			Expect(lola("market", "priv").code).To(Equal(0), "the hint runs")
 		}
+		r := lola("market", "update", "priv", "--ssh-host", "x.test", "-n")
+		Expect(r.code).To(Equal(0), r.err)
 	})
 
-	It("the Python verbs add and update keep --ssh-host in the command they answer with", func() {
+	It("hints add's swapped order with its flags kept", func() {
 		r := lola("market", "add", "priv", dir, "--ssh-host", "x.test")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: add is not a lola market verb: lola market <name> --add <source> adds a marketplace\n" +
-			"  hint: lola market priv --add " + dir + " --ssh-host x.test\n"))
-		Expect(lola("market", "priv", "--add", dir).code).To(Equal(0))
-		r = lola("market", "update", "priv", "--ssh-host", "x.test", "--json")
-		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(MatchJSON(`{"error": "update is not a lola market verb: lola market <name>... --update updates the marketplaces named",
-			"hints": ["lola market priv --update --ssh-host x.test --json"]}`))
+		Expect(r.err).To(HavePrefix("error: marketplace name"))
+		Expect(r.err).To(HaveSuffix("\n  hint: lola market add " + dir + " priv --ssh-host x.test\n"))
+		hint := shellWords("lola market add " + dir + " priv -n --ssh-host x.test")
+		Expect(lola(hint[1:]...).code).To(Equal(0), "the hint runs")
 	})
 
 	It("refuses an --ssh-host that is not a host name, and one --ssh-host for more than one marketplace", func() {
-		r := lola("market", "priv", "--add", dir, "--ssh-host", "ssh://x.test")
+		r := lola("market", "add", dir, "priv", "--ssh-host", "ssh://x.test")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(HavePrefix("error: --ssh-host ssh://x.test is not a host name; give the host name alone"))
 		Expect(p.Markets).NotTo(BeAnExistingFile())
 
-		Expect(lola("market", "priv", "--add", dir).code).To(Equal(0))
-		r = lola("market", "--update", "--all", "--ssh-host", "other.test")
+		Expect(lola("market", "add", dir, "priv").code).To(Equal(0))
+		r = lola("market", "update", "--all", "--ssh-host", "other.test")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(HavePrefix("error: --ssh-host applies to one marketplace\n"))
 
-		r = lola("market", "priv", "--ssh-host", "git.corp.test.", "--remove")
+		r = lola("market", "rm", "priv", "--ssh-host", "git.corp.test.")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(HavePrefix("error: --ssh-host git.corp.test. is not a host name; give the host name alone, without scheme, user, port, path or trailing dot"))
 	})
 
 	It("coaches one --ssh-host --remove run per name when several are named", func() {
-		r := lola("market", "priv", "other", "--ssh-host", "x.test", "--remove", "-n", "--json")
+		r := lola("market", "rm", "priv", "other", "--ssh-host", "x.test", "-n", "--json")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(MatchJSON(`{"error": "--ssh-host with --remove stops allowing hosts for one marketplace; name it",
-			"hints": ["lola market priv --dry-run --json --remove --ssh-host x.test", "lola market other --dry-run --json --remove --ssh-host x.test"]}`))
+		Expect(r.err).To(MatchJSON(`{"error": "rm --ssh-host stops allowing hosts for one marketplace; name it",
+			"hints": ["lola market rm priv --dry-run --json --ssh-host x.test", "lola market rm other --dry-run --json --ssh-host x.test"]}`))
 	})
 
 	It("on a terminal asks which hosts to allow, nothing ticked, and allows only what is ticked", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){func(cli.SSHHostStep) ([]string, error) {
 			return []string{"other.test"}, nil
 		}}}
-		r := lolaP(sp, "market", "priv", "--add", dir)
+		r := lolaP(sp, "market", "add", dir, "priv")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.sshSteps).To(Equal([]cli.SSHHostStep{{Market: "priv", Hosts: []cli.SSHHostChoice{{Host: "git.corp.test", Entries: 2},
 			{Host: "other.test", Entries: 1}}}}))
@@ -1086,17 +1152,17 @@ var _ = Describe("lola market --ssh-host", func() {
 		Expect(stored()).NotTo(ContainSubstring("git.corp.test"))
 
 		sp = &scripted{}
-		r = lolaP(sp, "market", "other", "--add", dir, "-y")
+		r = lolaP(sp, "market", "add", dir, "other", "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HavePrefix("error: --yes applies to --remove and --enable only\n"), "-y answers nothing here")
+		Expect(r.err).To(HavePrefix("error: --yes applies to add --enable only"), "-y answers nothing here")
 		Expect(sp.sshSteps).To(BeEmpty())
-		Expect(lolaP(sp, "market", "other", "--add", dir, "--force").code).To(Equal(1), "lola market takes no --force")
+		Expect(lolaP(sp, "market", "add", dir, "other", "--force").code).To(Equal(1), "lola market add takes no --force")
 		Expect(sp.sshSteps).To(BeEmpty())
 
 		sp = &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){func(cli.SSHHostStep) ([]string, error) {
 			return []string{"git.corp.test"}, nil
 		}}}
-		r = lolaP(sp, "market", "priv", "--update")
+		r = lolaP(sp, "market", "update", "priv")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.sshSteps).To(Equal([]cli.SSHHostStep{{Market: "priv", Hosts: []cli.SSHHostChoice{{Host: "git.corp.test", Entries: 2}}}}),
 			"--update offers only the hosts not allowed yet")
@@ -1106,42 +1172,42 @@ var _ = Describe("lola market --ssh-host", func() {
 	It("Ctrl+C in the host picker aborts the --add, and an --update without allowing a host", func() {
 		abort := func(cli.SSHHostStep) ([]string, error) { return nil, cli.ErrAborted }
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){abort}}
-		r := lolaP(sp, "market", "priv", "--add", dir)
+		r := lolaP(sp, "market", "add", dir, "priv")
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(Equal("✗ cancelled — nothing was changed\n"))
 		Expect(p.Markets).NotTo(BeAnExistingFile())
 
-		Expect(lola("market", "priv", "--add", dir).code).To(Equal(0))
+		Expect(lola("market", "add", dir, "priv").code).To(Equal(0))
 		sp = &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){abort}}
-		r = lolaP(sp, "market", "priv", "--update")
+		r = lolaP(sp, "market", "update", "priv")
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(r.err).To(Equal("✗ cancelled — no ssh host was allowed\n"))
 		Expect(stored()).NotTo(ContainSubstring("ssh_hosts"))
 	})
 
 	It("--ssh-host <host> --remove stops allowing the host and keeps the marketplace; it takes no -y", func() {
-		Expect(lola("market", "priv", "--add", dir, "--ssh-host", "git.corp.test", "--ssh-host", "other.test").code).To(Equal(0))
-		r := lola("market", "priv", "--ssh-host", "git.corp.test", "--remove", "-y")
+		Expect(lola("market", "add", dir, "priv", "--ssh-host", "git.corp.test", "--ssh-host", "other.test").code).To(Equal(0))
+		r := lola("market", "rm", "priv", "--ssh-host", "git.corp.test", "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: --yes applies to --remove without --ssh-host: stopping allowing an ssh host asks nothing\n" +
-			"  hint: lola market priv --remove --ssh-host git.corp.test\n"))
-		r = lola("market", "priv", "--ssh-host", "git.corp.test", "--remove", "-n")
+		Expect(r.err).To(Equal("error: --yes applies to rm without --ssh-host: stopping allowing an ssh host asks nothing\n" +
+			"  hint: lola market rm priv --ssh-host git.corp.test\n"))
+		r = lola("market", "rm", "priv", "--ssh-host", "git.corp.test", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("→ marketplace priv would no longer allow ssh host git.corp.test\n  - a\n  - b\n"))
 		Expect(stored()).To(ContainSubstring("git.corp.test"))
 
-		r = lola("market", "priv", "--ssh-host", "git.corp.test", "--remove")
+		r = lola("market", "rm", "priv", "--ssh-host", "git.corp.test")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("✓ marketplace priv no longer allows ssh host git.corp.test\n  - a\n  - b\n"))
 		Expect(stored()).NotTo(ContainSubstring("git.corp.test"))
 		Expect(stored()).To(ContainSubstring("other.test"))
 		Expect(lola("market").out).To(ContainSubstring("priv"), "the marketplace is still yours")
 
-		r = lola("market", "priv", "--ssh-host", "nope.test", "--remove")
+		r = lola("market", "rm", "priv", "--ssh-host", "nope.test")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: marketplace priv does not allow ssh host nope.test; it allows: other.test\n" +
-			"  hint: lola market priv --ssh-host other.test --remove\n"))
-		r = lola("market", "priv", "--ssh-host", "other.test", "--remove", "--json")
+			"  hint: lola market rm priv --ssh-host other.test\n"))
+		r = lola("market", "rm", "priv", "--ssh-host", "other.test", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var revoked struct {
 			Updates []map[string]any `json:"updates"`
@@ -1168,7 +1234,7 @@ var _ = Describe("lola market <name> <entry>", func() {
 			"tools/formatter/commands/fmt.md": "F\n", "tools/linter/commands/lint.md": "L\n"})
 		writeTree(filepath.Join(tmp, "empty"), map[string]string{"marketplace.yml": "name: empty\nmodules: []\n"})
 		for _, src := range []string{"acme", "empty"} {
-			r := lola("market", "--add", filepath.Join(tmp, src))
+			r := lola("market", "add", filepath.Join(tmp, src))
 			Expect(r.code).To(Equal(0), r.err)
 		}
 	})
@@ -1199,13 +1265,13 @@ var _ = Describe("lola market <name> <entry>", func() {
 				"  hint: lola market acme formatter\n  hint: lola market acme linter\n",
 			"acme formatter formatter --json -t claude-code": `{"error":"lola market \u003cname\u003e \u003centry\u003e shows one entry, and 2 were given: formatter, formatter",` +
 				`"hints":["lola market acme formatter --json --target claude-code"]}` + "\n",
-			"acme formatter nope":          "error: lola market <name> <entry> shows one entry, and 2 were given: formatter, nope\n  hint: lola market acme formatter\n",
-			"acme npmx formatter":          "error: lola market <name> <entry> shows one entry, and 2 were given: npmx, formatter\n  hint: lola market acme formatter\n",
-			"acme nope npmx":               "error: lola market <name> <entry> shows one entry, and 2 were given: nope, npmx\n  hint: lola market acme\n",
-			"nope a b":                     "error: lola market <name> <entry> shows one entry, and 2 were given: a, b\n  hint: lola market\n",
-			"acme -t claude-code":          "error: --target applies to lola market <name> <entry> only\n  hint: lola market acme\n",
-			"-t claude-code":               "error: --target applies to lola market <name> <entry> only\n  hint: lola market\n",
-			"acme --update -t claude-code": "error: --target applies to lola market <name> <entry> only\n  hint: lola market acme --update\n",
+			"acme formatter nope":      "error: lola market <name> <entry> shows one entry, and 2 were given: formatter, nope\n  hint: lola market acme formatter\n",
+			"acme npmx formatter":      "error: lola market <name> <entry> shows one entry, and 2 were given: npmx, formatter\n  hint: lola market acme formatter\n",
+			"acme nope npmx":           "error: lola market <name> <entry> shows one entry, and 2 were given: nope, npmx\n  hint: lola market acme\n",
+			"nope a b":                 "error: lola market <name> <entry> shows one entry, and 2 were given: a, b\n  hint: lola market\n",
+			"acme -t claude-code":      "error: --target applies to lola market <name> <entry> only\n  hint: lola market acme\n",
+			"-t claude-code":           "error: --target applies to lola market <name> <entry> only\n  hint: lola market\n",
+			"show acme -t claude-code": "error: --target applies to lola market <name> <entry> only\n  hint: lola market show acme\n",
 		} {
 			r := lola(append([]string{"market"}, strings.Fields(args)...)...)
 			Expect(r.code).To(Equal(1), args)
@@ -1217,7 +1283,7 @@ var _ = Describe("lola market <name> <entry>", func() {
 			}
 		}
 
-		r := lola("market", "acme", "empty", "--update", "--json")
+		r := lola("market", "update", "acme", "empty", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var doc struct {
 			Updates []json.RawMessage `json:"updates"`

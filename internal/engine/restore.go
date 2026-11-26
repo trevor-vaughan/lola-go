@@ -189,21 +189,21 @@ func (e *Engine) needed(sc Scope, extra string) ([]string, error) {
 	return names, nil
 }
 
-// restoreOne fetches the remote profile name at its record r and writes it as lola profile --add
+// restoreOne fetches the remote profile name at its record r and writes it as lola profile add
 // does, with no consent question: the digest proves these are the bytes
 // you accepted. The source rules come first (remoteSpec, before any network contact); for git the
 // recorded commit must be on the recorded ref, is fetched by its SHA and must be what the fetch
 // resolves; the bytes must have the recorded digest. A source that no longer serves the recorded
-// version is refused hinting --add, which reviews what it serves now; one lola cannot reach keeps
+// version is refused hinting add, which reviews what it serves now; one lola cannot reach keeps
 // its own coaching and hints retry, the run's command. It writes under the profiles lock, taken
-// exclusively only to check again that nothing took the profile's place while it fetched (an --add
+// exclusively only to check again that nothing took the profile's place while it fetched (an add
 // or --update, or a sweep putting back what a killed one left): then it writes nothing, and
 // returns no notice.
 func (e *Engine) restoreOne(ctx context.Context, name string, r config.Remote, retry string) (_ *Notice, err error) {
 	named := func(err error, hints ...string) error {
 		return errs.WithHints(fmt.Errorf("%s: %w", shown(name), err), hints...)
 	}
-	again := []string{name, "--add", r.Source}
+	again := []string{"add", r.Source, name}
 	if r.Ref != "" {
 		again = append(again, "--ref", r.Ref)
 	}

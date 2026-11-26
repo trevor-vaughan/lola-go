@@ -170,15 +170,15 @@ var _ = Describe("typed trust", func() {
 			}
 		},
 		Entry("bare --trust is a value no typed --trust= gives", "sync", []string{engine.TrustBareValue}, engine.TrustBare, "", nil),
-		Entry("--trust=entries,profiles written on profile --add is refused", "profile --add", []string{"entries,profiles"}, engine.TrustKinds(0),
-			"lola profile --add never asks for entries trust; it takes --trust=profiles", new(engine.TrustProfiles)),
+		Entry("--trust=entries,profiles written on profile add is refused", "profile add", []string{"entries,profiles"}, engine.TrustKinds(0),
+			"lola profile add never asks for entries trust; it takes --trust=profiles", new(engine.TrustProfiles)),
 		Entry("bare --trust beside a kind install takes is still refused", "install", []string{engine.TrustBareValue, "hooks"}, engine.TrustKinds(0),
 			"lola install never asks for entries or profiles trust; it takes --trust=scripts,hooks,runtime-hooks", new(engine.TrustHooks)),
-		Entry("three refused kinds read as a list", "profile --add", []string{"entries,scripts,hooks"}, engine.TrustKinds(0),
-			"lola profile --add never asks for entries, scripts or hooks trust; it takes --trust=profiles", new(engine.TrustKinds(0))),
+		Entry("three refused kinds read as a list", "profile add", []string{"entries,scripts,hooks"}, engine.TrustKinds(0),
+			"lola profile add never asks for entries, scripts or hooks trust; it takes --trust=profiles", new(engine.TrustKinds(0))),
 		Entry("a trailing comma hints the value without it", "sync", []string{"hooks,"}, engine.TrustKinds(0),
 			`--trust: "" is not a kind of trust; kinds are entries, profiles, scripts, hooks, runtime-hooks, all`, new(engine.TrustHooks)),
-		Entry("--trust= hints bare --trust only where the command takes entries", "profile --add", []string{""}, engine.TrustKinds(0),
+		Entry("--trust= hints bare --trust only where the command takes entries", "profile add", []string{""}, engine.TrustKinds(0),
 			"--trust= names no kind; kinds are entries, profiles, scripts, hooks, runtime-hooks, all", nil),
 	)
 
@@ -207,8 +207,16 @@ var _ = Describe("typed trust", func() {
 			}
 		},
 		Entry("sync", "sync", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
-		Entry("profile", "profile", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
-		Entry("profile --add", "profile --add", engine.TrustProfiles, "--trust=profiles"),
+		Entry("profile on", "profile on", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
+		Entry("profile off", "profile off", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
+		Entry("profile switch", "profile switch", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
+		Entry("profile edit", "profile edit", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
+		Entry("profile move", "profile move", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
+		Entry("profile split", "profile split", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
+		Entry("profile update", "profile update", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
+		Entry("profile add", "profile add", engine.TrustProfiles, "--trust=profiles"),
+		Entry("profile rm asks none", "profile rm", engine.TrustKinds(0), ""),
+		Entry("the bare noun asks none", "profile", engine.TrustKinds(0), ""),
 		Entry("install", "install", engine.TrustScripts|engine.TrustHooks|engine.TrustRuntimeHooks, "--trust=scripts,hooks,runtime-hooks"),
 		Entry("update", "update", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
 		Entry("migrate", "migrate", engine.TrustEntries|engine.TrustScripts|engine.TrustHooks|engine.TrustRuntimeHooks, "--trust=entries,scripts,hooks,runtime-hooks"),
@@ -238,8 +246,8 @@ var _ = Describe("typed trust", func() {
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "project:go"},
 				Options: engine.Options{Trust: engine.TrustEntries}})
 			return err
-		}, "lola profile needs your trust for", []string{"see them: lola profile --project project:go --on --trust=entries -n",
-			"then accept them: lola profile --project project:go --on --trust=entries,profiles"}),
+		}, "lola profile needs your trust for", []string{"see them: lola profile --project on project:go --trust=entries -n",
+			"then accept them: lola profile --project on project:go --trust=entries,profiles"}),
 		Entry("hooks", func() error {
 			kit("{pre-install: hooks/pre.sh}")
 			pull("kit")
@@ -259,9 +267,9 @@ var _ = Describe("typed trust", func() {
 		Entry("remote --add", func() error {
 			_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Name: "go", Source: "https://example.com/profiles.git", Rerun: []string{"--json"}})
 			return err
-		}, "lola profile --add shows the profile and asks before adding it, and there is no terminal to ask on",
-			[]string{"see it: lola profile go --add https://example.com/profiles.git -n --json",
-				"then add it unasked: lola profile go --add https://example.com/profiles.git --trust=profiles --json"}),
+		}, "lola profile add shows the profile and asks before adding it, and there is no terminal to ask on",
+			[]string{"see it: lola profile add https://example.com/profiles.git go -n --json",
+				"then add it unasked: lola profile add https://example.com/profiles.git go --trust=profiles --json"}),
 	)
 
 	It("a refusal for removals alone adds the hook kind the next run would be refused without", func() {
@@ -918,8 +926,8 @@ var _ = Describe("typed trust", func() {
 		})
 	})
 
-	Describe("profile --update", func() {
-		It("profile --update without a scope flag applies profiles trust only", func() {
+	Describe("profile update", func() {
+		It("profile update without a scope flag applies profiles trust only", func() {
 			kit("")
 			pull("kit")
 			dir := filepath.Join(p.RemoteProfiles, "go")
@@ -929,8 +937,8 @@ var _ = Describe("typed trust", func() {
 				Rerun: []string{engine.TrustAll.Arg()}})
 			Expect(err).To(MatchError(ContainSubstring("project " + proj + " has changes you have not trusted (kit and project.yml's targets), which its sync asks about, and no flag named it")))
 			Expect(errs.Hints(err)).To(Equal([]string{
-				"name it, and trust them: lola profile --project remote:go --update --trust=entries,profiles,scripts,hooks,runtime-hooks",
-				"or with user scope too: lola profile --scope both remote:go --update --trust=entries,profiles,scripts,hooks,runtime-hooks"}))
+				"name it, and trust them: lola profile --project update remote:go --trust=entries,profiles,scripts,hooks,runtime-hooks",
+				"or with user scope too: lola profile --scope both update remote:go --trust=entries,profiles,scripts,hooks,runtime-hooks"}))
 		})
 	})
 
@@ -947,7 +955,7 @@ var _ = Describe("typed trust", func() {
 			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Names: []string{"go"}, Consent: func([]engine.RemoteProfile) (bool, error) { return true, nil },
 				Rerun: []string{flag, "--plain"}, Flags: []string{"-y"}})
 			Expect(err).To(HaveOccurred())
-			Expect(errs.Hints(err)).To(ContainElement("or update it at user scope only: lola profile --user remote:go --update --plain"))
+			Expect(errs.Hints(err)).To(ContainElement("or update it at user scope only: lola profile --user update remote:go --plain"))
 		},
 		Entry("--trust", "--trust"),
 		Entry("--trust=hooks", "--trust=hooks"),

@@ -39,7 +39,7 @@ const maxOrigin = 64 << 10
 
 // Origin is a remote profile's source.json: the source, ref and --path it was
 // fetched from, the commit a git source resolved to and the digest of profile.yml. The user's
-// consent at --add or --update covers exactly this pin.
+// consent at add or update covers exactly this pin.
 type Origin struct {
 	Version int    `json:"version"`
 	Source  string `json:"source"`
@@ -182,7 +182,7 @@ func FetchedNames(dir string) ([]string, int, error) {
 	}
 	names, invalid, err := list(dir)
 	if k := slices.Index(names, BaseName); k >= 0 {
-		names, invalid = slices.Delete(names, k, k+1), invalid+1 // lola profile --add refuses the name base
+		names, invalid = slices.Delete(names, k, k+1), invalid+1 // lola profile add refuses the name base
 	}
 	if names == nil {
 		names = []string{}

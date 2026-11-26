@@ -124,9 +124,9 @@ func (a *app) bold(w any) bool {
 	return a.getenv("TERM") != "dumb" && isTTY(w)
 }
 
-// emit is the one output path: JSON under --json, the run's contexts first (withContext),
-// otherwise the human renderer, through page, which opens the viewer when the output is taller
-// than the terminal.
+// emit is the one output path: JSON under --json, the run's contexts first (withContext) and its
+// notes in its notices (withNotices), otherwise the human renderer, through page, which opens the
+// viewer when the output is taller than the terminal, then the notes on stderr (printNotes).
 func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) error {
 	w := cmd.OutOrStdout()
 	var shown []string
@@ -138,6 +138,10 @@ func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) erro
 		if doc, err = withContext(doc, a.contexts); err != nil {
 			return err
 		}
+		if doc, err = withNotices(doc, a.notes); err != nil {
+			return err
+		}
+		a.notes = nil
 		var out bytes.Buffer
 		if err := json.Indent(&out, doc, "", "  "); err != nil {
 			return err
@@ -152,6 +156,7 @@ func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) erro
 	s := a.style(cmd)
 	s.shown = &shown
 	a.page(cmd, w, s, human)
+	a.printNotes(cmd)
 	a.remember(cmd, shown)
 	return nil
 }

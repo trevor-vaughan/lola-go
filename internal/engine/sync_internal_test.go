@@ -72,7 +72,7 @@ var _ = Describe("sourceFailure", func() {
 		for _, err := range []error{
 			&fetchFailedError{errors.New("could not resolve host")},
 			fmt.Errorf("example: %w", &source.NotOnRefError{Commit: strings.Repeat("a", 40), Location: "https://example.com/x.git"}),
-			&catalogMismatchError{errs.WithHints(errors.New("marketplace acme lists x at a, which main does not reach"), "lola market acme --update")},
+			&catalogMismatchError{errs.WithHints(errors.New("marketplace acme lists x at a, which main does not reach"), "lola market update acme")},
 			&digestMismatchError{name: "example", got: "sha256:b", want: "sha256:a"},
 			&servedCommitError{name: "example", got: "b", want: "a"},
 			&commitFetchError{name: "example", err: errors.New("fetch failed")},

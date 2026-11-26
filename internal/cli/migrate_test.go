@@ -515,7 +515,7 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.out).To(ContainSubstring("marketplaces:\n  ✓ registered acme from "+plugins+" path catalog.yml\n"),
 			"its catalog is the only .yml at the root, which the Python lola read and lola's own lookup would not find")
 		Expect(r.out).To(ContainSubstring("  not registered: off (git+" + plugins + "): it is disabled in the Python lola\n" +
-			"      hint: lola market off --add " + plugins + " --path catalog.yml\n"))
+			"      hint: lola market add " + plugins + " off --path catalog.yml\n"))
 		Expect(r.out).To(ContainSubstring("  not registered: plain (http://example.com/m.yml): it uses plain http://"))
 		Expect(r.out).To(ContainSubstring("the Python lola's home " + home + " stays: 2 marketplaces lola did not register are still in " +
 			filepath.Join(home, "market")))
@@ -525,7 +525,7 @@ var _ = Describe("lola migrate", func() {
 				hints = append(hints, "lola market"+h)
 			}
 		}
-		Expect(hints).To(Equal([]string{"lola market lola-general --add " + plugins + " --path catalog.yml", "lola market off --add " + plugins + " --path catalog.yml"}))
+		Expect(hints).To(Equal([]string{"lola market add " + plugins + " lola-general --path catalog.yml", "lola market add " + plugins + " off --path catalog.yml"}))
 		for _, h := range hints {
 			again := lola(shellWords(h)[1:]...)
 			Expect(again.code).To(Equal(0), h+": "+again.err)

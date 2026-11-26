@@ -50,7 +50,7 @@ var _ = Describe("fetchEntry", func() {
 		_, err = e.fetchEntry(context.Background(), pick, spec, commit, run)
 		Expect(err).To(MatchError(fmt.Sprintf("marketplace acme lists bundle with sha256 %s; the download is %x", strings.ToLower(listed),
 			sha256.Sum256(buf.Bytes()))))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --update --json"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market update acme --json"}))
 		left, err := os.ReadDir(run)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(left).To(BeEmpty(), "nothing was extracted")
@@ -59,7 +59,7 @@ var _ = Describe("fetchEntry", func() {
 		se := &syncEntry{ent: manifest.Entry{Name: "bundle", Source: spec.Location}, spec: spec, update: true, follow: pick}
 		err = e.resolveSync(context.Background(), Scope{Kind: target.User}, se, run, nil, Progress{})
 		Expect(err).To(MatchError(ContainSubstring("marketplace acme lists bundle with sha256 " + strings.ToLower(listed) + "; the download is ")))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --update --json"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market update acme --json"}))
 
 		pick.entry.ArchiveSHA256 = fmt.Sprintf("%x", sha256.Sum256(buf.Bytes()))
 		spec, commit = pick.spec("")

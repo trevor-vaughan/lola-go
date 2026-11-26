@@ -1,7 +1,7 @@
 # The known marketplaces list
 
 For maintainers; back to the [release checklist](../release.md). Users meet this list as
-`lola market --known` and `lola market --enable <id>` ([guide](../guides/marketplaces.md#known-marketplaces)).
+`lola market known` and `lola market enable <id>` ([guide](../guides/marketplaces.md#known-marketplaces)).
 
 The list is `internal/market/known.yaml`, embedded in the binary and read by `market.Known`
 (`internal/market/known.go`, which validates every field and refuses the whole file on the first
@@ -22,7 +22,7 @@ An entry needs all of these:
 
 - **An owner that will stay:** an organisation, or a maintainer with a long record of the project.
 - **Active:** a commit on the default branch within the last 12 months.
-- **A catalog lola reads:** `lola market --enable <id> -n -y` succeeds on the pin with this build.
+- **A catalog lola reads:** `lola market enable <id> -n -y` succeeds on the pin with this build.
 - **A git source:** a reachable git repository, never an archive.
 - **Stars alone never qualify** an entry.
 
@@ -36,7 +36,7 @@ Enabling runs nothing from a catalog either way.
 
 ## The pin
 
-Every entry names one commit. `--enable` registers that commit and `lola market <name> --update`
+Every entry names one commit. `enable` registers that commit and `lola market update <name>`
 fetches it again, so the catalog and the entries it keeps in the same repository never move with
 a branch. An entry whose source is another repository is fetched at the ref the pinned catalog
 names for it, which may be a branch head; the pin does not cover that. A newer pin reaches users
@@ -49,7 +49,7 @@ only with a newer lola.
    `gh api repos/<owner>/<repo>/license` or its `LICENSE`, to state in the `reason` when it is
    missing or proprietary.
 2. Add the entry to `known.yaml`, pinned to that head, with today's date as `curated`.
-3. `task build`, then `lola market --enable <id> -n -y` in a throwaway `HOME` and `XDG_*`
+3. `task build`, then `lola market enable <id> -n -y` in a throwaway `HOME` and `XDG_*`
    (or run `task release:known`). Read the entry and skipped counts it prints.
 4. `go test ./internal/market/... ./internal/engine/...`: a spec loads the shipped list and
    checks each entry is sound and a git source.
@@ -71,4 +71,4 @@ check the criteria still hold, set the new `commit` and `curated`, and run the t
 
 Delete it from `known.yaml` when it fails a criterion (archived, no commit for 12 months, an owner
 change) or its pinned catalog no longer enables. Users who enabled it keep their
-registration; it is theirs once enabled, and `lola market <name> --remove` removes it.
+registration; it is theirs once enabled, and `lola market rm <name> ` removes it.

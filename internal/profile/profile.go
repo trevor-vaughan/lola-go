@@ -1,7 +1,7 @@
 // Package profile reads profiles: named, shareable sets of module entries in the
 // shape of manifest entries. It reads the user's own profiles and default, from
 // paths.UserProfiles; a project's committed profiles, from <root>/.lola/profiles, which it
-// treats as someone else's; remote profiles, which lola profile --add keeps in
+// treats as someone else's; remote profiles, which lola profile add keeps in
 // paths.RemoteProfiles; and the profiles of a source the engine fetched into staging. It does no
 // network access and writes no file.
 package profile
@@ -59,7 +59,7 @@ const (
 )
 
 // MixedError is a file that has both bundle: and modules:, the one shape
-// lola can fix (lola profile <name> --split, which the engine hints): Line is bundle:'s line, Name
+// lola can fix (lola profile split <name>, which the engine hints): Line is bundle:'s line, Name
 // the profile's name (its file's base name).
 type MixedError struct {
 	Path string
@@ -81,7 +81,7 @@ const (
 	KindUser    Kind = "user"    // $XDG_CONFIG_HOME/lola/profiles/<name>.yml
 	KindDefault Kind = "default" // $XDG_CONFIG_HOME/lola/profiles/default.yml, user scope only
 	KindProject Kind = "project" // <root>/.lola/profiles/<name>.yml, committed with the project
-	KindRemote  Kind = "remote"  // <paths.RemoteProfiles>/<name>/profile.yml, fetched by lola profile --add
+	KindRemote  Kind = "remote"  // <paths.RemoteProfiles>/<name>/profile.yml, fetched by lola profile add
 )
 
 // ProjectDir is where a project keeps its profiles, relative to its root.
@@ -545,7 +545,7 @@ func (p *Profile) check(root *yaml.Node) error {
 
 // checkBundle reads bundle: into Bundle and applies the shape rules, root being its document's
 // mapping and at the line of a key: a remote profile holds no bundle:; bundle: is a list (bundle:
-// [] for none yet) of names; a bundle lists no modules (a *MixedError, which lola profile --split
+// [] for none yet) of names; a bundle lists no modules (a *MixedError, which lola profile split
 // fixes) and no targets; it names at most MaxMembers profiles, each once under any spelling, each a
 // profile name, bare or qualified by user:, project: or remote:, never default or base under any of
 // them (always loaded) and, in a project's bundle, never one of yours. An invalid name in a
@@ -697,7 +697,7 @@ func (e *ExtendsError) Error() string {
 // member of the file's bundle would find it (a file beside it, or a remote profile), so a new
 // profile never shadows one; on is, for default.yml, the profile on at user scope as a bundle of
 // yours names it ("" for none), which the bundle switched to keeps; split is the lola profile
-// --split that moves the file's modules: and targets: into a profile of their own once extends: is
+// split that moves the file's modules: and targets: into a profile of their own once extends: is
 // a bundle: ("" when the caller has none: the hint then says how to move them by hand). An error
 // of taken is returned.
 func (e *ExtendsError) Hint(taken func(name string) (bool, error), on, split string) (string, error) {
@@ -731,7 +731,7 @@ func (e *ExtendsError) Hint(taken func(name string) (bool, error), on, split str
 			members, keep = append(slices.Clone(members), on), " and "+on+", the profile on now, which the switch keeps"
 		}
 		return "remove extends: from " + e.Path + ", then switch to a bundle of them" + keep + ": " +
-			errs.ShellJoin([]string{"lola", "profile", "--user", name, "--switch", "--new", "--bundle", strings.Join(members, ",")}), nil
+			errs.ShellJoin([]string{"lola", "profile", "--user", "switch", name, "--new", "--bundle", strings.Join(members, ",")}), nil
 	}
 	if e.bundle {
 		return "remove extends: from " + e.Path + " and list its profiles first in bundle: as " + strings.Join(e.Members, ", "), nil

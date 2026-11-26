@@ -142,8 +142,8 @@ var _ = Describe("selection edits", func() {
 		Expect(res.Notices).To(Equal([]engine.Notice{
 			{Level: engine.LevelWarn, Text: "example comes from " + src + ", outside the project: a teammate's sync will refuse it; " +
 				"share a module through a git repository or an https:// archive"},
-			{Level: engine.LevelInfo, Text: "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch"},
-			{Level: engine.LevelInfo, Text: "meant for every project? move it from this project into your user base: lola profile --user --move example --to base -C " + proj}}), "the move hint alone")
+			{Level: engine.LevelInfo, Text: "keep it to yourself: lola profile -C " + proj + " move example --to mine --switch"},
+			{Level: engine.LevelInfo, Text: "meant for every project? move it from this project into your user base: lola profile --user move example --to base -C " + proj}}), "the move hint alone")
 		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
 	})
 
