@@ -177,9 +177,11 @@ var _ = Describe("lola market known and enable", func() {
 		It("refuses under --json with the plan it would have asked about, the one -n --json prints", func() {
 			r := run(nil, "market", "enable", "acme", "--json")
 			Expect(r.code).To(Equal(3))
-			refusal := doc(r.err)
+			// The two runs fetch at different seconds.
+			fetchedAt := regexp.MustCompile(`"fetched_at":\s*"[^"]*"`)
+			refusal := doc(fetchedAt.ReplaceAllString(r.err, `"fetched_at": ""`))
 			Expect(refusal["hints"]).To(Equal([]any{"lola market enable acme --json -y"}))
-			plan := doc(run(nil, "market", "enable", "acme", "--json", "-n").out)
+			plan := doc(fetchedAt.ReplaceAllString(run(nil, "market", "enable", "acme", "--json", "-n").out, `"fetched_at": ""`))
 			Expect(plan["dry_run"]).To(BeTrue())
 			Expect(plan["known"]).To(HaveKeyWithValue("commit", pin))
 			for k, v := range plan {
