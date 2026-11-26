@@ -492,7 +492,7 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 	})
 })
 
-var _ = Describe("the questions of lola init, lola market --add and hook and script consent", func() {
+var _ = Describe("the questions of lola init, lola market add and hook and script consent", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
 	It("Esc on the background question stays: it is a first screen", func() {

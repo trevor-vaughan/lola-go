@@ -117,12 +117,12 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - A `--plain` notice row is `notice<TAB>level<TAB>text`; in a `sync` or `install` of
     `--scope both` it ends with the scope it is for (`project` or `user`).
 - Scope commands (`install`, `uninstall`, `sync`, `update`, `list`, `info`, `check` when it reads
-  the scope's entries, `tidy`, `repair`, and `lola profile` listing, showing, `--on`, `--off` and
-  `--switch`) print one context line per scope:
+  the scope's entries, `tidy`, `repair`, and `lola profile` listing, showing, `on`, `off` and
+  `switch`) print one context line per scope:
   - Human output: on stderr, once the scope is resolved: `project /home/me/src/acme: profile go
     over project.yml`, `user scope: profile go over default` (`user scope: default` with none on);
     a bundle on is named with its members: `user scope: bundle work (go-review, docs) over
-    default`. After `--on`, `--off` or `--switch` changes the profile on, human output ends with
+    default`. After `on`, `off` or `switch` changes the profile on, human output ends with
     `now: <context line>`.
   - `--json`: their document starts with `context`, and their refusal carries it as one key among
     the error's fields, which are sorted by key.
@@ -180,8 +180,8 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
       `forgotten_modules`, `notices`).
 - Human output says a hook or install script `would run` in a dry run; `--json` and `--plain`
   keep the value `would-run`.
-- The results of `install`, `uninstall`, `update` and `sync` (and so of `profile --on`, `--off`
-  and `--switch`) carry `scripts`: each install script the run ran, would
+- The results of `install`, `uninstall`, `update` and `sync` (and so of `profile on`, `off`
+  and `switch`) carry `scripts`: each install script the run ran, would
   run, declined or saw fail, per module and assistant, in run order (`[]` when none; [Install
   scripts](../guides/choosing-what-to-install.md#install-scripts)).
   - Its `path` is shown as configured, with control characters replaced, and `sha256` is the
@@ -192,8 +192,8 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - A script larger than 64 KiB, or not UTF-8 text, or holding a NUL, has `body` `""` and
     `withheld` `too_large` or `not_text`: output never shows it, so only `--unseen` consents to
     it.
-- The results of `install`, `uninstall`, `update` and `sync` (and so of `profile --on`, `--off`
-  and `--switch`) carry `trash`: each trash run, by path, holding a copy of a file `--force`
+- The results of `install`, `uninstall`, `update` and `sync` (and so of `profile on`, `off`
+  and `switch`) carry `trash`: each trash run, by path, holding a copy of a file `--force`
   replaced or deleted, one per scope written (`[]` when none, and always under `-n`), and
   `trash_credentials`: each copy in those runs that may hold credentials, the whole file of a JSON
   member `--force` wrote over or removed (`[]` when none). Human output prints `→ N files
@@ -232,7 +232,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     is an error: `1`. A No you typed at a hook or script consent question prints the refusal and
     exits `4`; with no terminal to ask on, it is `3`.
   - With several scopes, a refusal in a later scope can follow an earlier scope that was applied; the
-    output says which. So can the refusal of `lola profile --update`'s sync, which follows the profiles
+    output says which. So can the refusal of `lola profile update`'s sync, which follows the profiles
     it already wrote.
   - The refusal's text, hints and `--json` document are the same as for any error; only the code
     differs, so a script tells "answer needed" (`3`) from a failure (`1`).
@@ -240,7 +240,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - Ctrl+C (SIGINT) or SIGTERM elsewhere stops the fetch, download or hook the command is waiting
     on, or its writes before they start, removes its temporary files, and lola then dies of the
     signal, so your shell reports `130` or `143` and a script running lola stops too.
-  - It prints nothing then, but for a `lola profile --update` that already wrote a profile: that
+  - It prints nothing then, but for a `lola profile update` that already wrote a profile: that
     error says what is updated but not applied, and the `lola sync` that applies it (under
     `--json`, the error document).
   - A second Ctrl+C ends it at once.
@@ -290,7 +290,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     and forms, such as `lola install`'s steps, which leave nothing behind, shares one rule; each
     question gets its own.
   - A yes/no question (`uninstall`, `cache rm`, `cache clean`, `migrate`, a bare `init`, the
-    removals `sync` asks about, the profiles `profile --add` and `--update` ask about, hook consent,
+    removals `sync` asks about, the profiles `profile add` and `update` ask about, hook consent,
     `Proceed?`) and the install review sit under the text they ask about: printed, the prompt
     `Uninstall mymod? [y/N]` on the next line, when both fit the terminal; otherwise in the viewer,
     the prompt between the rule and the keys.
@@ -325,7 +325,7 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     `config.yaml` it goes in.
   - `source` is `installed` (the installed assistant's, where lola assumes it), `chosen` (your
     answer to the version question) or `flag` (`-t <id>@<version>`).
-- `install`, `uninstall`, `sync`, `update`, `profile --on`, `--off`, `--switch` and `--move` carry `edits`
+- `install`, `uninstall`, `sync`, `update`, `profile on`, `off`, `switch` and `move` carry `edits`
   (`[]` when the run wrote no entry): one object per entry lola wrote into a file, `{module,
   action, profile, kind, path, scope}`.
   - `action` is `added`, `changed` or `removed`.

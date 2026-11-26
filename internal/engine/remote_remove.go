@@ -16,10 +16,10 @@ import (
 )
 
 // ProfileRemove is lola profile's action that deletes a profile of yours or a kept remote profile;
-// it is also the flag lola profile takes for it.
-const ProfileRemove ProfileAction = "remove"
+// it is also lola profile's verb for it.
+const ProfileRemove ProfileAction = "rm"
 
-// ProfileRemoveRequest is one lola profile <name> --remove:
+// ProfileRemoveRequest is one lola profile rm <name>:
 // delete the profile Name names, a profile of yours (user:try, or a bare name only yours has),
 // which goes to the trash, or a remote one (remote:go, or a bare name only a remote profile has).
 // Scope is the scope the run is in: a profile it, user scope or the project found from the working
@@ -39,7 +39,7 @@ type ProfileRemoveRequest struct {
 	Confirm func(RemoteProfile) (bool, error)
 }
 
-// ProfileRemoveResult is what lola profile --remove reports: the profile, its file and its
+// ProfileRemoveResult is what lola profile rm reports: the profile, its file and its
 // source ("" for a profile of yours), whether it was removed (false in a dry run), where a
 // profile of yours went in the trash ("" for a remote one, and in a dry run), and the notices.
 type ProfileRemoveResult struct {
@@ -82,7 +82,7 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 		return nil, err
 	}
 	q := string(profile.KindRemote) + ":" + name
-	again := []string{q, "--remove"}
+	again := []string{"rm", q}
 	if req.Force {
 		again = append(again, "--force")
 	}
@@ -106,7 +106,7 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 	// it was given for, and a hint must not answer another.
 	confirm := slices.Concat(again, []string{"-y"})
 	if req.Confirm == nil && !req.DryRun && !req.Force {
-		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola profile --remove asks before it deletes a profile, and there is no terminal to ask on")),
+		return nil, errs.WithHints(errs.NeedsAnswer(errors.New("lola profile rm asks before it deletes a profile, and there is no terminal to ask on")),
 			"confirm it: "+e.Command(sc, "profile", confirm...))
 	}
 	res.Notices = append(res.Notices, notes...)

@@ -59,8 +59,8 @@ An install writes one file per scope, the first of these that applies:
    (`$XDG_CONFIG_HOME/lola/profiles/default.yml`) at user scope.
 
 A `--profile` that is off is written and nothing is applied; the notice says so (`saved to profile
-rust; it is not on at user scope → lola profile --user rust --switch`). Its move hints name that
-profile as the move's source (`lola profile --user rust --move kit --to base`), and a move into a
+rust; it is not on at user scope → lola profile --user switch rust`). Its move hints name that
+profile as the move's source (`lola profile --user move kit --to base --from rust`), and a move into a
 profile that is off keeps it off (`--keep-off`); nothing of the module is installed here to move.
 After a write to a project's profile that is off, no move is hinted.
 

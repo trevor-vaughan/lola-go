@@ -77,8 +77,8 @@ var _ = Describe("scope for every command", func() {
 		Entry("update", "update", "-n", "-y"),
 		Entry("repair", "repair", "-n", "-y"),
 		Entry("tidy", "tidy", "-n", "-y"),
-		Entry("profile --on", "profile", "go", "--on", "-n", "-y"),
-		Entry("profile --switch", "profile", "go", "--switch", "-n", "-y"),
+		Entry("profile --on", "profile", "on", "go", "-n", "-y"),
+		Entry("profile --switch", "profile", "switch", "go", "-n", "-y"),
 	)
 
 	It("every scoped command resolves its scope as install does", func() {
@@ -167,39 +167,39 @@ var _ = Describe("scope for every command", func() {
 			return string(b)
 		}
 		projLedger, userLedger := filepath.Join(proj, ".lola", "lock.json"), filepath.Join(tmp, "state", "lola", "lock.json")
-		r = lola("profile", "go", "--on")
+		r = lola("profile", "on", "go")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HavePrefix("error: lola profile acts on one scope at a time, and default_scope: both in " + cfg + " names two\n"))
+		Expect(r.err).To(HavePrefix("error: lola profile on acts on one scope at a time, and default_scope: both in " + cfg + " names two\n"))
 		Expect(os.WriteFile(cfg, []byte("version: 1\ndefault_scope: user\n"), 0o600)).To(Succeed())
-		r = lola("profile", "go", "--on")
+		r = lola("profile", "on", "go")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(active(userLedger)).To(ContainSubstring(`"user:go"`), "off a terminal and outside a project, default_scope")
 		Expect(active(projLedger)).NotTo(ContainSubstring(`"user:go"`))
 
 		GinkgoT().Chdir(sub)
 		p = &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}}
-		r = lolaP(p, "profile", "go", "--on")
+		r = lolaP(p, "profile", "on", "go")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.scopeSteps).To(Equal([]cli.ScopeStep{{Question: "Turn it on where?", ProjectRoot: proj, Home: home,
 			ProjectContext: "project.yml", UserContext: "profile go over default", One: true}}))
 		Expect(active(projLedger)).To(ContainSubstring(`"user:go"`), "on a terminal, the picker")
-		r = lola("profile", "go", "--off", "--user")
+		r = lola("profile", "off", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(active(userLedger)).NotTo(ContainSubstring(`"user:go"`), "a scope flag")
-		r = lola("profile", "go", "--off")
+		r = lola("profile", "off", "go")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(active(projLedger)).NotTo(ContainSubstring(`"user:go"`), "off a terminal, the project found walking up")
 
 		Expect(os.Remove(cfg)).To(Succeed())
 		GinkgoT().Chdir(bare)
-		Expect(lola("profile", "go", "--on").err).To(HavePrefix("error: lola profile needs a scope"))
+		Expect(lola("profile", "on", "go").err).To(HavePrefix("error: lola profile on needs a scope"))
 	})
 
 	It("gives the scope picker each scope's context, and prints the line once picked", func() {
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--switch", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user").code).To(Equal(0))
 		proj := filepath.Join(tmp, "picked")
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 		GinkgoT().Chdir(proj)

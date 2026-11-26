@@ -97,7 +97,7 @@ var _ = Describe("pins.yaml", func() {
 		Expect(pinsFile()).To(ContainSubstring(pinLine("main")))
 	})
 
-	// switchTo turns name on at user scope as lola profile --switch -y does.
+	// switchTo turns name on at user scope as lola profile switch -y does.
 	switchTo := func(name string) *engine.SyncResult {
 		GinkgoHelper()
 		res, err := e.Sync(ctx, engine.SyncRequest{Scope: user, Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: name},

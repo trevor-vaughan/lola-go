@@ -102,7 +102,7 @@ var _ = Describe("write lines", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("Files:\n✓ added kit to project.yml (base, shared: git tracks it)\n"))
 
-		r = lola("profile", "team", "--switch", "-C", proj, "-y")
+		r = lola("profile", "switch", "team", "-C", proj, "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		r = lola("install", other, "-C", proj, "-t", "claude-code", "-y")
 		Expect(r.code).To(Equal(0), r.err)

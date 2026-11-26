@@ -1039,7 +1039,7 @@ var _ = Describe("Migrate", func() {
 		Expect(requests.Load()).To(BeZero(), "a dry run fetches no catalog")
 		Expect(res.Nothing).To(BeFalse())
 		add := func(name, src string, more ...string) string {
-			return strings.Join(append([]string{"lola market", name, "--add", src}, append(more, "--json")...), " ")
+			return strings.Join(append([]string{"lola market add", src, name}, append(more, "--json")...), " ")
 		}
 		plugins := base + "/plugins.git"
 		const later = "; lola migrate gives the command that registers it once its run finds the catalog file the Python lola read"
@@ -1070,7 +1070,7 @@ var _ = Describe("Migrate", func() {
 				Reason: "it uses plain http://, which lola allows only for a loopback host; the marketplace has no https:// URL lola knows of"},
 			{Name: "two", URL: "git+" + base + "/two.git", Market: "two", Source: base + "/two.git", Status: migrate.MarketRegister, Hints: []string{}},
 			{Name: "update", URL: "git+" + plugins, Source: plugins, Status: migrate.MarketSkipped,
-				Reason: "marketplace name update is reserved: lola market update answers with the lola command to run instead, so it cannot name a marketplace" + later,
+				Reason: "marketplace name update is reserved: it is a word of lola market, so it cannot name a marketplace" + later,
 				Hints:  []string{}},
 		}))
 
@@ -1086,7 +1086,7 @@ var _ = Describe("Migrate", func() {
 			"update": migrate.MarketSkipped, "plain": migrate.MarketSkipped, "page": migrate.MarketSkipped}))
 		Expect(res.Markets[3].Reason).NotTo(BeEmpty())
 		Expect(res.Markets[3].Hints).To(Equal([]string{"git ls-remote -- " + base + "/missing.git", "lola migrate --json"}),
-			"its --add would not read the file the Python lola read; a rerun of lola migrate does")
+			"its add would not read the file the Python lola read; a rerun of lola migrate does")
 		Expect(res.Markets[8]).To(And(HaveField("Name", "two"), HaveField("Hints", BeEmpty()), HaveField("Reason",
 			"the source has 2 YAML files at its root, a.yml and b.yml, and none the Python lola would pick: two.yml, two.yaml, marketplace.yml or marketplace.yaml")),
 			"no command can name the file")
@@ -1175,7 +1175,7 @@ var _ = Describe("Migrate", func() {
 				HaveField("Reason", "lola reads no marketplace from a "+scheme+":// URL")), "%s: never a folder here", name)
 		}
 		Expect(by["foo"]).To(And(HaveField("Status", migrate.MarketRegister), HaveField("Market", "foo")))
-		Expect(by["Foo"].Hints).To(Equal([]string{"lola market foo-2 --add " + folder + " --path market.yml"}),
+		Expect(by["Foo"].Hints).To(Equal([]string{"lola market add " + folder + " foo-2 --path market.yml"}),
 			"a slug never takes a name the plan registers")
 	})
 
@@ -1187,7 +1187,7 @@ var _ = Describe("Migrate", func() {
 		res, err := run(migrate.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Markets).To(HaveExactElements(And(HaveField("Status", migrate.MarketSkipped),
-			HaveField("Hints", []string{"lola market off --add " + folder + " --path market.yml"}))))
+			HaveField("Hints", []string{"lola market add " + folder + " off --path market.yml"}))))
 		Expect(res.Home.Action).To(Equal(migrate.HomeMove), "lola has no disabled state; the listing names the command")
 	})
 
@@ -1204,7 +1204,7 @@ var _ = Describe("Migrate", func() {
 			And(HaveField("Market", "dup"), HaveField("Source", x), HaveField("Status", migrate.MarketRegister)),
 			And(HaveField("Market", ""), HaveField("Status", migrate.MarketSkipped),
 				HaveField("Reason", "another of the Python lola's marketplaces has the name dup"),
-				HaveField("Hints", []string{"lola market dup-2 --add " + y + " --path y.yml"}))))
+				HaveField("Hints", []string{"lola market add " + y + " dup-2 --path y.yml"}))))
 
 		res, err = run(migrate.Options{})
 		Expect(err).NotTo(HaveOccurred())

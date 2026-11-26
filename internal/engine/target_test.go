@@ -78,7 +78,7 @@ var _ = Describe("the write target", func() {
 		Expect(err).NotTo(HaveOccurred())
 		return string(b)
 	}
-	// keepRemote writes a remote profile as lola profile --add does: profile.yml and source.json.
+	// keepRemote writes a remote profile as lola profile add does: profile.yml and source.json.
 	keepRemote := func(name, content string) {
 		GinkgoHelper()
 		o := profile.Origin{Version: profile.OriginVersion, Source: "https://example.com/profiles.git", Commit: strings.Repeat("a", 40),
@@ -119,7 +119,7 @@ var _ = Describe("the write target", func() {
 		Expect(read(filepath.Join(p.UserProfiles, "review.yml"))).To(ContainSubstring("name: kit"))
 		Expect(res.Steps).To(BeEmpty())
 		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
-			Text: "saved to profile review; it is not on in this project → lola profile --project review --switch"}))
+			Text: "saved to profile review; it is not on in this project → lola profile --project switch review"}))
 		led, err := e.Ledger(sc)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(led.Modules).NotTo(HaveKey("kit"))
@@ -153,7 +153,7 @@ var _ = Describe("the write target", func() {
 		_, err := install(sc, engine.TargetRequest{}, engine.InstallRequest{Arg: kit})
 		Expect(err).To(MatchError("remote:team is read-only; lola install needs to know whether to write to the base (project.yml), and there is no terminal to ask on"))
 		Expect(errs.Hints(err)).To(Equal([]string{"lola install --project " + kit + " --profile base",
-			"or bundle it with a profile of yours: lola profile --project team-work --switch --new --bundle remote:team,team-extras"}))
+			"or bundle it with a profile of yours: lola profile --project switch team-work --new --bundle remote:team,team-extras"}))
 
 		var asked []engine.WhereQuestion
 		_, err = e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: []string{"claude-code"}, AskWhere: func(q engine.WhereQuestion) (engine.WhereChoice, error) {
@@ -271,7 +271,7 @@ var _ = Describe("the write target", func() {
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
 		_, err := install(sc, engine.TargetRequest{Profile: "team"}, engine.InstallRequest{Arg: "kit"})
 		Expect(err).To(MatchError("kit: .lola/profiles/team.yml has not been trusted on this machine"))
-		Expect(errs.Hints(err)).To(Equal([]string{"review it by turning the profile on: lola profile --project team --switch"}),
+		Expect(errs.Hints(err)).To(Equal([]string{"review it by turning the profile on: lola profile --project switch team"}),
 			"a sync reviews only the profile on")
 	})
 
@@ -280,7 +280,7 @@ var _ = Describe("the write target", func() {
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\n"})
 		_, err := e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: kit}}, engine.Options{Target: engine.TargetRequest{Profile: "team"}})
 		Expect(err).To(MatchError(".lola/profiles/team.yml's top-level targets [claude-code] have not been trusted on this machine"))
-		Expect(errs.Hints(err)).To(Equal([]string{"review them by turning the profile on: lola profile --project team --switch",
+		Expect(errs.Hints(err)).To(Equal([]string{"review them by turning the profile on: lola profile --project switch team",
 			"or name the assistants: lola install --project " + kit + " --profile team -t claude-code"}))
 	})
 

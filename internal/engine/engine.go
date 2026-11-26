@@ -89,6 +89,9 @@ type Engine struct {
 	// repair hint of Ledger's refusal keeps: Ledger serves every command, outside any request
 	// that carries them. The CLI sets it once per run.
 	Display []string
+	// Reserved is, by noun ("market", "profile"), the words that noun's commands answer to: no item
+	// of the noun may be named one (RefuseReserved). The CLI sets it from its command tree.
+	Reserved map[string][]string
 	// KnownSeed is where the known marketplaces come from, market.Known when nil; specs replace it
 	// with a seed that names a local repository.
 	KnownSeed func() ([]market.KnownMarket, error)
@@ -101,8 +104,8 @@ type Engine struct {
 	// creating is the profile files the run's sync makes in its apply (profileWrites), which
 	// its listing and its reads of the scope's profiles see before they exist; nil for none.
 	creating *profileWrites
-	// recovering is set while a run that mends a broken bundle runs (--off, a --switch to the base,
-	// --edit --bundle): a member that resolves to no profile in a bundle it does not judge is passed
+	// recovering is set while a run that mends a broken bundle runs (off, a switch to the base,
+	// edit --bundle): a member that resolves to no profile in a bundle it does not judge is passed
 	// over with a warning naming its take-out (expansion.member), so no take-out is refused for
 	// another's; nil for every other run.
 	recovering *recovery
@@ -113,7 +116,7 @@ type Engine struct {
 
 // recovery is what a run that mends a bundle judges in full (Engine.recovering): judged, by
 // qualified name, the bundle it edits and those its new member list newly reaches (newlyReached),
-// whose breakage the edit would create; none for --off.
+// whose breakage the edit would create; none for off.
 type recovery struct {
 	judged map[string]bool
 }
@@ -154,7 +157,7 @@ type Options struct {
 	// a dry run does not. "" means ForceRun is that run.
 	RenderRun string
 	// Then is the scopes the caller applies next, from what an uninstall writes (lola profile
-	// --edit's module page): its notice that a profile it wrote is also on elsewhere names none of
+	// edit's module page): its notice that a profile it wrote is also on elsewhere names none of
 	// them.
 	Then []Scope
 	// ConfirmThen, when set, asks about the removals each scope of Then would make once the
@@ -806,7 +809,7 @@ func (e *Engine) coachLedger(sc Scope, err error) error {
 	}
 	hint := "remove the profiles key from " + shown(old.File)
 	if n := len(old.Names); n > 0 {
-		hint += ", then turn your profile on again: " + e.Command(sc, "profile", append([]string{old.Names[n-1], "--switch"}, e.Display...)...)
+		hint += ", then turn your profile on again: " + e.Command(sc, "profile", append([]string{"switch", old.Names[n-1]}, e.Display...)...)
 	}
 	return errs.WithHints(err, hint)
 }

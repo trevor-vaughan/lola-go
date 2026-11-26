@@ -59,7 +59,7 @@ reachability check's repository, version builds (`version-*`, assembled beside t
 SIGINT and SIGTERM cancel the command's context (`cli.NotifyContext`, set on the root command in
 `main`): the git, download or hook it waits on is stopped, `Engine.commit` refuses to start a write
 on a cancelled context, the error unwinds through the deferred `done`, and `cli.Execute` returns 128
-plus the signal's number, printing nothing but the error of a `profile --update` that wrote profiles
+plus the signal's number, printing nothing but the error of a `profile update` that wrote profiles
 it did not apply (what was updated, and the `lola sync` that applies it); `main` then resets the
 signal and sends it to lola itself (`reraise`, Unix), so the parent sees a death by the signal and a
 calling shell script stops (Windows exits with the code).

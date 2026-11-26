@@ -345,7 +345,7 @@ var _ = Describe("trash paths", func() {
 	It("trash: start --run (--empty -y)--> done", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{}
-		r := lolaP(p, "trash", "--empty", "-y")
+		r := lolaP(p, "trash", "empty", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(BeEmpty())
 		Expect(r.out).To(ContainSubstring("✓ deleted 1 trash run"))
@@ -550,7 +550,7 @@ var _ = Describe("trash paths", func() {
 		// huh's Esc on a first screen is pinned in keys_internal_test.go "on the first screen, Esc says q quits in the key help, not as an error, and stays".
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		p := &scripted{confirm: []bool{false}}
-		r := lolaP(p, "trash", "--empty")
+		r := lolaP(p, "trash", "empty")
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Delete 1 trash run? This cannot be undone."}))
 		Expect(p.confirmNavs[0].Back).To(BeFalse(), "a first screen: Esc stays")

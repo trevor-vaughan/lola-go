@@ -121,7 +121,7 @@ testcases:
           - result.systemout ShouldNotContainSubstring "kit claude-code"
           - result.systemout ShouldContainSubstring "rooted claude-code ok"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} grep -c 'lola market off --add http://127.0.0.1:8765/market.git --path catalog.yml --json' /tmp/result.json"
+        script: "{{.runtime}} exec {{.container}} grep -c 'lola market add http://127.0.0.1:8765/market.git off --path catalog.yml --json' /tmp/result.json"
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -150,7 +150,7 @@ testcases:
   - name: The hint for the disabled marketplace registers it
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} market off --add http://127.0.0.1:8765/market.git --path catalog.yml"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} market add http://127.0.0.1:8765/market.git off --path catalog.yml"
         assertions:
           - result.code ShouldEqual 0
       - type: exec

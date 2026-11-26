@@ -558,7 +558,7 @@ func (m marketPicker) head(i int, status bool) string {
 // detail is a row's lines under its first: its description (a known row's reason when its catalog
 // has none), if any, then its source, then, once its run has ended
 // with this row unreachable and no banner, the reason and what to do: for one of yours u retries
-// and --remove forgets it, for a known one you have not enabled u checks again; with the only
+// and rm forgets it, for a known one you have not enabled u checks again; with the only
 // check failed, the connection is named first.
 func (m marketPicker) detail(i int) []string {
 	r := m.rows[i]
@@ -575,7 +575,7 @@ func (m marketPicker) detail(i int) []string {
 	}
 	hint := "→ u checks again"
 	if i < m.own {
-		hint = "→ u retries · lola market " + oneLine(r.ID) + " --remove forgets it"
+		hint = "→ u retries · lola market rm " + oneLine(r.ID) + " forgets it"
 	}
 	if len(m.results) == 1 {
 		hint = "→ check your network connection; " + strings.TrimPrefix(hint, "→ ")
@@ -860,7 +860,7 @@ func (h *huhForms) listPage(m *marketPicker) error {
 				// u is the TUI's key; here the catalog is fetched from the menu (m<n>) or the command.
 				id := oneLine(m.rows[picked[0]-1].ID)
 				fmt.Fprintf(h.out, "%s has no entries; fetch its catalog with m%d (Update), or %s\n", id, picked[0],
-					errs.ShellJoin([]string{"lola", "market", id, "--update"}))
+					errs.ShellJoin([]string{"lola", "market", "update", id}))
 				m.note = ""
 				continue
 			}

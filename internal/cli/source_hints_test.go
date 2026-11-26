@@ -163,16 +163,16 @@ var _ = Describe("a forceable skip planned under -n hints a real run", func() {
 	It("profile --split -n hints the real split, and it renders", func() {
 		writeTree(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "profiles"), map[string]string{"base1.yml": "version: 1\n",
 			"mine.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
-		sw := lola("profile", "mine", "--switch", "--user", "-y", "--trust=all")
+		sw := lola("profile", "switch", "mine", "--user", "-y", "--trust=all")
 		Expect(sw.code).To(Equal(0), sw.err)
 		mixed := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "profiles", "mine.yml") // on, then edited by hand
 		Expect(os.WriteFile(mixed, []byte("version: 1\ntargets: [claude-code]\nbundle: [base1]\nmodules:\n  - {name: kit, source: "+kit+"}\n"), 0o644)).To(Succeed())
-		hint := anyway(lola("profile", "mine", "--split", "--user", "-n", "-v"))
+		hint := anyway(lola("profile", "split", "mine", "--user", "-n", "-v"))
 		Expect(runHint(hint).code).To(Equal(0))
 	})
 
 	It("profile --edit <module> -n hints the real edit, and it renders", func() {
-		hint := anyway(lola("profile", "--edit", kit, "-C", proj, "-t", "claude-code", "-n", "-v"))
+		hint := anyway(lola("profile", "edit", kit, "-C", proj, "-t", "claude-code", "-n", "-v"))
 		Expect(runHint(hint).code).To(Equal(0))
 		Expect(filepath.Join(proj, ".claude/agents/critic.md")).To(BeARegularFile())
 	})

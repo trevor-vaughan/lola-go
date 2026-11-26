@@ -369,7 +369,7 @@ var _ = Describe("lola info", func() {
 			gitIn(work, "add", "-A")
 			gitIn(work, "commit", "-q", "-m", "v1")
 			gitIn(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "acme.git"))
-			r := lola("market", "--add", testenv.ServeGit(filepath.Join(tmp, "srv"))+"/acme.git")
+			r := lola("market", "add", testenv.ServeGit(filepath.Join(tmp, "srv"))+"/acme.git")
 			Expect(r.code).To(Equal(0), r.err)
 			return "@acme/kit"
 		}, func() {

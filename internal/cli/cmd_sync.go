@@ -429,9 +429,9 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, args []string, prof *engine.ProfileChange,
 	f syncFlags) (res *engine.SyncResult, more string, err error) {
 	opts := engine.Options{DryRun: f.dry, Force: f.force, Strict: f.strict, Display: outputFlags(cmd)}
-	// lola profile's --on, --off and --switch take --force too: their
-	// conflicts hint it, with the profile's name.
-	if cmd.Name() == "sync" || cmd.Name() == "update" {
+	// lola profile on, off and switch take --force too: their conflicts hint it, with the profile's
+	// name; lola profile update takes none.
+	if w := commandWords(cmd); w == "sync" || w == "update" {
 		// A conflict's --force completes your own run, so it keeps the --trust and -y you gave: it
 		// answers no question you did not.
 		opts.ForceRun, opts.RenderRun = runWithout(cmd, args, "force")+" --force", renderRun(cmd, args)

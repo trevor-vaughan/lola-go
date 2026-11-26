@@ -16,6 +16,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -129,6 +130,31 @@ var _ = Describe("lola sync", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(manPath, append(b, []byte(entry)...), 0o644)).To(Succeed())
 	}
+
+	It("hints away a lock.json with an older lola's profiles list with a switch that runs, keeping --json", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(filepath.Dir(p.UserLedger), map[string]string{filepath.Base(p.UserLedger): `{"version":1,` +
+			`"profiles":[{"name":"user:go","by":"on"},{"name":"user:docs","by":"on"}],"modules":{},"created":[]}`})
+		const again = ", then turn your profile on again: "
+		r := lola("sync", "--user")
+		Expect(r.code).To(Equal(1))
+		_, run, ok := strings.Cut(lastHint(r.err), again)
+		Expect(ok).To(BeTrue(), r.err)
+		Expect(run).To(Equal("lola profile --user switch user:docs"))
+		expectRunnable(run)
+		r = lola("sync", "--user", "--json")
+		Expect(r.code).To(Equal(1))
+		var doc struct {
+			Hints []string `json:"hints"`
+		}
+		Expect(json.Unmarshal([]byte(r.out+r.err), &doc)).To(Succeed(), r.out+r.err)
+		Expect(doc.Hints).NotTo(BeEmpty())
+		_, run, ok = strings.Cut(doc.Hints[len(doc.Hints)-1], again)
+		Expect(ok).To(BeTrue(), r.err)
+		Expect(run).To(Equal("lola profile --user switch user:docs --json"))
+		expectRunnable(run)
+	})
 
 	Describe("consent grants only what lola has shown you", func() {
 		hooky := func(command string) {
@@ -548,7 +574,7 @@ var _ = Describe("lola sync", func() {
 			HaveField("Label", HavePrefix("+ kit (project.yml, project:go) ")))))), "one option trusts both changes, and says so")
 	})
 
-	// turnOn records name as the active profile in lock.json, as lola profile --on does.
+	// turnOn records name as the active profile in lock.json, as lola profile on does.
 	turnOn := func(name string) {
 		GinkgoHelper()
 		ledgerPath := filepath.Join(proj, ".lola", "lock.json")

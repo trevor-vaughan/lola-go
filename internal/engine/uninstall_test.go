@@ -108,15 +108,15 @@ var _ = Describe("uninstall from the layer that provides a module", func() {
 		on("remote:team")
 		_, err := e.Uninstall(ctx, user, []string{"kit"}, engine.Options{})
 		Expect(err).To(MatchError("kit comes from remote:team, which is read-only; lola does not edit remote profiles"))
-		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user --off",
-			"or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user off",
+			"or switch to a copy of yours: lola profile --user switch team-mine --new --from remote:team"}))
 
 		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\nbundle: [remote:team]\n"})
 		on("user:work")
 		_, err = e.Uninstall(ctx, user, []string{"kit"}, engine.Options{})
 		Expect(err).To(MatchError("kit comes from remote:team, which is read-only; lola does not edit remote profiles"))
-		Expect(errs.Hints(err)).To(Equal([]string{"turn bundle work off: lola profile --user --off",
-			"or take remote:team out of bundle work: lola profile --user work --edit --bundle ''"}), "a bundle's member goes off with its bundle, or out of it")
+		Expect(errs.Hints(err)).To(Equal([]string{"turn bundle work off: lola profile --user off",
+			"or take remote:team out of bundle work: lola profile --user edit work --bundle ''"}), "a bundle's member goes off with its bundle, or out of it")
 		_, err = e.EditBundle(ctx, engine.BundleEditRequest{Scope: user, Name: "work", Members: []string{},
 			ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
 		Expect(err).NotTo(HaveOccurred(), "the hint runs as printed")
@@ -194,7 +194,7 @@ var _ = Describe("uninstall from the layer that provides a module", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read("work.yml")).To(Equal("version: 1\n"), "work is not on: its file is edited, and nothing is installed or removed")
 		Expect(res.Modules).To(BeEmpty())
-		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "saved to profile work; it is not on at user scope → lola profile --user work --switch"}))
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "saved to profile work; it is not on at user scope → lola profile --user switch work"}))
 
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: a, source: " + a + "}\n"})
 		on("user:go")
@@ -218,7 +218,7 @@ var _ = Describe("uninstall from the layer that provides a module", func() {
 		Expect(read("work.yml")).To(Equal("version: 1\n"))
 		Expect(command("a")).NotTo(BeAnExistingFile(), "the leftover is uninstalled, as without --profile")
 		Expect(res.Modules).To(HaveLen(1))
-		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "saved to profile work; it is not on at user scope → lola profile --user work --switch"}))
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "saved to profile work; it is not on at user scope → lola profile --user switch work"}))
 	})
 
 	It("-t with --profile naming a profile that is not on narrows its entry of a module that is not installed", func() {
@@ -228,7 +228,7 @@ var _ = Describe("uninstall from the layer that provides a module", func() {
 		on("user:go")
 		res, err := e.Uninstall(ctx, user, []string{"b"}, engine.Options{Targets: []string{"opencode"}, Target: engine.TargetRequest{Profile: "work"}, DryRun: true})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "would be saved to profile work; it is not on at user scope → lola profile --user work --switch"}),
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "would be saved to profile work; it is not on at user scope → lola profile --user switch work"}),
 			"a dry run saves nothing")
 		Expect(read("work.yml")).To(Equal("version: 1\ntargets: [claude-code, opencode]\nmodules:\n  - {name: b, source: " + b + "}\n"))
 
@@ -484,7 +484,7 @@ var _ = Describe("uninstall from the layer that provides a module", func() {
 
 // writeRemoteKit serves a git module kit, installs it once at user scope to learn its pin, and
 // keeps a remote profile name whose one entry is kit at that pin (profile.yml and source.json, as
-// lola profile --add writes them); default.yml is left with no module.
+// lola profile add writes them); default.yml is left with no module.
 func writeRemoteKit(p paths.Paths, name string) {
 	GinkgoHelper()
 	tmp := filepath.Dir(p.Home)

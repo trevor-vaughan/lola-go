@@ -39,7 +39,7 @@ var _ = Describe("remote profiles", func() {
 			Skip("symbolic links need privileges on Windows")
 		}
 	}
-	// keep writes a remote profile as lola profile --add does: profile.yml and its source.json.
+	// keep writes a remote profile as lola profile add does: profile.yml and its source.json.
 	keep := func(name, content string, edit func(*profile.Origin)) string {
 		GinkgoHelper()
 		dir := filepath.Join(p.RemoteProfiles, name)

@@ -106,7 +106,7 @@ var _ = Describe("lola trash", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(filepath.Join(proj, ".mcp.json") + " (may hold credentials)"))
 		Expect(r.out).To(ContainSubstring("→ restore them (replaces "+filepath.Join(proj, ".mcp.json")+
-			", which moves to a new trash run first): lola trash "+id+" --restore --force\n"), "the copy's file is there: a plain restore is refused")
+			", which moves to a new trash run first): lola trash restore "+id+" --force\n"), "the copy's file is there: a plain restore is refused")
 		r = lola("trash", id, "--plain")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("entry\t" + filepath.Join(proj, ".mcp.json") + "\t" + filepath.Join(run, ".mcp.json") + "\ttrue\n"))
@@ -120,14 +120,14 @@ var _ = Describe("lola trash", func() {
 		_, hint, ok := strings.Cut(r.out, "→ restore them (replaces "+filepath.Join(proj, ".mcp.json")+", which moves to a new trash run first): ")
 		Expect(ok).To(BeTrue(), r.out)
 		hint = strings.TrimSuffix(hint, "\n")
-		Expect(hint).To(Equal("lola trash " + id + " --restore --force"))
+		Expect(hint).To(Equal("lola trash restore " + id + " --force"))
 		r = runHint(hint)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(proj, ".mcp.json"))).To(Equal("{}\n"))
 
 		id = trashRunOf(proj, at.Add(time.Hour), "lola tidy", nil, ".claude/commands/lint.md")
 		r = lola("trash", id)
-		Expect(r.out).To(HaveSuffix("→ restore them: lola trash "+id+" --restore\n"), "nothing in the way: the plain restore works")
+		Expect(r.out).To(HaveSuffix("→ restore them: lola trash restore "+id+"\n"), "nothing in the way: the plain restore works")
 	})
 
 	It("prints what a run says only escaped", func() {
@@ -140,16 +140,164 @@ var _ = Describe("lola trash", func() {
 		}
 	})
 
+	It("shows a run with trash show and with the trash <run> shorthand, identically", func() {
+		id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		long, short := lola("trash", "show", id, "--plain"), lola("trash", id, "--plain")
+		Expect(long.code).To(Equal(0), long.err)
+		Expect(short).To(Equal(long))
+	})
+
+	It("lists with trash list as bare trash does off a terminal", func() {
+		trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		Expect(lola("trash", "list", "--json")).To(Equal(lola("trash", "--json")))
+		Expect(lola("trash", "ls", "--json")).To(Equal(lola("trash", "--json")))
+	})
+
+	It("opens no picker for trash list, even on a terminal", func() {
+		trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		p := &scripted{}
+		r := lolaP(p, "trash", "list")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(BeEmpty())
+	})
+
+	It("coaches an old action flag to its subcommand, keeping the other flags", func() {
+		id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		r := lola("trash", id, "--restore", "-n")
+		Expect(r.code).NotTo(Equal(0))
+		Expect(r.err).To(ContainSubstring("--restore is not a flag of lola trash"))
+		Expect(r.err).To(ContainSubstring("hint: lola trash restore " + id + " -n\n"))
+		expectRunnable("lola trash restore " + id + " -n")
+		Expect(filepath.Join(trashDir, id)).To(BeADirectory(), "the refused run changed nothing")
+	})
+
+	It("coaches an old action flag typed after a flag of a verb, keeping that flag", func() {
+		id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		r := lola("trash", id, "-n", "--restore")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: --restore is not a flag of lola trash\n  hint: lola trash restore " + id + " -n\n"))
+		expectRunnable(lastHint(r.err))
+		Expect(filepath.Join(trashDir, id)).To(BeADirectory(), "the refused run changed nothing")
+	})
+
+	It("keeps each flag of a shorthand cluster the verb takes, so -ny stays a dry run", func() {
+		id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		r := lola("trash", id, "--restore", "-ny")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: --restore is not a flag of lola trash\n  hint: lola trash restore "+id+" -n\n"),
+			"restore takes -n and not -y")
+		expectRunnable(lastHint(r.err))
+		r = lola("trash", id, "--empty", "-yn")
+		Expect(lastHint(r.err)).To(Equal("lola trash empty " + id + " -y -n"))
+		expectRunnable(lastHint(r.err))
+	})
+
+	DescribeTable("coaches each old action flag and alias to its verb",
+		func(flag, verb string) {
+			id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+			r := lola("trash", id, flag)
+			Expect(r.code).NotTo(Equal(0))
+			Expect(r.err).To(ContainSubstring(flag + " is not a flag of lola trash"))
+			Expect(r.err).To(ContainSubstring("hint: lola trash " + verb + " " + id + "\n"))
+			expectRunnable("lola trash " + verb + " " + id)
+		},
+		Entry("--restore", "--restore", "restore"), Entry("--undo", "--undo", "restore"), Entry("--recover", "--recover", "restore"),
+		Entry("--empty", "--empty", "empty"), Entry("--purge", "--purge", "empty"), Entry("--clear", "--clear", "empty"))
+
+	It("coaches a sibling verb's flag with that verb's usage and the flag, never the run's operands", func() {
+		id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		r := lola("trash", "restore", id, "--older-than", "30d")
+		Expect(r.code).NotTo(Equal(0))
+		Expect(r.err).To(ContainSubstring("--older-than applies to lola trash empty"))
+		Expect(r.err).To(ContainSubstring("hint: usage: lola trash empty [<run>...] --older-than 30d\n"))
+		Expect(r.err).NotTo(ContainSubstring(id + " --older-than"))
+		r = lola("trash", "empty", "--force")
+		Expect(r.err).To(ContainSubstring("--force applies to lola trash restore"))
+		Expect(r.err).To(ContainSubstring("hint: usage: lola trash restore <run> [<original>...] --force\n"))
+	})
+
+	It("reads a sibling flag's value given with = too", func() {
+		id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		r := lola("trash", "restore", id, "--older-than=30d")
+		Expect(r.err).To(ContainSubstring("hint: usage: lola trash empty [<run>...] --older-than 30d\n"))
+	})
+
+	It("coaches an old flag with the words typed after it too, and a second old flag with its own hint", func() {
+		id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		r := lola("trash", "--restore", id, "-n")
+		Expect(r.err).To(ContainSubstring("hint: lola trash restore " + id + " -n\n"))
+		expectRunnable("lola trash restore " + id + " -n")
+		r = lola("trash", id, "--restore", "--empty")
+		Expect(r.err).To(ContainSubstring("hint: lola trash restore " + id + "\n"))
+		Expect(r.err).To(ContainSubstring("hint: lola trash empty " + id + "\n"))
+		r = lola("trash", "--restore")
+		Expect(r.err).To(ContainSubstring("hint: usage: lola trash restore <run> [<original>...]\n"))
+		Expect(r.err).To(ContainSubstring("hint: find one: lola trash list\n"))
+	})
+
+	It("keeps the run's output flags in the find one hint", func() {
+		r := lola("trash", "restore", "--json")
+		Expect(r.code).To(Equal(1))
+		d := doc(r.out + r.err)
+		Expect(d["hints"]).To(ContainElement("find one: lola trash list --json"))
+		expectRunnable("find one: lola trash list --json")
+		r = lola("trash", "--restore", "--plain")
+		Expect(r.err).To(ContainSubstring("find one: lola trash list --plain"))
+	})
+
+	It("passes an unknown flag no verb takes to the root's refusal", func() {
+		r := lola("trash", "list", "--nope")
+		Expect(r.code).NotTo(Equal(0))
+		Expect(r.err).To(ContainSubstring("unknown flag: --nope"))
+		Expect(r.err).To(ContainSubstring("hint: see: lola trash list --help"))
+	})
+
+	It("suggests the verb a typo is near, keeping the operands", func() {
+		id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		r := lola("trash", "restor", id)
+		Expect(r.code).NotTo(Equal(0))
+		Expect(r.err).To(ContainSubstring(`unknown trash run or command "restor"`))
+		Expect(r.err).To(ContainSubstring("hint: did you mean: lola trash restore " + id + "\n"))
+		expectRunnable("lola trash restore " + id)
+		Expect(filepath.Join(trashDir, id)).To(BeADirectory())
+	})
+
+	It("shows a word that names no verb as a run, refusing it as an unknown run", func() {
+		r := lola("trash", "nonesuch")
+		Expect(r.code).NotTo(Equal(0))
+		Expect(r.err).To(ContainSubstring("there is no trash run nonesuch"))
+		Expect(r.err).To(ContainSubstring("hint: see the runs: lola trash list"))
+	})
+
+	It("empties every run with trash empty after -y, and off a terminal without -y refuses with the plan", func() {
+		trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		r := lola("trash", "empty", "--json")
+		Expect(r.code).NotTo(Equal(0))
+		Expect(r.out + r.err).To(ContainSubstring(`"removed"`))
+		Expect(r.err + r.out).To(ContainSubstring("lola trash empty --json -y"))
+		Expect(lola("trash", "list", "--json").out).NotTo(ContainSubstring(`"runs": []`), "the refused run deleted nothing")
+		Expect(lola("trash", "empty", "-y").code).To(Equal(0))
+		Expect(lola("trash", "--json").out).To(ContainSubstring(`"runs": []`))
+	})
+
+	It("prints, in a coach refusal under --json, error and hints, though --json came after the unknown flag", func() {
+		id := trashRunOf(proj, at, "lola tidy", nil, ".mcp.json")
+		r := lola("trash", id, "--restore", "--json")
+		d := doc(r.out + r.err)
+		Expect(d["error"]).To(ContainSubstring("--restore is not a flag of lola trash"))
+		Expect(d["hints"]).To(ContainElement("lola trash restore " + id + " --json"))
+	})
+
 	It("restores a run's entries, a relative original resolved against the working directory", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md", ".claude/commands/lint.md")
 		GinkgoT().Chdir(proj)
-		r := lola("trash", id, ".claude/commands/ship.md", "--restore", "--json")
+		r := lola("trash", "restore", id, ".claude/commands/ship.md", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		d := doc(r.out)
 		Expect(d["restored"]).To(HaveLen(1))
 		Expect(d["run_removed"]).To(BeFalse())
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal("ship\n"))
-		r = lola("trash", id, "--restore")
+		r = lola("trash", "restore", id)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("✓ restored 1 item from trash run " + id))
 		Expect(r.out).To(ContainSubstring("trash run " + id + " is empty now, and was removed"))
@@ -182,24 +330,24 @@ var _ = Describe("lola trash", func() {
 	It("refuses a restore over what is there, hinting --force, and -n prints the plan", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		writeTree(proj, map[string]string{".claude/commands/ship.md": "new\n"})
-		r := lola("trash", id, "--restore", "-n", "--plain")
+		r := lola("trash", "restore", id, "-n", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("restore\t" + filepath.Join(proj, ".claude/commands/ship.md")))
 		Expect(r.out).To(ContainSubstring("exists\t" + filepath.Join(proj, ".claude/commands/ship.md")))
-		r = lola("trash", id, "--restore")
+		r = lola("trash", "restore", id)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("hint: move what is there to a new trash run, then restore: lola trash " + id + " --restore --force"))
+		Expect(r.err).To(ContainSubstring("hint: move what is there to a new trash run, then restore: lola trash restore " + id + " --force"))
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal("new\n"))
-		r = lola("trash", id, "--restore", "--force")
+		r = lola("trash", "restore", id, "--force")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal("ship\n"))
 		Expect(r.out).To(ContainSubstring("moved what was in their place to trash run "))
 	})
 
-	DescribeTable("takes --undo and --recover for --restore, --purge and --clear for --empty",
-		func(flag string, restores bool) {
+	DescribeTable("takes undo and recover for restore, purge and clear for empty, ls for list",
+		func(verb string, restores bool) {
 			id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
-			args := []string{"trash", id, "--" + flag}
+			args := []string{"trash", verb, id}
 			if !restores {
 				args = append(args, "-y")
 			}
@@ -210,49 +358,29 @@ var _ = Describe("lola trash", func() {
 			}
 			Expect(filepath.Join(trashDir, id)).NotTo(BeADirectory())
 		},
-		Entry("--undo", "undo", true), Entry("--recover", "recover", true),
-		Entry("--purge", "purge", false), Entry("--clear", "clear", false))
+		Entry("undo", "undo", true), Entry("recover", "recover", true),
+		Entry("purge", "purge", false), Entry("clear", "clear", false))
 
-	DescribeTable("refuses a flag its action does not take, or two actions, hinting the run without it",
+	DescribeTable("refuses what the verb cannot do, hinting the run that works",
 		func(args []string, refusal, hint string) {
 			r := lola(args...)
 			Expect(r.code).To(Equal(1))
 			Expect(r.err).To(ContainSubstring("error: " + refusal + "\n"))
 			Expect(r.err).To(ContainSubstring("hint: " + hint + "\n"))
+			expectRunnable(hint)
 		},
-		Entry("--force without --restore", []string{"trash", "--force"}, "--force applies to --restore only", "drop it: lola trash"),
-		Entry("-y with --restore", []string{"trash", "x", "--restore", "-y"}, "--yes applies to --empty only", "drop it: lola trash x --restore"),
-		Entry("--older-than without --empty", []string{"trash", "--older-than", "3d"}, "--older-than applies to --empty only", "drop it: lola trash"),
-		Entry("-n alone", []string{"trash", "-n"}, "--dry-run applies to --restore and --empty only", "drop it: lola trash"),
-		Entry("both actions", []string{"trash", "x", "--restore", "--empty"}, "--restore and --empty cannot be combined; lola trash takes one action per run",
-			"lola trash x --restore"),
-		Entry("--older-than given empty", []string{"trash", "--empty", "--older-than", ""}, `--older-than "" is not an age; write a whole number of days or weeks, such as 30d or 2w`,
-			"use an age: lola trash --empty --older-than 30d"),
-		Entry("--restore without a run", []string{"trash", "--restore"}, "--restore needs the run to restore from", "see the runs: lola trash"),
-		Entry("two runs to show", []string{"trash", "a", "b"}, "lola trash shows one run at a time", "show one: lola trash a"),
-		Entry("--older-than 0d", []string{"trash", "--empty", "--older-than", "0d"}, `--older-than "0d" must be at least 1d`,
-			"use an age: lola trash --empty --older-than 30d"),
-		Entry("--older-than 0w", []string{"trash", "--empty", "--older-than", "0w"}, `--older-than "0w" must be at least 1w`,
-			"use an age: lola trash --empty --older-than 30d"),
+		Entry("two runs to show", []string{"trash", "a", "b"}, "lola trash shows one run at a time", "show one: lola trash show a"),
+		Entry("two runs to show, saying how to restore them", []string{"trash", "show", "a", "b"}, "lola trash shows one run at a time",
+			"restore those from a: lola trash restore a b"),
+		Entry("restore with no run", []string{"trash", "restore"}, "lola trash restore needs a trash run", "find one: lola trash list"),
+		Entry("show with no run", []string{"trash", "show"}, "lola trash show needs a trash run", "find one: lola trash list"),
 	)
 
-	DescribeTable("coaches a verb-shaped trash command with the action flag form, keeping the other flags",
-		func(args []string, refusal, hint string) {
-			r := lola(args...)
-			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(ContainSubstring("error: " + refusal + "\n"))
-			Expect(r.err).To(ContainSubstring("hint: " + hint + "\n"))
-			Expect(r.err).NotTo(ContainSubstring("restore those from"))
-		},
-		Entry("restore a run", []string{"trash", "restore", "x"}, "restore is not a lola trash verb: the action is a flag: lola trash <run> --restore", "lola trash x --restore"),
-		Entry("restore a run, with -y, which restore does not take", []string{"trash", "restore", "x", "-y"}, "restore is not a lola trash verb: the action is a flag: lola trash <run> --restore", "lola trash x --restore"),
-		Entry("restore originals, dry", []string{"trash", "restore", "x", "a.md", "-n"}, "restore is not a lola trash verb: the action is a flag: lola trash <run> --restore", "lola trash x a.md --dry-run --restore"),
-		Entry("restore with no run", []string{"trash", "restore"}, "restore is not a lola trash verb: the action is a flag: lola trash <run> --restore", "see the runs: lola trash"),
-		Entry("empty a run", []string{"trash", "empty", "x"}, "empty is not a lola trash verb: the action is a flag: lola trash <run> --empty", "lola trash x --empty"),
-		Entry("empty a run, with -y", []string{"trash", "empty", "x", "-y"}, "empty is not a lola trash verb: the action is a flag: lola trash <run> --empty", "lola trash x --yes --empty"),
-		Entry("empty with no run, whose hint never deletes every run", []string{"trash", "empty"}, "empty is not a lola trash verb: the action is a flag: lola trash <run> --empty", "see the runs: lola trash"),
-		Entry("empty with no run, older than 30d, whose hint keeps the age", []string{"trash", "empty", "--older-than", "30d", "-n"}, "empty is not a lola trash verb: the action is a flag: lola trash <run> --empty", "lola trash --dry-run --older-than 30d --empty"),
-	)
+	It("names show's own usage, not restore's, when show has no run", func() {
+		r := lola("trash", "show")
+		Expect(r.err).To(ContainSubstring("hint: usage: lola trash show <run>\n"))
+		Expect(r.err).NotTo(ContainSubstring("restore"))
+	})
 
 	DescribeTable("hints a bad --older-than corrected, never without it, and never with -y",
 		func(args []string, hint string) {
@@ -266,24 +394,24 @@ var _ = Describe("lola trash", func() {
 				Expect(shellWords(h.(string))).NotTo(ContainElements("-y", "--yes"), "a corrected value is a new question")
 			}
 		},
-		Entry("a word, with -y", []string{"trash", "--empty", "--older-than", "xyz", "-y", "--json"},
-			"use an age: lola trash --empty --json --older-than 30d"),
-		Entry("never, with runs", []string{"trash", "a", "b", "--purge", "--older-than", "never", "--yes", "--json"},
-			"use an age: lola trash a b --empty --json --older-than 30d"),
-		Entry("empty, with -n", []string{"trash", "--empty", "--older-than", "", "-n", "--json"},
-			"use an age: lola trash --dry-run --empty --json --older-than 30d"),
+		Entry("a word, with -y", []string{"trash", "empty", "--older-than", "xyz", "-y", "--json"},
+			"use an age: lola trash empty --json --older-than 30d"),
+		Entry("never, with runs", []string{"trash", "purge", "a", "b", "--older-than", "never", "--yes", "--json"},
+			"use an age: lola trash empty a b --json --older-than 30d"),
+		Entry("empty, with -n", []string{"trash", "empty", "--older-than", "", "-n", "--json"},
+			"use an age: lola trash empty --dry-run --json --older-than 30d"),
 	)
 
 	It("empties runs older than an age, -n listing them and deleting nothing", func() {
 		old := trashRunOf(proj, at.AddDate(0, 0, -40), "lola tidy", nil, ".claude/commands/ship.md")
 		recent := trashRunOf(proj, time.Now(), "lola tidy", nil, ".claude/commands/lint.md")
-		r := lola("trash", "--empty", "--older-than", "30d", "-n", "--json")
+		r := lola("trash", "empty", "--older-than", "30d", "-n", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		d := doc(r.out)
 		Expect(d["dry_run"]).To(BeTrue())
 		Expect(d["removed"]).To(ConsistOf(HaveKeyWithValue("id", old)))
 		Expect(filepath.Join(trashDir, old)).To(BeADirectory())
-		r = lola("trash", "--empty", "--older-than", "30d", "-y")
+		r = lola("trash", "empty", "--older-than", "30d", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("✓ deleted 1 trash run, freeing 5 B"))
 		Expect(filepath.Join(trashDir, old)).NotTo(BeADirectory())
@@ -328,7 +456,7 @@ var _ = Describe("lola trash", func() {
 	It("restores what the picker ticks with the plan lola trash <run> [<original>...] --restore makes, shown before it asks", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md", ".claude/commands/lint.md")
 		ship, lint := filepath.Join(proj, ".claude/commands/ship.md"), filepath.Join(proj, ".claude/commands/lint.md")
-		flag := lola("trash", id, ship, "--restore", "-n")
+		flag := lola("trash", "restore", id, ship, "-n")
 		Expect(flag.code).To(Equal(0), flag.err)
 
 		By("Cancel at the review goes back to the picker, the ticks kept, and changes nothing")
@@ -351,7 +479,7 @@ var _ = Describe("lola trash", func() {
 		Expect(r.out).To(ContainSubstring("✓ restored 1 item from trash run " + id))
 
 		By("ticking a run's own row restores all it holds, as the flag form naming no original does")
-		flag = lola("trash", id, "--restore", "-n")
+		flag = lola("trash", "restore", id, "-n")
 		Expect(flag.code).To(Equal(0), flag.err)
 		p = &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "lola tidy", "lint.md")}, where: []int{0}}
 		r = lolaP(p, "trash")

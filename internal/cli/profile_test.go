@@ -69,7 +69,7 @@ var _ = Describe("profiles", func() {
 
 	It("uninstall -y under a profile on removes the base's module, the one layer that lists it", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "on", "go", "--user", "-y").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))).To(Equal([]byte("version: 1\ntargets: [claude-code]\nmodules:\n" +
@@ -79,7 +79,7 @@ var _ = Describe("profiles", func() {
 	It("uninstall -y refuses when two layers list the module, hinting --profile with -y, which works", func() {
 		listC := "version: 1\nmodules:\n  - {name: c, source: " + c + "}\n"
 		writeTree(p.UserProfiles, map[string]string{"one.yml": listC, "two.yml": listC, "work.yml": "version: 1\nbundle: [one, two]\n"})
-		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c", "-y")
 		Expect(r.code).To(Equal(3), r.err)
 		Expect(r.err).To(Equal("user scope: bundle work (one, two) over default\n"+
@@ -93,7 +93,7 @@ var _ = Describe("profiles", func() {
 
 	It("uninstall without -y refuses off a terminal, and its hint adds -y", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "on", "go", "--user", "-y").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c")
 		Expect(r.code).To(Equal(3), r.err)
 		Expect(r.err).To(Equal("user scope: profile go over default\n" +
@@ -108,7 +108,7 @@ var _ = Describe("profiles", func() {
 		writeTree(beta, map[string]string{"lola.yml": "name: beta\n", "commands/beta.md": "B\n"})
 		writeTree(p.UserProfiles, map[string]string{"mixed-modules.yml": "version: 1\ntargets: [claude-code, opencode]\nmodules:\n  - {name: beta, source: " + beta + "}\n",
 			"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [mixed-modules, docs]\n"})
-		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
 		Expect(lola("sync", "--user").code).To(Equal(0))
 		r := lola("uninstall", "--user", "beta", "-t", "opencode", "-y")
 		Expect(r.code).To(Equal(3), r.err)
@@ -120,7 +120,7 @@ var _ = Describe("profiles", func() {
 		writeTree(beta, map[string]string{"lola.yml": "name: beta\n", "commands/beta.md": "B\n"})
 		writeTree(p.UserProfiles, map[string]string{"mixed-modules.yml": "version: 1\nmodules:\n  - {name: beta, source: " + beta + "}\n",
 			"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [mixed-modules, docs]\n"})
-		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "--user", "-y").code).To(Equal(0))
 		Expect(lola("sync", "--user").code).To(Equal(0))
 		r := lola("uninstall", "--user", "beta", "-y", "-n")
 		Expect(r.code).To(Equal(0), r.err)
@@ -136,11 +136,11 @@ var _ = Describe("profiles", func() {
 			"  - {name: a, source: " + a + "}\n"})
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: " + c + "}\n",
 			"work.yml": "version: 1\nmodules:\n  - {name: a, source: " + a + "}\n"})
-		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "on", "go", "--user", "-y").code).To(Equal(0))
 
 		r := lola("uninstall", "--user", "a", "--profile", "work")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out + r.err).To(ContainSubstring("saved to profile work; it is not on at user scope → lola profile --user work --switch"))
+		Expect(r.out + r.err).To(ContainSubstring("saved to profile work; it is not on at user scope → lola profile --user switch work"))
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\n")))
 
 		r = lola("uninstall", "--user", "c", "--profile", "base", "-t", "opencode")
@@ -214,17 +214,18 @@ var _ = Describe("profiles", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: name one profile to show\n  hint: list them all: lola profile\n" +
 			"  hint: or show one: lola profile go\n  hint: or show one: lola profile baseline\n"))
-		r = lola("profile", "nope", "--user")
+		r = lola("profile", "absent", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(userContext + "error: no profile nope for user scope\n  hint: make it: lola profile nope --switch --new --user\n  hint: profiles user scope can use: user:baseline, default, user:go\n"))
+		Expect(r.err).To(Equal(userContext + "error: no profile absent for user scope\n  hint: make it: lola profile switch absent --new --user\n  hint: profiles user scope can use: user:baseline, default, user:go\n"))
+		expectRunnable("lola profile switch absent --new --user")
 	})
 
 	It("lists where each profile stands, a bundle on and its members in a project and the profile on at user scope, as one glance", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n", "docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n"})
 		proj := filepath.Join(tmp, "proj")
 		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--switch", "--user").code).To(Equal(0))
-		Expect(lola("profile", "work", "--switch", "-C", proj).code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "work", "-C", proj).code).To(Equal(0))
 
 		r := lola("profile", "-C", proj, "--scope", "both")
 		Expect(r.code).To(Equal(0), r.err)
@@ -252,18 +253,18 @@ var _ = Describe("profiles", func() {
 	It("removes a profile of yours to the trash, asking on a terminal and taking -y off one", func() {
 		writeTree(p.UserProfiles, map[string]string{"try.yml": "version: 1\n"})
 		try := filepath.Join(p.UserProfiles, "try.yml")
-		r := lola("profile", "try", "--remove", "--user")
+		r := lola("profile", "rm", "try", "--user")
 		Expect(r.code).To(Equal(3))
-		Expect(r.err).To(HaveSuffix("error: lola profile --remove asks before it moves " + try + " to the trash, and there is no terminal to ask on\n" +
-			"  hint: move " + try + " to the trash: lola profile --user user:try --remove -y\n"))
+		Expect(r.err).To(HaveSuffix("error: lola profile rm asks before it moves " + try + " to the trash, and there is no terminal to ask on\n" +
+			"  hint: move " + try + " to the trash: lola profile --user rm user:try -y\n"))
 		no := &confirming{answers: []bool{false}}
-		r = lolaAsking(no, "profile", "user:try", "--remove", "--user")
+		r = lolaAsking(no, "profile", "rm", "user:try", "--user")
 		Expect(r.code).To(Equal(4), "a No is a cancel")
 		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(no.questions).To(Equal([]string{"Remove profile user:try (" + try + ")? It goes to the trash"}))
 		Expect(try).To(BeARegularFile())
 
-		r = lola("profile", "--user", "user:try", "--remove", "-y", "--json")
+		r = lola("profile", "--user", "rm", "user:try", "-y", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var v map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
@@ -275,16 +276,16 @@ var _ = Describe("profiles", func() {
 
 	It("switches to the base by name, at user scope by default's name too", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
-		r := lola("profile", "base", "--switch", "--user")
+		Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
+		r := lola("profile", "switch", "base", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("Profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") + ") → off\n"))
-		r = lola("profile", "default", "--switch", "--user")
+		r = lola("profile", "switch", "default", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("Notices:\n→ already on the base\n"))
-		r = lola("profile", "base", "--off", "--user")
+		r = lola("profile", "off", "base", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HaveSuffix("error: the base is always loaded; lola profile --off turns off the profile over it\n"))
+		Expect(r.err).To(HaveSuffix("error: the base is always loaded; lola profile off turns off the profile over it\n"))
 	})
 
 	It("lists a project's profiles and turns one on with the user's trust", func() {
@@ -301,15 +302,15 @@ var _ = Describe("profiles", func() {
 		Expect(r.out).To(MatchRegexp(`\nproject\s+go\s+project\s+off\s+`))
 		Expect(r.out).To(MatchRegexp(`\nproject\s+go\s+user\s+off\s+`))
 
-		r = lola("profile", "go", "--on")
+		r = lola("profile", "on", "go")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(projectContext(proj) + "error: go is ambiguous: your profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") +
 			") and the project's project:go (" + filepath.Join(proj, ".lola", "profiles", "go.yml") + ") are both named go\n" +
-			"  hint: yours: lola profile --project user:go --on\n  hint: the project's: lola profile --project project:go --on\n"))
-		r = lola("profile", "go", "--on", "-n", "--trust=hooks")
+			"  hint: yours: lola profile --project on user:go\n  hint: the project's: lola profile --project on project:go\n"))
+		r = lola("profile", "on", "go", "-n", "--trust=hooks")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HaveSuffix("  hint: yours: lola profile --project user:go --on --trust=hooks -n\n"+
-			"  hint: the project's: lola profile --project project:go --on --trust=hooks -n\n"), "a dry run's hints stay dry")
+		Expect(r.err).To(HaveSuffix("  hint: yours: lola profile --project on user:go --trust=hooks -n\n"+
+			"  hint: the project's: lola profile --project on project:go --trust=hooks -n\n"), "a dry run's hints stay dry")
 		r = lola("profile", "go")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(projectContext(proj)+userContext+"error: go is ambiguous: your profile user:go ("+filepath.Join(p.UserProfiles, "go.yml")+
@@ -317,12 +318,12 @@ var _ = Describe("profiles", func() {
 			"  hint: yours: lola profile --project user:go\n  hint: the project's: lola profile --project project:go\n"),
 			"the state form's hints show state")
 
-		r = lola("profile", "docs", "--on")
+		r = lola("profile", "on", "docs")
 		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("  in profile project:docs (.lola/profiles/docs.yml):\n  + b             mods/b\n"))
 		Expect(r.err).To(ContainSubstring("error: lola profile needs your trust for .lola/profiles/docs.yml, which has not been trusted on this machine"))
-		Expect(r.err).To(ContainSubstring("hint: then accept them: lola profile --project project:docs --on --trust=profiles\n"))
-		r = lola("profile", "project:docs", "--on", "--trust")
+		Expect(r.err).To(ContainSubstring("hint: then accept them: lola profile --project on project:docs --trust=profiles\n"))
+		r = lola("profile", "on", "project:docs", "--trust")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(proj, ".claude", "commands", "b.md")).To(BeARegularFile())
 		r = lola("profile", "docs", "--project")
@@ -335,29 +336,29 @@ var _ = Describe("profiles", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: " + c + "}\n"})
 		GinkgoT().Chdir(tmp)
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
-		r := lola("profile", "go", "--on", "-C", proj)
+		r := lola("profile", "on", "go", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		writeTree(proj, map[string]string{"mods/b/lola.yml": "name: b\n", "mods/b/commands/b.md": "B\n",
 			".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: b, source: ../../mods/b}\n"})
 
 		r = lola("sync", "-C", proj, "--trust", "-y")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out + r.err).To(ContainSubstring("project:go also exists → lola profile -C " + proj + " project:go --on\n"))
+		Expect(r.out + r.err).To(ContainSubstring("project:go also exists → lola profile -C " + proj + " on project:go\n"))
 		r = lola("profile", "-C", proj)
-		Expect(r.out).To(ContainSubstring("⚠ project:go also exists → lola profile -C " + proj + " project:go --on\n"))
+		Expect(r.out).To(ContainSubstring("⚠ project:go also exists → lola profile -C " + proj + " on project:go\n"))
 
-		r = lola("profile", "project:go", "--on", "-C", proj, "-y")
+		r = lola("profile", "on", "project:go", "-C", proj, "-y")
 		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("  ~ project:go now replaces user:go (b, c)\n"))
 		Expect(r.err).To(ContainSubstring("error: lola profile needs your trust for project:go replacing user:go and .lola/profiles/go.yml, which has not been trusted on this machine, "))
 
-		Expect(lola("profile", "project:go", "--on", "-C", proj, "-n", "--plain").out).To(ContainSubstring("replace\tproject:go\tuser:go\n"))
+		Expect(lola("profile", "on", "project:go", "-C", proj, "-n", "--plain").out).To(ContainSubstring("replace\tproject:go\tuser:go\n"))
 		var dry struct {
 			Trust struct {
 				Replacements []map[string]any `json:"replacements"`
 			} `json:"trust"`
 		}
-		Expect(json.Unmarshal([]byte(lola("profile", "project:go", "--on", "-C", proj, "-n", "--json").out), &dry)).To(Succeed())
+		Expect(json.Unmarshal([]byte(lola("profile", "on", "project:go", "-C", proj, "-n", "--json").out), &dry)).To(Succeed())
 		Expect(dry.Trust.Replacements).To(ConsistOf(And(HaveKeyWithValue("profile", "project:go"), HaveKeyWithValue("replaces", "user:go"))))
 		var plain struct {
 			Trust struct {
@@ -369,11 +370,11 @@ var _ = Describe("profiles", func() {
 		Expect(plain.Trust.Replacements).NotTo(BeNil(), "an empty array, never absent or null")
 
 		conf := &confirming{trusts: []engine.TrustAnswer{{}}}
-		lolaAsking(conf, "profile", "project:go", "--on", "-C", proj)
+		lolaAsking(conf, "profile", "on", "project:go", "-C", proj)
 		Expect(conf.steps[0].Changes).To(Equal(3), "the replacement, b, and project:go's targets")
 		Expect(conf.steps[0].Groups).To(BeEmpty(), "all or none")
 
-		r = lola("profile", "project:go", "--on", "-C", proj, "--trust", "-y")
+		r = lola("profile", "on", "project:go", "-C", proj, "--trust", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(lola("profile", "-C", proj, "--plain").out).To(ContainSubstring("project\tgo\tproject\ton\t\t\t"))
 	})
@@ -383,10 +384,10 @@ var _ = Describe("profiles", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: " + c + "}\n"})
 		GinkgoT().Chdir(tmp)
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
-		Expect(lola("profile", "go", "--on", "-C", proj).code).To(Equal(0))
+		Expect(lola("profile", "on", "go", "-C", proj).code).To(Equal(0))
 		// A project:go with no entries asks nothing of its own: the replacement is the only change.
 		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\n"})
-		r := lola("profile", "project:go", "--switch", "-C", proj, "-y")
+		r := lola("profile", "switch", "project:go", "-C", proj, "-y")
 		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("an activation would put a project profile in place of one of yours; it needs your trust for:\n  ~ project:go now replaces user:go (c)\n"))
 		Expect(r.err).NotTo(MatchRegexp(`(?m)^ is unchanged`))
@@ -407,52 +408,279 @@ var _ = Describe("profiles", func() {
 
 	It("completes profile names, minus those given", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "", "baseline.yml": ""})
-		Expect(lola("__complete", "profile", "").out).To(HavePrefix("baseline\ngo\n:"), "default is always on")
-		Expect(lola("__complete", "profile", "go", "").out).To(HavePrefix(":"), "one profile per run: nothing after the first")
+		Expect(lola("__complete", "profile", "on", "").out).To(HavePrefix("baseline\ngo\n:"), "default is always on")
+		Expect(lola("__complete", "profile", "on", "go", "").out).To(HavePrefix(":"), "one profile per run: nothing after the first")
+		Expect(lola("__complete", "profile", "").out).To(And(ContainSubstring("\non\t"), ContainSubstring("\ngo\n")), "the verbs and the profiles to show")
 	})
 
-	It("two different action flags refuse", func() {
+	It("takes each verb's aliases as the verb", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		for _, flags := range [][]string{{"--on", "--off"}, {"--switch", "--on"}, {"--off", "--switch"}} {
-			r := lola(append([]string{"profile", "go", "--user"}, flags...)...)
-			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(HavePrefix("error: --"), flags[0])
-			Expect(r.err).To(ContainSubstring(" cannot be combined; pick one\n"))
+		for _, w := range []string{"on", "enable", "activate"} {
+			r := lola("profile", w, "go", "--user", "-n")
+			Expect(r.code).To(Equal(0), w+": "+r.err)
+			Expect(r.out).To(HavePrefix("Profile user:go ("+filepath.Join(p.UserProfiles, "go.yml")+") → on\n"), w)
 		}
-		Expect(lola("profile", "go", "--user", "--on", "--off").err).To(Equal("error: --on and --off cannot be combined; pick one\n" +
-			"  hint: keep --on: lola profile go --on --user\n  hint: keep --off: lola profile go --off --user\n"))
-		Expect(lola("profile", "go", "--user", "--on", "--add", "https://example.com/p.git").err).To(HavePrefix(
-			"error: --on and --add cannot be combined; pick one\n"))
-		Expect(lola("profile", "go", "--user", "--off", "--switch").err).To(HavePrefix("error: --off and --switch cannot be combined; pick one\n"))
-		Expect(lola("profile", "go", "--user", "--enable", "--deactivate").err).To(HavePrefix("error: --on and --off cannot be combined; pick one\n"),
-			"aliases are refused by their canonical names")
-		Expect(lola("profile", "go", "--user", "--use", "--disable", "-n").err).To(HavePrefix("error: --off and --switch cannot be combined; pick one\n"))
-		r := lola("profile", "go", "--user", "--on", "--enable", "--activate", "-n")
-		Expect(r.code).To(Equal(0), "an alias repeated with its canonical name is one action: "+r.err)
-		Expect(r.out).To(HavePrefix("Profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") + ") → on\n"))
+		for _, w := range []string{"switch", "use"} {
+			Expect(lola("profile", w, "go", "--user", "-n").code).To(Equal(0), w)
+		}
 		Expect(p.UserLedger).NotTo(BeAnExistingFile(), "nothing applied")
-		Expect(lola("profile", "--on", "--user").err).To(Equal("error: --on needs the name of a profile\n  hint: list them: lola profile\n"))
+		Expect(lola("profile", "on", "go", "--user", "-y").code).To(Equal(0))
+		for _, w := range []string{"off", "disable", "deactivate"} {
+			Expect(lola("profile", w, "--user", "-n").code).To(Equal(0), w)
+		}
+		for _, w := range []string{"list", "ls"} {
+			Expect(lola("profile", w, "--user", "--json")).To(Equal(lola("profile", "--user", "--json")), w)
+		}
 	})
 
-	DescribeTable("refuses an action's flags without an action, or with one that does not take them",
+	It("no longer takes uninstall for rm, coaching rm with the run's names and flags", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		r := lola("profile", "uninstall", "go", "--user")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: uninstall is not a lola profile command; it is lola profile rm\n" +
+			"  hint: lola profile rm go --user\n"))
+		Expect(filepath.Join(p.UserProfiles, "go.yml")).To(BeARegularFile())
+		r = lola(append(shellWords(strings.TrimPrefix(lastHint(r.err), "lola ")), "-n")...)
+		Expect(r.code).To(Equal(0), "the hint runs: "+r.err)
+		Expect(r.out).To(ContainSubstring("would remove user:go"))
+		writeTree(p.UserProfiles, map[string]string{"uninstall.yml": "version: 1\n"})
+		Expect(lola("profile", "uninstall", "--user").code).To(Equal(0), "a profile of that name shows")
+	})
+
+	It("coaches uninstall to rm when a flag rm takes follows, keeping the flag", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		for _, flag := range []string{"-y", "--yes", "-n", "--force"} {
+			r := lola("profile", "uninstall", "go", "--user", flag)
+			Expect(r.code).To(Equal(1), flag)
+			Expect(r.err).To(Equal("error: uninstall is not a lola profile command; it is lola profile rm\n"+
+				"  hint: lola profile rm go --user "+flag+"\n"), flag)
+			expectRunnable(lastHint(r.err))
+		}
+		Expect(filepath.Join(p.UserProfiles, "go.yml")).To(BeARegularFile())
+	})
+
+	It("coaches a bare uninstall with rm's usage and the list, not a rm that refuses", func() {
+		r := lola("profile", "uninstall")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: uninstall is not a lola profile command; it is lola profile rm\n" +
+			"  hint: usage: lola profile rm <name>\n" +
+			"  hint: find one: lola profile list\n"))
+		expectRunnable(lastHint(r.err))
+	})
+
+	It("keeps the run's scope and output flags in the find one hint", func() {
+		r := lola("profile", "uninstall", "--user")
+		Expect(r.err).To(HaveSuffix("  hint: find one: lola profile list --user\n"))
+		expectRunnable(lastHint(r.err))
+		r = lola("profile", "--on", "--user")
+		Expect(r.err).To(HaveSuffix("  hint: find one: lola profile list --user\n"))
+		expectRunnable(lastHint(r.err))
+		r = lola("profile", "on", "--user", "--json")
+		Expect(r.code).To(Equal(1))
+		var d map[string]any
+		Expect(json.Unmarshal([]byte(r.out+r.err), &d)).To(Succeed(), r.out+r.err)
+		Expect(d["hints"]).To(ContainElement("find one: lola profile list --json --user"))
+		expectRunnable("find one: lola profile list --json --user")
+		r = lola("profile", "rm", "--user", "-y")
+		Expect(r.err).To(ContainSubstring("  hint: find one: lola profile list --user\n"), "never -y, which list does not take")
+		r = lola("profile", "move", "--user")
+		Expect(r.err).To(ContainSubstring("  hint: find one: lola profile show <profile>\n"), "a find with a placeholder stays as it is")
+	})
+
+	It("runs the verb when a profile has the verb's name, saying how to show the profile", func() {
+		writeTree(p.UserProfiles, map[string]string{"off.yml": "version: 1\n"}) // made by hand: lola refuses the name
+		r := lola("profile", "off", "--user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).To(ContainSubstring("ran off; to show the profile named off: lola profile show off"))
+		r = lola("profile", "show", "off", "--user", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring(`"name": "off"`), "the file still loads and shows")
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		r = lola("profile", "on", "go", "--user", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out+r.err).NotTo(ContainSubstring("ran on"), "no note when no profile has the word")
+	})
+
+	It("notes how to show a profile named like the verb from every verb, alias and refusal too", func() {
+		writeTree(p.UserProfiles, map[string]string{"ls.yml": "version: 1\n", "edit.yml": "version: 1\n", "rm.yml": "version: 1\n"})
+		note := "ran ls; to show the profile named ls: lola profile show ls"
+		r := lola("profile", "ls", "--user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.err).To(HavePrefix(userContext), "the context line comes first")
+		Expect(r.err).To(ContainSubstring(note))
+		expectRunnable(note)
+		r = lola("profile", "ls", "--user", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var d map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &d)).To(Succeed(), r.out)
+		Expect(d["notices"]).To(ContainElement(HaveKeyWithValue("text", note)), "in the notices of --json")
+		Expect(r.err).To(BeEmpty())
+		r = lola("profile", "edit", "--user")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("ran edit; to show the profile named edit: lola profile show edit"), "a refusal in the run")
+		r = lola("profile", "rm", "--user")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("ran rm; to show the profile named rm: lola profile show rm"), "a refusal of the operands")
+		Expect(lola("profile", "list", "--user").err).NotTo(ContainSubstring("ran list"), "no note when no profile has the word")
+	})
+
+	It("refuses to make a profile named after a profile verb or alias", func() {
+		for _, w := range []string{"use", "on", "ls", "rm", "remove", "show"} {
+			r := lola("profile", "switch", w, "--new", "--user")
+			Expect(r.code).NotTo(Equal(0), w)
+			Expect(r.err).To(ContainSubstring(w+" is a lola profile command, so no profile can be named "+w), w)
+			Expect(lastHint(r.err)).To(Equal("name it otherwise: lola profile switch "+w+"-1 --new --user"), w)
+			expectRunnable(strings.TrimPrefix(lastHint(r.err), "name it otherwise: "))
+			Expect(filepath.Join(p.UserProfiles, w+".yml")).NotTo(BeAnExistingFile(), w)
+		}
+		r := lola("profile", "switch", "user:on", "--new", "--user")
+		Expect(r.err).To(ContainSubstring("on is a lola profile command, so no profile can be named on"))
+		Expect(lastHint(r.err)).To(Equal("name it otherwise: lola profile switch user:on-1 --new --user"), "the kind is kept")
+		kit := filepath.Join(tmp, "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "K\n"})
+		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\nbundle: [a]\nmodules:\n  - {name: kit, source: " + kit + "}\n",
+			"a.yml": "version: 1\n"})
+		r = lola("profile", "split", "work", "--to", "list", "--user")
+		Expect(r.err).To(ContainSubstring("list is a lola profile command, so no profile can be named list"))
+		Expect(lastHint(r.err)).To(Equal("name it otherwise: lola profile split work --user --to list-1"), "another name, never the refused run")
+		r = lola(append(shellWords(strings.TrimPrefix(lastHint(r.err), "name it otherwise: lola ")), "-y")...)
+		Expect(r.code).To(Equal(0), "the hint runs: "+r.err)
+		Expect(filepath.Join(p.UserProfiles, "list-1.yml")).To(BeARegularFile())
+		r = lola("profile", "edit", "off", "--new", "--user")
+		Expect(r.err).To(ContainSubstring("off is a lola profile command, so no profile can be named off"))
+		r = lola("profile", "add", "https://example.com/p.git", "update", "--user")
+		Expect(r.err).To(ContainSubstring("update is a lola profile command, so no profile can be named update"))
+		Expect(lastHint(r.err)).To(Equal("name it otherwise: lola profile add https://example.com/p.git update-1 --user"))
+		Expect(lola("profile", "switch", "go-1", "--new", "--user", "-n").code).To(Equal(0), "another name is made")
+	})
+
+	It("parses scope flags before the verb", func() {
+		Expect(lola("profile", "--user", "list", "--json").code).To(Equal(0))
+	})
+
+	It("lists with profile list as bare profile does", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		Expect(lola("profile", "list", "--json")).To(Equal(lola("profile", "--json")))
+		Expect(lola("profile", "list", "--user", "--plain")).To(Equal(lola("profile", "--user", "--plain")))
+	})
+
+	It("shows with profile <name> as profile show <name> does, and refuses two names", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		Expect(lola("profile", "go", "--user", "--json")).To(Equal(lola("profile", "show", "go", "--user", "--json")))
+		r := lola("profile", "show", "go", "docs", "--user")
+		Expect(r.err).To(Equal("error: name one profile to show\n  hint: list them all: lola profile --user\n" +
+			"  hint: or show one: lola profile go --user\n  hint: or show one: lola profile docs --user\n"))
+		r = lola("profile", "show", "--user")
+		Expect(r.err).To(HavePrefix("error: lola profile show needs a profile\n  hint: usage: lola profile show <name>\n  hint: find one: lola profile list --user\n"))
+	})
+
+	It("refuses a near-verb word that names no profile, keeping the operands", func() {
+		r := lola("profile", "swtich", "go", "--user")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(`unknown profile or command "swtich"`))
+		Expect(r.err).To(ContainSubstring("did you mean: lola profile switch go --user"))
+		expectRunnable("lola profile switch go --user")
+	})
+
+	It("coaches the old action flag, keeping the scope and other flags", func() {
+		r := lola("profile", "go", "--on", "--user", "-n")
+		Expect(r.err).To(ContainSubstring("--on is not a flag of lola profile"))
+		Expect(lastHint(r.err)).To(Equal("lola profile on go --user -n"))
+		expectRunnable(lastHint(r.err))
+		r = lola("profile", "go", "--add", "https://example.com/p.git", "--ref", "v1")
+		Expect(lastHint(r.err)).To(Equal("lola profile add https://example.com/p.git go --ref v1"))
+		expectRunnable(lastHint(r.err))
+		r = lola("profile", "--on")
+		Expect(r.err).To(Equal("error: --on is not a flag of lola profile\n  hint: usage: lola profile on <name>\n  hint: find one: lola profile list\n"),
+			"a run the verb refuses is no hint")
+		r = lola("profile", "--update")
+		Expect(r.err).To(ContainSubstring("hint: usage: lola profile update [<name>...]"))
+	})
+
+	It("coaches a sibling verb's flag on a verb", func() {
+		r := lola("profile", "on", "go", "--to", "me")
+		Expect(r.err).To(ContainSubstring("--to applies to lola profile move and split"))
+		Expect(r.err).To(ContainSubstring("hint: usage: lola profile move <module>... --to me\n"))
+		Expect(r.err).To(ContainSubstring("hint: usage: lola profile split <name> --to me\n"))
+	})
+
+	It("names the verbs that take -y on the bare noun", func() {
+		r := lola("profile", "-y")
+		Expect(r.err).To(ContainSubstring("--yes applies to"))
+		Expect(r.err).To(ContainSubstring("lola profile off"))
+	})
+
+	It("hints add's swapped order when the name looks like a source", func() {
+		for _, src := range []string{"https://example.com/p.git", "git@example.com:acme/p", "./p.git"} {
+			r := lola("profile", "add", "go", src, "-n")
+			Expect(r.code).To(Equal(1), src)
+			Expect(r.err).To(HaveSuffix("  hint: lola profile add "+src+" go --dry-run\n"), src)
+			expectRunnable("lola profile add " + src + " go --dry-run")
+		}
+	})
+
+	It("refuses update with names and --all, and with neither, in its Args", func() {
+		r := lola("profile", "update", "go", "--all")
+		Expect(r.err).To(HavePrefix("error: --all updates every remote profile you have, and takes no names\n"))
+		Expect(cli.ResolveHint([]string{"lola", "profile", "update", "go", "--all"})).NotTo(Succeed())
+		Expect(cli.ResolveHint([]string{"lola", "profile", "update", "--all"})).To(Succeed())
+	})
+
+	It("coaches each old action flag of a run to its verb", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		r := lola("profile", "go", "--user", "--on", "--off")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: --on is not a flag of lola profile\n" +
+			"  hint: lola profile on go --user\n  hint: lola profile off go --user\n"))
+		expectRunnable("lola profile on go --user")
+		expectRunnable("lola profile off go --user")
+		r = lola("profile", "go", "--user", "--enable", "-n")
+		Expect(r.err).To(Equal("error: --enable is not a flag of lola profile\n  hint: lola profile on go --user -n\n"),
+			"an old alias flag coaches its verb")
+		Expect(lola("profile", "--user", "on").err).To(HavePrefix("error: lola profile on needs a profile\n"))
+	})
+
+	It("coaches an old action flag typed after a flag of a verb, keeping that flag", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		r := lola("profile", "go", "-n", "--on")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: --on is not a flag of lola profile\n  hint: lola profile on go -n\n"))
+		expectRunnable(lastHint(r.err))
+		r = lola("profile", "-y", "go", "--off", "--user")
+		Expect(r.err).To(Equal("error: --off is not a flag of lola profile\n  hint: lola profile off go -y --user\n"))
+		expectRunnable(lastHint(r.err))
+		r = lola("profile", "go", "--to", "me", "--move", "a")
+		Expect(lastHint(r.err)).To(Equal("lola profile move a --from go --to me"), "the old flag's lead and value, the sibling's value")
+		expectRunnable(lastHint(r.err))
+	})
+
+	It("keeps each flag of a shorthand cluster the verb takes, so -ny stays a dry run", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		r := lola("profile", "go", "--on", "-ny")
+		Expect(r.err).To(Equal("error: --on is not a flag of lola profile\n  hint: lola profile on go -n -y\n"))
+		expectRunnable(lastHint(r.err))
+		r = lola("profile", "uninstall", "go", "--user", "-yn")
+		Expect(r.err).To(Equal("error: uninstall is not a lola profile command; it is lola profile rm\n" +
+			"  hint: lola profile rm go --user -y -n\n"))
+		expectRunnable(lastHint(r.err))
+		Expect(filepath.Join(p.UserProfiles, "go.yml")).To(BeARegularFile())
+	})
+
+	DescribeTable("coaches a flag the verb does not take, naming the verbs that do",
 		func(args []string, want string) {
 			writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-			r := lola(append([]string{"profile", "go"}, args...)...)
+			r := lola(append([]string{"profile"}, args...)...)
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal(want))
+			Expect(r.err).To(HavePrefix(want))
 		},
-		Entry("-y", []string{"-y"}, "error: --yes applies to --on, --off, --switch, --edit, --move, --split, --update and --remove only\n  hint: drop it: lola profile go\n"),
-		Entry("--trust", []string{"--trust"},
-			"error: --trust applies to --on, --off, --switch, --edit, --move, --split, --add and --update only\n  hint: drop it: lola profile go\n"),
-		Entry("-n", []string{"-n", "--user"},
-			"error: --dry-run applies to --on, --off, --switch, --edit, --move, --split, --add, --update and --remove only\n  hint: drop it: lola profile go --user\n"),
-		Entry("--ref", []string{"--on", "--ref", "v1"}, "error: --ref applies to --edit and --add only\n  hint: drop it: lola profile go --on\n"),
-		Entry("--path", []string{"--path", "x"}, "error: --path applies to --edit and --add only\n  hint: drop it: lola profile go\n"),
-		Entry("-y with --add", []string{"--add", "https://example.com/p.git", "-y"},
-			"error: --yes applies to --on, --off, --switch, --edit, --move, --split, --update and --remove only\n  hint: drop it: lola profile go --add https://example.com/p.git\n"),
-		Entry("--force", []string{"--add", "https://example.com/p.git", "--force"},
-			"error: --force applies to --on, --off, --switch, --edit, --move, --split and --remove only\n  hint: drop it: lola profile go --add https://example.com/p.git\n"),
-		Entry("--ref with --update", []string{"--update", "--ref", "v1"}, "error: --ref applies to --edit and --add only\n  hint: drop it: lola profile go --update\n"),
+		Entry("-y on the noun", []string{"go", "-y"}, "error: --yes applies to lola profile on, off, switch, edit, move, split, update and rm\n"),
+		Entry("--trust on the noun", []string{"go", "--trust"}, "error: --trust applies to lola profile on, off, switch, edit, move, split, add and update\n"),
+		Entry("-n on the noun", []string{"go", "-n", "--user"}, "error: --dry-run applies to lola profile on, off, switch, edit, move, split, add, update and rm\n"),
+		Entry("--ref on on", []string{"on", "go", "--ref", "v1"}, "error: --ref applies to lola profile edit and add\n"),
+		Entry("--path on the noun", []string{"go", "--path", "x"}, "error: --path applies to lola profile edit and add\n"),
+		Entry("-y on add", []string{"add", "https://example.com/p.git", "go", "-y"}, "error: --yes applies to lola profile on, off, switch, edit, move, split, update and rm\n"),
+		Entry("--force on add", []string{"add", "https://example.com/p.git", "go", "--force"}, "error: --force applies to lola profile on, off, switch, edit, move, split and rm\n"),
+		Entry("--ref on update", []string{"update", "go", "--ref", "v1"}, "error: --ref applies to lola profile edit and add\n"),
 	)
 
 	It("turns profiles on and off, asking before it removes files", func() {
@@ -461,21 +689,21 @@ var _ = Describe("profiles", func() {
 		inHome := func(name string) string { return filepath.Join(p.Home, ".claude", "commands", name+".md") }
 		Expect(lola("sync", "--user").code).To(Equal(0))
 
-		r := lola("profile", "go", "--on", "--user")
+		r := lola("profile", "on", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("Profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") + ") → on\n"))
 		Expect(r.out).To(MatchRegexp(`\n  \+ a\s+` + a + `\s+profile:user:go\n`))
 		Expect(r.out).To(MatchRegexp(`\n  ~ c\s+` + c + `\s+profile:user:go overrides profile:default\n`))
 		Expect(inHome("a")).To(BeARegularFile())
 
-		r = lola("profile", "go", "--off", "--user")
+		r = lola("profile", "off", "go", "--user")
 		Expect(r.code).To(Equal(3))
 		Expect(r.err).To(ContainSubstring("error: lola profile needs your confirmation to remove a, and there is no terminal to ask on\n" +
-			"  hint: see them: lola profile --user user:go --off -n\n  hint: then confirm them: lola profile --user user:go --off -y\n"))
+			"  hint: see them: lola profile --user off user:go -n\n  hint: then confirm them: lola profile --user off user:go -y\n"))
 		Expect(inHome("a")).To(BeARegularFile())
 
 		ask := &confirming{answers: []bool{false}}
-		r = lolaAsking(ask, "profile", "go", "--off", "--user")
+		r = lolaAsking(ask, "profile", "off", "go", "--user")
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(ask.questions).To(Equal([]string{"Remove these and apply? No applies nothing"}))
 		Expect(r.err).To(ContainSubstring("removals declined; user scope was not changed."))
@@ -484,7 +712,7 @@ var _ = Describe("profiles", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(led.Profile).To(Equal(&ledger.Active{Name: "user:go", By: ledger.ByOn}))
 
-		r = lola("profile", "go", "--off", "--user", "-y", "--json")
+		r = lola("profile", "off", "go", "--user", "-y", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
@@ -498,46 +726,47 @@ var _ = Describe("profiles", func() {
 	})
 
 	It("makes a profile with --switch --new, saying so, and refuses its modifiers alone", func() {
-		r := lola("profile", "try", "--switch", "--new", "--user", "-n")
+		r := lola("profile", "switch", "try", "--new", "--user", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("→ would make profile try (" + filepath.Join(p.UserProfiles, "try.yml") + ", empty)\n"))
 		Expect(r.out).NotTo(ContainSubstring("✓ new"), "-n makes nothing")
-		r = lola("profile", "work", "--switch", "--new", "--bundle", "try", "--user", "-n", "--plain")
+		r = lola("profile", "switch", "work", "--new", "--bundle", "try", "--user", "-n", "--plain")
 		Expect(r.out).To(HavePrefix("would-create\tuser:try\t" + filepath.Join(p.UserProfiles, "try.yml") + "\nwould-create\tuser:work\t" +
 			filepath.Join(p.UserProfiles, "work.yml") + "\n"))
 		Expect(filepath.Join(p.UserProfiles, "try.yml")).NotTo(BeAnExistingFile())
-		r = lola("profile", "try", "--switch", "--new", "--user")
+		r = lola("profile", "switch", "try", "--new", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("✓ new profile try (" + filepath.Join(p.UserProfiles, "try.yml") + ", empty)\nProfile user:try (" +
 			filepath.Join(p.UserProfiles, "try.yml") + ") → on\n"))
-		r = lola("profile", "work", "--create", "--switch", "--bundle", "try,docs", "--user")
+		r = lola("profile", "switch", "work", "--create", "--bundle", "try,docs", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("✓ new profile docs (" + filepath.Join(p.UserProfiles, "docs.yml") + ", empty)\n✓ new bundle work (try, docs)\n"))
 		Expect(r.out).To(HaveSuffix("now: user scope: bundle work (try, docs) over default\n"))
 
-		r = lola("profile", "work2", "--switch", "--bundle", "try", "--user")
+		r = lola("profile", "switch", "work2", "--bundle", "try", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HaveSuffix("error: --bundle makes a new profile and goes with --new\n  hint: make it: lola profile work2 --bundle try --switch --user --new\n"))
-		r = lola("profile", "try", "--switch", "--from", "docs", "--user")
-		Expect(r.err).To(HaveSuffix("error: --from makes a new profile and goes with --new\n  hint: switch to the one that exists: lola profile try --switch --user\n"))
-		r = lola("profile", "x", "--switch", "--new", "--from", "try", "--bundle", "docs", "--user")
+		Expect(r.err).To(HaveSuffix("error: --bundle makes a new profile and goes with --new\n  hint: make it: lola profile switch work2 --bundle try --user --new\n"))
+		r = lola("profile", "switch", "try", "--from", "docs", "--user")
+		Expect(r.err).To(HaveSuffix("error: --from makes a new profile and goes with --new\n  hint: switch to the one that exists: lola profile switch try --user\n"))
+		r = lola("profile", "switch", "x", "--new", "--from", "try", "--bundle", "docs", "--user")
 		Expect(r.err).To(HaveSuffix("error: --from copies a profile and --bundle combines several; pick one\n" +
-			"  hint: keep --from: lola profile x --from try --new --switch --user\n  hint: keep --bundle: lola profile x --bundle docs --new --switch --user\n"))
-		r = lola("profile", "x", "--on", "--new", "--user")
-		Expect(r.err).To(HaveSuffix("error: --new applies to --switch and --edit only\n  hint: drop it: lola profile x --on --user\n"))
+			"  hint: keep --from: lola profile switch x --from try --new --user\n  hint: keep --bundle: lola profile switch x --bundle docs --new --user\n"))
+		r = lola("profile", "on", "x", "--new", "--user")
+		Expect(r.err).To(HaveSuffix("error: --new applies to lola profile switch and edit\n" +
+			"  hint: usage: lola profile switch <name> --new\n  hint: usage: lola profile edit [<name>] <module>... --new\n"))
 	})
 
 	It("refuses a --switch --new that removes files off a terminal, hinting the same run with -y, which runs as printed", func() {
 		g := filepath.Join(tmp, "mods", "g")
 		writeTree(g, map[string]string{"lola.yml": "name: g\n", "commands/g.md": "G\n"})
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: g, source: " + g + "}\n"})
-		Expect(lola("profile", "go", "--switch", "--user").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user").code).To(Equal(0))
 		gmd := filepath.Join(p.Home, ".claude", "commands", "g.md")
 		Expect(gmd).To(BeARegularFile())
 
-		r := lola("profile", "work", "--switch", "--new", "--bundle", "docs,notes", "--user")
+		r := lola("profile", "switch", "work", "--new", "--bundle", "docs,notes", "--user")
 		Expect(r.code).To(Equal(3))
-		run := "lola profile --user user:work --switch --new --bundle docs,notes"
+		run := "lola profile --user switch user:work --new --bundle docs,notes"
 		Expect(r.err).To(HaveSuffix("error: lola profile needs your confirmation to remove g, and there is no terminal to ask on\n" +
 			"  hint: see them: " + run + " -n\n  hint: then confirm them: " + run + " -y\n"))
 		Expect(runHint(run+" -n").code).To(Equal(0), "-n shows the removal and writes nothing")
@@ -556,12 +785,12 @@ var _ = Describe("profiles", func() {
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\n", ".lola/profiles/go.yml": "version: 1\n"})
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
 		GinkgoT().Chdir(proj)
-		r := lola("profile", "team", "--switch", "--from", "go")
-		Expect(r.err).To(HaveSuffix("error: --from makes a new profile and goes with --new\n  hint: switch to the one that exists: lola profile team --switch\n"))
-		r = runHint("lola profile team --switch --trust=profiles")
+		r := lola("profile", "switch", "team", "--from", "go")
+		Expect(r.err).To(HaveSuffix("error: --from makes a new profile and goes with --new\n  hint: switch to the one that exists: lola profile switch team\n"))
+		r = runHint("lola profile switch team --trust=profiles")
 		Expect(r.code).To(Equal(0), r.err)
 
-		r = lola("profile", "go", "--switch", "--bundle", "team")
+		r = lola("profile", "switch", "go", "--bundle", "team")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(HaveSuffix("error: --bundle makes a new profile and goes with --new; go is ambiguous: your profile user:go ("+
 			filepath.Join(p.UserProfiles, "go.yml")+") and the project's project:go ("+filepath.Join(proj, ".lola", "profiles", "go.yml")+
@@ -570,33 +799,33 @@ var _ = Describe("profiles", func() {
 		Expect(runHint("lola profile --project project:go").code).To(Equal(0))
 	})
 
-	It("refuses two names for --switch or --on, hinting the bundle of them, which runs as printed", func() {
+	It("refuses two names for switch or on, hinting the bundle of them, which runs as printed", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n", "docs.yml": "version: 1\n"})
-		for _, act := range []string{"--switch", "--on"} {
-			r := lola("profile", "go", "docs", act, "--user")
+		for _, act := range []string{"switch", "on"} {
+			r := lola("profile", act, "go", "docs", "--user")
 			Expect(r.code).To(Equal(1), act)
 			Expect(r.err).To(Equal("error: one profile is on at a time; to combine go and docs make a bundle\n"+
-				"  hint: lola profile --user go-docs --switch --new --bundle go,docs\n"), act)
+				"  hint: lola profile --user switch go-docs --new --bundle go,docs\n"), act)
 		}
-		r := lola("profile", "go", "docs", "--switch", "--user", "-n", "--trust=profiles", "-y", "--force")
+		r := lola("profile", "switch", "go", "docs", "--user", "-n", "--trust=profiles", "-y", "--force")
 		Expect(r.err).To(Equal("error: one profile is on at a time; to combine go and docs make a bundle\n"+
-			"  hint: lola profile --user go-docs --switch --new --bundle go,docs --trust=profiles -n\n"), "the run's flags kept, never -y or --force")
+			"  hint: lola profile --user switch go-docs --new --bundle go,docs --trust=profiles -n\n"), "the run's flags kept, never -y or --force")
 		r = runHint(strings.TrimPrefix(strings.Split(r.err, "\n")[1], "  hint: "))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(p.UserProfiles, "go-docs.yml")).NotTo(BeAnExistingFile(), "the hint keeps -n")
-		r = lola("profile", "--user", "go-docs", "--switch", "--new", "--bundle", "go,docs")
+		r = lola("profile", "--user", "switch", "go-docs", "--new", "--bundle", "go,docs")
 		Expect(r.code).To(Equal(0), r.err)
-		r = lola("profile", "go", "docs", "--off", "--user")
-		Expect(r.err).To(Equal("error: one profile is on at a time; --off takes one name\n  hint: lola profile go --off --user\n  hint: lola profile docs --off --user\n"))
+		r = lola("profile", "off", "go", "docs", "--user")
+		Expect(r.err).To(Equal("error: one profile is on at a time; off takes one name\n  hint: lola profile off go --user\n  hint: lola profile off docs --user\n"))
 	})
 
 	It("splits a mixed profile with --split, and a command that loads one offers the split on a terminal and hints it off one", func() {
 		work := filepath.Join(p.UserProfiles, "work.yml")
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go]\nmodules:\n  - {name: a, source: ../a}\n"})
-		r := lola("profile", "work", "--split", "--user")
+		r := lola("profile", "split", "work", "--user")
 		Expect(r.code).To(Equal(3))
-		Expect(r.err).To(HaveSuffix("error: lola profile --split rewrites " + work + " and makes " + filepath.Join(p.UserProfiles, "work-modules.yml") +
-			", and there is no terminal to ask on\n  hint: split it: lola profile --user work --split -y\n"))
+		Expect(r.err).To(HaveSuffix("error: lola profile split rewrites " + work + " and makes " + filepath.Join(p.UserProfiles, "work-modules.yml") +
+			", and there is no terminal to ask on\n  hint: split it: lola profile --user split work -y\n"))
 
 		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\nbundle: [go]\nmodules:\n  - {name: a, source: " + a + "}\n"})
 		led := ledger.New()
@@ -605,7 +834,7 @@ var _ = Describe("profiles", func() {
 		r = lola("list", "--user")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(HaveSuffix("error: " + work + ":2: work has both bundle: and modules:; a bundle combines profiles and a profile lists modules\n" +
-			"  hint: move its modules into a profile of their own: lola profile --user work --split\n"))
+			"  hint: move its modules into a profile of their own: lola profile --user split work\n"))
 
 		no := &confirming{answers: []bool{false}}
 		r = lolaAsking(no, "sync", "--user", "-y", "--force")
@@ -616,7 +845,7 @@ var _ = Describe("profiles", func() {
 			"  ~ user:work  bundle: go, work-modules  ("+work+")\n"+
 			"  + user:work-modules  modules: a  ("+filepath.Join(p.UserProfiles, "work-modules.yml")+", new)\n"+
 			"error: "+mixedErr+"\n"+
-			"  hint: move its modules into a profile of their own: lola profile --user work --split\n"), "the plan alone before the question, then the refusal once")
+			"  hint: move its modules into a profile of their own: lola profile --user split work\n"), "the plan alone before the question, then the refusal once")
 		yes := &confirming{answers: []bool{true}}
 		r = lolaAsking(yes, "list", "--user")
 		Expect(r.code).To(Equal(0), r.err)
@@ -631,7 +860,7 @@ var _ = Describe("profiles", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n",
 			"mods/r/lola.yml": "name: r\n", "mods/r/commands/r.md": "R\n", ".lola/profiles/lint.yml": "version: 1\n",
 			".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: r, source: ../../mods/r}\n"})
-		r := lolaAsking(&confirming{trusts: []engine.TrustAnswer{{All: true}}}, "profile", "project:team", "--on", "-C", proj)
+		r := lolaAsking(&confirming{trusts: []engine.TrustAnswer{{All: true}}}, "profile", "on", "project:team", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		mixed := "version: 1\ntargets: [claude-code]\nbundle: [lint]\nmodules:\n  - {name: r, source: ../../mods/r}\n"
 		Expect(os.WriteFile(team, []byte(mixed), 0o644)).To(Succeed())
@@ -655,49 +884,49 @@ var _ = Describe("profiles", func() {
 
 	It("turns off whatever profile is on with --off and no name", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
-		r := lola("profile", "--off", "--user")
+		Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
+		r := lola("profile", "--user", "off")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("Profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") + ") → off\n"))
-		r = lola("profile", "--off", "--user")
+		r = lola("profile", "--user", "off")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("Notices:\n→ no profile is on\n✓ no files to change\n"))
 	})
 
-	It("--off and --switch take --force to remove edited files without asking", func() {
+	It("off and switch take --force to remove edited files without asking", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + a + "}\n",
 			"none.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: " + c + "}\n"})
-		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "on", "go", "--user", "-y").code).To(Equal(0))
 		edited := filepath.Join(p.Home, ".claude", "commands", "a.md")
 		Expect(os.WriteFile(edited, []byte("mine now\n"), 0o644)).To(Succeed())
 
-		for _, run := range [][]string{{"go", "--off"}, {"none", "--switch"}} {
+		for _, run := range [][]string{{"off", "go"}, {"switch", "none"}} {
 			r := lola(append(append([]string{"profile"}, run...), "--user", "-y")...)
 			Expect(r.code).To(Equal(3), "%v", run)
 			Expect(r.err).To(ContainSubstring("error: refusing to change anything: 1 conflict, which --force overrides\n"), "%v", run)
 			Expect(r.err).To(ContainSubstring("lola profile "+run[0]+" "+run[1]+" --user --force\n"), "%v: the hint drops -y", run)
 		}
 		Expect(os.ReadFile(edited)).To(Equal([]byte("mine now\n")))
-		r := lola("profile", "go", "--off", "--user", "--force")
+		r := lola("profile", "off", "go", "--user", "--force")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(edited).NotTo(BeAnExistingFile(), "--force answered the removal and the edit")
 	})
 
 	It("asks before --on replaces the profile on, on a terminal, offering the bundle of both, and refuses off one toward --switch", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n", "docs.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
-		refused := "error: user:go is on, and --on does not replace it without asking; --switch does\n" +
-			"  hint: lola profile --user user:docs --switch\n  hint: lola profile --user go-docs --switch --new --bundle go,docs\n"
+		Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
+		refused := "error: user:go is on, and lola profile on does not replace it without asking; switch does\n" +
+			"  hint: lola profile --user switch user:docs\n  hint: lola profile --user switch go-docs --new --bundle go,docs\n"
 		for _, extra := range [][]string{nil, {"-y"}, {"--force"}} {
-			r := lola(append([]string{"profile", "docs", "--on", "--user"}, extra...)...)
+			r := lola(append([]string{"profile", "on", "docs", "--user"}, extra...)...)
 			Expect(r.code).To(Equal(1), "%v", extra)
 			Expect(r.err).To(HaveSuffix(refused), "%v answers removals only", extra)
 		}
 		question := cli.WhereStep{Title: "user:go is on.", Options: []string{"Switch to user:docs", "Make bundle go-docs of go and docs"}}
 		for _, extra := range []string{"-y", "--force"} {
 			no := &confirming{scripted: scripted{where: []int{-1}}}
-			r := lolaAsking(no, "profile", "docs", "--on", "--user", extra)
+			r := lolaAsking(no, "profile", "on", "docs", "--user", extra)
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(no.whereSteps).To(Equal([]cli.WhereStep{question}), "%s never answers it", extra)
 			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
@@ -707,15 +936,15 @@ var _ = Describe("profiles", func() {
 		}
 
 		dry := &confirming{}
-		r := lolaAsking(dry, "profile", "docs", "--on", "--user", "-n")
+		r := lolaAsking(dry, "profile", "on", "docs", "--user", "-n")
 		Expect(r.code).To(Equal(1))
 		Expect(dry.whereSteps).To(BeEmpty(), "-n asks nothing")
 		Expect(r.err).To(Equal("user scope: profile go over default\n" +
-			"error: user:go is on, and --on does not replace it without asking; --switch does\n" +
-			"  hint: lola profile --user user:docs --switch -n\n  hint: lola profile --user go-docs --switch --new --bundle go,docs -n\n"))
+			"error: user:go is on, and lola profile on does not replace it without asking; switch does\n" +
+			"  hint: lola profile --user switch user:docs -n\n  hint: lola profile --user switch go-docs --new --bundle go,docs -n\n"))
 
 		bundle := &confirming{scripted: scripted{where: []int{1}}}
-		r = lolaAsking(bundle, "profile", "docs", "--on", "--user")
+		r = lolaAsking(bundle, "profile", "on", "docs", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("✓ new bundle go-docs (go, docs)\n"))
 		led, err := ledger.Load(p.UserLedger)
@@ -723,7 +952,7 @@ var _ = Describe("profiles", func() {
 		Expect(led.Profile).To(Equal(&ledger.Active{Name: "user:go-docs", By: ledger.BySwitch}))
 
 		yes := &confirming{scripted: scripted{where: []int{0}}}
-		r = lolaAsking(yes, "profile", "go", "--on", "--user")
+		r = lolaAsking(yes, "profile", "on", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(yes.whereSteps).To(Equal([]cli.WhereStep{{Title: "user:go-docs is on.", Options: []string{"Switch to user:go", "Make bundle go-docs-go of go-docs and go"}}}))
 		led, err = ledger.Load(p.UserLedger)
@@ -731,12 +960,12 @@ var _ = Describe("profiles", func() {
 		Expect(led.Profile).To(Equal(&ledger.Active{Name: "user:go", By: ledger.BySwitch}))
 
 		js := &confirming{}
-		r = lolaAsking(js, "profile", "docs", "--on", "--user", "--json")
+		r = lolaAsking(js, "profile", "on", "docs", "--user", "--json")
 		Expect(r.code).To(Equal(1))
 		Expect(js.whereSteps).To(BeEmpty(), "--json never asks")
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
-		Expect(doc["hints"]).To(Equal([]any{"lola profile --user user:docs --switch --json", "lola profile --user go-docs-2 --switch --new --bundle go,docs --json"}),
+		Expect(doc["hints"]).To(Equal([]any{"lola profile --user switch user:docs --json", "lola profile --user switch go-docs-2 --new --bundle go,docs --json"}),
 			"go-docs is taken")
 	})
 
@@ -744,13 +973,13 @@ var _ = Describe("profiles", func() {
 		// --switch removes files --on would not, so the hint must not carry an answer to their
 		// removal (-y, --force); the run's trust answers the same entries either way and is kept.
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n", "docs.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
-		r := lola("profile", "docs", "--on", "--user", "-y", "--force", "--trust=profiles", "-n")
+		Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
+		r := lola("profile", "on", "docs", "--user", "-y", "--force", "--trust=profiles", "-n")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("user scope: profile go over default\n" +
-			"error: user:go is on, and --on does not replace it without asking; --switch does\n" +
-			"  hint: lola profile --user user:docs --switch --trust=profiles -n\n" +
-			"  hint: lola profile --user go-docs --switch --new --bundle go,docs --trust=profiles -n\n"))
+			"error: user:go is on, and lola profile on does not replace it without asking; switch does\n" +
+			"  hint: lola profile --user switch user:docs --trust=profiles -n\n" +
+			"  hint: lola profile --user switch go-docs --new --bundle go,docs --trust=profiles -n\n"))
 	})
 
 	It("an action that moves no module still says what applies it, and writes the list", func() {
@@ -759,21 +988,21 @@ var _ = Describe("profiles", func() {
 		before, err := ledger.Load(p.UserLedger)
 		Expect(err).NotTo(HaveOccurred())
 
-		r := lola("profile", "go", "--on", "--user", "-n", "--json")
+		r := lola("profile", "on", "go", "--user", "-n", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
 		Expect(doc).To(HaveKeyWithValue("in_sync", false))
 		Expect(doc).To(HaveKeyWithValue("changes", BeEmpty()))
-		Expect(doc).To(HaveKeyWithValue("equivalent_commands", ConsistOf("lola profile --user user:go --on")))
-		r = lola("profile", "go", "--on", "--user", "-n")
-		Expect(r.out).To(HaveSuffix("→ no files to change\n→ to apply: lola profile --user user:go --on\n"))
+		Expect(doc).To(HaveKeyWithValue("equivalent_commands", ConsistOf("lola profile --user on user:go")))
+		r = lola("profile", "on", "go", "--user", "-n")
+		Expect(r.out).To(HaveSuffix("→ no files to change\n→ to apply: lola profile --user on user:go\n"))
 		Expect(p.UserLedger).To(BeARegularFile())
 		after, err := ledger.Load(p.UserLedger)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(after.Profile).To(BeNil(), "a dry run writes nothing")
 
-		r = lola("profile", "go", "--on", "--user")
+		r = lola("profile", "on", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HaveSuffix("✓ no files to change\nnow: user scope: profile go over default\n"))
 		after, err = ledger.Load(p.UserLedger)
@@ -786,37 +1015,37 @@ var _ = Describe("profiles", func() {
 	It("heads only the profiles a run turns on or off; one it leaves is its notice alone", func() {
 		writeTree(p.UserProfiles, map[string]string{"api.yml": "version: 1\n", "go.yml": "version: 1\n"})
 		Expect(lola("sync", "--user").code).To(Equal(0))
-		Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+		Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 		api, goFile := filepath.Join(p.UserProfiles, "api.yml"), filepath.Join(p.UserProfiles, "go.yml")
 
-		r := lola("profile", "api", "--switch", "--user", "-n")
+		r := lola("profile", "switch", "api", "--user", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("Profile user:api (" + api + ") → on\n" +
 			"→ no files to change\n" +
-			"→ to apply: lola profile --user user:api --switch\n"))
-		r = lola("profile", "go", "--on", "--user")
+			"→ to apply: lola profile --user switch user:api\n"))
+		r = lola("profile", "on", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("Notices:\n→ user:go is already on\n✓ no files to change\n"))
 
-		r = lola("profile", "go", "--off", "--user")
+		r = lola("profile", "off", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("Profile user:go (" + goFile + ") → off\n✓ no files to change\nnow: user scope: default\n"))
-		r = lola("profile", "api", "--off", "--user")
+		r = lola("profile", "off", "api", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("Notices:\n→ user:api is not on\n✓ no files to change\n"))
 	})
 
 	It("prints the new context last after a change of the profile on, and nothing after a dry run or no change", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--switch", "--user", "-n").out).NotTo(ContainSubstring("now:"))
-		r := lola("profile", "go", "--switch", "--user")
+		Expect(lola("profile", "switch", "go", "--user", "-n").out).NotTo(ContainSubstring("now:"))
+		r := lola("profile", "switch", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HaveSuffix("now: user scope: profile go over default\n"))
 		Expect(r.err).To(HavePrefix(userContext), "the context the run started in")
-		Expect(lola("profile", "go", "--switch", "--user").out).NotTo(ContainSubstring("now:"), "nothing changed")
-		Expect(lola("profile", "--off", "--user").out).To(HaveSuffix("now: user scope: default\n"))
+		Expect(lola("profile", "switch", "go", "--user").out).NotTo(ContainSubstring("now:"), "nothing changed")
+		Expect(lola("profile", "--user", "off").out).To(HaveSuffix("now: user scope: default\n"))
 
-		r = lola("profile", "go", "--on", "--user", "--json")
+		r = lola("profile", "on", "go", "--user", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
@@ -831,16 +1060,16 @@ var _ = Describe("profiles", func() {
 			"docs.yml": "version: 1\nmodules:\n  - {name: c, source: " + c + "}\n"}) // c installs to project.yml's targets, which trust covers
 		proj := filepath.Join(tmp, "proj")
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
-		r := lola("profile", "go", "--on", "-C", proj)
+		r := lola("profile", "on", "go", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(proj, ".claude", "commands", "a.md")).To(BeARegularFile())
 
 		ask := &confirming{trusts: []engine.TrustAnswer{{All: true}}, answers: []bool{false}}
-		r = lolaAsking(ask, "profile", "docs", "--switch", "-C", proj)
+		r = lolaAsking(ask, "profile", "switch", "docs", "-C", proj)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(ask.questions).To(Equal([]string{"trust", "Remove these and apply? No applies nothing"}))
 		Expect(r.err).To(ContainSubstring("removals declined; the project was not changed."))
-		Expect(r.err).To(ContainSubstring("The changes you trusted are recorded; the next lola profile -C " + proj + " user:docs --switch asks only about the removals.\n"))
+		Expect(r.err).To(ContainSubstring("The changes you trusted are recorded; the next lola profile -C " + proj + " switch user:docs asks only about the removals.\n"))
 		Expect(r.err).NotTo(ContainSubstring("lola sync"))
 		Expect(filepath.Join(proj, ".claude", "commands", "a.md")).To(BeARegularFile())
 	})
@@ -856,7 +1085,7 @@ var _ = Describe("profiles", func() {
 		var out, errb bytes.Buffer
 		root.SetOut(&out)
 		root.SetErr(&errb)
-		root.SetArgs([]string{"profile", "go", "--on", "--user"})
+		root.SetArgs([]string{"profile", "on", "go", "--user"})
 		Expect(cli.Execute(root)).To(Equal(0), errb.String())
 		got, err := os.ReadFile(paged)
 		Expect(err).NotTo(HaveOccurred())
@@ -900,7 +1129,7 @@ var _ = Describe("profiles", func() {
 		r := lola("profile", "go", "--user", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(Equal("user\tc\tprofile:user:go\tprofile:default\t\t\n" +
-			"notice\twarn\tprofile user:gone is on but no longer exists → lola profile --user user:gone --off\n"))
+			"notice\twarn\tprofile user:gone is on but no longer exists → lola profile --user off user:gone\n"))
 	})
 
 	It("list warns about an active profile that no longer exists", func() {
@@ -909,9 +1138,9 @@ var _ = Describe("profiles", func() {
 		Expect(led.Save(p.UserLedger)).To(Succeed())
 		r := lola("list", "--user")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("⚠ profile user:gone is on but no longer exists → lola profile --user user:gone --off\n"))
+		Expect(r.out).To(ContainSubstring("⚠ profile user:gone is on but no longer exists → lola profile --user off user:gone\n"))
 		var v struct{ Notices []map[string]string }
 		Expect(json.Unmarshal([]byte(lola("list", "--user", "--json").out), &v)).To(Succeed())
-		Expect(v.Notices).To(ContainElement(HaveKeyWithValue("text", "profile user:gone is on but no longer exists → lola profile --user user:gone --off")))
+		Expect(v.Notices).To(ContainElement(HaveKeyWithValue("text", "profile user:gone is on but no longer exists → lola profile --user off user:gone")))
 	})
 })

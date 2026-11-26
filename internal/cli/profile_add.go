@@ -9,34 +9,26 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
-	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// remoteFlags are lola profile --add's own flags: its source, and the ref and --path to fetch.
+// remoteFlags are lola profile add's own flags: its source, and the ref and --path to fetch.
 type remoteFlags struct{ source, ref, path string }
 
-// profileAdd runs lola profile [<name>] --add <source>: it asks no scope; a scope flag, when given,
-// only names the scope whose installed modules the profile's content is compared with, else the
-// engine picks; on a terminal the picker when no name is given, then the profile and its content,
+// profileAdd runs lola profile add <source> [<name>] (args): it asks no scope; a scope flag, when
+// given, only names the scope whose installed modules the profile's content is compared with, else
+// the engine picks; on a terminal the picker when no name is given, then the profile and its content,
 // paged, and the question; off a terminal --trust, without which the engine refuses before any
 // network contact.
 func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, rf remoteFlags, f syncFlags) error {
-	if len(args) > 1 {
-		var hints []string
-		for _, n := range args {
-			hints = append(hints, "add "+untrusted.Text(n, untrusted.MaxName)+": "+runWithout(cmd, []string{n}))
-		}
-		return errs.WithHints(errors.New("--add takes one profile name; add them one at a time"), hints...)
-	}
-	given, err := a.flagScope(cmd, eng, args, "--add compares the content with one")
+	given, err := a.flagScope(cmd, eng, args, "add compares the content with one")
 	if err != nil {
 		return err
 	}
 	req := engine.ProfileAddRequest{Source: rf.source, Ref: rf.ref, Path: rf.path, DryRun: f.dry, Rerun: rerunFlags(cmd, f.trust),
 		Trust: f.trust, Receipt: a.receipt(cmd, f.trust, false)}
-	if len(args) == 1 {
-		req.Name = args[0]
+	if len(args) == 2 {
+		req.Name = args[1]
 	}
 	if len(given) == 1 {
 		req.Scope = &given[0]
@@ -48,7 +40,7 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 	printer := func(rps []engine.RemoteProfile) func(io.Writer, style) {
 		return func(w io.Writer, s style) {
 			printRemoteProfiles(w, rps, func(rp engine.RemoteProfile) string {
-				return s.more(eng.ProfileRun(given, append(append([]string{rp.Profile}, profileAddArgs("", rf)[2:]...), "-n", "--json")...))
+				return s.more(eng.ProfileRun(given, append(profileAddArgs(rp.Profile, rf), "-n", "--json")...))
 			})
 		}
 	}
@@ -89,14 +81,13 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 	}, res)
 }
 
-// profileAddArgs is lola profile's --add command line for the profile name ("" for none) and the
-// run's --add flags, every value through untrusted.Text.
+// profileAddArgs is the words after lola profile of the add of the profile name ("" for none) from
+// the run's source, with its --ref and --path, every value through untrusted.Text.
 func profileAddArgs(name string, rf remoteFlags) []string {
-	args := []string{"lola", "profile"}
+	args := []string{"add", untrusted.Text(rf.source, untrusted.MaxName)}
 	if name != "" {
 		args = append(args, untrusted.Text(name, untrusted.MaxName))
 	}
-	args = append(args, "--add", untrusted.Text(rf.source, untrusted.MaxName))
 	for _, f := range [][2]string{{"--ref", rf.ref}, {"--path", rf.path}} {
 		if f[1] != "" {
 			args = append(args, f[0], untrusted.Text(f[1], untrusted.MaxName))
@@ -105,7 +96,7 @@ func profileAddArgs(name string, rf remoteFlags) []string {
 	return args
 }
 
-// printRemoteProfiles shows the remote profiles lola profile --add or --update is about to keep:
+// printRemoteProfiles shows the remote profiles lola profile add or update is about to keep:
 // each with the file lola keeps it in, which every scope shares, the scope whose install its
 // content is compared with, its source, ref, --path and pin (the pin it replaces first, for an
 // update), its description, then each entry as the trust diff shows a module's change: its MCP
@@ -155,7 +146,7 @@ func printRemoteProfiles(w io.Writer, rps []engine.RemoteProfile, moreFor func(e
 	}
 }
 
-// printRemoteResult is the end of lola profile --add or --update: each profile added or updated,
+// printRemoteResult is the end of lola profile add or update: each profile added or updated,
 // or in a dry run what would be, then the notices. --plain rows are the verb (added, updated,
 // would-add, would-update), the profile and its file.
 func printRemoteResult(w io.Writer, s style, res *engine.RemoteResult) {

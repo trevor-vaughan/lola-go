@@ -1,5 +1,5 @@
 # Marketplaces the lola maintainers curated, each pinned to one commit.
-# `lola market --known` lists them; `lola market --enable <id>` registers one at its pin.
+# `lola market known` lists them; `lola market enable <id>` registers one at its pin.
 # Criteria, and how to add, refresh or drop an entry: docs/maintainers/known-markets.md.
 # `task release:known` checks every pin against the network.
 version: 1

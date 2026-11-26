@@ -48,7 +48,7 @@ var _ = Describe("project profiles", func() {
 		writeTree(proj, map[string]string{".lola/profiles/" + name + ".yml": content})
 		return filepath.Join(proj, ".lola", "profiles", name+".yml")
 	}
-	// activate turns name on the way lola profile --on records it, in lock.json; "" turns off
+	// activate turns name on the way lola profile on records it, in lock.json; "" turns off
 	// whatever is on.
 	activate := func(name string) {
 		GinkgoHelper()
@@ -290,12 +290,12 @@ var _ = Describe("project profiles", func() {
 		}
 		_, err := turn(engine.ProfileOn, "go")
 		Expect(err).To(MatchError(ambiguous))
-		Expect(errs.Hints(err)).To(Equal([]string{"yours: lola profile --project user:go --on",
-			"the project's: lola profile --project project:go --on"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"yours: lola profile --project on user:go",
+			"the project's: lola profile --project on project:go"}))
 		_, err = turn(engine.ProfileSwitch, "go")
 		Expect(err).To(MatchError(ambiguous))
-		Expect(errs.Hints(err)).To(Equal([]string{"yours: lola profile --project user:go --switch",
-			"the project's: lola profile --project project:go --switch"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"yours: lola profile --project switch user:go",
+			"the project's: lola profile --project switch project:go"}))
 		_, _, err = e.ProfileState(ctx, []engine.Scope{sc}, "go")
 		Expect(err).To(MatchError(ambiguous), "never one scope's answer for the other's")
 		Expect(errs.Hints(err)).To(Equal([]string{"yours: lola profile --project user:go",
@@ -310,7 +310,7 @@ var _ = Describe("project profiles", func() {
 		Expect(res.Activation.Profile).To(HaveValue(Equal("project:go")))
 		Expect(os.ReadFile(filepath.Join(proj, ".claude", "commands", "a.md"))).To(Equal([]byte("A\n")))
 		_, err = turn(engine.ProfileOn, "user:go")
-		Expect(err).To(MatchError("project:go is on, and --on does not replace it without asking; --switch does"))
+		Expect(err).To(MatchError("project:go is on, and lola profile on does not replace it without asking; switch does"))
 		_, err = turn(engine.ProfileSwitch, "user:go")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(activeName()).To(Equal("user:go"))
@@ -380,8 +380,8 @@ var _ = Describe("project profiles", func() {
 		profile("go", "version: 1\n")
 		activate("project:go")
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "user:go"}, ConfirmRemovals: yes})
-		Expect(err).To(MatchError("project:go is on, and --on does not replace it without asking; --switch does"))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project user:go --switch", "lola profile --project go-go --switch --new --bundle project:go,go"}))
+		Expect(err).To(MatchError("project:go is on, and lola profile on does not replace it without asking; switch does"))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola profile --project switch user:go", "lola profile --project switch go-go --new --bundle project:go,go"}))
 		Expect(activeName()).To(Equal("project:go"))
 	})
 
@@ -402,8 +402,8 @@ var _ = Describe("project profiles", func() {
 		profile("go", "version: 1\n")
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "go"},
 			Options: engine.Options{DryRun: true, Trust: engine.TrustHooks}, ConfirmRemovals: yes})
-		Expect(errs.Hints(err)).To(Equal([]string{"yours: lola profile --project user:go --on --trust=hooks -n",
-			"the project's: lola profile --project project:go --on --trust=hooks -n"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"yours: lola profile --project on user:go --trust=hooks -n",
+			"the project's: lola profile --project on project:go --trust=hooks -n"}))
 	})
 
 	It("--off of a bare name turns off yours whose file is gone, though the project's exists", func() {
@@ -482,7 +482,7 @@ var _ = Describe("project profiles", func() {
 		_, notices, err = e.Profiles(ctx, sc)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
-			Text: "profile project:go is on but no longer exists → lola profile --project project:go --off"}))
+			Text: "profile project:go is on but no longer exists → lola profile --project off project:go"}))
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOff, Name: "go"}, ConfirmRemovals: yes})
 		Expect(err).NotTo(HaveOccurred(), "a gone project profile goes off by its bare name")
 		Expect(activeName()).To(BeEmpty())
@@ -504,7 +504,7 @@ var _ = Describe("project profiles", func() {
 
 		// A pull adds the project's own go: lola sync never swaps it in, even with --trust, and says so.
 		profile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: ../../mods/a}\n  - {name: b, source: ../../mods/b}\n")
-		notice := engine.Notice{Level: engine.LevelWarn, Text: "project:go also exists → lola profile --project project:go --on"}
+		notice := engine.Notice{Level: engine.LevelWarn, Text: "project:go also exists → lola profile --project on project:go"}
 		for _, req := range []engine.SyncRequest{{Scope: sc}, {Scope: sc, Trust: trustAll, ConfirmRemovals: yes}, {Scope: sc, Modules: []string{"c"}}} {
 			res, err := e.Sync(ctx, req)
 			Expect(err).NotTo(HaveOccurred())

@@ -10,7 +10,7 @@ Every question lola asks before it runs or installs something you did not write 
 | Kind            | Covers                                                                                                                   | Recorded in `$XDG_STATE_HOME/lola/` |
 |-----------------|--------------------------------------------------------------------------------------------------------------------------|-------------------------------------|
 | `entries`       | The changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write                  | `trust.json`                        |
-| `profiles`      | A project profile's changes, a project profile taking your profile's place, a remote profile `--add` or `--update` shows | `trust.json`                        |
+| `profiles`      | A project profile's changes, a project profile taking your profile's place, a remote profile `lola profile add` or `update` shows | `trust.json`                        |
 | `scripts`       | A project's install scripts, per project, event and the digest of the script ([Install scripts](install-scripts.md))     | `consent.json`                      |
 | `hooks`         | A module's install hooks, by the digest of their scripts                                                                 | `consent.json`                      |
 | `runtime-hooks` | A module's Claude Code runtime hooks and agent MCP servers, per settings file                                            | `consent.json`                      |
@@ -22,7 +22,7 @@ kinds there, and `--trust=<kinds>` when a bare `--trust` grants none there.
 `--trust hooks` is refused: it reads as bare `--trust` and a module named `hooks`. lola refuses an
 argument right after a bare `--trust` that names kinds (in any case, or a list such as `hooks,scripts`; after `--` it
 is a name), hinting your run with `--trust=` the kinds you wrote, never the ones a bare `--trust`
-would add. `--trust=entries,profiles` written out is those two kinds, so `profile --add` refuses
+would add. `--trust=entries,profiles` written out is those two kinds, so `profile add` refuses
 it. Bare `--trust` is `entries,profiles`: lola runs no code for them, but accepting entries is also
 your consent to the MCP servers they list, which your assistant launches. The trust diff prints
 each server's command first. `all` is every kind the command takes.
@@ -80,9 +80,9 @@ only showing each hook and script again before `--trust` consents to it.
 
 A kind the command never asks is refused, naming the ones it takes: `install` and
 `migrate` take `scripts`, `hooks` and `runtime-hooks` (bare `--trust` is refused there, beside
-other kinds too), `profile --add` takes `profiles`, and `sync` and the other `profile` actions
+other kinds too), `profile add` takes `profiles`, and `sync` and the other `profile` actions
 take all five. An unknown kind is refused, hinting the closest one within two edits (a stray
-comma, the value without it). `profile --update` without a scope flag refuses `--trust=entries`,
+comma, the value without it). `profile update` without a scope flag refuses `--trust=entries`,
 which would answer nothing there, hinting the run with `--project` and with `--scope both` (see
 [Choosing a scope](choosing-what-to-install.md#choosing-a-scope)).
 
@@ -97,15 +97,15 @@ Proceed? [y/N]
 
 On a terminal lola then asks once (`-y` answers; No installs and records nothing, and `install`, `sync` and
 `update` leave the cache as it was); what the kinds leave uncovered is asked item by item first, as it is when you pass no flag.
-`profile --add`, which takes no `-y`, asks it on a terminal too. After the [install review](choosing-what-to-install.md#the-install-flow) (also
-`lola profile <name> --edit`'s), the Apply you answered is that confirmation for every item the
+`profile add`, which takes no `-y`, asks it on a terminal too. After the [install review](choosing-what-to-install.md#the-install-flow) (also
+`lola profile edit <name>`'s), the Apply you answered is that confirmation for every item the
 review listed (its runtime hooks): the receipt neither prints nor asks again, unless `--trust`
 covers an item the review did not list, such as an install hook, when it asks as always.
 `--force`, which prints the summary in the review's place, answers no Apply, so the receipt asks.
 
 A command asks one receipt for
 everything it does: `sync --scope both` runs each scope up to its receipt, shows one, and applies
-the scopes only after its yes, and `profile --update` with `--trust` does the same for the
+the scopes only after its yes, and `profile update` with `--trust` does the same for the
 profiles and each scope's sync, writing no profile before it (a scope's sync refused before the
 receipt still keeps the update, after a receipt of the profiles; a Cancel or a No to its removals
 updates nothing; a profile another lola run replaced while you were asked is not updated, and

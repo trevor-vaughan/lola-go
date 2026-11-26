@@ -85,11 +85,10 @@ func (e *Engine) commandOf(req SyncRequest, extra ...string) string {
 	case req.Profiles == nil:
 		return e.SyncCommand(req.Scope, req.rerun(extra...)...)
 	}
-	var args []string
+	args := []string{string(req.Profiles.Action)}
 	if req.Profiles.Name != "" {
 		args = append(args, req.Profiles.Name)
 	}
-	args = append(args, "--"+string(req.Profiles.Action))
 	if req.Profiles.New { // a run that would make the profile makes it again (newProfiles)
 		args = append(append(args, "--new"), newModifiers(*req.Profiles)...)
 	}

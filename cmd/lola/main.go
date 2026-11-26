@@ -11,7 +11,7 @@ import (
 
 func main() {
 	ctx, stop := cli.NotifyContext(context.Background())
-	root, err := cli.NewRootCmd(os.Getenv)
+	root, err := cli.NewRootCmd(os.Getenv, cli.WithArgs(os.Args[1:]))
 	if err != nil {
 		stop()
 		os.Exit(cli.StartupError(os.Stderr, err, os.Args[1:]))

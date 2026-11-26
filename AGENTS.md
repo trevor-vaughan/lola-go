@@ -85,13 +85,13 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   text and prompt line do not fit; otherwise the text prints and the prompt sits under it.
 - **Surfaces** (ready marker): `lola help <cmd>` / bare `lola` viewer (`━━ lines N–M of T`); `lola install`
   form (`Step 1`, review `Apply these changes? [y/c/n]`); scope pickers on `tidy`, `update`,
-  `sync`, `repair`, `profile … --on/--switch/--move` (`<Verb> where?`); bare `market` picker
-  (`Add a source…`); `trash` (`Restore or empty which?`); `cache clean` (`Remove these from your cache?`); `init` without `-y`; `profile <n> --edit
+  `sync`, `repair`, `profile on/off/switch/move/split` (`<Verb> where?`); bare `market` picker
+  (`Add a source…`); `trash` (`Restore or empty which?`); `cache clean` (`Remove these from your cache?`); `init` without `-y`; `profile edit <n>
   <mod>` (`Step 1 of 3`); trust diff on `sync`/`update` (`Trust these changes?`); yes/no questions
   (`[y/N]`: `uninstall`, `cache rm`, `tidy`'s last step, consent, `Proceed?`) under their text, or in the
   viewer with the question in it when that does not fit (`━━ lines` above the prompt); a viewer before a
   picker (`q  continue to:`). `uninstall`, `cache rm`, `info`, `cache add` and
-  `market --add` with no args never go interactive; they error with hints.
+  `market add` with no args never go interactive; they error with hints.
   A prompt line or form sits under a blank line and a `━` rule (`---` accessible).
 - **Keys.** Pickers: `x` toggle, `ctrl+a` all/none, `/` filter, `Enter`, `esc` back, `q` quit.
   Questions: type `y`, `n` (`c` at the review), then `Enter`; `Enter` alone takes the capital letter's

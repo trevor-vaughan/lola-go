@@ -110,7 +110,7 @@ var _ = Describe("profile entry picks", func() {
 		led.Profile = &ledger.Active{Name: "user:go", By: ledger.ByOn}
 		Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
 		ignored := engine.Notice{Level: engine.LevelWarn, Text: "selections.yaml projects[" + proj + "] kit is ignored: profile go provides it; delete it from " +
-			p.Selections + ", and pick kit's components in profile go → lola profile --project go --edit kit"}
+			p.Selections + ", and pick kit's components in profile go → lola profile --project edit go kit"}
 		isIgnored := HaveField("Text", ContainSubstring(" is ignored: "))
 		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
 		Expect(err).NotTo(HaveOccurred())
@@ -161,7 +161,7 @@ var _ = Describe("profile entry picks", func() {
 		Expect(info.Install).To(HaveLen(1))
 		in := info.Install[0]
 		Expect(in.From).To(Equal("profile:default"))
-		Expect(in.Change).To(Equal("lola profile --user default --edit kit"))
+		Expect(in.Change).To(Equal("lola profile --user edit default kit"))
 		Expect(in.Components).To(Equal([]engine.InfoComponent{
 			{Kind: "skill", Name: "alpha", State: engine.ComponentInstalled, Mentions: []string{"skill/bravo"}},
 			{Kind: "skill", Name: "bravo", State: engine.ComponentSkipped, Origin: "default (base)", Mentions: []string{}},

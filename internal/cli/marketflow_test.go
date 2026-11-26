@@ -39,8 +39,8 @@ var _ = Describe("installing from marketplaces on and off a terminal", func() {
 		other := filepath.Join(tmp, "other")
 		writeTree(other, map[string]string{".claude-plugin/marketplace.json": `{"name": "other", "owner": {"name": "O"},
   "plugins": [{"name": "formatter", "source": "./f", "description": "Another formatter"}]}`, "f/commands/other.md": "Other\n"})
-		Expect(lola("market", "--add", acme).code).To(Equal(0))
-		Expect(lola("market", "--add", other).code).To(Equal(0))
+		Expect(lola("market", "add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", other).code).To(Equal(0))
 		GinkgoT().Chdir(proj)
 	})
 	manifest := func() string {
@@ -89,7 +89,7 @@ var _ = Describe("installing from marketplaces on and off a terminal", func() {
 		for _, m := range []string{"m1", "m2"} {
 			writeTree(filepath.Join(tmp, m), map[string]string{".claude-plugin/marketplace.json": `{"name": "` + m + `", "owner": {"name": "M"}, "plugins": [` +
 				strings.Join(plugins, ", ") + `]}`, "x/commands/x.md": "X\n"})
-			Expect(lola("market", "--add", filepath.Join(tmp, m)).code).To(Equal(0))
+			Expect(lola("market", "add", filepath.Join(tmp, m)).code).To(Equal(0))
 		}
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
@@ -171,7 +171,7 @@ var _ = Describe("installing from marketplaces on and off a terminal", func() {
 		writeTree(third, map[string]string{".claude-plugin/marketplace.json": `{"name": "third", "owner": {"name": "T"},
   "plugins": [{"name": "good", "source": "./good"}, {"name": "broken", "source": "./broken"}]}`,
 			"good/commands/good.md": "Good\n", "broken/lola.yml": "name: broken\nunknown: key\n", "broken/commands/b.md": "B\n"})
-		Expect(lola("market", "--add", third).code).To(Equal(0))
+		Expect(lola("market", "add", third).code).To(Equal(0))
 		p := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("@third/broken"), mods("@third/good")},
 			review: []string{cli.ReviewApply}}
 		r := lolaP(p, "install", "--scope", "project", "-t", "claude-code")
@@ -345,7 +345,7 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 		acme = filepath.Join(tmp, "acme")
 		writeTree(acme, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"},
   "plugins": [{"name": "linter", "source": "./linter", "description": "Lints code"}]}`, "linter/commands/lint.md": "Lint\n"})
-		Expect(run(nil, "market", "--add", acme).code).To(Equal(0))
+		Expect(run(nil, "market", "add", acme).code).To(Equal(0))
 		markets = filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "markets.yaml")
 		requests.Store(0)
 	})
@@ -415,7 +415,7 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 	})
 
 	It("updates a known marketplace past lola's pin on u after asking, registering the remote's tip", func() {
-		Expect(run(nil, "market", "--enable", "kn", "-y").code).To(Equal(0))
+		Expect(run(nil, "market", "enable", "kn", "-y").code).To(Equal(0))
 		tip := publish(map[string]string{".claude-plugin/marketplace.json": `{"name": "kn", "owner": {"name": "K"},
   "plugins": [{"name": "formatter", "source": "./formatter", "description": "Formats code"},
     {"name": "tidier", "source": "./formatter", "description": "Tidies code"}]}`})
@@ -444,7 +444,7 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 	Describe("your own marketplace registered at a commit", func() {
 		BeforeEach(func() {
 			seed = nil
-			Expect(run(nil, "market", "pinned", "--add", url, "--ref", pin).code).To(Equal(0))
+			Expect(run(nil, "market", "add", url, "pinned", "--ref", pin).code).To(Equal(0))
 		})
 		// status is the check of the picker's row of pinned.
 		status := func(st cli.MarketPickerStep) string {
@@ -558,8 +558,8 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install @acme/linter --scope project -t claude-code"}))
 	})
 
-	It("lists as text under --json, --plain, --no-pager, --no-interactive and market_picker: false, never asking", func() {
-		for _, args := range [][]string{{"--json"}, {"--plain"}, {"--no-pager"}, {"--no-interactive"}} {
+	It("lists as text under --json, --plain, --no-pager and market_picker: false, never asking", func() {
+		for _, args := range [][]string{{"--json"}, {"--plain"}, {"--no-pager"}} {
 			p := &scripted{}
 			r := run(p, append([]string{"market"}, args...)...)
 			Expect(r.code).To(Equal(0), r.err)
@@ -693,7 +693,7 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 				writeTree(acme, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"},
   "plugins": [{"name": "formatter", "source": "./formatter", "description": "Formats code"},
     {"name": "linter", "source": "./linter", "description": "Lints code"}]}`, "formatter/commands/fmt.md": "Fmt\n"})
-				Expect(run(nil, "market", "acme", "--update").code).To(Equal(0))
+				Expect(run(nil, "market", "update", "acme").code).To(Equal(0))
 			})
 
 			It("installs them in one install, asking its questions once, and opens again on the first", func() {
@@ -722,7 +722,7 @@ var _ = Describe("the marketplace picker of a bare lola market on a terminal", f
 				r := run(p, "market")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(r.err).To(ContainSubstring("error: acme no longer offers ghost"))
-				Expect(r.err).To(ContainSubstring("hint: lola market acme --update"))
+				Expect(r.err).To(ContainSubstring("hint: lola market update acme"))
 				Expect(filepath.Join(proj, ".claude", "commands", "fmt.md")).NotTo(BeAnExistingFile())
 			})
 		})

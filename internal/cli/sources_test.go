@@ -99,7 +99,7 @@ var _ = Describe("git and archive sources", func() {
 		for _, run := range []struct {
 			args []string
 			ctx  string
-		}{{[]string{"install", missing, "-C", proj}, projectContext(proj)}, {[]string{"market", "--add", missing}, ""}} {
+		}{{[]string{"install", missing, "-C", proj}, projectContext(proj)}, {[]string{"market", "add", missing}, ""}} {
 			r := lola(run.args...)
 			Expect(r.code).To(Equal(1), run.args[0])
 			Expect(r.err).To(Equal(run.ctx+want), run.args[0])

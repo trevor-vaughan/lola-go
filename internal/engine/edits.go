@@ -37,7 +37,7 @@ func (e SelectionEdit) String() string { return "--" + e.Op + " " + e.Selector.S
 
 // AddFlagEdits adds edits given as flags: to the global section with global, else to the
 // one scope's section. With more than one scope and no --global it refuses, since one flag
-// cannot say which scope it means, except for lola profile <name> --edit, whose
+// cannot say which scope it means, except for lola profile edit <name>, whose
 // scopes all write the one profile it names: each scope gets them.
 func (spec *InstallSpec) AddFlagEdits(edits []SelectionEdit, global bool) error {
 	if len(edits) == 0 {

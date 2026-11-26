@@ -157,6 +157,73 @@ func withContext(doc []byte, contexts []engine.ScopeContext) ([]byte, error) {
 	return append(out, doc[1:]...), nil
 }
 
+// withNotices adds notes to the notices of doc, a JSON object, keeping its members in order: at
+// the end of its notices array, else as a notices member last. doc is returned as it is when there
+// are no notes, or when it is not an object.
+func withNotices(doc []byte, notes []engine.Notice) ([]byte, error) {
+	if len(notes) == 0 || len(doc) < 2 || doc[0] != '{' {
+		return doc, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(doc))
+	if _, err := dec.Token(); err != nil { // the object's {
+		return nil, err
+	}
+	out := []byte{'{'}
+	member := func(key string, value []byte) error {
+		k, err := json.Marshal(key)
+		if err != nil {
+			return err
+		}
+		if len(out) > 1 {
+			out = append(out, ',')
+		}
+		out = append(append(append(out, k...), ':'), value...)
+		return nil
+	}
+	merged := false
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, _ := t.(string) // an object's member starts with its key
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return nil, err
+		}
+		if key == "notices" {
+			var list []json.RawMessage
+			if err := json.Unmarshal(value, &list); err != nil {
+				return nil, err
+			}
+			for _, n := range notes {
+				b, err := json.Marshal(n)
+				if err != nil {
+					return nil, err
+				}
+				list = append(list, b)
+			}
+			if value, err = json.Marshal(list); err != nil {
+				return nil, err
+			}
+			merged = true
+		}
+		if err := member(key, value); err != nil {
+			return nil, err
+		}
+	}
+	if !merged {
+		b, err := json.Marshal(notes)
+		if err != nil {
+			return nil, err
+		}
+		if err := member("notices", b); err != nil {
+			return nil, err
+		}
+	}
+	return append(out, '}'), nil
+}
+
 // contextError is a refusal after the scopes were resolved: its --json line carries the run's
 // contexts beside error, hints and every other field the error carries.
 type contextError struct {

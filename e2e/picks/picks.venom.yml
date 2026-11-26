@@ -26,12 +26,12 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "fixture ready"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go --switch --new --user"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile switch go --new --user"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "now: user scope: profile go over default"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go --edit {{.url}} --only skill/alpha --only skill/bravo --user -t claude-code"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile edit go {{.url}} --only skill/alpha --only skill/bravo --user -t claude-code"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemerr ShouldEqual "user scope: profile go over default"'
@@ -50,7 +50,7 @@ testcases:
   - name: "P2 --exact writes the entry's only: list, and narrowing removes bravo once -y says so"
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go --edit kit --only skill/alpha --exact --user -y"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile edit go kit --only skill/alpha --exact --user -y"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "✓ changed kit in profile go  ({{.go}})  only: 1 skill"'
@@ -93,13 +93,13 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} info kit --user"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"  components of kit here, provided by profile go:\n    skill/alpha    installed\n    skill/bravo    not in the only: list of profile go\n    skill/charlie  skipped in profile go\n  → change it: lola profile --user go --edit kit\""
+          - "result.systemout ShouldContainSubstring \"  components of kit here, provided by profile go:\n    skill/alpha    installed\n    skill/bravo    not in the only: list of profile go\n    skill/charlie  skipped in profile go\n  → change it: lola profile --user edit go kit\""
           - 'result.systemout ShouldContainSubstring "    skill/alpha → skill/bravo"'
       - type: exec
         script: '{{.runtime}} exec {{.container}} sh -c ''{{.lola}} info kit --user --plain 2>/dev/null | grep -E "^(from|component|change)"'''
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"from\tuser\tprofile:user:go\ncomponent\tuser\tskill/alpha\tinstalled\t\tfalse\ncomponent\tuser\tskill/bravo\tnot_in_only\tprofile go\tfalse\ncomponent\tuser\tskill/charlie\tskipped\tprofile go\tfalse\nchange\tuser\tlola profile --user go --edit kit\""
+          - "result.systemout ShouldEqual \"from\tuser\tprofile:user:go\ncomponent\tuser\tskill/alpha\tinstalled\t\tfalse\ncomponent\tuser\tskill/bravo\tnot_in_only\tprofile go\tfalse\ncomponent\tuser\tskill/charlie\tskipped\tprofile go\tfalse\nchange\tuser\tlola profile --user edit go kit\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} info kit --user --json > /tmp/p4.json'"
         assertions:
@@ -109,7 +109,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemoutjson.install.install0.from ShouldEqual profile:user:go
-          - result.systemoutjson.install.install0.change ShouldEqual "lola profile --user go --edit kit"
+          - result.systemoutjson.install.install0.change ShouldEqual "lola profile --user edit go kit"
           - result.systemoutjson.install.install0.components.components1.state ShouldEqual not_in_only
           - result.systemoutjson.install.install0.components.components0.mentions.mentions0 ShouldEqual skill/bravo
       # Off a terminal the bare --edit opens no component page: it re-applies kit's entry in
@@ -148,7 +148,7 @@ testcases:
         script: '{{.runtime}} exec {{.container}} python3 -c ''import json; print([n["text"] for n in json.load(open("/tmp/p5.json"))["notices"] if " adds " in n["text"]][0])'''
         assertions:
           - result.code ShouldEqual 0
-          - 'result.systemout ShouldEqual "kit adds skill/delta, not installed (only: in profile go) → lola profile --user go --edit kit --unskip skill/delta"'
+          - 'result.systemout ShouldEqual "kit adds skill/delta, not installed (only: in profile go) → lola profile --user edit go kit --unskip skill/delta"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'python3 -c \"import json; t = [n[\\\"text\\\"] for n in json.load(open(\\\"/tmp/p5.json\\\"))[\\\"notices\\\"] if \\\" adds \\\" in n[\\\"text\\\"]][0]; print(json.dumps({\\\"hints\\\": [t.split(\\\" → \\\")[-1]]}))\" > /tmp/p5.hint && {{.hint}} /tmp/p5.hint'"
         assertions:
@@ -173,7 +173,7 @@ testcases:
   - name: P6 Your default's picks for kit, under go's entry, are said to be dropped
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} profile default --edit kit --skip skill/alpha --user -t claude-code -y"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile edit default kit --skip skill/alpha --user -t claude-code -y"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldEqual \"Notices:\n⚠ kit: profile go's entry wins; this change to default (base) applies when it is off\nFiles:\n✓ added kit to default (base)  (/home/tester/.config/lola/profiles/default.yml, new)\""
@@ -186,7 +186,7 @@ testcases:
   - name: "P7 A profile go2 whose only: list is charlie installs just charlie when switched on, and switching back restores go's picks"
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go2 --edit kit --only skill/charlie --exact --user --new"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile edit go2 kit --only skill/charlie --exact --user --new"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "✓ added kit to profile go2  ({{.go2}}, new)  only: 1 skill"'
@@ -196,7 +196,7 @@ testcases:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldEqual "    only: [skill/charlie]"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go2 --switch --user"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile switch go2 --user"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "now: user scope: profile go2 over default"'
@@ -206,7 +206,7 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "charlie"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go --switch --user"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile switch go --user"
         assertions:
           - result.code ShouldEqual 0
           - 'result.systemout ShouldContainSubstring "now: user scope: profile go over default"'

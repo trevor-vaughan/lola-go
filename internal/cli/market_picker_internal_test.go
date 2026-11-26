@@ -591,7 +591,7 @@ var _ = Describe("the marketplace picker", func() {
 		Expect(out).To(MatchRegexp(`beta .*unreachable`))
 		Expect(out).To(ContainSubstring("dial tcp: i/o timeout"))
 		Expect(out).To(ContainSubstring("u retries"))
-		Expect(out).To(ContainSubstring("lola market beta --remove forgets it"))
+		Expect(out).To(ContainSubstring("lola market rm beta forgets it"))
 	})
 
 	It("names the connection too when the only check fails", func() {
@@ -605,7 +605,7 @@ var _ = Describe("the marketplace picker", func() {
 		out := drawn(m)
 		Expect(out).To(MatchRegexp(`acme .*unreachable`))
 		Expect(out).To(ContainSubstring("check your network connection"))
-		Expect(out).To(ContainSubstring("lola market acme --remove forgets it"))
+		Expect(out).To(ContainSubstring("lola market rm acme forgets it"))
 		Expect(out).NotTo(ContainSubstring("Several sources"))
 	})
 
@@ -1335,7 +1335,7 @@ var _ = Describe("the marketplace picker's entries in accessible mode", func() {
 		got, out, err := lines(entries(), PickerResume{}, "3", "m")
 		Expect(err).To(MatchError(errInputEnded))
 		Expect(got).To(Equal(MarketPickerAnswer{}))
-		Expect(out).To(ContainSubstring("local has no entries; fetch its catalog with m3 (Update), or lola market local --update"))
+		Expect(out).To(ContainSubstring("local has no entries; fetch its catalog with m3 (Update), or lola market update local"))
 		Expect(strings.Count(out, "Choose marketplaces")).To(Equal(3))
 	})
 

@@ -196,8 +196,8 @@ testcases:
           assert lines[3] == "Notices:", lines[3]
           assert lines[4] == "⚠ kit comes from /e2e/fixtures/kit, outside the project: a teammate\x27s sync will refuse it; share a module through a git repository or an https:// archive", lines[4]
           assert lines[5] == "→ recorded opencode 2.0 in .lola/project.yml (target_versions): files are written for opencode >=2.0", lines[5]
-          assert lines[6:8] == ["→ keep it to yourself: lola profile -C /work/proj --move kit --to mine --switch",
-                                "→ meant for every project? move it from this project into your user base: lola profile --user --move kit --to base -C /work/proj"], lines[6:8]
+          assert lines[6:8] == ["→ keep it to yourself: lola profile -C /work/proj move kit --to mine --switch",
+                                "→ meant for every project? move it from this project into your user base: lola profile --user move kit --to base -C /work/proj"], lines[6:8]
           assert lines[8:11] == ["Files:", "✓ added kit to project.yml (base)", "kit: 17 changes (claude-code 5, gemini-cli 6, opencode 6)"], lines[8:11]
           assert sum(l.startswith("    ✓ create ") for l in lines) == 17, lines
           assert lines[28] == "✓ installed kit (claude-code, gemini-cli, opencode)", lines[28]
@@ -227,7 +227,7 @@ testcases:
           '
         assertions:
           - result.code ShouldEqual 0
-          - 'result.systemout ShouldEqual "[''lola profile -C /work/i3-hint --move kit --to mine --switch'']"'
+          - 'result.systemout ShouldEqual "[''lola profile -C /work/i3-hint move kit --to mine --switch'']"'
       - type: exec
         script: "{{.runtime}} exec {{.i3_homes}} {{.container}} {{.hint}} /tmp/i3-hint.json"
         assertions:

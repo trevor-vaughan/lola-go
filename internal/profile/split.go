@@ -14,7 +14,7 @@ import (
 )
 
 // Mixed is a profile file with both bundle: and modules:, read for lola
-// profile --split: the bytes the split rewrites, read as Load reads yours or, for a
+// profile split: the bytes the split rewrites, read as Load reads yours or, for a
 // project's, as LoadProject does.
 type Mixed struct {
 	Path    string

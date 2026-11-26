@@ -27,6 +27,11 @@ const scopeHelp = "Scope: --project, --user, -C <dir> or --scope; else, on a ter
 // scopeFlags are the scope flags, by canonical name, which a hint naming a scope of its own drops.
 var scopeFlags = []string{"scope", "project", "user", "root"}
 
+// commandWords is cmd's path after lola (sync, profile on): the command as a refusal names it.
+func commandWords(cmd *cobra.Command) string {
+	return strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
+}
+
 // scopes resolves the scopes of a command that writes: engine.ResolveScope, then,
 // on a terminal with no scope flag, the scope picker asking question. both says the command
 // acts on two scopes in one run; the others take one, so the picker asks for one and the engine
@@ -43,7 +48,7 @@ func (a *app) scopes(cmd *cobra.Command, eng *engine.Engine, args []string, ques
 	if err != nil {
 		return nil, err
 	}
-	req.Command, req.Both, req.Run = cmd.Name(), both, completeRun(cmd, args, scopeFlags...)
+	req.Command, req.Both, req.Run = commandWords(cmd), both, completeRun(cmd, args, scopeFlags...)
 	res, err := eng.ResolveScope(req)
 	if err != nil {
 		return nil, err
@@ -188,7 +193,7 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (str
 
 // flagScope is the scopes the scope flags name for a lola profile action that never asks for one,
 // none when no flag is given: the engine then picks; default_scope does not apply. --scope both
-// names the project and user scope: with why, the reason the action takes one scope (--add), it is
+// names the project and user scope: with why, the reason the action takes one scope (add), it is
 // refused with the run without it and the run narrowed to each scope (args are its names); without
 // (--update), it is taken when the project has .lola/, and refused otherwise with the run at user
 // scope in its place.
@@ -204,7 +209,7 @@ func (a *app) flagScope(cmd *cobra.Command, eng *engine.Engine, args []string, w
 	if err != nil {
 		return nil, err
 	}
-	req.Command, req.Both = cmd.Name(), true
+	req.Command, req.Both = commandWords(cmd), true
 	res, err := eng.ResolveScope(req)
 	if err != nil {
 		return nil, err

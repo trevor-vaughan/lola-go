@@ -53,7 +53,7 @@ func printMarkets(w io.Writer, s style, rows []engine.MarketRow, status []string
 			fmt.Fprintln(w)
 		}
 	case len(rows) == 0:
-		fmt.Fprintln(w, "no marketplaces yet; lola market --add <source> adds one")
+		fmt.Fprintln(w, "no marketplaces yet; lola market add <source> adds one")
 	default:
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		header := "NAME\tFORMAT\tENTRIES\tSKIPPED\tFETCHED\tSOURCE"
@@ -345,10 +345,10 @@ func components(e engine.MarketEntry) [][2]string {
 	return out
 }
 
-// marketGlyphs mark an --update's entry changes.
+// marketGlyphs mark an update's entry changes.
 var marketGlyphs = map[string]string{"added": "+", "removed": "-", "changed": "~"}
 
-// printMarketResult prints what lola market --add, --update or --ssh-host --remove did: a line per
+// printMarketResult prints what lola market add, update or rm --ssh-host did: a line per
 // marketplace by its outcome (none for a revoke's, which its caller words), with its entry changes
 // under it, then the notices.
 // --plain rows are the outcome and the marketplace, a "change" row per entry change (change,
@@ -374,7 +374,7 @@ func printMarketResult(w io.Writer, s style, res *engine.MarketResult) {
 		case engine.MarketWouldUpdate:
 			fmt.Fprintln(w, s.info("would update "+marketLine(r)))
 		case engine.MarketFailed, engine.MarketStopped:
-			// The run's error says why, once (as lola profile --update's).
+			// The run's error says why, once (as lola profile update's).
 			fmt.Fprintln(w, s.bad("marketplace "+u.Market+" was not updated (the error says why)"))
 		}
 		for _, c := range res.Changes {
@@ -398,7 +398,7 @@ func printMarketResult(w io.Writer, s style, res *engine.MarketResult) {
 	}
 }
 
-// printKnown prints lola market --known's list, or with one set the marketplace shown, then the
+// printKnown prints lola market known's list, or with one set the marketplace shown, then the
 // hints. list is already clean (cleanKnown). --plain rows are "known" with the id, enabled, curated day, commit, source, path
 // and reason, then a "hint" row each.
 func printKnown(w io.Writer, s style, list []engine.KnownEntry, one bool, hints []string) {
@@ -412,12 +412,12 @@ func printKnown(w io.Writer, s style, list []engine.KnownEntry, one bool, hints 
 		}
 		return
 	case len(list) == 0:
-		fmt.Fprintln(w, "no known marketplaces ship with this lola; lola market --add <source> adds one of your own")
+		fmt.Fprintln(w, "no known marketplaces ship with this lola; lola market add <source> adds one of your own")
 		return
 	case one:
 		printKnownFacts(w, "Known marketplace "+list[0].ID, list[0].KnownMarket)
 		if list[0].Enabled {
-			fmt.Fprintln(w, s.info("enabled; lola market "+list[0].ID+" --update stays on its pin"))
+			fmt.Fprintln(w, s.info("enabled; lola market update "+list[0].ID+" stays on its pin"))
 		}
 	default:
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -449,20 +449,20 @@ func printKnownFacts(w io.Writer, title string, k market.KnownMarket) {
 	_ = tw.Flush()
 }
 
-// printKnownPreview is the text of lola market --enable's question: what the maintainers recorded
+// printKnownPreview is the text of lola market enable's question: what the maintainers recorded
 // of k, then what enabling it would do (the -n result: the entries the catalog offers and skips).
 func printKnownPreview(w io.Writer, s style, k market.KnownMarket, preview *engine.MarketResult) {
 	printKnownFacts(w, "Known marketplace "+k.ID, k)
 	printMarketResult(w, s, preview)
 }
 
-// printKnownEnabled prints what lola market --enable did (or, under -n, would do), and that its
-// --update stays on the pin. --plain prints the result's rows alone.
+// printKnownEnabled prints what lola market enable did (or, under -n, would do), and that its
+// update stays on the pin. --plain prints the result's rows alone.
 func printKnownEnabled(w io.Writer, s style, k market.KnownMarket, res *engine.MarketResult) {
 	printMarketResult(w, s, res)
 	if s.plain || res.DryRun {
 		return
 	}
-	fmt.Fprintln(w, s.info("pinned to "+shortCommit(k.Commit)+", curated "+k.Curated+"; lola market "+
-		res.Markets[0].Name+" --update stays on it"))
+	fmt.Fprintln(w, s.info("pinned to "+shortCommit(k.Commit)+", curated "+k.Curated+"; lola market update "+
+		res.Markets[0].Name+" stays on it"))
 }

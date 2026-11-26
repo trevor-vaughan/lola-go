@@ -127,18 +127,18 @@ var _ = Describe("hints", func() {
 			func(proj string) []string {
 				writeTree(filepath.Join(proj, "mods", "rev"), map[string]string{"lola.yml": "name: rev\n", "commands/rev.md": "Rev\n"})
 				writeTree(filepath.Join(proj, ".lola", "profiles"), map[string]string{"review.yml": "version: 1\nmodules:\n  - name: rev\n    source: ../../mods/rev\n"})
-				return []string{"profile", "review", "--on", "-C", proj, "--json"}
+				return []string{"profile", "on", "review", "-C", proj, "--json"}
 			},
 			func(proj string) []string {
-				return []string{"see them: lola profile -C " + proj + " project:review --on --json -n",
-					"then accept them: lola profile -C " + proj + " project:review --on --trust=profiles --json"}
+				return []string{"see them: lola profile -C " + proj + " on project:review --json -n",
+					"then accept them: lola profile -C " + proj + " on project:review --trust=profiles --json"}
 			}),
 		Entry("uninstall of a module two bundle members provide, under --json with -y, which answers no where-question between two layers",
 			func(proj string) []string {
 				writeTree(filepath.Join(proj, "mods", "rev"), map[string]string{"lola.yml": "name: rev\n", "commands/rev.md": "Rev\n"})
 				list := "version: 1\nmodules:\n  - name: rev\n    source: ../../mods/rev\n"
 				writeTree(filepath.Join(proj, ".lola", "profiles"), map[string]string{"one.yml": list, "two.yml": list, "review.yml": "version: 1\nbundle: [one, two]\n"})
-				r := lola("profile", "review", "--on", "-C", proj, "--trust", "-y")
+				r := lola("profile", "on", "review", "-C", proj, "--trust", "-y")
 				Expect(r.code).To(Equal(0), r.err)
 				return []string{"uninstall", "rev", "-C", proj, "-y", "--json"}
 			},
@@ -304,8 +304,8 @@ var _ = Describe("hints keep the user's flags", func() {
 
 		r = lola("install", "./mods/kit", "--project", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("→ keep it to yourself: lola profile --project --move kit --to mine --switch\n"))
-		Expect(r.out).To(ContainSubstring("→ meant for every project? move it from this project into your user base: lola profile --user --move kit --to base\n"))
+		Expect(r.out).To(ContainSubstring("→ keep it to yourself: lola profile --project move kit --to mine --switch\n"))
+		Expect(r.out).To(ContainSubstring("→ meant for every project? move it from this project into your user base: lola profile --user move kit --to base\n"))
 		Expect(r.out + r.err).NotTo(ContainSubstring(" -y"))
 
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
@@ -320,9 +320,9 @@ var _ = Describe("hints keep the user's flags", func() {
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(proj, map[string]string{".lola/profiles/mine.yml": "version: 1\n"})
 		writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\n"})
-		r := lola("profile", "mine", "--switch", "--project", "-y")
+		r := lola("profile", "switch", "mine", "--project", "-y")
 		Expect(r.code).To(Equal(1), r.err)
-		yours := "lola profile --project user:mine --switch -y"
+		yours := "lola profile --project switch user:mine -y"
 		Expect(hintLines(r.err)).To(ContainElement("yours: " + yours))
 		again := lola(shellWords(yours)[1:]...)
 		Expect(again.code).To(Equal(0), again.err)
@@ -333,9 +333,9 @@ var _ = Describe("hints keep the user's flags", func() {
 		writeTree(proj, map[string]string{".lola/profiles/other.yml": "version: 1\n"})
 		r := lola("profile", "foo1", "--project")
 		Expect(r.code).To(Equal(1), r.err)
-		Expect(hintLines(r.err)).To(HaveExactElements("make it: lola profile foo1 --switch --new --project",
+		Expect(hintLines(r.err)).To(HaveExactElements("make it: lola profile switch foo1 --new --project",
 			HavePrefix("profiles the project at ")))
-		again := lola(shellWords("lola profile foo1 --switch --new --project")[1:]...)
+		again := lola(shellWords("lola profile switch foo1 --new --project")[1:]...)
 		Expect(again.code).To(Equal(0), again.err)
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
@@ -352,12 +352,12 @@ var _ = Describe("hints keep the user's flags", func() {
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n"})
-		r := lola("profile", "project:docs", "--switch", "--new", "--project")
+		r := lola("profile", "switch", "project:docs", "--new", "--project")
 		Expect(r.code).To(Equal(1), r.err)
 		Expect(r.err).To(ContainSubstring("--new makes a profile that does not exist yet (project:docs beside user:docs would make a bare docs name two profiles)"))
 		hints := hintLines(r.err)
-		Expect(hints).To(HaveExactElements("switch to it: lola profile --project user:docs --switch",
-			"or make another: lola profile --project project:docs-2 --switch --new"))
+		Expect(hints).To(HaveExactElements("switch to it: lola profile --project switch user:docs",
+			"or make another: lola profile --project switch project:docs-2 --new"))
 		for _, h := range hints {
 			again := lola(shellWords(h[strings.Index(h, "lola "):])[1:]...)
 			Expect(again.code).To(Equal(0), h+": "+again.err)

@@ -664,7 +664,7 @@ modules:
 				" not targets: [claude-code]")
 
 			path = write("default.yml", "version: 1\nextends: [go]\nmodules:\n  - {name: a, source: ../a}\n")
-			refused(path, ":2", "remove extends: from "+path+", then switch to a bundle of them: lola profile --user default-bundle --switch --new --bundle remote:go")
+			refused(path, ":2", "remove extends: from "+path+", then switch to a bundle of them: lola profile --user switch default-bundle --new --bundle remote:go")
 
 			path = write("work.yml", "version: 1\nbundle: [docs]\nextends: [go]\n")
 			refused(path, ":3", "remove extends: from "+path+" and list its profiles first in bundle: as remote:go")

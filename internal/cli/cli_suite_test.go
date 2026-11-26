@@ -27,13 +27,12 @@ type result struct {
 
 // lola runs the real command tree in-process with buffered, non-terminal streams.
 func lola(args ...string) result {
-	root, err := cli.NewRootCmd(os.Getenv)
+	root, err := cli.NewRootCmd(os.Getenv, cli.WithArgs(args))
 	Expect(err).NotTo(HaveOccurred())
 	var out, errb bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&errb)
 	root.SetIn(strings.NewReader(""))
-	root.SetArgs(args)
 	code := cli.Execute(root)
 	return result{out: out.String(), err: errb.String(), code: code}
 }
@@ -72,4 +71,23 @@ func withoutContext(doc string) string {
 	out, err := json.Marshal(v)
 	Expect(err).NotTo(HaveOccurred())
 	return string(out)
+}
+
+// lastHint is the text of the last hint: line of stderr, "" when there is none.
+func lastHint(stderr string) string {
+	i := strings.LastIndex(stderr, "hint: ")
+	if i < 0 {
+		return ""
+	}
+	line, _, _ := strings.Cut(stderr[i+len("hint: "):], "\n")
+	return line
+}
+
+// expectRunnable fails unless hint, from its first "lola " on, names a real command whose flags
+// parse and whose arguments its Args rule accepts.
+func expectRunnable(hint string) {
+	GinkgoHelper()
+	_, cmdline, ok := strings.Cut(hint, "lola ")
+	Expect(ok).To(BeTrue(), "no lola command in hint %q", hint)
+	Expect(cli.ResolveHint(append([]string{"lola"}, shellWords(cmdline)...))).To(Succeed(), hint)
 }

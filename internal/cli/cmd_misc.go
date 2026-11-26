@@ -49,7 +49,7 @@ func (a *app) addMiscCommands(root *cobra.Command) {
 		Long: "Print a completion script for your shell. It completes commands, their aliases, and flags,\n" +
 			"and the values lola knows: module names from your cache and this scope (plus file names, for\n" +
 			"install and check, which take paths); a module's components for --skip, --only and --unskip;\n" +
-			"profile names for --profile, --to, --from and --bundle; the modules --move can move;\n" +
+			"profile names for --profile, --to, --from and --bundle; the modules lola profile move moves;\n" +
 			"<module>= and the installed version for --at; trash runs, newest first, then a run's files;\n" +
 			"and for -t, the assistants found on this machine first. Completion reads local files only:\n" +
 			"it writes nothing and never uses the network. --ref and other free-text values offer nothing;\n" +

@@ -97,7 +97,7 @@ func (e *Engine) resolveMarket(addr market.Address, display []string) (*marketPi
 	if r == nil {
 		return nil, noMarket(reg, addr.Market, nil, display)
 	}
-	update := MarketRun(append([]string{r.Name, "--update"}, display...)...)
+	update := MarketRun(append([]string{"update", r.Name}, display...)...)
 	show := MarketRun(append([]string{r.Name}, display...)...)
 	c, err := e.loadMarket(*r)
 	switch {
@@ -169,7 +169,7 @@ func (e *catalogMismatchError) Unwrap() error { return e.err }
 // anything is fetched, and the fetch, by that commit, must serve it; an archive must have the
 // sha256 the catalog lists before anything is extracted.
 func (e *Engine) fetchEntry(ctx context.Context, p *marketPick, spec source.Spec, commit, run string) (source.Fetched, error) {
-	update := MarketRun(append([]string{p.reg.Name, "--update"}, p.display...)...)
+	update := MarketRun(append([]string{"update", p.reg.Name}, p.display...)...)
 	fetch := spec
 	if commit != "" {
 		if err := source.CheckReachable(ctx, spec, commit, run); err != nil {

@@ -41,7 +41,7 @@ var _ = Describe("remote profiles", func() {
 		commit, digest = strings.Repeat("a", 40), "sha256:"+strings.Repeat("b", 64)
 		GinkgoT().Chdir(tmp)
 	})
-	// keep writes a remote profile as lola profile --add does: profile.yml and its source.json.
+	// keep writes a remote profile as lola profile add does: profile.yml and its source.json.
 	keep := func(name, content string) string {
 		GinkgoHelper()
 		dir := filepath.Join(p.RemoteProfiles, name)
@@ -64,9 +64,9 @@ var _ = Describe("remote profiles", func() {
 		writeTree(mod, map[string]string{"lola.yml": "name: a\n", "commands/a.md": "A\n"})
 		mine := filepath.Join(p.UserProfiles, "mine.yml")
 		writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nextends: [go]\nmodules:\n  - {name: a, source: " + mod + "}\n"})
-		r := lola("profile", "mine", "--switch", "--user", "-y")
+		r := lola("profile", "switch", "mine", "--user", "-y")
 		Expect(r.code).NotTo(Equal(0))
-		split := "lola profile --user mine --split"
+		split := "lola profile --user split mine"
 		Expect(r.err).To(HaveSuffix("error: " + mine + ":3: extends: is no longer a key; a bundle combines profiles now\n" +
 			"  hint: make it a bundle: in " + mine + " replace extends: with bundle: [remote:go]; the entries of remote:go then install to their own targets," +
 			" not targets: [claude-code]; then move its modules: and targets: into a profile of their own: " + split + "\n"))
@@ -76,7 +76,7 @@ var _ = Describe("remote profiles", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(os.ReadFile(mine)).To(Equal([]byte("version: 1\nbundle: ['remote:go', mine-modules-2]\n")))
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "mine-modules-2.yml"))).To(Equal([]byte("version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + mod + "}\n")))
-		r = lola("profile", "mine", "--switch", "--user", "-y")
+		r = lola("profile", "switch", "mine", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(p.Home, ".claude", "commands", "a.md")).To(BeARegularFile())
 
@@ -85,7 +85,7 @@ var _ = Describe("remote profiles", func() {
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\nextends: [go]\n"})
 		r = lola("sync", "--user")
 		Expect(r.code).NotTo(Equal(0))
-		hint := "lola profile --user default-bundle --switch --new --bundle remote:go,mine"
+		hint := "lola profile --user switch default-bundle --new --bundle remote:go,mine"
 		Expect(r.err).To(HaveSuffix("error: " + def + ":2: extends: is no longer a key; a bundle combines profiles now\n" +
 			"  hint: remove extends: from " + def + ", then switch to a bundle of them and mine, the profile on now, which the switch keeps: " + hint + "\n"))
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\n"})
@@ -114,11 +114,11 @@ var _ = Describe("remote profiles", func() {
 		Expect(v.Profiles).To(ContainElement(And(HaveKeyWithValue("name", "go"), HaveKeyWithValue("kind", "user"),
 			HaveKeyWithValue("shadowed_by", BeNil()), HaveKeyWithValue("commit", ""))))
 
-		Expect(lola("__complete", "profile", "--update", "").out).To(HavePrefix("docs\ngo\n:"), "--update completes remote profiles")
-		Expect(lola("__complete", "profile", "--update", "remote:go", "").out).To(HavePrefix("docs\n:"), "remote:go names go")
-		Expect(lola("__complete", "profile", "--remove", "").out).To(HavePrefix("docs\nremote:go\nuser:go\n:"), "a name both kinds have is offered qualified")
-		Expect(lola("__complete", "profile", "--remove", "go", "").out).To(HavePrefix(":"), "--remove takes one name")
-		Expect(lola("__complete", "profile", "--update", "--all", "").out).To(HavePrefix(":"), "--all takes no names")
+		Expect(lola("__complete", "profile", "update", "").out).To(HavePrefix("docs\ngo\n:"), "--update completes remote profiles")
+		Expect(lola("__complete", "profile", "update", "remote:go", "").out).To(HavePrefix("docs\n:"), "remote:go names go")
+		Expect(lola("__complete", "profile", "rm", "").out).To(HavePrefix("docs\nremote:go\nuser:go\n:"), "a name both kinds have is offered qualified")
+		Expect(lola("__complete", "profile", "rm", "go", "").out).To(HavePrefix(":"), "--remove takes one name")
+		Expect(lola("__complete", "profile", "update", "--all", "").out).To(HavePrefix(":"), "--all takes no names")
 
 		r = lola("profile", "--user", "remote:go")
 		Expect(r.code).To(Equal(0), r.err)
@@ -128,13 +128,14 @@ var _ = Describe("remote profiles", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HavePrefix("Profile user:go ("), "a bare name is the local one")
 
-		r = lola("profile", "--user", "remote:go", "--on")
+		r = lola("profile", "--user", "on", "remote:go")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: remote:go is shadowed by your profile user:go"))
-		Expect(r.err).To(ContainSubstring("hint: use yours: lola profile --user user:go --on"))
-		r = lola("profile", "--user", "remote:go", "--on", "-y")
+		Expect(r.err).To(ContainSubstring("hint: use yours: lola profile --user on user:go"))
+		expectRunnable("lola profile --user on user:go")
+		r = lola("profile", "--user", "on", "remote:go", "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("hint: use yours: lola profile --user user:go --on\n"), "-y answered nothing about another profile")
+		Expect(r.err).To(ContainSubstring("hint: use yours: lola profile --user on user:go\n"), "-y answered nothing about another profile")
 
 		// Turned on before user:go existed, it is read as user:go, and still shows its own modules.
 		led := ledger.New()
@@ -161,7 +162,7 @@ var _ = Describe("remote profiles", func() {
 		Expect(r.out).NotTo(ContainSubstring("read as"))
 		Expect(r.out).To(ContainSubstring("\nproject (" + proj + "): on, in effect; project:go would take its place if turned on; its modules:\n" +
 			"  gopls  profile:remote:go\n"))
-		Expect(r.out).To(ContainSubstring("→ to use project:go instead: lola profile --project project:go --on\n"))
+		Expect(r.out).To(ContainSubstring("→ to use project:go instead: lola profile --project on project:go\n"))
 		var v struct {
 			Profiles []map[string]any `json:"profiles"`
 		}
@@ -182,16 +183,16 @@ var _ = Describe("remote profiles", func() {
 		path := keep("go", gopls())
 		Expect(os.MkdirAll(filepath.Join(p.Home, ".lola"), 0o755)).To(Succeed())
 		refused := "error: --scope both names a project and user scope, and the project there is your home directory, where user scope installs\n" +
-			"  hint: update at user scope only: lola profile go --update --user\n"
+			"  hint: update at user scope only: lola profile update go --user\n"
 		GinkgoT().Chdir(p.Home)
-		r := lola("profile", "go", "--update", "--scope", "both")
+		r := lola("profile", "update", "go", "--scope", "both")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(refused))
-		r = lola("profile", "go", "--update", "--scope", "both", "--trust", "-y", "--trust=hooks,runtime-hooks", "--unseen")
+		r = lola("profile", "update", "go", "--scope", "both", "--trust", "-y", "--trust=hooks,runtime-hooks", "--unseen")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(refused), "answers given for both scopes answer nothing for user scope alone")
 		GinkgoT().Chdir(tmp)
-		r = lola("profile", "go", "--update", "--scope", "both", "-C", p.Home)
+		r = lola("profile", "update", "go", "--scope", "both", "-C", p.Home)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(refused), "user scope takes no -C")
 		Expect(os.ReadFile(path)).To(Equal([]byte(gopls())))
@@ -202,19 +203,20 @@ var _ = Describe("remote profiles", func() {
 		path := keep("go", gopls())
 		Expect(os.MkdirAll(filepath.Join(p.Home, ".lola"), 0o755)).To(Succeed())
 		refused := "error: project scope at " + p.Home + " is your home directory, where user scope installs\n" +
-			"  hint: update at user scope only: lola profile --user remote:go --update\n"
+			"  hint: update at user scope only: lola profile --user update remote:go\n"
 		GinkgoT().Chdir(p.Home)
-		r := lola("profile", "go", "--update", "--project", "--trust", "-y", "--trust=hooks,runtime-hooks", "--unseen")
+		r := lola("profile", "update", "go", "--project", "--trust", "-y", "--trust=hooks,runtime-hooks", "--unseen")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(refused), "answers given for the project answer nothing for user scope")
+		expectRunnable(lastHint(r.err))
 		GinkgoT().Chdir(tmp)
-		r = lola("profile", "go", "--update", "-C", p.Home, "--trust")
+		r = lola("profile", "update", "go", "-C", p.Home, "--trust")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(refused), "user scope takes no -C")
 		Expect(os.ReadFile(path)).To(Equal([]byte(gopls())))
 	})
 
-	Describe("--add", func() {
+	Describe("add, update and rm", func() {
 		var src, url, mcommit, mdigest string
 		gitIn := func(dir string, args ...string) string {
 			GinkgoHelper()
@@ -246,28 +248,29 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("refuses off a terminal without --trust before any network contact, and adds with it, showing what it adds", func() {
-			r := lola("profile", "go", "--add", src, "--user")
+			r := lola("profile", "add", src, "go", "--user")
 			Expect(r.code).To(Equal(3))
-			Expect(r.err).To(Equal("error: lola profile --add shows the profile and asks before adding it, and there is no terminal to ask on\n" +
-				"  hint: see it: lola profile --user go --add " + src + " -n\n" +
-				"  hint: then add it unasked: lola profile --user go --add " + src + " --trust=profiles\n"))
+			Expect(r.err).To(Equal("error: lola profile add shows the profile and asks before adding it, and there is no terminal to ask on\n" +
+				"  hint: see it: lola profile --user add " + src + " go -n\n" +
+				"  hint: then add it unasked: lola profile --user add " + src + " go --trust=profiles\n"))
+			expectRunnable("lola profile --user add " + src + " go --trust=profiles")
 			Expect(p.RemoteProfiles).NotTo(BeADirectory())
 
-			r = lola("profile", "go", "--get", src, "--user", "-n")
+			r = lola("profile", "get", src, "go", "--user", "-n")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring("remote:go → " + filepath.Join(p.RemoteProfiles, "go", "profile.yml") +
 				" (shared by every scope); content compared with user scope\n  from " + src + "\n"))
 			Expect(r.out).To(MatchRegexp(`\+ example\s+` + regexpQuote(url)))
 			Expect(r.out).To(ContainSubstring("→ would add remote:go"))
-			Expect(r.out).To(ContainSubstring("→ to add remote:go: lola profile --user go --add " + src + " (off a terminal: --trust=profiles)\n"))
+			Expect(r.out).To(ContainSubstring("→ to add remote:go: lola profile --user add " + src + " go (off a terminal: --trust=profiles)\n"))
 			Expect(p.RemoteProfiles).NotTo(BeADirectory())
 
-			r = lola("profile", "go", "--add", src, "--user", "--trust")
+			r = lola("profile", "add", src, "go", "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.err).To(ContainSubstring("  from "+src+"\n"), "what --trust accepted is shown")
 			Expect(r.out).To(Equal("✓ added remote:go (" + filepath.Join(p.RemoteProfiles, "go", "profile.yml") + ")\n" +
-				"→ turn it on: lola profile --user remote:go --on\n"))
-			r = lola("profile", "remote:go", "--on", "--user")
+				"→ turn it on: lola profile --user on remote:go\n"))
+			r = lola("profile", "on", "remote:go", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(filepath.Join(p.Home, ".claude", "commands", "ship.md")).To(BeAnExistingFile())
 		})
@@ -276,11 +279,11 @@ var _ = Describe("remote profiles", func() {
 			mod := filepath.Join(tmp, "mods", "a")
 			writeTree(mod, map[string]string{"lola.yml": "name: a\n", "commands/a.md": "A\n"})
 			writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + mod + "}\n"})
-			Expect(lola("profile", "mine", "--switch", "--user").code).To(Equal(0))
+			Expect(lola("profile", "switch", "mine", "--user").code).To(Equal(0))
 			Expect(filepath.Join(p.Home, ".claude", "commands", "a.md")).To(BeARegularFile())
-			r := lola("profile", "go", "--add", src, "--user", "--trust")
+			r := lola("profile", "add", src, "go", "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
-			hint := "lola profile --user remote:go --switch"
+			hint := "lola profile --user switch remote:go"
 			Expect(r.out).To(HaveSuffix("→ turn it on (switches mine off, removing its modules): "+hint+"\n"), "no -y in a hint naming another command")
 			r = runConfirmed(hint)
 			Expect(r.code).To(Equal(0), r.err)
@@ -292,7 +295,7 @@ var _ = Describe("remote profiles", func() {
 		It("offers the source's profiles on a terminal, asks after showing them, and adds nothing on No", func() {
 			sp := &scripted{profiles: []func(cli.ProfileStep) ([]string, error){
 				func(st cli.ProfileStep) ([]string, error) { return []string{"docs"}, nil }}, confirm: []bool{false}}
-			r := lolaP(sp, "profile", "--add", src, "--user")
+			r := lolaP(sp, "profile", "--user", "add", src)
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 			Expect(sp.calls).To(Equal([]string{"profiles", "confirm:Add remote:docs? Nothing is turned on"}))
@@ -303,10 +306,10 @@ var _ = Describe("remote profiles", func() {
 
 			sp = &scripted{profiles: []func(cli.ProfileStep) ([]string, error){
 				func(st cli.ProfileStep) ([]string, error) { return []string{"docs", "go"}, nil }}, confirm: []bool{true}}
-			r = lolaP(sp, "profile", "--add", src, "--user", "--json")
+			r = lolaP(sp, "profile", "--user", "add", src, "--json")
 			Expect(r.code).To(Equal(3), "--json never asks: no picker")
-			Expect(r.err).To(ContainSubstring("lola profile --add shows the profile and asks before adding it"))
-			r = lolaP(sp, "profile", "--add", src, "--user")
+			Expect(r.err).To(ContainSubstring("lola profile add shows the profile and asks before adding it"))
+			r = lolaP(sp, "profile", "--user", "add", src)
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.calls).To(Equal([]string{"profiles", "confirm:Add remote:docs, remote:go? Nothing is turned on"}))
 			var v struct {
@@ -349,21 +352,21 @@ var _ = Describe("remote profiles", func() {
 			mod := filepath.Join(tmp, "mods", "a")
 			writeTree(mod, map[string]string{"lola.yml": "name: a\n", "commands/a.md": "A\n"})
 			writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + mod + "}\n"})
-			Expect(lola("profile", "mine", "--switch", "--user").code).To(Equal(0))
-			r := lolaP(&scripted{confirm: []bool{true}}, "profile", "go", "--add", src, "--user")
+			Expect(lola("profile", "switch", "mine", "--user").code).To(Equal(0))
+			r := lolaP(&scripted{confirm: []bool{true}}, "profile", "add", src, "go", "--user")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).To(HaveSuffix("→ turn it on (switches mine off, removing its modules): lola profile --user remote:go --switch\n"), "a terminal asks before removing")
-			Expect(lola("profile", "go", "--remove", "--user", "-y").code).To(Equal(0))
+			Expect(r.out).To(HaveSuffix("→ turn it on (switches mine off, removing its modules): lola profile --user switch remote:go\n"), "a terminal asks before removing")
+			Expect(lola("profile", "rm", "go", "--user", "-y").code).To(Equal(0))
 			hookedUpdate("true")
-			r = lola("profile", "go", "--add", src, "--user", "--trust")
+			r = lola("profile", "add", src, "go", "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(Equal("✓ added remote:go (" + filepath.Join(p.RemoteProfiles, "go", "profile.yml") + ")\n"))
 		})
 		It("an update whose sync fails after its grants carries every grant written so far in the error JSON", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			hookedUpdate("exit 3")
-			r := lola("profile", "go", "--update", "--user", "--trust=profiles,hooks", "--unseen", "--json")
+			r := lola("profile", "update", "go", "--user", "--trust=profiles,hooks", "--unseen", "--json")
 			Expect(r.code).To(Equal(1))
 			var doc map[string]any
 			Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
@@ -372,8 +375,8 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("shows an update's sync in the viewer in full", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			many := map[string]string{}
 			for i := range 45 {
 				many[fmt.Sprintf("commands/m%02d.md", i)] = "M\n"
@@ -409,7 +412,7 @@ var _ = Describe("remote profiles", func() {
 			root.SetOut(&out)
 			root.SetErr(c.stderr)
 			root.SetIn(in)
-			root.SetArgs([]string{"profile", "go", "--update", "--user", "--trust=profiles,hooks", "--unseen", "-v"})
+			root.SetArgs([]string{"profile", "update", "go", "--user", "--trust=profiles,hooks", "--unseen", "-v"})
 			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
 			Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
 			Expect(out.String()).To(ContainSubstring("create claude-code .claude/commands/m44.md"), "the viewer's text is uncapped")
@@ -418,7 +421,7 @@ var _ = Describe("remote profiles", func() {
 
 		It("asks an add with the profiles as the question's text; Ctrl+C there changes nothing", func() {
 			c := &confirming{scripted: scripted{}, fail: cli.ErrAborted}
-			r := lolaAsking(c, "profile", "go", "--add", src, "--user")
+			r := lolaAsking(c, "profile", "add", src, "go", "--user")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(c.questions).To(Equal([]string{"Add remote:go? Nothing is turned on"}))
 			Expect(c.shows[0]).To(ContainSubstring("remote:go"), "the profiles are the question's text")
@@ -445,7 +448,7 @@ var _ = Describe("remote profiles", func() {
 			root.SetOut(&out)
 			root.SetErr(c.stderr)
 			root.SetIn(in)
-			root.SetArgs([]string{"profile", "go", "--add", src, "--user", "--trust"})
+			root.SetArgs([]string{"profile", "add", src, "go", "--user", "--trust"})
 			Expect(cli.Execute(root)).To(Equal(4), c.stderr.String())
 			Expect(out.String()).To(ContainSubstring("q  continue to: Proceed?"))
 			Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the add: the receipt is not asked")
@@ -454,14 +457,14 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("asks an update with the profile's changes as the question's text; Ctrl+C there changes nothing", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			hookedUpdate("true", map[string]string{"commands/m00.md": "M\n"})
 			kept := filepath.Join(p.RemoteProfiles, "go", "profile.yml")
 			before, err := os.ReadFile(kept)
 			Expect(err).NotTo(HaveOccurred())
 			c := &confirming{scripted: scripted{}, fail: cli.ErrAborted}
-			r := lolaAsking(c, "profile", "go", "--update", "--user")
+			r := lolaAsking(c, "profile", "update", "go", "--user")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(c.questions).To(Equal([]string{"Update remote:go?"}))
 			Expect(c.shows[0]).To(ContainSubstring("remote:go → "), "the profile's changes are the question's text")
@@ -471,15 +474,15 @@ var _ = Describe("remote profiles", func() {
 
 		It("an update with --trust shows one receipt for the profiles and each scope's sync; No updates and applies nothing", func() {
 
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			hookedUpdate("true")
 			kept := filepath.Join(p.RemoteProfiles, "go", "profile.yml")
 			before, err := os.ReadFile(kept)
 			Expect(err).NotTo(HaveOccurred())
 
 			c := &confirming{scripted: scripted{}, answers: []bool{false}}
-			r := lolaAsking(c, "profile", "go", "--update", "--user", "--trust=profiles,hooks", "--unseen")
+			r := lolaAsking(c, "profile", "update", "go", "--user", "--trust=profiles,hooks", "--unseen")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(c.questions).To(Equal([]string{"Proceed?"}), "one question for the update and its sync")
 			Expect(r.err).To(ContainSubstring("trusting, as --trust=profiles,hooks allows:\n  → profiles: remote:go (changed)\n  → hooks: hooked pre-install (new)\n"))
@@ -489,7 +492,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(p.Consent).NotTo(BeAnExistingFile())
 
 			c = &confirming{scripted: scripted{}, answers: []bool{true}}
-			r = lolaAsking(c, "profile", "go", "--update", "--user", "--trust=profiles,hooks", "--unseen")
+			r = lolaAsking(c, "profile", "update", "go", "--user", "--trust=profiles,hooks", "--unseen")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(c.questions).To(Equal([]string{"Proceed?"}))
 			Expect(os.ReadFile(kept)).NotTo(Equal(before))
@@ -498,17 +501,17 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("an update with --trust across two scopes asks one receipt, then runs and records each scope's hook", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			proj := filepath.Join(tmp, "proj")
 			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 			GinkgoT().Chdir(proj)
-			Expect(lola("profile", "go", "--on", "--project").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--project").code).To(Equal(0))
 			mark := filepath.Join(tmp, "hook-ran")
 			hookedUpdate("echo ran >> '" + mark + "'")
 
 			c := &confirming{answers: []bool{true}}
-			r := lolaAsking(c, "profile", "go", "--update", "--scope", "both", "--trust=profiles,hooks", "--unseen")
+			r := lolaAsking(c, "profile", "update", "go", "--scope", "both", "--trust=profiles,hooks", "--unseen")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(c.questions).To(Equal([]string{"Proceed?"}), "one question for the update and both scopes' syncs")
 			Expect(r.err).To(ContainSubstring("trusting, as --trust=profiles,hooks allows:\n  → profiles: remote:go (changed)\n  → hooks: hooked pre-install (new)\n"))
@@ -519,35 +522,35 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("an update's --trust does not consent to a hook it has not shown", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			mark := filepath.Join(tmp, "hook-ran")
 			hookedUpdate("echo ran >> '" + mark + "'")
-			r := lola("profile", "go", "--update", "--user", "--trust=profiles,hooks", "-y")
+			r := lola("profile", "update", "go", "--user", "--trust=profiles,hooks", "-y")
 			Expect(r.code).NotTo(Equal(0), r.out)
 			Expect(r.err).To(ContainSubstring("lola has not shown you this hook"))
 			Expect(mark).NotTo(BeAnExistingFile())
 		})
 
 		It("an update's --trust with --unseen consents to a hook it has not shown", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			mark := filepath.Join(tmp, "hook-ran")
 			hookedUpdate("echo ran >> '" + mark + "'")
-			r := lola("profile", "go", "--update", "--user", "--trust=profiles,hooks", "--unseen", "-y")
+			r := lola("profile", "update", "go", "--user", "--trust=profiles,hooks", "--unseen", "-y")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(os.ReadFile(mark)).To(Equal([]byte("ran\n")))
 		})
 
 		It("an update with --trust names what it wrote when a later profile changed before the receipt's yes", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			work := filepath.Join(tmp, "profiles-work")
 			writeTree(work, map[string]string{"profiles/docs.yml": "version: 1\ndescription: docs\n"})
 			gitIn(work, "add", "-A")
 			gitIn(work, "commit", "-qm", "add docs")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
-			Expect(lola("profile", "docs", "--add", src, "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "docs", "--user", "--trust").code).To(Equal(0))
 			writeTree(work, map[string]string{"profiles/docs.yml": "version: 1\ndescription: docs 2\n"})
 			hookedUpdate("true")
 
@@ -560,20 +563,20 @@ var _ = Describe("remote profiles", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "docs", "source.json"), b, 0o600)).To(Succeed())
 			}}
-			r := lolaAsking(c, "profile", "go", "docs", "--update", "--user", "--trust=profiles,hooks", "--unseen")
+			r := lolaAsking(c, "profile", "update", "go", "docs", "--user", "--trust=profiles,hooks", "--unseen")
 			Expect(r.code).To(Equal(1), r.err)
 			Expect(c.questions).To(Equal([]string{"Proceed?"}))
 			Expect(r.out).To(ContainSubstring("✓ updated remote:go ("))
 			Expect(r.err).To(HaveSuffix("error: remote:go is updated, but not applied; the run stopped: remote:docs changed while you were asked; it was not updated\n" +
 				"  hint: apply what was updated at user scope: lola sync --user\n" +
-				"  hint: run it again: lola profile --user remote:docs --update --trust=profiles,hooks --unseen\n"))
+				"  hint: run it again: lola profile --user update remote:docs --trust=profiles,hooks --unseen\n"))
 			Expect(filepath.Join(p.Home, ".claude", "commands", "h.md")).NotTo(BeAnExistingFile(), "nothing is applied")
 		})
 
 		DescribeTable("an update a signal stops exits as the signal would, not as a cancelled question",
 			func(trust string, sig syscall.Signal) {
-				Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-				Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+				Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+				Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 				kept := filepath.Join(p.RemoteProfiles, "go", "profile.yml")
 				before, err := os.ReadFile(kept)
 				Expect(err).NotTo(HaveOccurred())
@@ -585,7 +588,7 @@ var _ = Describe("remote profiles", func() {
 				root.SetOut(&out)
 				root.SetErr(&errb)
 				root.SetIn(strings.NewReader(""))
-				root.SetArgs([]string{"profile", "go", "--update", "--user", trust})
+				root.SetArgs([]string{"profile", "update", "go", "--user", trust})
 				root.SetContext(ctx)
 				Expect(cli.Execute(root)).To(Equal(128+int(sig)), errb.String())
 				Expect(errb.String()).To(BeEmpty(), "nothing was written, so there is nothing to apply later")
@@ -596,8 +599,8 @@ var _ = Describe("remote profiles", func() {
 		)
 
 		It("an update with --trust whose sync is cancelled before the receipt updates nothing", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			work := filepath.Join(tmp, "profiles-work")
 			writeTree(work, map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
 			gitIn(work, "commit", "-qam", "drop example")
@@ -606,7 +609,7 @@ var _ = Describe("remote profiles", func() {
 			before, err := os.ReadFile(kept)
 			Expect(err).NotTo(HaveOccurred())
 			c := &confirming{scripted: scripted{}, answers: []bool{false}}
-			r := lolaAsking(c, "profile", "go", "--update", "--user", "--trust=profiles")
+			r := lolaAsking(c, "profile", "update", "go", "--user", "--trust=profiles")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(c.questions).To(Equal([]string{"Remove these and sync? No applies nothing"}), "a No to the removals is no refusal: no receipt follows")
 			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
@@ -614,12 +617,12 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("updates a remote profile, applying it where it is on", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
-			r := lola("profile", "go", "--upgrade", "--user")
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
+			r := lola("profile", "upgrade", "go", "--user")
 			Expect(r.code).To(Equal(3))
-			Expect(r.err).To(HavePrefix("error: lola profile --update shows how each profile changes and asks before keeping it, and there is no terminal to ask on\n"))
-			r = lola("profile", "go", "--update", "--user", "--trust")
+			Expect(r.err).To(HavePrefix("error: lola profile update shows how each profile changes and asks before keeping it, and there is no terminal to ask on\n"))
+			r = lola("profile", "update", "go", "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(HavePrefix("→ remote:go is up to date with " + src + " (commit "))
 
@@ -636,7 +639,7 @@ var _ = Describe("remote profiles", func() {
 					", source: " + dir + "}\n"})
 			}
 			pending("extra")
-			r = lola("profile", "go", "--update", "--user", "--trust", "--trust=hooks", "--unseen")
+			r = lola("profile", "update", "go", "--user", "--trust", "--trust=hooks", "--unseen")
 			Expect(r.code).To(Equal(3), "dropping example removes files, which -y confirms")
 			Expect(r.err).To(ContainSubstring("  - example"), "the change it accepted is shown")
 			Expect(r.out).To(ContainSubstring("✓ updated remote:go ("), "the update is reported before it is applied")
@@ -653,13 +656,13 @@ var _ = Describe("remote profiles", func() {
 				", commit: " + mcommit + ", digest: " + mdigest + "}\n"})
 			gitIn(work, "commit", "-qam", "example again")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
-			r = lola("profile", "go", "--update", "--user", "--trust")
+			r = lola("profile", "update", "go", "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
 			writeTree(work, map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
 			gitIn(work, "commit", "-qam", "drop example again")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
 			pending("more")
-			r = lola("profile", "go", "--update", "--user", "--trust", "--trust=runtime-hooks", "--unseen", "--json")
+			r = lola("profile", "update", "go", "--user", "--trust", "--trust=runtime-hooks", "--unseen", "--json")
 			Expect(r.code).To(Equal(3))
 			var out map[string]any
 			Expect(json.Unmarshal([]byte(r.err), &out)).To(Succeed(), r.err)
@@ -668,16 +671,38 @@ var _ = Describe("remote profiles", func() {
 				"extra, now installed and no longer wanted, and more")
 		})
 
+		It("keeps the run's output flags in an engine hint of update, as on's", func() {
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user", "-y").code).To(Equal(0))
+			b, err := os.ReadFile(p.UserLedger)
+			Expect(err).NotTo(HaveOccurred())
+			var doc map[string]any
+			Expect(json.Unmarshal(b, &doc)).To(Succeed())
+			ex := doc["modules"].(map[string]any)["example"].(map[string]any)
+			ex["targets"] = append(ex["targets"].([]any), "bogus")
+			ex["artifacts"] = append(ex["artifacts"].([]any), map[string]any{"target": "bogus", "kind": "file", "path": "x.md"})
+			b, err = json.Marshal(doc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(p.UserLedger, b, 0o600)).To(Succeed())
+			for _, run := range [][]string{{"on", "go"}, {"update", "go"}} {
+				r := lola(append(append([]string{"profile"}, run...), "--user", "--trust", "-y", "--json")...)
+				Expect(r.code).NotTo(Equal(0), "%v", run)
+				var out map[string]any
+				Expect(json.Unmarshal([]byte(r.err), &out)).To(Succeed(), r.err)
+				Expect(out["hints"]).To(ContainElement("lola repair --user --json"), "%v: %s", run, r.err)
+			}
+		})
+
 		It("keeps an update whose sync hits a hand-edited file, hinting the sync with --force that applies it", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			writeTree(filepath.Join(p.Home, ".claude", "commands"), map[string]string{"ship.md": "mine now\n"})
 			work := filepath.Join(tmp, "profiles-work")
 			writeTree(work, map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
 			gitIn(work, "commit", "-qam", "drop example")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
 
-			r := lola("profile", "go", "--update", "--user", "--trust", "-y")
+			r := lola("profile", "update", "go", "--user", "--trust", "-y")
 			Expect(r.code).To(Equal(3))
 			Expect(r.out).To(ContainSubstring("✓ updated remote:go ("))
 			Expect(r.err).To(ContainSubstring("error: remote:go is updated, but not applied to user scope: refusing to change anything: 1 conflict\n"),
@@ -702,13 +727,13 @@ var _ = Describe("remote profiles", func() {
 			writeTree(work, map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
 			gitIn(work, "commit", "-qam", "drop example")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			gitIn(work, "checkout", "-q", "HEAD~1", "--", "profiles/go.yml")
 			gitIn(work, "commit", "-qam", "example again")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
 
-			r = lola("profile", "go", "--update", "--user", "--trust", "-y")
+			r = lola("profile", "update", "go", "--user", "--trust", "-y")
 			Expect(r.code).To(Equal(1))
 			Expect(r.out).To(ContainSubstring("✓ updated remote:go ("))
 			Expect(r.err).To(ContainSubstring("error: remote:go is updated, but not applied to user scope: refusing to change anything: 1 conflict\n"))
@@ -718,12 +743,12 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("updates in the project found here, then user scope, without a scope flag, stopping at the first that fails", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			proj := filepath.Join(tmp, "proj")
 			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 			GinkgoT().Chdir(proj)
-			Expect(lola("profile", "go", "--on", "--project").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--project").code).To(Equal(0))
 			work := filepath.Join(tmp, "profiles-work")
 			push := func(content, msg string) {
 				GinkgoHelper()
@@ -732,7 +757,7 @@ var _ = Describe("remote profiles", func() {
 				gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
 			}
 			push("version: 1\ntargets: [claude-code]\nmodules: []\n", "drop example")
-			r := lola("profile", "go", "--update", "--trust", "--trust=hooks", "--unseen")
+			r := lola("profile", "update", "go", "--trust", "--trust=hooks", "--unseen")
 			Expect(r.code).To(Equal(3))
 			Expect(r.err).To(ContainSubstring("content compared with project " + proj + "\n"))
 			Expect(r.out).To(ContainSubstring("→ every other checkout that uses remote:go picks the update up at its next lola sync\n"))
@@ -744,7 +769,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(lola("sync", "--scope", "both", "-y").code).To(Equal(0))
 
 			push("version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: "+url+", commit: "+mcommit+", digest: "+mdigest+"}\n", "example again")
-			r = lola("profile", "go", "--update", "--trust")
+			r = lola("profile", "update", "go", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(MatchRegexp(`(?s)✓ updated remote:go .*\nproject \(` + regexpQuote(proj) + `\):\n.*\nuser:\n`))
 			Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).To(BeAnExistingFile())
@@ -752,7 +777,7 @@ var _ = Describe("remote profiles", func() {
 
 			push("version: 1\ntargets: [claude-code]\ndescription: narrowed\nmodules:\n  - {name: example, source: "+url+", commit: "+mcommit+
 				", digest: "+mdigest+"}\n", "describe")
-			r = lola("profile", "go", "--update", "--trust", "--user", "--json")
+			r = lola("profile", "update", "go", "--trust", "--user", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			var v map[string]any
 			Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
@@ -762,7 +787,7 @@ var _ = Describe("remote profiles", func() {
 			// A No at a scope's own question stops there: the update is kept, and the message says how to apply it.
 			push("version: 1\ntargets: [claude-code]\nmodules: []\n", "drop example again")
 			sp := &scripted{confirm: []bool{true, false}}
-			r = lolaP(sp, "profile", "go", "--update")
+			r = lolaP(sp, "profile", "update", "go")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.calls).To(Equal([]string{"confirm:Update remote:go?", "confirm:Remove these and sync? No applies nothing"}))
 			Expect(r.err).To(HaveSuffix("remote:go is updated, but not applied to the project: removals declined; the project was not changed; user scope was not synced. " +
@@ -771,55 +796,55 @@ var _ = Describe("remote profiles", func() {
 
 			// --scope both is every known scope, as no flag is, and its hints keep it.
 			push("version: 1\ntargets: [claude-code]\ndescription: both\nmodules: []\n", "describe")
-			r = lola("profile", "go", "--update", "--scope", "both", "-n")
+			r = lola("profile", "update", "go", "--scope", "both", "-n")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).To(ContainSubstring("→ to update remote:go: lola profile --scope both remote:go --update (off a terminal: --trust=profiles)\n"))
-			r = lola("profile", "go", "--update", "--trust", "--scope", "both", "-y", "--json")
+			Expect(r.out).To(ContainSubstring("→ to update remote:go: lola profile --scope both update remote:go (off a terminal: --trust=profiles)\n"))
+			r = lola("profile", "update", "go", "--trust", "--scope", "both", "-y", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
 			Expect(v["scopes"]).To(HaveExactElements(HaveKeyWithValue("scope", "project"), HaveKeyWithValue("scope", "user")))
 
 			// Without a project, it is refused, offering user scope alone with the run's other flags.
 			GinkgoT().Chdir(tmp)
-			r = lola("profile", "go", "--update", "--trust", "--scope", "both", "--trust=hooks", "--unseen", "-y", "--json")
+			r = lola("profile", "update", "go", "--trust", "--scope", "both", "--trust=hooks", "--unseen", "-y", "--json")
 			Expect(r.code).To(Equal(1))
 			var refused map[string]any
 			Expect(json.Unmarshal([]byte(r.err), &refused)).To(Succeed(), r.err)
 			Expect(refused["error"]).To(Equal("--scope both names a project and user scope, and no project with .lola/ was found in " + tmp + " or above it"))
-			Expect(refused["hints"]).To(Equal([]any{"update at user scope only: lola profile go --json --update --user"}),
+			Expect(refused["hints"]).To(Equal([]any{"update at user scope only: lola profile update go --json --user"}),
 				"the answers given for both scopes are dropped; --json is kept")
-			r = lola("profile", "go", "--update", "--trust", "--scope", "both", "-C", tmp)
+			r = lola("profile", "update", "go", "--trust", "--scope", "both", "-C", tmp)
 			Expect(r.code).To(Equal(1))
 			Expect(r.err).To(Equal("error: --scope both names a project and user scope, and " + tmp + " has no .lola/\n" +
-				"  hint: update at user scope only: lola profile go --update --user\n"))
+				"  hint: update at user scope only: lola profile update go --user\n"))
 		})
 
 		It("updates the profiles named, or --all, asking about each on its own, and refuses neither, both or a name twice", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "docs", "--add", src, "--user", "--trust").code).To(Equal(0))
-			r := lola("profile", "--update", "--user", "--trust=hooks", "--unseen", "-y", "--trust", "--json")
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "docs", "--user", "--trust").code).To(Equal(0))
+			r := lola("profile", "--user", "update", "--trust=hooks", "--unseen", "-y", "--trust", "--json")
 			Expect(r.code).To(Equal(1))
 			var doc map[string]any
 			Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
-			Expect(doc["error"]).To(Equal("--update needs the remote profiles to update, or --all; you have remote:docs, remote:go"))
-			Expect(doc["hints"]).To(Equal([]any{"name them: lola profile remote:docs remote:go --json --update --user",
-				"or every one: lola profile --json --update --user --all"}), "no answer is given for profiles never named")
-			r = lola("profile", "go", "--update", "--all", "--user", "--trust=hooks", "--unseen", "-y", "--trust", "--json")
+			Expect(doc["error"]).To(Equal("update needs the remote profiles to update, or --all; you have remote:docs, remote:go"))
+			Expect(doc["hints"]).To(Equal([]any{"name them: lola profile update remote:docs remote:go --json --user",
+				"or every one: lola profile update --json --user --all"}), "no answer is given for profiles never named")
+			r = lola("profile", "update", "go", "--all", "--user", "--trust=hooks", "--unseen", "-y", "--trust", "--json")
 			Expect(r.code).To(Equal(1))
 			Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
 			Expect(doc["error"]).To(Equal("--all updates every remote profile you have, and takes no names"))
-			Expect(doc["hints"]).To(Equal([]any{"update every one: lola profile --all --json --update --user",
-				"or only those named: lola profile go --json --trust=entries,profiles,hooks --unseen --update --user --yes"}), "those named keep every answer")
+			Expect(doc["hints"]).To(Equal([]any{"update every one: lola profile update --all --json --user",
+				"or only those named: lola profile update go --json --trust=entries,profiles,hooks --unseen --user --yes"}), "those named keep every answer")
 			// The scope flags are checked first, so the hints above name scopes that work.
 			GinkgoT().Chdir(tmp)
-			r = lola("profile", "--update", "--scope", "both", "--trust")
+			r = lola("profile", "--scope", "both", "update", "--trust")
 			Expect(r.err).To(HavePrefix("error: --scope both names a project and user scope, and no project with .lola/ was found in "))
-			r = lola("profile", "go", "docs", "remote:go", "--update", "--user")
+			r = lola("profile", "update", "go", "docs", "remote:go", "--user")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: remote:go is named twice\n  hint: name it once: lola profile go docs --update --user\n"))
-			r = lola("profile", "go", "--on", "--all", "--user")
+			Expect(r.err).To(Equal("error: remote:go is named twice\n  hint: name it once: lola profile update go docs --user\n"))
+			r = lola("profile", "on", "go", "--all", "--user")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: --all applies to --update only\n  hint: drop it: lola profile go --on --user\n"))
+			Expect(r.err).To(Equal("error: --all applies to lola profile update\n  hint: usage: lola profile update [<name>...] --all\n"))
 
 			work := filepath.Join(tmp, "profiles-work")
 			push := func(docs string) {
@@ -830,18 +855,18 @@ var _ = Describe("remote profiles", func() {
 			}
 			push("Docs 2")
 			sp := &scripted{confirm: []bool{false, false}}
-			r = lolaP(sp, "profile", "--update", "--all", "--user")
+			r = lolaP(sp, "profile", "update", "--all", "--user")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.calls).To(Equal([]string{"confirm:Update remote:docs?", "confirm:Update remote:go?"}), "go is at another commit too")
 			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 
 			push("Docs 3")
 			sp = &scripted{confirm: []bool{false, true}}
-			r = lolaP(sp, "profile", "docs", "go", "--update", "--user")
+			r = lolaP(sp, "profile", "update", "docs", "go", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(HavePrefix("→ declined remote:docs; it is kept as it was\n✓ updated remote:go (" +
 				filepath.Join(p.RemoteProfiles, "go", "profile.yml") + ")\n"))
-			r = lola("profile", "docs", "go", "--update", "--user", "--trust")
+			r = lola("profile", "update", "docs", "go", "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(HavePrefix("✓ updated remote:docs (" + filepath.Join(p.RemoteProfiles, "docs", "profile.yml") + ")\n→ remote:go is up to date with " + src))
 
@@ -853,18 +878,18 @@ var _ = Describe("remote profiles", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "go", "source.json"), b, 0o600)).To(Succeed())
 			push("Docs 4")
-			r = lola("profile", "--update", "--all", "--user", "--trust", "--plain")
+			r = lola("profile", "update", "--all", "--user", "--trust", "--plain")
 			Expect(r.code).To(Equal(1))
 			Expect(r.out).To(HavePrefix("updated\tremote:docs\t" + filepath.Join(p.RemoteProfiles, "docs", "profile.yml") + "\nfailed\tremote:go\t"))
 			Expect(r.err).To(ContainSubstring("error: 1 of 2 remote profiles was not updated: remote:go: "+filepath.Join(p.RemoteProfiles, "go", "source.json")+
 				": ref \"--upload-pack=touch PWNED\" starts with '-'\n"), "the reason, in every output mode")
-			Expect(r.err).To(ContainSubstring("  hint: remove it: lola profile --user remote:go --remove --force\n"))
+			Expect(r.err).To(ContainSubstring("  hint: remove it: lola profile --user rm remote:go --force\n"))
 			push("Docs 5")
-			r = lola("profile", "--update", "--all", "--user", "--trust")
+			r = lola("profile", "update", "--all", "--user", "--trust")
 			Expect(r.out).To(ContainSubstring("✗ remote:go was not updated (the error says why)\n"))
-			Expect(r.err).To(ContainSubstring("\n  hint: remove it: lola profile --user remote:go --remove --force\n"))
+			Expect(r.err).To(ContainSubstring("\n  hint: remove it: lola profile --user rm remote:go --force\n"))
 			push("Docs 6")
-			r = lola("profile", "--update", "--all", "--user", "--trust", "--json")
+			r = lola("profile", "update", "--all", "--user", "--trust", "--json")
 			Expect(r.code).To(Equal(1))
 			var v map[string]any
 			Expect(json.Unmarshal([]byte(r.err), &v)).To(Succeed(), r.err)
@@ -875,24 +900,24 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("stops at Ctrl+C, keeping what it updated and naming how to apply it", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "docs", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "docs", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			work := filepath.Join(tmp, "profiles-work")
 			writeTree(work, map[string]string{"profiles/docs.yml": "version: 1\ndescription: Docs 2\n",
 				"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
 			gitIn(work, "commit", "-qam", "both")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
 			sp := &ctrlC{scripted: &scripted{confirm: []bool{true, true}}, n: 1}
-			r := lolaP(sp, "profile", "go", "docs", "--update", "--user")
+			r := lolaP(sp, "profile", "update", "go", "docs", "--user")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			sp = &ctrlC{scripted: &scripted{confirm: []bool{true, true}}, n: 2}
-			r = lolaP(sp, "profile", "go", "docs", "--update", "--user", "--trust=hooks", "--unseen")
+			r = lolaP(sp, "profile", "update", "go", "docs", "--user", "--trust=hooks", "--unseen")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"), "with --trust nothing is written before the command's one receipt")
 			sp = &ctrlC{scripted: &scripted{confirm: []bool{true, true}}, n: 2}
-			r = lolaP(sp, "profile", "go", "docs", "--update", "--user")
+			r = lolaP(sp, "profile", "update", "go", "docs", "--user")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(r.err).To(HaveSuffix("✗ cancelled — remote:go is updated, but not applied (lola sync --user example); nothing else was updated\n"))
 			Expect(filepath.Join(p.Home, ".claude", "commands", "ship.md")).To(BeAnExistingFile(), "nothing is applied")
@@ -902,7 +927,7 @@ var _ = Describe("remote profiles", func() {
 			gitIn(work, "add", "-A")
 			gitIn(work, "commit", "-qm", "add zed")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
-			Expect(lola("profile", "zed", "--add", src, "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "zed", "--user", "--trust").code).To(Equal(0))
 			o, err := profile.ReadOrigin(filepath.Join(p.RemoteProfiles, "docs"))
 			Expect(err).NotTo(HaveOccurred())
 			o.Ref = "--upload-pack=touch PWNED"
@@ -914,7 +939,7 @@ var _ = Describe("remote profiles", func() {
 			gitIn(work, "commit", "-qam", "describe go and zed")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
 			sp = &ctrlC{scripted: &scripted{confirm: []bool{true, true}}, n: 2}
-			r = lolaP(sp, "profile", "--update", "--all", "--user")
+			r = lolaP(sp, "profile", "update", "--all", "--user")
 			Expect(r.code).To(Equal(1))
 			Expect(r.out).To(HavePrefix("✗ remote:docs was not updated (the error says why)\n✓ updated remote:go"))
 			Expect(r.err).To(ContainSubstring("error: 2 of 3 remote profiles were not updated: remote:docs: "))
@@ -924,9 +949,9 @@ var _ = Describe("remote profiles", func() {
 
 		DescribeTable("a signal after a profile is written says it is not applied, and how to apply it, then exits as the signal would",
 			func(sig syscall.Signal) {
-				Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-				Expect(lola("profile", "docs", "--add", src, "--user", "--trust").code).To(Equal(0))
-				Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+				Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+				Expect(lola("profile", "add", src, "docs", "--user", "--trust").code).To(Equal(0))
+				Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 				work := filepath.Join(tmp, "profiles-work")
 				writeTree(work, map[string]string{"profiles/docs.yml": "version: 1\ndescription: Docs 2\n",
 					"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
@@ -945,7 +970,7 @@ var _ = Describe("remote profiles", func() {
 				root.SetOut(&out)
 				root.SetErr(&errb)
 				root.SetIn(strings.NewReader(""))
-				root.SetArgs([]string{"profile", "go", "docs", "--update", "--user"})
+				root.SetArgs([]string{"profile", "update", "go", "docs", "--user"})
 				root.SetContext(ctx)
 				Expect(cli.Execute(root)).To(Equal(128+int(sig)), errb.String())
 				Expect(out.String()).To(HavePrefix("✓ updated remote:go"))
@@ -958,11 +983,11 @@ var _ = Describe("remote profiles", func() {
 		)
 
 		It("never lets --trust answer the found project's trust when no flag names it", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
 			proj := filepath.Join(tmp, "proj")
 			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 			GinkgoT().Chdir(proj)
-			Expect(lola("profile", "go", "--on", "--project").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--project").code).To(Equal(0))
 			// The checkout gains a project.yml you never trusted, as a hostile, untracked repository would.
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: planted, source: " + url + "}\n"})
 			work := filepath.Join(tmp, "profiles-work")
@@ -970,31 +995,31 @@ var _ = Describe("remote profiles", func() {
 				"  - {name: example, source: " + url + ", commit: " + mcommit + ", digest: " + mdigest + "}\n"})
 			gitIn(work, "commit", "-qam", "describe")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
-			r := lola("profile", "go", "--update", "--trust", "--trust=hooks", "--unseen")
+			r := lola("profile", "update", "go", "--trust", "--trust=hooks", "--unseen")
 			Expect(r.code).To(Equal(1))
 			Expect(r.err).To(Equal("error: project " + proj + " has changes you have not trusted (planted and project.yml's targets), which its sync asks " +
 				"about, and no flag named it: --trust then answers only for the remote profiles\n" +
-				"  hint: name it, and trust them: lola profile --project remote:go --update --trust=entries,profiles,hooks --unseen\n" +
-				"  hint: or with user scope too: lola profile --scope both remote:go --update --trust=entries,profiles,hooks --unseen\n"))
+				"  hint: name it, and trust them: lola profile --project update remote:go --trust=entries,profiles,hooks --unseen\n" +
+				"  hint: or with user scope too: lola profile --scope both update remote:go --trust=entries,profiles,hooks --unseen\n"))
 			Expect(r.out).To(BeEmpty(), "nothing was fetched or kept")
-			r = lola("profile", "go", "--update", "--trust", "--trust=hooks", "--unseen", "--scope", "both")
+			r = lola("profile", "update", "go", "--trust", "--trust=hooks", "--unseen", "--scope", "both")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring("✓ updated remote:go ("), "named, the project's trust is --trust's to give")
 		})
 
 		It("says why the one profile of --all failed, and keeps the run's document under --json", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
 			o, err := profile.ReadOrigin(filepath.Join(p.RemoteProfiles, "go"))
 			Expect(err).NotTo(HaveOccurred())
 			o.Ref = "--upload-pack=touch PWNED"
 			b, err := json.Marshal(o)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "go", "source.json"), b, 0o600)).To(Succeed())
-			r := lola("profile", "--update", "--all", "--user", "--trust")
+			r := lola("profile", "update", "--all", "--user", "--trust")
 			Expect(r.code).To(Equal(1))
 			Expect(r.err).To(ContainSubstring("error: " + filepath.Join(p.RemoteProfiles, "go", "source.json") + ": ref \"--upload-pack=touch PWNED\" starts with '-'\n"))
-			Expect(r.err).To(ContainSubstring("  hint: remove it: lola profile --user remote:go --remove --force\n"))
-			r = lola("profile", "go", "--update", "--user", "--trust", "--json")
+			Expect(r.err).To(ContainSubstring("  hint: remove it: lola profile --user rm remote:go --force\n"))
+			r = lola("profile", "update", "go", "--user", "--trust", "--json")
 			Expect(r.code).To(Equal(1))
 			var v map[string]any
 			Expect(json.Unmarshal([]byte(r.err), &v)).To(Succeed(), r.err)
@@ -1003,9 +1028,9 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("reports what else stopped a run with Ctrl+C: the update is not applied, and that error's hints are kept", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "docs", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "docs", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "docs", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "docs", "--user").code).To(Equal(0))
 			work := filepath.Join(tmp, "profiles-work")
 			writeTree(work, map[string]string{"profiles/docs.yml": "version: 1\ndescription: Docs 2\n",
 				"profiles/go.yml": "version: 1\ntargets: [claude-code]\ndescription: Go\nmodules: []\n"})
@@ -1022,7 +1047,7 @@ var _ = Describe("remote profiles", func() {
 				led.Profile = &ledger.Active{Name: "user:broken", By: ledger.ByOn}
 				Expect(led.Save(p.UserLedger)).To(Succeed())
 			}}
-			r := lolaP(sp, "profile", "docs", "go", "--update", "--user")
+			r := lolaP(sp, "profile", "update", "docs", "go", "--user")
 			Expect(r.code).To(Equal(1), "not a plain abort")
 			Expect(r.err).To(ContainSubstring("error: remote:docs is updated, but not applied; the run stopped at Ctrl+C, and: "+
 				"lola could not tell whether remote:docs is in use at user scope: "), "said once, by the stop")
@@ -1030,8 +1055,8 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("shows an update that changes no entry as such", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			r := lola("profile", "docs", "--add", src, "--user", "--trust")
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			r := lola("profile", "add", src, "docs", "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.err).To(ContainSubstring("  Docs\n  (no modules)\n"))
 			work := filepath.Join(tmp, "profiles-work")
@@ -1039,30 +1064,30 @@ var _ = Describe("remote profiles", func() {
 				"  - {name: example, source: " + url + ", commit: " + mcommit + ", digest: " + mdigest + "}\n"})
 			gitIn(work, "commit", "-qam", "describe go")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
-			r = lola("profile", "go", "--update", "--user", "--trust")
+			r = lola("profile", "update", "go", "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.err).To(ContainSubstring("  Go tools\n  (no entry changes)\n"))
 		})
 
 		It("removes a remote profile, asking on a terminal unless -y or --force answers", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			r := lola("profile", "go", "--rm", "--user")
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			r := lola("profile", "rm", "go", "--user")
 			Expect(r.code).To(Equal(3))
-			Expect(r.err).To(Equal("error: lola profile --remove asks before it deletes a profile, and there is no terminal to ask on\n" +
-				"  hint: confirm it: lola profile --user remote:go --remove -y\n"))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
-			r = lola("profile", "go", "--rm", "--user")
+			Expect(r.err).To(Equal("error: lola profile rm asks before it deletes a profile, and there is no terminal to ask on\n" +
+				"  hint: confirm it: lola profile --user rm remote:go -y\n"))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
+			r = lola("profile", "rm", "go", "--user")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: remote:go is on at user scope\n  hint: turn the profile off first: lola profile --user remote:go --off\n"+
-				"  hint: or remove it anyway: lola profile --user remote:go --remove --force\n"), "in use is said before -y is offered")
-			r = lola("profile", "go", "--delete", "--user", "-y")
+			Expect(r.err).To(Equal("error: remote:go is on at user scope\n  hint: turn the profile off first: lola profile --user off remote:go\n"+
+				"  hint: or remove it anyway: lola profile --user rm remote:go --force\n"), "in use is said before -y is offered")
+			r = lola("profile", "delete", "go", "--user", "-y")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: remote:go is on at user scope\n  hint: turn the profile off first: lola profile --user remote:go --off\n"+
-				"  hint: or remove it anyway: lola profile --user remote:go --remove --force\n"), "the run's -y answers this removal only")
+			Expect(r.err).To(Equal("error: remote:go is on at user scope\n  hint: turn the profile off first: lola profile --user off remote:go\n"+
+				"  hint: or remove it anyway: lola profile --user rm remote:go --force\n"), "the run's -y answers this removal only")
 
 			// --force answers the question on a terminal too (user decision, 2026-10-22).
 			sp := &scripted{}
-			r = lolaP(sp, "profile", "go", "--uninstall", "--user", "--force")
+			r = lolaP(sp, "profile", "erase", "go", "--user", "--force")
 			Expect(sp.calls).To(BeEmpty(), "nothing was asked")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(Equal("⚠ remote:go is on at user scope; its modules stay installed there until the next lola sync --user, which removes them\n" +
@@ -1086,33 +1111,36 @@ var _ = Describe("remote profiles", func() {
 			gitIn(work, "add", "-A")
 			gitIn(work, "commit", "-qm", "big")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
-			r := lola("profile", "big", "--add", src, "--user", "--trust")
+			r := lola("profile", "add", src, "big", "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.err).To(ContainSubstring("        … and 6 more (lola profile --user remote:big --add " + src + " -n --json lists them all)\n"))
+			Expect(r.err).To(ContainSubstring("        … and 6 more (lola profile --user add " + src + " remote:big -n --json lists them all)\n"))
 			Expect(strings.Index(r.err, "MCP server gh")).To(BeNumerically("<", strings.Index(r.err, "files: 26 added")), r.err)
 
 			// Picked rather than named, the command still names the profile.
 			Expect(os.RemoveAll(filepath.Join(p.RemoteProfiles, "big"))).To(Succeed())
 			sp := &scripted{profiles: []func(cli.ProfileStep) ([]string, error){
 				func(cli.ProfileStep) ([]string, error) { return []string{"big"}, nil }}, confirm: []bool{false}}
-			r = lolaP(sp, "profile", "--add", src, "--user")
+			r = lolaP(sp, "profile", "--user", "add", src)
 			Expect(r.code).To(Equal(4), r.err)
-			Expect(r.err).To(ContainSubstring("        … and 6 more (lola profile --user remote:big --add " + src + " -n --json lists them all)\n"))
+			Expect(r.err).To(ContainSubstring("        … and 6 more (lola profile --user add " + src + " remote:big -n --json lists them all)\n"))
 		})
 
 		It("takes one name per action but --update, hinting each run with its flags", func() {
-			r := lola("profile", "go", "docs", "--add", src, "--user", "--trust")
+			r := lola("profile", "add", src, "go", "docs", "--user", "--trust")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: --add takes one profile name; add them one at a time\n" +
-				"  hint: add go: lola profile go --add " + src + " --trust=profiles --user\n  hint: add docs: lola profile docs --add " + src + " --trust=profiles --user\n"))
-			r = lola("profile", "go", "docs", "--remove", "--user", "-y", "--force", "-n")
+			Expect(r.err).To(Equal("error: add takes one profile name; add them one at a time\n" +
+				"  hint: add go: lola profile add " + src + " go --trust=profiles --user\n  hint: add docs: lola profile add " + src + " docs --trust=profiles --user\n"))
+			r = lola("profile", "rm", "go", "docs", "--user", "-y", "--force", "-n")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: --remove takes one profile's name\n  hint: see yours: lola profile --user\n"))
+			Expect(r.err).To(Equal("error: rm deletes one profile; name it\n"+
+				"  hint: lola profile rm go --dry-run --force --user\n  hint: lola profile rm docs --dry-run --force --user\n"),
+				"one hint per name, as market rm gives")
+			expectRunnable(lastHint(r.err))
 		})
 
 		It("asks no scope, comparing with the project found here, else user scope, or the one a flag names", func() {
 			sp := &scripted{confirm: []bool{false}}
-			r := lolaP(sp, "profile", "docs", "--add", src)
+			r := lolaP(sp, "profile", "add", src, "docs")
 			Expect(r.code).To(Equal(4), r.err)
 			Expect(sp.calls).To(Equal([]string{"confirm:Add remote:docs? Nothing is turned on"}), "no scope picker")
 			Expect(r.err).To(ContainSubstring("(shared by every scope); content compared with user scope\n"))
@@ -1120,35 +1148,35 @@ var _ = Describe("remote profiles", func() {
 			proj := filepath.Join(tmp, "proj")
 			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 			GinkgoT().Chdir(proj)
-			r = lola("profile", "docs", "--add", src, "-n")
+			r = lola("profile", "add", src, "docs", "-n")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring("(shared by every scope); content compared with project " + proj + "\n"))
-			Expect(r.out).To(ContainSubstring("→ to add remote:docs: lola profile docs --add " + src + " (off a terminal: --trust=profiles)\n"))
-			r = lola("profile", "docs", "--add", src, "-n", "--user")
+			Expect(r.out).To(ContainSubstring("→ to add remote:docs: lola profile add " + src + " docs (off a terminal: --trust=profiles)\n"))
+			r = lola("profile", "add", src, "docs", "-n", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring("content compared with user scope\n"))
 
-			r = lola("profile", "docs", "--add", src, "--trust", "--scope", "both")
+			r = lola("profile", "add", src, "docs", "--trust", "--scope", "both")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: --scope both names two scopes; --add compares the content with one\n"+
-				"  hint: drop it: lola profile docs --add "+src+"\n"+
-				"  hint: or name the project: lola profile docs --add "+src+" --project\n"+
-				"  hint: or user scope: lola profile docs --add "+src+" --user\n"), "--trust answered nothing about the scope each hint names")
-			r = lola("profile", "docs", "--add", src, "--trust", "--scope", "both", "-C", proj)
+			Expect(r.err).To(Equal("error: --scope both names two scopes; add compares the content with one\n"+
+				"  hint: drop it: lola profile add "+src+" docs\n"+
+				"  hint: or name the project: lola profile add "+src+" docs --project\n"+
+				"  hint: or user scope: lola profile add "+src+" docs --user\n"), "--trust answered nothing about the scope each hint names")
+			r = lola("profile", "add", src, "docs", "--trust", "--scope", "both", "-C", proj)
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(HaveSuffix("  hint: or user scope: lola profile docs --add "+src+" --user\n"), "user scope takes no -C")
+			Expect(r.err).To(HaveSuffix("  hint: or user scope: lola profile add "+src+" docs --user\n"), "user scope takes no -C")
 		})
 
 		It("writes a JSON document of what it updated, with what it applied", func() {
-			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
-			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			Expect(lola("profile", "add", src, "go", "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "on", "go", "--user").code).To(Equal(0))
 			work := filepath.Join(tmp, "profiles-work")
 			b, err := os.ReadFile(filepath.Join(work, "profiles", "go.yml"))
 			Expect(err).NotTo(HaveOccurred())
 			writeTree(work, map[string]string{"profiles/go.yml": string(b) + "description: rules off\n"})
 			gitIn(work, "commit", "-qam", "describe")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
-			r := lola("profile", "go", "--update", "--user", "--trust", "--json")
+			r := lola("profile", "update", "go", "--user", "--trust", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			var v map[string]any
 			Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
@@ -1158,7 +1186,7 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("writes a JSON document of what it added", func() {
-			r := lola("profile", "docs", "--add", src, "--user", "--trust", "--json")
+			r := lola("profile", "add", src, "docs", "--user", "--trust", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			var v map[string]any
 			Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())

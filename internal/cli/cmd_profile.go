@@ -16,59 +16,26 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// profileActions are lola profile's action flags, canonical names in the order a refusal names
-// them.
-var profileActions = []engine.ProfileAction{engine.ProfileOn, engine.ProfileOff, engine.ProfileSwitch, engine.ProfileEdit, engine.ProfileMove,
-	engine.ProfileSplit, engine.ProfileAdd, engine.ProfileUpdate, engine.ProfileRemove}
-
-// profileFlags are the flags each action takes beside the scope and output flags, in the order a
-// refusal checks them: a flag the run's action does not take, or any of them without an action, is
-// refused, since a flag that does nothing must not look accepted.
-var profileFlags = map[engine.ProfileAction][]string{
-	engine.ProfileOn:     {"yes", "trust", "unseen", "dry-run", "force", "verbose"},
-	engine.ProfileOff:    {"yes", "trust", "unseen", "dry-run", "force", "verbose"},
-	engine.ProfileSwitch: {"new", "from", "bundle", "yes", "trust", "unseen", "dry-run", "force", "verbose"},
-	engine.ProfileEdit: {"new", "from", "bundle", "skip", "only", "unskip", "exact", "with-mentions", "target", "override", "ref", "path", "yes", "trust", "unseen",
-		"dry-run", "force", "verbose"},
-	engine.ProfileMove:   {"to", "keep-off", "yes", "trust", "unseen", "dry-run", "force", "verbose"},
-	engine.ProfileSplit:  {"to", "yes", "trust", "unseen", "dry-run", "force", "verbose"},
-	engine.ProfileAdd:    {"trust", "dry-run", "ref", "path"},
-	engine.ProfileUpdate: {"yes", "trust", "unseen", "dry-run", "all", "verbose"},
-	engine.ProfileRemove: {"yes", "dry-run", "force"},
-}
-
-// refuseProfileFlags refuses a flag of profileFlags that cmd's action act ("" for none) does not
-// take, naming the actions that do; the hint is the run without it (args are its names).
-func refuseProfileFlags(cmd *cobra.Command, args []string, act engine.ProfileAction) error {
-	var all []string
-	for _, a := range profileActions {
-		for _, f := range profileFlags[a] {
-			if !slices.Contains(all, f) {
-				all = append(all, f)
-			}
-		}
-	}
-	for _, f := range all {
-		if !cmd.Flags().Changed(f) || slices.Contains(profileFlags[act], f) {
-			continue
-		}
-		var takes []string
-		for _, a := range profileActions {
-			if slices.Contains(profileFlags[a], f) {
-				takes = append(takes, "--"+string(a))
-			}
-		}
-		applies := takes[0]
-		if len(takes) > 1 {
-			applies = strings.Join(takes[:len(takes)-1], ", ") + " and " + takes[len(takes)-1]
-		}
-		return errs.WithHints(fmt.Errorf("--%s applies to %s only", f, applies), "drop it: "+runWithout(cmd, args, f))
-	}
-	return nil
-}
+// The usage rules of lola profile's verbs that need a profile: refusing one without it hints the
+// usage and where to find one, never a run that lacks it.
+var (
+	profileShowGuide = argGuide{noun: "profile", find: "lola profile list", usage: "lola profile show <name>",
+		examples: []string{"lola profile show go", "lola profile show go --user --json"}}
+	profileOnGuide = argGuide{noun: "profile", find: "lola profile list", usage: "lola profile on <name> [-y] [-n]",
+		examples: []string{"lola profile on go", "lola profile on go --user -y"}}
+	profileSwitchGuide = argGuide{noun: "profile", find: "lola profile list", usage: "lola profile switch <name> [--new [--from <profile> | --bundle <a,b>]]",
+		examples: []string{"lola profile switch go --user", "lola profile switch go-docs --new --bundle go,docs"}}
+	profileSplitGuide = argGuide{noun: "profile", find: "lola profile list", usage: "lola profile split <name> [--to <new>]",
+		examples: []string{"lola profile split work", "lola profile split work --to work-tools"}}
+	profileRmGuide = argGuide{noun: "profile", find: "lola profile list", usage: "lola profile rm <name> [-y] [--force]",
+		examples: []string{"lola profile rm go -y", "lola profile rm remote:go"}}
+	profileMoveGuide = argGuide{noun: "module", find: "lola profile show <profile>", usage: "lola profile move <module>... --to <profile> [--from <layer>]",
+		examples: []string{"lola profile move my-notes --to me", "lola profile move my-notes --to me --from go"}}
+)
 
 // runWithout is the command the user ran (lola profile, lola market, lola install), its names
 // args and every flag they set but those named in drop, by canonical name, a list flag once per
@@ -160,7 +127,7 @@ func renderRun(cmd *cobra.Command, args []string) string {
 	return runWithout(cmd, args, append([]string{"force", "dry-run"}, consentFlags...)...) + " --force"
 }
 
-// rerunFlags is the flags of lola profile --add or --update that a hint repeating the run keeps
+// rerunFlags is the flags of lola profile add or update that a hint repeating the run keeps
 // beside the scope, the names and the flags the engine is given: --trust for the
 // kinds given (trust), --unseen beside a consent kind, -n, --json, --plain and --no-pager, as given.
 func rerunFlags(cmd *cobra.Command, trust engine.TrustKinds) []string {
@@ -179,269 +146,633 @@ func rerunFlags(cmd *cobra.Command, trust engine.TrustKinds) []string {
 	return out
 }
 
-// profileAction is the one action flag set on cmd, "" for none: cobra has
-// parsed, so the check is on canonical names; two different actions refuse, naming both, with
-// the run keeping each one of them as hints (args are its names). Beside --move, --switch is its
-// modifier (switch to the profile it moves into), never an action.
-func profileAction(cmd *cobra.Command, args []string) (engine.ProfileAction, error) {
-	var set []engine.ProfileAction
-	for _, act := range profileActions {
-		if act == engine.ProfileSwitch && cmd.Flags().Changed(string(engine.ProfileMove)) {
-			continue
-		}
-		if cmd.Flags().Changed(string(act)) {
-			set = append(set, act)
-		}
+// syncFlagHelp is the help of the flags addSyncFlags registers that a verb words its own way: -y,
+// and --force ("" for a verb without it).
+type syncFlagHelp struct{ yes, force string }
+
+// addSyncFlags registers the flags of a lola profile verb that applies a change to a scope: -n, -y,
+// -v, --trust (with --unseen) with the kinds lola profile <verb> asks, and --force when help words
+// it.
+func addSyncFlags(cmd *cobra.Command, f *syncFlags, trust *trustFlag, help syncFlagHelp) {
+	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what it would change, ask nothing and write nothing")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, help.yes)
+	cmd.Flags().BoolP("verbose", "v", false, "print every fold and notice in full")
+	addTrustFlag(cmd, trust, "profile "+cmd.Name(), "trust without asking: entries, profiles, scripts, hooks, runtime-hooks, all")
+	if help.force != "" {
+		cmd.Flags().BoolVar(&f.force, "force", false, help.force)
 	}
-	switch len(set) {
-	case 0:
-		return "", nil
-	case 1:
-		return set[0], nil
-	}
-	var hints []string
-	for _, keep := range set {
-		var drop []string
-		for _, other := range set {
-			if other != keep {
-				drop = append(drop, string(other))
-			}
-		}
-		hints = append(hints, "keep --"+string(keep)+": "+runWithout(cmd, args, drop...))
-	}
-	return "", errs.WithHints(fmt.Errorf("--%s and --%s cannot be combined; pick one", set[0], set[1]), hints...)
 }
 
+// profileTrust parses the --trust of the lola profile verb cmd, whose operands are args, into f.
+func profileTrust(cmd *cobra.Command, args []string, trust *trustFlag, f *syncFlags) error {
+	k, err := trust.parse(cmd, args, commandWords(cmd), "profile")
+	if err != nil {
+		return err
+	}
+	f.trust, f.unseen = k, trust.unseen
+	return nil
+}
+
+// refuseProfileName refuses name for a profile a run of cmd would make when it is a word lola
+// profile's commands answer to (engine.RefuseReserved); the hint is rerun(another name), user: or
+// project: kept.
+func refuseProfileName(eng *engine.Engine, name string, rerun func(name string) string) error {
+	kind, bare, qualified := strings.Cut(name, ":")
+	if !qualified {
+		kind, bare = "", name
+	} else {
+		kind += ":"
+	}
+	return eng.RefuseReserved("profile", bare, func(n string) string { return rerun(kind + n) })
+}
+
+const (
+	profileYesHelp   = "open no picker; confirm removals (it never trusts changes)"
+	profileForceHelp = "remove files without asking, edited too"
+)
+
 func (a *app) profileCmd() *cobra.Command {
-	var f syncFlags
-	var trust trustFlag
-	var on, off, switchTo bool
-	var add remoteFlags
-	var update, remove, all, split bool
-	var moveModules []string
-	var to string
-	var keepOff bool
-	var create bool
-	var from string
-	var members []string
-	var edit bool
-	var ef editFlags
 	cmd := &cobra.Command{
-		Use:   "profile [<name>] [flags]",
+		Use:   "profile [<name>]",
 		Short: "List your profiles, show one, or turn them on and off",
 		Long: "A profile is a named set of module entries: yours in $XDG_CONFIG_HOME/lola/profiles/<name>.yml,\n" +
-			"a project's in .lola/profiles/, or a remote one fetched with --add. One is on at a time in a\n" +
+			"a project's in .lola/profiles/, or a remote one fetched with add. One is on at a time in a\n" +
 			"scope, over its base (default.yml at user scope, project.yml in a project).\n\n" +
-			"Without a name it lists the profiles each scope can use and which is on. With a name it shows the\n" +
-			"profile and, per scope, the layer each of its modules comes from.\n\n" +
-			"--on, --off and --switch apply at once; --on asks to switch when another is on (off a terminal it\n" +
-			"refuses), --switch never asks. Removing files asks first (-y confirms, --force skips it).\n" +
-			"--edit changes a profile's modules and picks; --move moves entries from a profile, base or\n" +
-			"project.yml into another; --add, --update and --remove manage remote profiles (--remove also yours).\n\n" +
+			"Without a subcommand it lists the profiles each scope can use and which is on. lola profile <name>\n" +
+			"is lola profile show <name>: the profile and, per scope, the layer each of its modules comes from.\n\n" +
+			"on, off and switch apply at once; on asks to switch when another is on (off a terminal it\n" +
+			"refuses), switch never asks. Removing files asks first (-y confirms, --force skips it).\n" +
+			"edit changes a profile's modules and picks; move moves entries from a profile, base or\n" +
+			"project.yml into another; add, update and rm manage remote profiles (rm also yours).\n\n" +
 			"Write user:<name>, project:<name> or remote:<name> when names clash. Listing and showing read the\n" +
-			"project here and user scope. --on, --off, --switch, --remove, --move and --split take --project,\n" +
+			"project here and user scope. on, off, switch, rm, move and split take --project,\n" +
 			"--user, -C or --scope, else ask on a terminal, else use that project, else default_scope, else refuse.",
-		Example: "  lola profile\n  lola profile go\n  lola profile go --on\n  lola profile go --switch --user\n" +
-			"  lola profile go --off -y\n  lola profile --user --json\n" +
-			"  lola profile go --add https://github.com/example/profiles\n" +
-			"  lola profile go --update\n  lola profile --update --all\n  lola profile go --remove -y\n" +
-			"  lola profile go-docs --switch --new --bundle go,docs\n  lola profile work --edit --bundle go,docs\n" +
-			"  lola profile go-review --edit cc-skills-golang --only skill/golang-testing\n" +
-			"  lola profile --move my-notes --to me\n  lola profile go --move my-notes --to me\n" +
-			"  lola profile work --split",
-		GroupID:           groupCore,
-		Args:              cobra.ArbitraryArgs,
-		ValidArgsFunction: a.completeProfile,
+		Example: "  lola profile\n  lola profile go\n  lola profile on go\n  lola profile switch go --user\n" +
+			"  lola profile off -y\n  lola profile list --user --json\n" +
+			"  lola profile add https://github.com/example/profiles go\n" +
+			"  lola profile update go\n  lola profile update --all\n  lola profile rm go -y\n" +
+			"  lola profile switch go-docs --new --bundle go,docs\n  lola profile edit work --bundle go,docs\n" +
+			"  lola profile edit go-review cc-skills-golang --only skill/golang-testing\n" +
+			"  lola profile move my-notes --to me\n  lola profile move my-notes --to me --from go\n" +
+			"  lola profile split work",
+		GroupID:                    groupCore,
+		Args:                       cobra.ArbitraryArgs,
+		SuggestionsMinimumDistance: 2,
+		ValidArgsFunction:          a.completeProfileArgs((*engine.Engine).ProfileNames, false),
+	}
+	ns := nounSpec{noun: "profile", bare: a.listProfiles, show: a.showProfile, exists: a.profileExists,
+		retired: map[string]string{"uninstall": "rm"}}
+	cmd.RunE = a.nounRunE(ns)
+	cmd.AddCommand(a.profileListCmd(), a.profileShowCmd(), a.profileOnCmd(), a.profileOffCmd(), a.profileSwitchCmd(), a.profileEditCmd(),
+		a.profileMoveCmd(), a.profileSplitCmd(), a.profileAddCmd(), a.profileUpdateCmd(), a.profileRmCmd())
+	a.noteVerbWins(cmd, ns)
+	a.coachFlags(cmd, ns, map[string]oldFlag{
+		"on": {verb: "on"}, "enable": {verb: "on"}, "activate": {verb: "on"},
+		"off": {verb: "off"}, "disable": {verb: "off"}, "deactivate": {verb: "off"},
+		"switch": {verb: "switch"}, "use": {verb: "switch"},
+		"edit": {verb: "edit"}, "pick": {verb: "edit"}, "modify": {verb: "edit"},
+		"move": {verb: "move", takesValue: true, list: true, lead: "from"}, "mv": {verb: "move", takesValue: true, list: true, lead: "from"},
+		"split": {verb: "split"},
+		"add":   {verb: "add", takesValue: true}, "get": {verb: "add", takesValue: true},
+		"update": {verb: "update"}, "upgrade": {verb: "update"},
+		"remove": {verb: "rm"}, "rm": {verb: "rm"}, "delete": {verb: "rm"}, "del": {verb: "rm"}, "erase": {verb: "rm"}, "uninstall": {verb: "rm"},
+	})
+	return cmd
+}
+
+func (a *app) profileListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "list",
+		Aliases:           []string{"ls"},
+		Short:             "List the profiles each scope can use and which is on",
+		Long:              "List the profiles each scope can use, and which is on, as bare lola profile does.",
+		Example:           "  lola profile list\n  lola profile list --user --json",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              func(cmd *cobra.Command, _ []string) error { return a.listProfiles(cmd) },
+	}
+}
+
+func (a *app) profileShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "show <name>",
+		Short:             "Show a profile and the layer each of its modules comes from",
+		Long:              "Show the profile and, per scope, the layer each of its modules comes from. lola profile <name> is the same.",
+		Example:           profileShowGuide.example(),
+		Args:              profileShowGuide.args(1),
+		ValidArgsFunction: a.completeProfileArgs((*engine.Engine).ProfileNames, false),
+		RunE:              a.showProfile,
+	}
+}
+
+func (a *app) profileOnCmd() *cobra.Command {
+	var f syncFlags
+	var trust trustFlag
+	cmd := &cobra.Command{
+		Use:     "on <name>",
+		Aliases: []string{"enable", "activate"},
+		Short:   "Turn a profile on and apply",
+		Long: "Turn <name> on over the base and apply. When another profile is on, ask on a terminal to switch to\n" +
+			"it, make a bundle of the two, or add it to the bundle on; off a terminal refuse, hinting switch.\n" +
+			"Removing files asks first (-y confirms, --force skips it).",
+		Example:           profileOnGuide.example(),
+		Args:              profileOnGuide.args(1),
+		ValidArgsFunction: a.completeProfileArgs((*engine.Engine).ProfileNames, false),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			act, err := profileAction(cmd, args)
+			return a.profileChange(cmd, args, engine.ProfileChange{Action: engine.ProfileOn}, f, &trust)
+		},
+	}
+	addSyncFlags(cmd, &f, &trust, syncFlagHelp{yes: profileYesHelp, force: profileForceHelp})
+	return cmd
+}
+
+func (a *app) profileOffCmd() *cobra.Command {
+	var f syncFlags
+	var trust trustFlag
+	cmd := &cobra.Command{
+		Use:     "off [<name>]",
+		Aliases: []string{"disable", "deactivate"},
+		Short:   "Turn off the profile on and apply",
+		Long: "Turn off the profile on (name it, or none) and apply: the base alone is loaded. Removing files asks\n" +
+			"first (-y confirms, --force skips it).",
+		Example: "  lola profile off\n  lola profile off go --user -y",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := profileTrust(cmd, args, &trust, &f); err != nil { // first, so a hint repeats it as parsed
+				return err
+			}
+			if len(args) > 1 {
+				return oneEach(cmd, "one profile is on at a time; off takes one name", nil, args)
+			}
+			return nil
+		},
+		ValidArgsFunction: a.completeProfileArgs((*engine.Engine).ProfileNames, false),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.profileChange(cmd, args, engine.ProfileChange{Action: engine.ProfileOff}, f, &trust)
+		},
+	}
+	addSyncFlags(cmd, &f, &trust, syncFlagHelp{yes: profileYesHelp, force: profileForceHelp})
+	return cmd
+}
+
+func (a *app) profileSwitchCmd() *cobra.Command {
+	var f syncFlags
+	var trust trustFlag
+	var ch engine.ProfileChange
+	cmd := &cobra.Command{
+		Use:     "switch <name>",
+		Aliases: []string{"use"},
+		Short:   "Make a profile the one on, whatever is on, and apply",
+		Long: "Make <name> the profile on, whatever is on, and apply; it never asks to. --new makes it first: empty,\n" +
+			"a copy of --from's entries and targets, or a bundle of --bundle's profiles. Removing files asks first\n" +
+			"(-y confirms, --force skips it).",
+		Example:           profileSwitchGuide.example(),
+		Args:              profileSwitchGuide.args(1),
+		ValidArgsFunction: a.completeProfileArgs((*engine.Engine).ProfileNames, false),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c := ch
+			c.Action = engine.ProfileSwitch
+			return a.profileChange(cmd, args, c, f, &trust)
+		},
+	}
+	cmd.Flags().BoolVar(&ch.New, "new", false, "make the profile first (empty unless --from or --bundle)")
+	cmd.Flags().StringVar(&ch.From, "from", "", "the profile whose entries and targets the new one copies (never a pin)")
+	cmd.Flags().StringSliceVar(&ch.Bundle, "bundle", nil, "the member profiles of the new bundle, in order (comma-separated)")
+	_ = cmd.RegisterFlagCompletionFunc("from", a.completeProfiles(false))
+	_ = cmd.RegisterFlagCompletionFunc("bundle", a.completeProfiles(false))
+	addSyncFlags(cmd, &f, &trust, syncFlagHelp{yes: profileYesHelp, force: profileForceHelp})
+	aliasFlags(cmd, map[string][]string{"new": {"create"}})
+	return cmd
+}
+
+// profileEditNewMsg is the refusal of edit --new without a profile's name.
+const profileEditNewMsg = "--new makes the profile edit names, and none was named: name it, as in lola profile edit <name> --new"
+
+func (a *app) profileEditCmd() *cobra.Command {
+	var f syncFlags
+	var trust trustFlag
+	var ef editFlags
+	cmd := &cobra.Command{
+		Use:     "edit [<name>] <module>...",
+		Aliases: []string{"pick", "modify"},
+		Short:   "Change a profile's modules and picks, as lola install would",
+		Long: "Change the named profile's modules and their picks, as lola install would, applying it in each scope\n" +
+			"it is on; with no name, the profile edits go to. With no module on a terminal, open the pages.\n" +
+			"--new makes the profile first; --bundle sets a bundle's members.",
+		Example: "  lola profile edit work --bundle go,docs\n  lola profile edit go-review cc-skills-golang --only skill/golang-testing\n" +
+			"  lola profile edit try --new",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 && given(cmd, "new") {
+				return errs.WithHints(errors.New(profileEditNewMsg), "usage: lola profile edit <name> --new", "find one: lola profile list")
+			}
+			return nil
+		},
+		ValidArgsFunction: a.completeEdit,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := profileTrust(cmd, args, &trust, &f); err != nil {
+				return err
+			}
+			return a.profileEdit(cmd, args, ef, f)
+		},
+	}
+	cmd.Flags().BoolVar(&ef.create, "new", false, "make the profile first (empty unless --from or --bundle)")
+	cmd.Flags().StringVar(&ef.from, "from", "", "the profile whose entries and targets the new one copies (never a pin)")
+	cmd.Flags().StringSliceVar(&ef.members, "bundle", nil, "the bundle's member profiles, in order (comma-separated)")
+	cmd.Flags().StringSliceVar(&ef.skips, "skip", nil, "leave these components out (kind/name; repeatable)")
+	cmd.Flags().StringSliceVar(&ef.onlys, "only", nil, "take only these components (kind/name; repeatable)")
+	cmd.Flags().StringSliceVar(&ef.unskips, "unskip", nil, "take these components back (kind/name; repeatable)")
+	cmd.Flags().BoolVar(&ef.exact, "exact", false, "save --only as an only: list; later components stay out")
+	cmd.Flags().BoolVar(&ef.withMentions, "with-mentions", false, "also take components your picks mention by name (one hop)")
+	cmd.Flags().BoolVar(&ef.override, "override", false, "give the profile its own entry for another layer's module")
+	a.addTargetFlag(cmd, &ef.targets, "assistants; <id>@<version> also picks the version")
+	cmd.Flags().String("ref", "", "the branch, tag or commit to fetch") // profileEdit reads --ref and --path by name
+	cmd.Flags().String("path", "", "the module root in the source")
+	for _, name := range []string{"skip", "only", "unskip"} {
+		_ = cmd.RegisterFlagCompletionFunc(name, a.completeComponents(1)) // lola profile edit <profile> <module>...
+	}
+	_ = cmd.RegisterFlagCompletionFunc("from", a.completeProfiles(false))
+	_ = cmd.RegisterFlagCompletionFunc("bundle", a.completeProfiles(false))
+	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
+	addSyncFlags(cmd, &f, &trust, syncFlagHelp{yes: profileYesHelp, force: profileForceHelp})
+	aliasFlags(cmd, map[string][]string{"new": {"create"}})
+	return cmd
+}
+
+func (a *app) profileMoveCmd() *cobra.Command {
+	var f syncFlags
+	var trust trustFlag
+	var to, from string
+	var switchTo, keepOff bool
+	cmd := &cobra.Command{
+		Use:     "move <module>...",
+		Aliases: []string{"mv"},
+		Short:   "Move modules' entries from a profile, base or project.yml into another",
+		Long: "Move the modules' entries, keeping their version, from the layer each comes from (or --from's) to\n" +
+			"--to: a profile, or base. Into a profile that is off, --switch turns it on and --keep-off leaves it\n" +
+			"off, removing the modules' files here; without either a terminal asks. With --user and -C, the\n" +
+			"entries move from that project into user scope.",
+		Example: profileMoveGuide.example(),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := profileTrust(cmd, args, &trust, &f); err != nil { // first, so a hint repeats it as parsed
+				return err
+			}
+			if err := profileMoveGuide.args(1)(cmd, args); err != nil {
+				return err
+			}
+			if given(cmd, "switch") && given(cmd, "keep-off") {
+				return errs.WithHints(errors.New("--switch and --keep-off cannot be combined; pick one"),
+					runWithout(cmd, args, "keep-off"), runWithout(cmd, args, "switch"))
+			}
+			return nil
+		},
+		ValidArgsFunction: a.completeMove,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			eng, err := a.engine()
 			if err != nil {
 				return err
 			}
-			// --trust first, so a hint for another flag repeats it as parsed; an action that takes
-			// none refuses it below.
-			if slices.Contains(profileFlags[act], "trust") {
-				command := "profile"
-				if act == engine.ProfileAdd {
-					command = "profile --add"
-				}
-				if f.trust, err = trust.parse(cmd, args, command, "profile"); err != nil {
-					return err
-				}
-				f.unseen = trust.unseen
+			return a.profileMove(cmd, eng, args, from, to, keepOff, switchTo, f)
+		},
+	}
+	cmd.Flags().StringVar(&to, "to", "", "the profile the entries move to, or base")
+	cmd.Flags().StringVar(&from, "from", "", "the layer the entries leave: a profile, base or project.yml")
+	cmd.Flags().BoolVar(&switchTo, "switch", false, "into a profile that is off: turn it on")
+	cmd.Flags().BoolVar(&keepOff, "keep-off", false, "into a profile that is off: keep it off, removing its files here")
+	_ = cmd.RegisterFlagCompletionFunc("to", a.completeProfiles(true))
+	_ = cmd.RegisterFlagCompletionFunc("from", a.completeProfiles(true))
+	addSyncFlags(cmd, &f, &trust, syncFlagHelp{yes: profileYesHelp, force: profileForceHelp})
+	return cmd
+}
+
+func (a *app) profileSplitCmd() *cobra.Command {
+	var f syncFlags
+	var trust trustFlag
+	var to string
+	cmd := &cobra.Command{
+		Use:   "split <name>",
+		Short: "Split a profile of bundle: and modules: into a bundle and a profile of the modules",
+		Long: "Split a profile that lists both bundle: and modules: into a bundle and a new profile of its modules,\n" +
+			"<name>-modules unless --to names it. It shows the plan and asks on a terminal (-y and --force answer).",
+		Example: profileSplitGuide.example(),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := profileSplitGuide.args(1)(cmd, args); err != nil {
+				return err
 			}
-			// Without a scope flag an update answers only the profiles' question with --trust, never a
-			// project's: entries written there would answer nothing.
-			if act == engine.ProfileUpdate && trust.names(engine.TrustEntries) && a.scopeFlag == "" && !a.user && !a.project && a.root == "" {
-				return errs.WithHints(errors.New("--trust=entries trusts a project's changes, which lola profile --update answers only in a scope a flag names"),
-					"name the project: "+runWithout(cmd, args)+" --project", "or with user scope too: "+runWithout(cmd, args)+" --scope both")
+			if len(args) > 1 {
+				return errs.WithHints(errors.New("split takes the name of one profile"), "see them: "+runAs([]string{"lola", "profile", "list"}, cmd, nil))
 			}
-			if err := refuseProfileFlags(cmd, args, act); err != nil {
+			return nil
+		},
+		ValidArgsFunction: a.completeProfileArgs((*engine.Engine).ProfileNames, false),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := profileTrust(cmd, args, &trust, &f); err != nil {
 				return err
 			}
 			eng, err := a.engine()
 			if err != nil {
 				return err
 			}
-			switch act {
-			case "":
-			case engine.ProfileAdd:
-				return a.profileAdd(cmd, eng, args, add, f)
-			case engine.ProfileUpdate:
-				return a.profileUpdate(cmd, eng, args, all, f)
-			case engine.ProfileRemove:
-				return a.profileRemove(cmd, eng, args, f)
-			case engine.ProfileMove:
-				return a.profileMove(cmd, eng, args, moveModules, to, keepOff, switchTo, f)
-			case engine.ProfileSplit:
-				return a.profileSplit(cmd, eng, args, to, f)
-			case engine.ProfileEdit:
-				ef.create, ef.from, ef.members = create, from, members
-				return a.profileEdit(cmd, args, ef, f)
-			default:
-				if len(args) > 1 {
-					return a.oneName(cmd, eng, args, act, f)
-				}
-				ch := engine.ProfileChange{Action: act, New: create, From: from, Bundle: members}
-				if len(args) == 1 {
-					ch.Name = args[0]
-				}
-				if err := a.newFlags(cmd, eng, args, ch, f); err != nil {
+			if to != "" {
+				if err := refuseProfileName(eng, to, func(n string) string {
+					return runWithout(cmd, args, "to") + " " + errs.ShellJoin([]string{"--to", untrusted.Text(n, untrusted.MaxName)})
+				}); err != nil {
 					return err
 				}
-				return a.profileApply(cmd, eng, ch, f)
 			}
-			if len(args) > 1 {
-				hints := []string{"list them all: " + runWithout(cmd, nil)}
-				for _, n := range args {
-					hints = append(hints, "or show one: "+runWithout(cmd, []string{n}))
-				}
-				return errs.WithHints(errors.New("name one profile to show"), hints...)
-			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			req, err := a.scopeRequest(cwd, false)
-			if err != nil {
-				return err
-			}
-			scs, err := eng.ResolveReadScope(req)
-			if err != nil {
-				return err
-			}
-			a.printContext(cmd, eng, choiceScopes(scs), nil)
-			if len(args) == 1 {
-				var scopes []engine.Scope
-				for _, c := range scs {
-					scopes = append(scopes, c.Scope)
-				}
-				states, notices, err := eng.ProfileState(cmd.Context(), scopes, args[0], outputFlags(cmd)...)
-				if engine.IsUnknownProfile(err) {
-					// --switch --new is another action than the show, so it takes none of the run's
-					// consent.
-					if exists, refused := eng.NewOrSwitch(scopes[0], engine.ProfileChange{Name: args[0]}, nil); !exists && refused == nil {
-						err = errs.WithHints(err, "make it: "+runAs(strings.Fields(cmd.CommandPath()), cmd,
-							[]string{args[0], "--switch", "--new"}, consentFlags...))
-					}
-				}
-				if err != nil {
-					return err
-				}
-				return a.emit(cmd, func(w io.Writer, s style) { printProfileState(w, s, states, notices) },
-					map[string]any{"profiles": states, "notices": notices})
-			}
-			rows, notices := []engine.ProfileRow{}, []engine.Notice{}
-			for i, c := range scs {
-				got, notes, err := eng.Profiles(cmd.Context(), c.Scope)
-				if err != nil && len(scs) == 2 && c.Source == engine.SourceDiscovered {
-					// No flag chose these scopes, so one that cannot be read must not hide the other.
-					return errs.WithHints(err, "list the other scope's: "+eng.Command(scs[1-i].Scope, "profile"))
-				}
-				if err != nil {
-					return err
-				}
-				rows = append(rows, got...)
-				// Both scopes read one profiles directory: its warnings are said once.
-				for _, n := range notes {
-					if !slices.ContainsFunc(notices, n.Same) {
-						notices = append(notices, n)
-					}
-				}
-			}
-			return a.emit(cmd, func(w io.Writer, s style) { printProfiles(w, s, eng, rows, notices) },
-				map[string]any{"profiles": rows, "notices": notices})
+			return a.profileSplit(cmd, eng, args, to, f)
 		},
 	}
-	cmd.Flags().BoolVar(&on, string(engine.ProfileOn), false, "turn the named profile on when none is, and apply (--switch replaces one)")
-	cmd.Flags().BoolVar(&off, string(engine.ProfileOff), false, "turn off the profile on (name it, or none) and apply; asks when files go")
-	cmd.Flags().BoolVar(&switchTo, string(engine.ProfileSwitch), false, "make the named profile the one on, whatever is on, and apply")
-	cmd.Flags().StringSliceVar(&moveModules, string(engine.ProfileMove), nil, "move these modules' entries (repeatable) to --to, keeping their version")
-	cmd.Flags().StringVar(&to, "to", "", "with --move: the target profile, or base; with --split: the new name")
-	cmd.Flags().BoolVar(&split, string(engine.ProfileSplit), false, "split a profile of bundle: and modules: into a bundle and <name>-modules")
-	cmd.Flags().BoolVar(&keepOff, "keep-off", false, "with --move to an off profile: keep it off, removing its files here")
-	cmd.Flags().BoolVar(&edit, string(engine.ProfileEdit), false, "edit the named profile or its modules' picks, as lola install would")
-	cmd.Flags().StringSliceVar(&ef.skips, "skip", nil, "with --edit: leave these components out (kind/name; repeatable)")
-	cmd.Flags().StringSliceVar(&ef.onlys, "only", nil, "with --edit: take only these components (kind/name; repeatable)")
-	cmd.Flags().StringSliceVar(&ef.unskips, "unskip", nil, "with --edit: take these components back (kind/name; repeatable)")
-	cmd.Flags().BoolVar(&ef.exact, "exact", false, "with --edit --only: save an only: list; later components stay out")
-	cmd.Flags().BoolVar(&ef.withMentions, "with-mentions", false, "with --edit: also take components your picks mention by name (one hop)")
-	cmd.Flags().BoolVar(&ef.override, "override", false, "with --edit: give the profile its own entry for another layer's module")
-	a.addTargetFlag(cmd, &ef.targets, "with --edit: assistants; <id>@<version> also picks the version")
-	cmd.Flags().BoolVar(&create, "new", false, "with --switch or --edit: make the profile first (empty unless --from, --bundle)")
-	cmd.Flags().StringVar(&from, "from", "", "with --new: copy this profile's entries and targets (never a pin)")
-	cmd.Flags().StringSliceVar(&members, "bundle", nil, "with --new or --edit: the bundle's member profiles, in order (comma-separated)")
-	cmd.Flags().StringVar(&add.source, string(engine.ProfileAdd), "", "fetch a remote profile from a git repository or https archive and ask")
-	cmd.Flags().BoolVar(&update, string(engine.ProfileUpdate), false, "fetch the named remote profiles again, show what changed, ask, and apply")
-	cmd.Flags().BoolVar(&all, "all", false, "with --update: every remote profile you have")
-	cmd.Flags().BoolVar(&remove, string(engine.ProfileRemove), false, "delete a profile of yours (to the trash) or a remote one (asks; -y)")
-	cmd.Flags().StringVar(&add.ref, "ref", "", "with --add or --edit: the branch, tag or commit to fetch")
-	cmd.Flags().StringVar(&add.path, "path", "", "with --add: the directory holding profiles/; with --edit: the module root")
-	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "open no picker; confirm removals (it never trusts changes)")
-	cmd.Flags().BoolP("verbose", "v", false, "with an action that applies: print every fold and notice in full")
-	for _, name := range []string{"skip", "only", "unskip"} {
-		_ = cmd.RegisterFlagCompletionFunc(name, a.completeComponents(1)) // lola profile <profile> --edit <module>...
-	}
-	_ = cmd.RegisterFlagCompletionFunc(string(engine.ProfileMove), a.completeMove)
-	_ = cmd.RegisterFlagCompletionFunc("to", a.completeProfiles(true))
-	_ = cmd.RegisterFlagCompletionFunc("from", a.completeProfiles(false))
-	_ = cmd.RegisterFlagCompletionFunc("bundle", a.completeProfiles(false))
-	_ = cmd.RegisterFlagCompletionFunc(string(engine.ProfileAdd), completeFiles)
-	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
-	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
-	addTrustFlag(cmd, &trust, "profile", "trust without asking: entries, profiles, scripts, hooks, runtime-hooks, all")
-	cmd.Flags().BoolVar(&f.force, "force", false, "remove files without asking, edited too; --remove: a profile in use")
-	// Aliases for muscle memory from other tools: systemctl and conda, nvm and
-	// kubectl. Additive and stable; the published table is pinned in store_test.go.
-	aliasFlags(cmd, map[string][]string{
-		string(engine.ProfileOn):     {"enable", "activate"},
-		string(engine.ProfileOff):    {"disable", "deactivate"},
-		string(engine.ProfileSwitch): {"use"},
-		string(engine.ProfileEdit):   {"pick", "modify"},
-		string(engine.ProfileMove):   {"mv"},
-		"new":                        {"create"},
-		string(engine.ProfileAdd):    {"get"},
-		string(engine.ProfileUpdate): {"upgrade"},
-		string(engine.ProfileRemove): {"rm", "delete", "del", "erase", "uninstall"},
-	})
+	cmd.Flags().StringVar(&to, "to", "", "the new profile's name (default <name>-modules)")
+	_ = cmd.RegisterFlagCompletionFunc("to", cobra.NoFileCompletions)
+	addSyncFlags(cmd, &f, &trust, syncFlagHelp{yes: profileYesHelp, force: profileForceHelp})
 	return cmd
 }
 
-// oneName refuses two or more names for act, one profile being on at a time: --switch and --on hint
-// the bundle of them, made and switched to, after which --switch names it, keeping the run's
-// --trust, -n and output flags (never -y or --force, which would answer removals the switch makes);
-// --off hints the run with each name. The bundle's name and members are the engine's, read at the
-// scope the run would take without asking (a found project, else user scope).
-func (a *app) oneName(cmd *cobra.Command, eng *engine.Engine, args []string, act engine.ProfileAction, f syncFlags) error {
-	if act == engine.ProfileOff {
+func (a *app) profileAddCmd() *cobra.Command {
+	var f syncFlags
+	var trust trustFlag
+	var rf remoteFlags
+	cmd := &cobra.Command{
+		Use:     "add <source> [<name>]",
+		Aliases: []string{"get"},
+		Short:   "Fetch a remote profile from a git repository or https archive",
+		Long: "Fetch the profiles/ of <source>, a git repository or https archive, show the profile named (on a\n" +
+			"terminal with none named, the one you pick) and its content, and ask before adding it; off a terminal\n" +
+			"--trust answers. Nothing is turned on.",
+		Example: "  lola profile add https://github.com/example/profiles go\n  lola profile add https://github.com/example/profiles --ref v1 --path team",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := profileTrust(cmd, args, &trust, &f); err != nil { // first, so a hint repeats it as parsed
+				return err
+			}
+			return profileAddRule(cmd, args)
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return completeFiles(cmd, args, toComplete)
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			eng, err := a.engine()
+			if err != nil {
+				return err
+			}
+			rf.source = args[0]
+			if len(args) == 2 {
+				if err := refuseProfileName(eng, args[1], func(n string) string { return runWithout(cmd, []string{args[0], n}) }); err != nil {
+					return err
+				}
+			}
+			return a.profileAdd(cmd, eng, args, rf, f)
+		},
+	}
+	cmd.Flags().StringVar(&rf.ref, "ref", "", "the branch, tag or commit to fetch")
+	cmd.Flags().StringVar(&rf.path, "path", "", "the directory holding profiles/ in the source")
+	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
+	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "show what add would keep, ask nothing and write nothing")
+	addTrustFlag(cmd, &trust, "profile add", "trust without asking: profiles")
+	return cmd
+}
+
+// profileAddRule is add's Args rule: a source and one name at most; a name in the source's place,
+// with the source second, is refused with the run in the right order.
+func profileAddRule(cmd *cobra.Command, args []string) error {
+	switch {
+	case len(args) == 0:
+		return errs.WithHints(fmt.Errorf("%s needs a source", cmd.CommandPath()), "usage: "+verbUsage(cmd)+" [--ref <ref>] [--path <dir>]",
+			"example: lola profile add https://github.com/example/profiles go")
+	case len(args) > 2:
 		var hints []string
-		for _, n := range args {
-			if h := runWithout(cmd, []string{n}); !slices.Contains(hints, h) {
-				hints = append(hints, h)
+		for _, n := range args[1:] {
+			hints = append(hints, "add "+untrusted.Text(n, untrusted.MaxName)+": "+runWithout(cmd, []string{args[0], n}))
+		}
+		return errs.WithHints(errors.New("add takes one profile name; add them one at a time"), hints...)
+	case len(args) == 2:
+		err := module.ValidateName("profile", args[1])
+		if err != nil && (strings.ContainsAny(args[1], ":/") || strings.HasSuffix(args[1], ".git")) {
+			return errs.WithHints(err, runWithout(cmd, []string{args[1], args[0]}))
+		}
+	}
+	return nil
+}
+
+func (a *app) profileUpdateCmd() *cobra.Command {
+	var f syncFlags
+	var trust trustFlag
+	var all bool
+	cmd := &cobra.Command{
+		Use:     "update [<name>...]",
+		Aliases: []string{"upgrade"},
+		Short:   "Fetch remote profiles again, show what changed, ask, and apply",
+		Long: "Fetch the named remote profiles again, or with --all every one you have; show what changed and ask\n" +
+			"about each (off a terminal --trust answers), then apply the changes in each scope they are on.",
+		Example: "  lola profile update go\n  lola profile update --all\n  lola profile update go --user --trust -y",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := profileTrust(cmd, args, &trust, &f); err != nil { // first, so a hint repeats it as parsed
+				return err
+			}
+			eng, err := a.engine()
+			if err != nil {
+				return err
+			}
+			// The scope flags before the names: a hint of the names' refusal must name scopes that work.
+			if _, err := a.flagScope(cmd, eng, args, ""); err != nil {
+				return err
+			}
+			return updateNamesRefusal(cmd, eng, args, given(cmd, "all"))
+		},
+		ValidArgsFunction: a.completeProfileArgs((*engine.Engine).RemoteProfileNames, true),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Without a scope flag an update answers only the profiles' question with --trust, never a
+			// project's: entries written there would answer nothing.
+			if trust.names(engine.TrustEntries) && a.scopeFlag == "" && !a.user && !a.project && a.root == "" {
+				return errs.WithHints(errors.New("--trust=entries trusts a project's changes, which lola profile update answers only in a scope a flag names"),
+					"name the project: "+runWithout(cmd, args)+" --project", "or with user scope too: "+runWithout(cmd, args)+" --scope both")
+			}
+			eng, err := a.engine()
+			if err != nil {
+				return err
+			}
+			return a.profileUpdate(cmd, eng, args, all, f)
+		},
+	}
+	cmd.Flags().BoolVar(&all, "all", false, "every remote profile you have")
+	addSyncFlags(cmd, &f, &trust, syncFlagHelp{yes: profileYesHelp})
+	return cmd
+}
+
+func (a *app) profileRmCmd() *cobra.Command {
+	var f syncFlags
+	cmd := &cobra.Command{
+		Use:     "rm <name>",
+		Aliases: []string{"remove", "delete", "del", "erase"},
+		Short:   "Delete a profile of yours (to the trash) or a remote one",
+		Long: "Delete a profile of yours, which goes to the trash, or a remote one. It asks on a terminal (-y\n" +
+			"answers) and refuses a profile in use in user scope or the project here unless --force.",
+		Example: profileRmGuide.example(),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := profileRmGuide.args(1)(cmd, args); err != nil {
+				return err
+			}
+			if len(args) > 1 {
+				return oneEach(cmd, "rm deletes one profile; name it", nil, args)
+			}
+			return nil
+		},
+		ValidArgsFunction: a.completeProfileArgs((*engine.Engine).RemoveNames, false),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			eng, err := a.engine()
+			if err != nil {
+				return err
+			}
+			return a.profileRemove(cmd, eng, args, f)
+		},
+	}
+	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what rm would remove, write nothing")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "remove without asking")
+	cmd.Flags().BoolVar(&f.force, "force", false, "remove a profile in use, without asking")
+	return cmd
+}
+
+// profileChange runs lola profile on, off or switch: its --trust, two or more names refused
+// (oneName), the name --new would make refused when lola profile answers to it, --new's modifiers
+// checked (newFlags), then the change applied (profileApply).
+func (a *app) profileChange(cmd *cobra.Command, args []string, ch engine.ProfileChange, f syncFlags, trust *trustFlag) error {
+	if err := profileTrust(cmd, args, trust, &f); err != nil {
+		return err
+	}
+	eng, err := a.engine()
+	if err != nil {
+		return err
+	}
+	if len(args) > 1 {
+		return a.oneName(cmd, eng, args, f)
+	}
+	if len(args) == 1 {
+		ch.Name = args[0]
+	}
+	if ch.New {
+		if err := refuseProfileName(eng, ch.Name, func(n string) string { return runWithout(cmd, []string{n}) }); err != nil {
+			return err
+		}
+	}
+	if err := a.newFlags(cmd, eng, args, ch, f); err != nil {
+		return err
+	}
+	return a.profileApply(cmd, eng, ch, f)
+}
+
+// profileExists reports whether name names a profile in the scopes listing and showing read
+// (readScopes): lola profile <name> shows it, and a verb called by its name notes that it won. A
+// name show would refuse for another reason than naming none (ambiguous, unreadable) names one.
+func (a *app) profileExists(cmd *cobra.Command, name string) bool {
+	eng, err := a.engine()
+	if err != nil {
+		return false
+	}
+	scs, err := a.readScopes(eng)
+	if err != nil {
+		return false
+	}
+	_, _, err = eng.ProfileState(cmd.Context(), choiceScopes(scs), name)
+	return !engine.IsUnknownProfile(err)
+}
+
+// listProfiles is bare lola profile and lola profile list: the profiles each scope read can use and
+// which is on, then the notices.
+func (a *app) listProfiles(cmd *cobra.Command) error {
+	eng, err := a.engine()
+	if err != nil {
+		return err
+	}
+	scs, err := a.readScopes(eng)
+	if err != nil {
+		return err
+	}
+	a.printContext(cmd, eng, choiceScopes(scs), nil)
+	rows, notices := []engine.ProfileRow{}, []engine.Notice{}
+	for i, c := range scs {
+		got, notes, err := eng.Profiles(cmd.Context(), c.Scope)
+		if err != nil && len(scs) == 2 && c.Source == engine.SourceDiscovered {
+			// No flag chose these scopes, so one that cannot be read must not hide the other.
+			return errs.WithHints(err, "list the other scope's: "+eng.Command(scs[1-i].Scope, "profile"))
+		}
+		if err != nil {
+			return err
+		}
+		rows = append(rows, got...)
+		// Both scopes read one profiles directory: its warnings are said once.
+		for _, n := range notes {
+			if !slices.ContainsFunc(notices, n.Same) {
+				notices = append(notices, n)
 			}
 		}
-		return errs.WithHints(fmt.Errorf("one profile is on at a time; --%s takes one name", act), hints...)
 	}
+	return a.emit(cmd, func(w io.Writer, s style) { printProfiles(w, s, eng, rows, notices) },
+		map[string]any{"profiles": rows, "notices": notices})
+}
+
+// showProfile is lola profile show <name>, and lola profile <name>: the profile and, per scope read,
+// where it stands and the layer each of its modules comes from. More names refuse, hinting the
+// listing and each one shown, as the noun names them; an unknown one hints switch --new.
+func (a *app) showProfile(cmd *cobra.Command, args []string) error {
+	noun := cmd
+	if cmd.Name() == "show" {
+		noun = cmd.Parent()
+	}
+	if len(args) > 1 {
+		words := strings.Fields(noun.CommandPath())
+		hints := []string{"list them all: " + runAs(words, cmd, nil)}
+		for _, n := range args {
+			hints = append(hints, "or show one: "+runAs(words, cmd, []string{n}))
+		}
+		return errs.WithHints(errors.New("name one profile to show"), hints...)
+	}
+	eng, err := a.engine()
+	if err != nil {
+		return err
+	}
+	scs, err := a.readScopes(eng)
+	if err != nil {
+		return err
+	}
+	scopes := choiceScopes(scs)
+	a.printContext(cmd, eng, scopes, nil)
+	states, notices, err := eng.ProfileState(cmd.Context(), scopes, args[0], outputFlags(cmd)...)
+	if engine.IsUnknownProfile(err) {
+		// switch --new is another command than the show, so it takes none of the run's consent.
+		if exists, refused := eng.NewOrSwitch(scopes[0], engine.ProfileChange{Name: args[0]}, nil); !exists && refused == nil {
+			err = errs.WithHints(err, "make it: "+runAs([]string{"lola", "profile", "switch"}, cmd, []string{args[0], "--new"}, consentFlags...))
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return a.emit(cmd, func(w io.Writer, s style) { printProfileState(w, s, states, notices) },
+		map[string]any{"profiles": states, "notices": notices})
+}
+
+// readScopes is the scopes listing and showing read: the project here and user scope, or those the
+// scope flags name.
+func (a *app) readScopes(eng *engine.Engine) ([]engine.ScopeChoice, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	req, err := a.scopeRequest(cwd, false)
+	if err != nil {
+		return nil, err
+	}
+	return eng.ResolveReadScope(req)
+}
+
+// oneName refuses two or more names for on or switch, one profile being on at a time: it hints the
+// bundle of them, made and switched to, after which switch names it, keeping the run's --trust, -n
+// and output flags (never -y or --force, which would answer removals the switch makes). The bundle's
+// name and members are the engine's, read at the scope the run would take without asking (a found
+// project, else user scope).
+func (a *app) oneName(cmd *cobra.Command, eng *engine.Engine, args []string, f syncFlags) error {
 	sc, err := a.readScope(eng)
 	if err != nil {
 		return err
@@ -462,15 +793,7 @@ func (a *app) readScope(eng *engine.Engine) (engine.Scope, error) {
 
 // readChoice is readScope's scope with where it came from (a flag, or found from here).
 func (a *app) readChoice(eng *engine.Engine) (engine.ScopeChoice, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return engine.ScopeChoice{}, err
-	}
-	req, err := a.scopeRequest(cwd, false)
-	if err != nil {
-		return engine.ScopeChoice{}, err
-	}
-	scs, err := eng.ResolveReadScope(req)
+	scs, err := a.readScopes(eng)
 	if err != nil {
 		return engine.ScopeChoice{}, err
 	}
@@ -512,9 +835,6 @@ func (a *app) newFlags(cmd *cobra.Command, eng *engine.Engine, args []string, ch
 // writing command's is, then a sync carrying the change, with sync's questions and answers
 // (-y, --trust). Its summary, the changes and the plan, is paged as sync's diff is.
 func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.ProfileChange, f syncFlags) error {
-	if ch.Name == "" && ch.Action != engine.ProfileOff {
-		return errs.WithHints(fmt.Errorf("--%s needs the name of a profile", ch.Action), "list them: lola profile")
-	}
 	var names []string
 	if ch.Name != "" {
 		names = []string{ch.Name}
@@ -530,7 +850,7 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 	alone := f
 	alone.alone = true // the change the user named, at its one scope; the terminal's answer below is another
 	res, more, err := a.syncScope(cmd, eng, sc, nil, &ch, alone)
-	// --on never replaces the profile on unasked: a terminal is asked to
+	// on never replaces the profile on unasked: a terminal is asked to
 	// switch, which -y and --force never answer; off one, or under -n, which asks nothing, the
 	// engine's refusal hints --switch.
 	if other, ok := errors.AsType[*engine.OtherProfileOnError](err); ok && !f.dry && a.prompter(cmd).Interactive() {
@@ -547,7 +867,7 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 		if i == 2 { // the bundle on stays on, with one more member: the edit its hint runs
 			again := rerunFlags(cmd, 0)
 			edit := func(flags []string) string {
-				words := slices.Concat([]string{other.Into, "--edit", "--bundle", strings.Join(other.Joined, ",")}, flags, []string{"--force"})
+				words := slices.Concat([]string{"edit", other.Into, "--bundle", strings.Join(other.Joined, ",")}, flags, []string{"--force"})
 				return eng.Command(sc, "profile", words...)
 			}
 			real := slices.DeleteFunc(slices.Clone(again), func(f string) bool { return f == "-n" })
@@ -666,54 +986,49 @@ func turnedLine(act *engine.Activation) string {
 	return "Profile " + q + " → " + state
 }
 
-// completeProfile offers the names of the profiles you can turn on, or with --remove those it
-// takes, or with --update the remote ones; nothing after the first name, but for --update, which
-// takes several (minus those given, remote:go counting as go), and nothing with --all.
-func (a *app) completeProfile(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	update := cmd.Flags().Changed(string(engine.ProfileUpdate))
-	eng, err := a.engine()
-	// lola profile [<name>] --edit <module>...: the profile first, then modules, as install takes them.
-	if edit := cmd.Flags().Changed(string(engine.ProfileEdit)); err == nil && edit {
-		out, d := a.completeSource(cmd, args, toComplete)
-		if len(args) == 0 {
-			if names, err := eng.ProfileNames(); err == nil {
-				for _, n := range names {
-					if strings.HasPrefix(n, toComplete) {
-						out = append(out, n)
-					}
-				}
+// completeProfileArgs offers the profile names a verb of lola profile takes, as names lists them
+// (ProfileNames, RemoveNames or RemoteProfileNames): for its first operand only, or with many for
+// each, minus those given (remote:go counting as go); none with --all.
+func (a *app) completeProfileArgs(names func(*engine.Engine) ([]string, error), many bool) cobra.CompletionFunc {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		eng, err := a.engine()
+		if err != nil || given(cmd, "all") || len(args) > 0 && !many {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		list, err := names(eng)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		typed := slices.Clone(args)
+		for i, g := range typed {
+			typed[i] = strings.TrimPrefix(g, "remote:")
+		}
+		var out []cobra.Completion
+		for _, n := range list {
+			if strings.HasPrefix(n, toComplete) && !slices.Contains(typed, n) {
+				out = append(out, n)
 			}
 		}
+		return out, cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+// completeEdit offers lola profile edit's operands: the profile first, then modules, as install
+// takes them.
+func (a *app) completeEdit(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	out, d := a.completeSource(cmd, args, toComplete)
+	eng, err := a.engine()
+	if err != nil || len(args) > 0 {
 		return out, d
 	}
-	if err != nil || cmd.Flags().Changed("all") || len(args) > 0 && !update {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	list, remote := eng.ProfileNames, update
-	switch {
-	case remote:
-		list = eng.RemoteProfileNames
-	case cmd.Flags().Changed(string(engine.ProfileRemove)):
-		list = eng.RemoveNames
-	}
-	names, err := list()
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	// For remote profiles, remote:go names go.
-	given := slices.Clone(args)
-	if remote {
-		for i, g := range given {
-			given[i] = strings.TrimPrefix(g, "remote:")
+	if names, err := eng.ProfileNames(); err == nil {
+		for _, n := range names {
+			if strings.HasPrefix(n, toComplete) {
+				out = append(out, n)
+			}
 		}
 	}
-	var out []cobra.Completion
-	for _, n := range names {
-		if strings.HasPrefix(n, toComplete) && !slices.Contains(given, n) {
-			out = append(out, n)
-		}
-	}
-	return out, cobra.ShellCompDirectiveNoFileComp
+	return out, d
 }
 
 // stateText is where a row stands in its scope: base, on, in bundle <the

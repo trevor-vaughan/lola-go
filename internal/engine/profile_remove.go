@@ -37,7 +37,7 @@ func (e *Engine) refuseInUse(ctx context.Context, req ProfileRemoveRequest, q st
 			scopes = append(scopes, o)
 		}
 	}
-	forced := []string{q, "--remove", "--force"}
+	forced := []string{"rm", q, "--force"}
 	if req.DryRun {
 		forced = append(forced, "-n")
 	}
@@ -84,10 +84,10 @@ func (e *Engine) refuseInUse(ctx context.Context, req ProfileRemoveRequest, q st
 			hints := []string{}
 			for _, u := range using {
 				if u == shown(q) {
-					hints = append(hints, "turn the profile off first: "+e.Command(s, "profile", append([]string{u, "--off"}, req.Display...)...))
+					hints = append(hints, "turn the profile off first: "+e.Command(s, "profile", append([]string{"off", u}, req.Display...)...))
 					continue
 				}
-				hints = append(hints, "turn the bundle off first: "+e.Command(s, "profile", append([]string{u, "--off"}, req.Display...)...))
+				hints = append(hints, "turn the bundle off first: "+e.Command(s, "profile", append([]string{"off", u}, req.Display...)...))
 				hints = append(hints, e.unlistRuns(s, listed, req.Display)...)
 			}
 			return nil, nil, errs.WithHints(fmt.Errorf("%s %s", shown(q), what), append(hints, force)...)
@@ -112,7 +112,7 @@ func (e *Engine) refuseInUse(ctx context.Context, req ProfileRemoveRequest, q st
 	return notices, files, nil
 }
 
-// ownToRemove is the profile of yours req.Name names for --remove, nil when
+// ownToRemove is the profile of yours req.Name names for rm, nil when
 // it names a remote profile, which RemoveProfile then removes: user:<name>, or a bare name that
 // only a profile of yours has. A bare name that both a profile of yours and a remote one have is
 // refused, hinting each qualified; so are the base (default, base), a project's profile, which is
@@ -123,10 +123,10 @@ func (e *Engine) ownToRemove(sc Scope, req ProfileRemoveRequest) (*profile.Info,
 	if req.DryRun {
 		again = append([]string{"-n"}, again...)
 	}
-	run := func(q string) string { return e.Command(sc, "profile", append([]string{q, "--remove"}, again...)...) }
+	run := func(q string) string { return e.Command(sc, "profile", append([]string{"rm", q}, again...)...) }
 	list := "see the profiles: " + e.Command(sc, "profile", req.Display...)
 	if isBase, isDefault := namesBase(req.Name); isBase || isDefault {
-		return nil, errs.WithHints(errors.New("the base is always loaded and lola keeps it; --remove deletes a profile of yours or a remote one"), list)
+		return nil, errs.WithHints(errors.New("the base is always loaded and lola keeps it; lola profile rm deletes a profile of yours or a remote one"), list)
 	}
 	kind, bare, qualified := strings.Cut(req.Name, ":")
 	if !qualified {
@@ -166,13 +166,13 @@ func (e *Engine) ownToRemove(sc Scope, req ProfileRemoveRequest) (*profile.Info,
 	return nil, nil
 }
 
-// committedProfile refuses --remove of name, a profile of the project at sc: it is committed, so
+// committedProfile refuses rm of name, a profile of the project at sc: it is committed, so
 // git removes it, which the hint runs; at user scope, or when the project has none of that name,
 // there is no such profile.
 func (e *Engine) committedProfile(sc Scope, name, list string) error {
 	path := e.profilePath(sc, profile.KindProject, name)
 	if _, err := os.Lstat(path); sc.Kind != target.Project || err != nil {
-		return errs.WithHints(fmt.Errorf("there is no profile project:%s here; --remove deletes a profile of yours or a remote one", shown(name)), list)
+		return errs.WithHints(fmt.Errorf("there is no profile project:%s here; lola profile rm deletes a profile of yours or a remote one", shown(name)), list)
 	}
 	rel := filepath.ToSlash(filepath.Join(profile.ProjectDir, name+".yml"))
 	return errs.WithHints(fmt.Errorf("project:%s is committed with the project (%s); lola does not delete it", shown(name), shown(path)),
@@ -189,7 +189,7 @@ func (e *Engine) committedProfile(sc Scope, name, list string) error {
 // the move takes exclusively.
 func (e *Engine) removeOwn(ctx context.Context, req ProfileRemoveRequest, i profile.Info, unlock *func()) (*ProfileRemoveResult, error) {
 	sc, q := req.Scope, i.Qualified()
-	again := []string{q, "--remove"}
+	again := []string{"rm", q}
 	if req.Force {
 		again = append(again, "--force")
 	}
@@ -205,7 +205,7 @@ func (e *Engine) removeOwn(ctx context.Context, req ProfileRemoveRequest, i prof
 		return nil, err
 	}
 	if req.Confirm == nil && !req.DryRun && !req.Force {
-		return nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("lola profile --remove asks before it moves %s to the trash, and there is no terminal to ask on", shown(i.Path))),
+		return nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("lola profile rm asks before it moves %s to the trash, and there is no terminal to ask on", shown(i.Path))),
 			"move "+shown(i.Path)+" to the trash: "+e.Command(sc, "profile", slices.Concat(again, []string{"-y"}, req.Display)...))
 	}
 	_, remoteErr := os.Lstat(filepath.Join(e.Paths.RemoteProfiles, i.Name))
@@ -277,7 +277,7 @@ func (e *Engine) removeOwn(ctx context.Context, req ProfileRemoveRequest, i prof
 	return res, nil
 }
 
-// asRemoved is what --remove of a profile of yours at path compares before and after its question:
+// asRemoved is what rm of a profile of yours at path compares before and after its question:
 // the file's bytes, or for a link that points at nothing, where it points, so a dangling link of
 // yours is removed as any file is.
 func asRemoved(path string) ([]byte, error) {
@@ -337,7 +337,7 @@ func (e *Engine) namingBundles(i profile.Info, remote, dry bool, said, display [
 	return out
 }
 
-// RemoveNames is the names lola profile --remove takes, for completion: your
+// RemoveNames is the names lola profile rm takes, for completion: your
 // profiles and the remote ones, each bare unless the other kind has its name, which a bare name
 // would leave ambiguous; sorted.
 func (e *Engine) RemoveNames() ([]string, error) {

@@ -24,7 +24,7 @@ package cli_test
 // also pinned (consent: later --ctrl+c--> cancelled): misc2_paths_test.go "consent: start --run (lola sync, nothing to install)--> later"
 // also pinned (market picker: start --run (a terminal)--> picker; market picker: picker --esc or q--> left): marketflow_test.go "opens without contacting a host, and leaving it changes nothing"
 // also pinned (market picker: start --run (a terminal)--> picker): market_picker_internal_test.go "makes no check on open and shows no status"
-// also pinned (market picker: start --run (--json, --plain, --no-pager, --no-interactive or market_picker: false)--> list): marketflow_test.go "lists as text under --json, --plain, --no-pager, --no-interactive and market_picker: false, never asking"
+// also pinned (market picker: start --run (--json, --plain, --no-pager or market_picker: false)--> list): marketflow_test.go "lists as text under --json, --plain, --no-pager and market_picker: false, never asking"
 // also pinned (market picker: start --run (no terminal)--> list): marketflow_test.go "lists as text off a terminal"
 // also pinned (market picker: start --run (no terminal)--> list): market_picker_internal_test.go "never asks off a terminal"
 // also pinned (market picker: start --run (accessible mode)--> numbers; market picker: numbers --answer--> next step): market_picker_internal_test.go "lists the rows numbered, with no status, and answers the numbers chosen"
@@ -189,7 +189,7 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: start --run--> done", func() {
 		sp := &scripted{}
-		r := lolaP(sp, "market", "--add", acme)
+		r := lolaP(sp, "market", "add", acme)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(BeEmpty(), "a free name and no ssh host: nothing asked")
 		Expect(r.out).To(HavePrefix("✓ marketplace acme: 2 entries (Claude marketplace.json) from " + acme + "\n"))
@@ -198,10 +198,10 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: start --run (the name is another source's)--> name", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{"mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name", "ssh-hosts"}))
 		Expect(sp.nameSteps[0]).To(Equal(cli.MarketNameStep{Why: "priv is already a marketplace, from " + acme, Value: "priv-2"}))
@@ -209,19 +209,19 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: start --run (the name is this marketplace already)--> refused", func() {
-		Expect(lola("market", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme).code).To(Equal(0))
 		before := markets()
 		sp := &scripted{}
-		r := lolaP(sp, "market", "acme", "--add", acme)
+		r := lolaP(sp, "market", "add", acme, "acme")
 		Expect(r.code).To(Equal(1))
 		Expect(sp.calls).To(BeEmpty())
-		Expect(r.err).To(Equal("error: acme is already this marketplace\n  hint: lola market acme --update\n"))
+		Expect(r.err).To(Equal("error: acme is already this marketplace\n  hint: lola market update acme\n"))
 		Expect(markets()).To(Equal(before))
 	})
 
 	It("market add: start --run (ssh hosts not allowed)--> ssh", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"ssh-hosts"}))
 		Expect(sp.sshSteps[0].Market).To(Equal("priv"))
@@ -231,46 +231,46 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: start --run (--ssh-host)--> ssh", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){func(cli.SSHHostStep) ([]string, error) { return nil, nil }}}
-		r := lolaP(sp, "market", "--add", priv, "--ssh-host", "git.corp.test")
+		r := lolaP(sp, "market", "add", priv, "--ssh-host", "git.corp.test")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.sshSteps[0].Hosts).To(Equal([]cli.SSHHostChoice{{Host: "other.test", Entries: 1}}), "only the hosts --ssh-host left")
 		Expect(markets()).To(ContainSubstring("ssh_hosts:\n      - git.corp.test\n"))
 		sp = &scripted{}
-		r = lolaP(sp, "market", "both", "--add", priv, "--ssh-host", "git.corp.test", "--ssh-host", "other.test")
+		r = lolaP(sp, "market", "add", priv, "both", "--ssh-host", "git.corp.test", "--ssh-host", "other.test")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(BeEmpty(), "nothing left to ask")
 	})
 
 	It("market add: start --run (no terminal or --json, a taken name)--> refused", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{}
-		r := lolaP(sp, "market", "--add", priv, "--json")
+		r := lolaP(sp, "market", "add", priv, "--json")
 		Expect(r.code).To(Equal(1))
 		Expect(sp.calls).To(BeEmpty())
 		Expect(r.err).To(MatchJSON(`{"error": "priv is already a marketplace, from ` + acme + `",
-			"hints": ["lola market priv-2 --add ` + priv + ` --path .claude-plugin/marketplace.json --json"]}`))
+			"hints": ["lola market add ` + priv + ` priv-2 --path .claude-plugin/marketplace.json --json"]}`))
 		Expect(markets()).To(Equal(before))
 	})
 
 	It("market add: start --run (no terminal or --json, ssh hosts)--> done", func() {
 		sp := &scripted{}
-		r := lolaP(sp, "market", "--add", priv, "--json")
+		r := lolaP(sp, "market", "add", priv, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(BeEmpty())
-		Expect(r.out).To(ContainSubstring("lola market priv --update --ssh-host git.corp.test --ssh-host other.test --json"))
+		Expect(r.out).To(ContainSubstring("lola market update priv --ssh-host git.corp.test --ssh-host other.test --json"))
 		Expect(markets()).NotTo(ContainSubstring("ssh_hosts"))
 	})
 
 	It("market add: start --run (-n)--> done", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{}
-		r := lolaP(sp, "market", "other", "--add", priv, "-n")
+		r := lolaP(sp, "market", "add", priv, "other", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(BeEmpty(), "a dry run asks nothing")
 		Expect(r.out).To(HavePrefix("→ would add marketplace other: "))
-		r = lolaP(sp, "market", "--add", priv, "-n")
+		r = lolaP(sp, "market", "add", priv, "-n")
 		Expect(r.code).To(Equal(1), "a taken name is refused as off a terminal")
 		Expect(sp.calls).To(BeEmpty())
 		Expect(markets()).To(Equal(before))
@@ -278,19 +278,19 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: name --answer--> ssh", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		sp := &scripted{names: []string{"mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		Expect(lolaP(sp, "market", "--add", priv).code).To(Equal(4))
+		Expect(lolaP(sp, "market", "add", priv).code).To(Equal(4))
 		Expect(sp.calls).To(Equal([]string{"market-name", "ssh-hosts"}))
 		Expect(sp.sshSteps[0].Market).To(Equal("mine"))
 	})
 
 	It("market add: name --answer (no ssh host to ask)--> done", func() {
-		Expect(lola("market", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme).code).To(Equal(0))
 		other := filepath.Join(tmp, "other")
 		writeTree(other, map[string]string{".claude-plugin/marketplace.json": marketCatalog, "tools/formatter/x.md": "x"})
 		sp := &scripted{names: []string{"mine"}}
-		r := lolaP(sp, "market", "--add", other)
+		r := lolaP(sp, "market", "add", other)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name"}))
 		Expect(r.out).To(ContainSubstring("→ the catalog calls itself acme; it is your marketplace mine\n"))
@@ -298,10 +298,10 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: name --ctrl+c--> cancelled", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{cancelRun}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name"}))
 		Expect(markets()).To(Equal(before))
@@ -310,7 +310,7 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: ssh --answer--> done", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){func(cli.SSHHostStep) ([]string, error) { return []string{"other.test"}, nil }}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ allowed ssh hosts: other.test\n"))
 		Expect(markets()).To(ContainSubstring("ssh_hosts:\n      - other.test\n"))
@@ -319,28 +319,28 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: ssh --empty submit--> done", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){func(cli.SSHHostStep) ([]string, error) { return nil, nil }}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(markets()).To(ContainSubstring("- name: priv\n"))
 		Expect(markets()).NotTo(ContainSubstring("ssh_hosts"), "no host allowed")
-		Expect(r.out + r.err).To(ContainSubstring("lola market priv --update --ssh-host git.corp.test --ssh-host other.test"))
+		Expect(r.out + r.err).To(ContainSubstring("lola market update priv --ssh-host git.corp.test --ssh-host other.test"))
 	})
 
 	It("market add: ssh --ctrl+c--> cancelled", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{"mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(markets()).To(Equal(before), "the name answered is not registered")
 		Expect(filepath.Join(p.MarketCache, "mine")).NotTo(BeAnExistingFile())
 	})
 
 	It("market add: name --answer (refused)--> name", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{"Bad Name", "priv", "mine"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name", "market-name", "market-name", "ssh-hosts"}))
 		why := "priv is already a marketplace, from " + acme
@@ -352,11 +352,11 @@ var _ = Describe("market add paths", func() {
 	})
 
 	It("market add: ssh --esc (after the name question)--> name", func() {
-		Expect(lola("market", "priv", "--add", acme).code).To(Equal(0))
+		Expect(lola("market", "add", acme, "priv").code).To(Equal(0))
 		before := markets()
 		sp := &scripted{names: []string{"mine", "theirs"}, sshHosts: []func(cli.SSHHostStep) ([]string, error){goneBack[cli.SSHHostStep, []string],
 			func(cli.SSHHostStep) ([]string, error) { return []string{"git.corp.test"}, nil }}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.calls).To(Equal([]string{"market-name", "ssh-hosts", "market-name", "ssh-hosts"}))
 		Expect(sp.sshSteps[0].Nav).To(Equal(cli.Nav{Back: true, Answered: 1}), "Esc has the name question to go back to")
@@ -370,7 +370,7 @@ var _ = Describe("market add paths", func() {
 
 	It("market add: ssh --esc (first screen)--> ssh", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){aborted[cli.SSHHostStep, []string]}}
-		r := lolaP(sp, "market", "--add", priv)
+		r := lolaP(sp, "market", "add", priv)
 		Expect(r.code).To(Equal(4), r.err)
 		Expect(sp.calls).To(Equal([]string{"ssh-hosts"}))
 		Expect(sp.sshSteps[0].Nav).To(Equal(cli.Nav{}), "a first screen: Esc stays")

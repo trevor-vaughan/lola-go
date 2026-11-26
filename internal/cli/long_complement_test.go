@@ -37,12 +37,12 @@ var _ = Describe("long complements", func() {
 		writeTree(big, files)
 		Expect(lola("install", big, "--user", "-t", "claude-code", "-y").code).To(Equal(0))
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		goYml = filepath.Join(p.UserProfiles, "go.yml")
 	})
 
 	It("writes the complement of a non-exact --only as a block list, and shows the picks", func() {
-		r := lola("profile", "go", "--edit", "big", "--only", "skill/s01,skill/s02", "--override", "--user", "-y")
+		r := lola("profile", "edit", "go", "big", "--only", "skill/s01,skill/s02", "--override", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		b, err := os.ReadFile(goYml)
 		Expect(err).NotTo(HaveOccurred())
@@ -89,7 +89,7 @@ var _ = Describe("long complements", func() {
 	})
 
 	It("keeps a short skip list a flow list and shown as skips", func() {
-		r := lola("profile", "go", "--edit", "big", "--skip", "skill/s01", "--override", "--user", "-y")
+		r := lola("profile", "edit", "go", "big", "--skip", "skill/s01", "--override", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(os.ReadFile(goYml)).To(ContainSubstring("skip: [skill/s01]\n"))
 		r = lola("profile", "go", "--user")

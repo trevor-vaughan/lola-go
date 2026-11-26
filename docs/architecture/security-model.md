@@ -95,7 +95,7 @@ covers it. The sections give the detail, including each residual risk.
   only; lola never resolves names, so a name that resolves inside your network, and
   a redirect to an address inside it that git or the archive fetch follows, are still fetched
   (residual). A planted, untracked `lock.json` can change only the 'installed' annotation of
-  `--add`/`--update`, never what is shown.
+  `lola profile add`/`update`, never what is shown.
 - **Marketplace catalogs.** A catalog is a stranger's input.
   - It is parsed by a package that cannot import `os` or `io/fs` (depguard), so no catalog string
     is looked up on disk.

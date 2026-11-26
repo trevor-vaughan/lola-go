@@ -12,7 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// What became of the marketplace of a --ssh-host --remove run (MarketOutcome.Outcome).
+// What became of the marketplace of a rm --ssh-host run (MarketOutcome.Outcome).
 const (
 	MarketRevoked     = "revoked"      // the hosts are no longer allowed; its cached catalog is read without them
 	MarketWouldRevoke = "would_revoke" // a dry run: the hosts would no longer be allowed
@@ -33,7 +33,7 @@ type MarketSSHStep struct {
 	Back   bool
 }
 
-// MarketSSHRevokeRequest is lola market <name> --ssh-host <host>... --remove.
+// MarketSSHRevokeRequest is lola market rm <name> --ssh-host <host>....
 type MarketSSHRevokeRequest struct {
 	Name   string
 	Hosts  []string
@@ -154,11 +154,11 @@ func chooseSSH(name string, f *fetchedMarket, base []string, dry bool, pick func
 // RevokeSSHHosts drops hosts from what the marketplace req.Name allows, under
 // the exclusive markets lock, and reads its cached catalog again without them, reporting the
 // entries that leave it; a dry run reports the same and writes nothing. A cached catalog that is
-// missing or cannot be read is left to the next --update: only the registration is written.
+// missing or cannot be read is left to the next lola market update: only the registration is written.
 // Installed modules keep their recorded sources.
 func (e *Engine) RevokeSSHHosts(req MarketSSHRevokeRequest) (*MarketResult, error) {
 	if len(req.Hosts) == 0 {
-		return nil, errors.New("--remove with --ssh-host needs a host")
+		return nil, errors.New("lola market rm --ssh-host needs a host")
 	}
 	hosts, err := checkedHosts(req.Hosts)
 	if err != nil {
@@ -184,7 +184,7 @@ func (e *Engine) RevokeSSHHosts(req MarketSSHRevokeRequest) (*MarketResult, erro
 		return nil, err
 	}
 	run := func(name string, hosts []string) []string {
-		out := slices.Concat([]string{name}, sshFlags(hosts), []string{"--remove"})
+		out := slices.Concat([]string{"rm", name}, sshFlags(hosts))
 		if req.DryRun {
 			out = append(out, "-n")
 		}

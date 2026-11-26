@@ -212,7 +212,7 @@ func (a *app) cacheRmCmd() *cobra.Command {
 		examples: []string{"lola cache rm my-module -y"}}
 	cmd := &cobra.Command{
 		Use:               "rm <module>...",
-		Aliases:           []string{"remove", "uninstall", "erase", "delete", "del"},
+		Aliases:           []string{"remove", "delete", "del", "erase"},
 		Short:             "Remove modules (every cached version) from your cache",
 		Long:              "Remove every cached version of the modules. Installed modules keep working: each one runs\nfrom its own module copy, and lola sync fetches the source again when it needs to.",
 		Example:           g.example(),
@@ -273,7 +273,7 @@ func (a *app) cacheCleanCmd() *cobra.Command {
 			"--unused-for never turns it off for one run. --all removes every module, marketplace\n" +
 			"catalog and scratch but what a running lola holds. Installed modules keep working: a project\n" +
 			"whose version was removed fetches it again on its next render, and a marketplace whose\n" +
-			"catalog was removed needs lola market <name> --update before you install from it.",
+			"catalog was removed needs lola market update <name> before you install from it.",
 		Example:           "  lola cache clean\n  lola cache clean --unused-for 30d -n\n  lola cache clean --all -y",
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -537,7 +537,7 @@ func (a *app) searchCmd() *cobra.Command {
 		Long: "Search modules case-insensitively by name, description and keywords: your cache first,\n" +
 			"then the entries of every marketplace catalog you have fetched (lola market), each listed\n" +
 			"by what lola install takes: a cached module's name, or @market/module. It never fetches;\n" +
-			"lola market <name> --update fetches a catalog again. lola cache search searches your cache\n" +
+			"lola market update <name> fetches a catalog again. lola cache search searches your cache\n" +
 			"alone.",
 		Example:           g.example(),
 		GroupID:           groupCore,

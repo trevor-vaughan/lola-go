@@ -221,7 +221,7 @@ func (e *Engine) profileRow(sc Scope, infos []profile.Info, i profile.Info, led 
 	if _, unresolved := errors.AsType[*manifest.UnresolvedError](err); err != nil && !unresolved {
 		text := shown(i.Qualified()) + " does not load: " + shown(untrusted.CleanErr(err).Error())
 		if offer, ok := errors.AsType[*SplitOfferError](e.mixedError(sc, infos, i, err)); ok {
-			text += " → " + e.Command(offer.Scope, "profile", offer.Name, "--split")
+			text += " → " + e.Command(offer.Scope, "profile", "split", offer.Name)
 		}
 		return row, append(notes, Notice{Level: LevelWarn, Text: text})
 	}
@@ -248,7 +248,7 @@ func (e *Engine) goneProfile(sc Scope, q string) Notice {
 		}
 		return Notice{Level: LevelWarn, Text: "profile " + shown(q) + " is on but not on this machine yet → " + e.SyncCommand(sc) + " restores it from pins.yaml"}
 	}
-	return Notice{Level: LevelWarn, Text: "profile " + shown(q) + " is on but no longer exists → " + e.Command(sc, "profile", q, "--off")}
+	return Notice{Level: LevelWarn, Text: "profile " + shown(q) + " is on but no longer exists → " + e.Command(sc, "profile", "off", q)}
 }
 
 // ProfileState is the state of the profile name names in each of scopes that has it: its row and,
@@ -312,7 +312,7 @@ func (e *Engine) profileState(ctx context.Context, sc Scope, name string) (*Prof
 			st.ReadAs = &by
 		} else {
 			notices = append(notices, Notice{Level: LevelInfo, Text: "to use " + *st.ShadowedBy + " instead: " +
-				e.Command(sc, "profile", *st.ShadowedBy, "--on")})
+				e.Command(sc, "profile", "on", *st.ShadowedBy)})
 		}
 	}
 	if st.State == StateOff && !shadowed {
@@ -437,7 +437,7 @@ type unknownProfileError struct{ error }
 func (e *unknownProfileError) Unwrap() error { return e.error }
 
 // ambiguousProfileError is a bare profile name that profiles of several local kinds define,
-// with those profiles, so --off can say which of them are on.
+// with those profiles, so off can say which of them are on.
 type ambiguousProfileError struct {
 	error
 	found []profile.Info
@@ -525,7 +525,7 @@ func (e *Engine) resolveProfile(sc Scope, infos []profile.Info, name string, arg
 		if sc.Kind == target.Project {
 			hint += ", or the project's: " + shown(filepath.Join(sc.ProjectDir, profile.ProjectDir, "<name>.yml"))
 		}
-		hint += "; lola profile --add fetches a remote one"
+		hint += "; lola profile add fetches a remote one"
 	}
 	return profile.Info{}, &unknownProfileError{errs.WithHints(fmt.Errorf("no profile %s for %s", untrusted.Text(name, untrusted.MaxName), where), hint)}
 }

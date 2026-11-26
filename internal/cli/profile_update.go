@@ -18,7 +18,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// profileUpdate runs lola profile <name>... --update, or --update --all: it asks no scope; each
+// profileUpdate runs lola profile update <name>..., or update --all: it asks no scope; each
 // profile that changed is shown, paged, and asked about on its own, or accepted by --trust off a
 // terminal, which the engine checks before any network contact; a No keeps that profile and goes
 // on, Ctrl+C stops the run keeping what it updated. Then a sync of the modules the updates move in
@@ -27,12 +27,8 @@ import (
 // as lola sync --scope both does. A profile that failed makes the run fail once the others are
 // applied.
 func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []string, all bool, f syncFlags) error {
-	// The scope flags first: a hint of the names' refusal must name scopes that work.
 	given, err := a.flagScope(cmd, eng, args, "")
 	if err != nil {
-		return err
-	}
-	if err := updateNamesRefusal(cmd, eng, args, all); err != nil {
 		return err
 	}
 	// -y as given, which every command repeating the run keeps.
@@ -62,7 +58,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 	printer := func(rps []engine.RemoteProfile) func(io.Writer, style) {
 		return func(w io.Writer, s style) {
 			printRemoteProfiles(w, rps, func(rp engine.RemoteProfile) string {
-				return s.more(eng.ProfileRun(given, rp.Profile, "--update", "-n", "--json"))
+				return s.more(eng.ProfileRun(given, "update", rp.Profile, "-n", "--json"))
 			})
 		}
 	}
@@ -242,7 +238,7 @@ func applyLater(eng *engine.Engine, scopes []engine.UpdateScope, flags []string)
 	return out
 }
 
-// updateNamesRefusal refuses the names of an --update the run cannot take: names
+// updateNamesRefusal is update's Args rule: it refuses the names the run cannot take: names
 // with --all; neither, listing your remote profiles with both forms; and a name given twice (go
 // and remote:go are one). Each hint is the run, flags kept (runWithout), but one that names
 // profiles you did not name drops the answers: --trust and -y.
@@ -260,7 +256,7 @@ func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, a
 		}
 		if len(names) == 0 {
 			return errs.WithHints(errors.New("you have no remote profiles to update"),
-				"see the profiles you have: "+runWithout(cmd, nil, "update", "yes", "trust", "dry-run", "unseen"))
+				"see the profiles you have: "+runAs([]string{"lola", "profile", "list"}, cmd, nil))
 		}
 		var qs []string
 		for _, n := range names {
@@ -270,7 +266,7 @@ func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, a
 		for i, q := range qs {
 			listed[i] = untrusted.Text(q, untrusted.MaxName)
 		}
-		return errs.WithHints(fmt.Errorf("--update needs the remote profiles to update, or --all; you have %s", strings.Join(listed, ", ")),
+		return errs.WithHints(fmt.Errorf("update needs the remote profiles to update, or --all; you have %s", strings.Join(listed, ", ")),
 			"name them: "+runWithout(cmd, qs, "trust", "yes", "unseen"),
 			"or every one: "+runWithout(cmd, nil, "trust", "yes", "unseen")+" --all")
 	}
@@ -294,7 +290,7 @@ func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, a
 	return nil
 }
 
-// printUpdateResult is lola profile --update's report of each profile it was asked about, in
+// printUpdateResult is lola profile update's report of each profile it was asked about, in
 // order, then the notices: updated (✓), would update (a dry run), declined, and failed (✗; the
 // run's error says why, with the hints); a profile up to date is its notice, and one skipped
 // has no line of its own, since the run's stop message says it. --plain rows are the outcome
@@ -475,7 +471,7 @@ func (e *updateError) JSONFields() map[string]any {
 	return fields
 }
 
-// profileUpdateDoc is lola profile --update's JSON document: the update's result (remote_profiles,
+// profileUpdateDoc is lola profile update's JSON document: the update's result (remote_profiles,
 // updates, notices, dry_run) and each scope it applies in, with the sync that applied it there
 // (Scopes shadows the result's own, adding the sync).
 type profileUpdateDoc struct {
@@ -483,7 +479,7 @@ type profileUpdateDoc struct {
 	Scopes []updateScopeDoc `json:"scopes"`
 }
 
-// updateScopeDoc is one scope of lola profile --update's JSON document: the scope, its root, the
+// updateScopeDoc is one scope of lola profile update's JSON document: the scope, its root, the
 // modules the updates move there (apply) and the sync that applied them, null when none ran.
 type updateScopeDoc struct {
 	engine.UpdateScope

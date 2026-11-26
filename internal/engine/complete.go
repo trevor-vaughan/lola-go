@@ -89,7 +89,7 @@ func (e *Engine) InstalledVersions(sc Scope) (map[string]string, error) {
 	return out, nil
 }
 
-// MoveNames is the modules lola profile [<from>] --move can move in sc: those of from when it names
+// MoveNames is the modules lola profile move can move in sc: those of from when it names --from [<from>]
 // a profile of yours or a remote one (user:go, remote:go or a bare name, yours first), in its
 // order; else SyncNames', every module the scope has. A project's profile is never read: it is
 // committed, and completion parses no file a command has not checked (SyncNames).

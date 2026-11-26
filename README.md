@@ -100,12 +100,12 @@ stateDiagram-v2
   project's `project.yml`) and at most one profile switched on over it; a bundle combines profiles. Every
   command that reads a scope names it first (`user scope: profile go-review over default`), and
   every write names the file it changed ([Profiles](docs/guides/profiles.md#profiles)).
-- **Marketplaces:** `lola market [<name>] --add <source>` registers a Claude Code `marketplace.json` or a catalog
-  in lola's YAML format (the name goes before `--add`, which takes the source). `lola market` lists your marketplaces (on a terminal, in a picker that also offers the known ones and, on `u` or `U`, checks them for updates and offers to apply them), `lola market acme` lists one's entries,
+- **Marketplaces:** `lola market add <source> [<name>]` registers a Claude Code `marketplace.json` or a catalog
+  in lola's YAML format (the source goes first, then the name). `lola market` lists your marketplaces (on a terminal, in a picker that also offers the known ones and, on `u` or `U`, checks them for updates and offers to apply them), `lola market acme` lists one's entries,
   and `lola market acme formatter` shows an entry, as `lola info @acme/formatter` does;
   `lola install @acme/formatter` installs it and records its real source, so a teammate needs
-  no marketplace ([Marketplaces](docs/guides/marketplaces.md#marketplaces)). `lola market --known`
-  lists the marketplaces this lola ships, each pinned to a commit, and `lola market --enable <id>`
+  no marketplace ([Marketplaces](docs/guides/marketplaces.md#marketplaces)). `lola market known`
+  lists the marketplaces this lola ships, each pinned to a commit, and `lola market enable <id>`
   registers one on request ([Known marketplaces](docs/guides/marketplaces.md#known-marketplaces)).
 - **Templating:** a module's `.md.liquid` files render per assistant, with partials, attribute
   files and vars a manifest entry can override ([Templates](docs/guides/templating.md#templates)).
@@ -168,8 +168,8 @@ Run these in the `lola-go` checkout after `task build`. They make `my-project` a
    project /tmp/tmp.7PXo8mZbW4/my-project: project.yml
    Notices:
    ⚠ my-module comes from ../my-module, outside the project: a teammate's sync will refuse it; share a module through a git repository or an https:// archive
-   → keep it to yourself: lola profile --project --move my-module --to mine --switch
-   → meant for every project? move it from this project into your user base: lola profile --user --move my-module --to base
+   → keep it to yourself: lola profile --project move my-module --to mine --switch
+   → meant for every project? move it from this project into your user base: lola profile --user move my-module --to base
    Files:
    ✓ added my-module to project.yml (base)
    ▸ my-module: 2 changes (claude-code 2)

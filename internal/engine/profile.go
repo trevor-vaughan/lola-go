@@ -438,7 +438,7 @@ func (e *Engine) sharePicksHint(sc Scope, module string, display []string) (stri
 	}
 	if len(project) == 1 {
 		return "these picks are yours alone; to share them, move the module into the project's profile: " +
-			e.Command(sc, "profile", append([]string{"--move", module, "--to", "project:" + project[0]}, display...)...), nil
+			e.Command(sc, "profile", append([]string{"move", module, "--to", "project:" + project[0]}, display...)...), nil
 	}
 	return "these picks are yours alone; to share them, put the module in a project profile, a file in " +
 		untrusted.Text(filepath.Join(sc.ProjectDir, profile.ProjectDir), untrusted.MaxName) + "; the profiles you can use: " +
@@ -520,7 +520,7 @@ func invalidNotices(dir string, n int) []Notice {
 
 // replacing is an activation's replacement of active user or remote profiles by project profiles of
 // the same name: report is what the trust report shows of them. lola sync never makes one; only
-// lola profile project:<name> --on, or --switch naming it, does.
+// lola profile on project:<name>, or switch naming it, does.
 type replacing struct {
 	report []Replacement
 }
@@ -602,7 +602,7 @@ func replacements(infos []profile.Info, active *ledger.Active) [][2]string {
 func (e *Engine) replacementNotices(sc Scope, pending [][2]string) []Notice {
 	var out []Notice
 	for _, p := range pending {
-		out = append(out, Notice{Level: LevelWarn, Text: shown(p[1]) + " also exists → " + e.Command(sc, "profile", p[1], "--on")})
+		out = append(out, Notice{Level: LevelWarn, Text: shown(p[1]) + " also exists → " + e.Command(sc, "profile", "on", p[1])})
 	}
 	return out
 }

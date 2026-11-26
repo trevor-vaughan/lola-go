@@ -154,7 +154,7 @@ func aliasedPad(c *cobra.Command) string {
 
 // aliasFlags gives cmd's flags the aliases in aliases (canonical name → aliases), defining each
 // flag once: pflag normalizes an alias to its canonical name before lookup, so
-// cobra parses --enable as --on and Changed("on") sees either, and the aliases are kept in the
+// cobra parses --create as --new and Changed("new") sees either, and the aliases are kept in the
 // flag's annotations for help (aliasedFlagUsages) and the published alias table.
 func aliasFlags(cmd *cobra.Command, aliases map[string][]string) {
 	canonical := map[string]string{}

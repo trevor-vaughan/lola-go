@@ -16,10 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
-// ProfileSplit is lola profile <name> --split.
-const ProfileSplit ProfileAction = "split"
-
-// SplitRequest is lola profile <name> --split at Scope: Name as typed; To,
+// SplitRequest is lola profile split <name> at Scope: Name as typed; To,
 // --to, the new profile's name ("" for <name>-modules, -2 … on a collision). Confirm asks "Split?"
 // once the plan is shown; Yes (-y) and Options.Force answer it, and without any of them (off a
 // terminal) the run is refused. WriteOnly writes the two files and applies nothing: the command
@@ -64,8 +61,8 @@ type SplitResult struct {
 	DryRun bool        `json:"dry_run"`
 }
 
-// SplitOfferError is a run refused by a profile file with both bundle: and modules:: Scope and Name, the profile as lola profile --split names it, which a
-// terminal is offered (the CLI); off one the refusal hints the --split.
+// SplitOfferError is a run refused by a profile file with both bundle: and modules:: Scope and Name, the profile as lola profile split names it, which a
+// terminal is offered (the CLI); off one the refusal hints the split.
 type SplitOfferError struct {
 	Scope Scope
 	Name  string
@@ -77,7 +74,7 @@ func (e *SplitOfferError) Error() string { return e.err.Error() }
 func (e *SplitOfferError) Unwrap() error { return e.err }
 
 // mixedError is err, the read of i at sc, as a SplitOfferError when it is a *profile.MixedError,
-// coached with the --split that fixes it; any other err as it is. The split names i qualified when
+// coached with the split that fixes it; any other err as it is. The split names i qualified when
 // it is the project's, or when a profile of another kind sc can use (infos) has its name, so the
 // name resolves to i alone.
 func (e *Engine) mixedError(sc Scope, infos []profile.Info, i profile.Info, err error) error {
@@ -94,7 +91,7 @@ func (e *Engine) mixedError(sc Scope, infos []profile.Info, i profile.Info, err 
 		name = i.Qualified()
 	}
 	return &SplitOfferError{Scope: sc, Name: name, err: errs.WithHints(errors.New(err.Error()),
-		"move its modules into a profile of their own: "+e.Command(sc, "profile", name, "--split"))}
+		"move its modules into a profile of their own: "+e.Command(sc, "profile", "split", name))}
 }
 
 // splitOn reports whether i is on at sc once split by w: the profile on, or a member of the bundle
@@ -171,7 +168,7 @@ func (e *Engine) Split(ctx context.Context, req SplitRequest) (*SplitResult, err
 	}
 	run := func(args ...string) string { return e.Command(sc, "profile", append(args, req.Options.Display...)...) }
 	if isBase, isDefault := namesBase(req.Name); isBase || isDefault {
-		return nil, errors.New("the base lists modules and bundles nothing; --split splits a profile that does both")
+		return nil, errors.New("the base lists modules and bundles nothing; lola profile split splits a profile that does both")
 	}
 	i, err := e.resolveProfile(sc, infos, req.Name, nil)
 	if err != nil {
@@ -194,7 +191,7 @@ func (e *Engine) Split(ctx context.Context, req SplitRequest) (*SplitResult, err
 	}
 	if i.Kind == profile.KindRemote { // its loader refuses bundle: in it: there is never one to split
 		return nil, errs.WithHints(fmt.Errorf("%s is read-only; lola does not edit remote profiles, and none has a bundle: key", shown(i.Qualified())),
-			"switch to a copy of yours, which you can edit: "+run(free(i.Name), "--switch", "--new", "--from", i.Qualified()))
+			"switch to a copy of yours, which you can edit: "+run("switch", free(i.Name), "--new", "--from", i.Qualified()))
 	}
 	m, err := profile.ReadMixed(i.Path, i.Kind == profile.KindProject)
 	if err != nil {
@@ -210,7 +207,7 @@ func (e *Engine) Split(ctx context.Context, req SplitRequest) (*SplitResult, err
 	}
 	if taken(name) {
 		return nil, errs.WithHints(fmt.Errorf("%s names a profile already; --to names the new one", shown(name)),
-			"name another: "+run(req.Name, "--split", "--to", free(name)))
+			"name another: "+run("split", req.Name, "--to", free(name)))
 	}
 	bundleBytes, modulesBytes, err := m.Split(name)
 	if err != nil {
@@ -235,13 +232,13 @@ func (e *Engine) Split(ctx context.Context, req SplitRequest) (*SplitResult, err
 	if res.Plan.Profile.Targets == nil {
 		res.Plan.Profile.Targets = []string{}
 	}
-	again := []string{req.Name, "--split"}
+	again := []string{"split", req.Name}
 	if req.To != "" {
 		again = append(again, "--to", req.To)
 	}
 	if !req.Options.DryRun && !req.Yes && !req.Options.Force {
 		if req.Confirm == nil {
-			return nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("lola profile --split rewrites %s and makes %s, and there is no terminal to ask on", shown(i.Path), shown(newPath))),
+			return nil, errs.WithHints(errs.NeedsAnswer(fmt.Errorf("lola profile split rewrites %s and makes %s, and there is no terminal to ask on", shown(i.Path), shown(newPath))),
 				"split it: "+run(append(again, "-y")...))
 		}
 		ok, err := req.Confirm(res.Plan)

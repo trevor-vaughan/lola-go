@@ -13,17 +13,17 @@ lives with lola's data, not the cache, so clearing the cache never drops a profi
 is used at user scope and in any project, by its name or as `remote:<name>`.
 
 ```sh
-lola profile go --add https://github.com/example/profiles         # fetch profiles/go.yml, show it, ask
-lola profile --add https://github.com/example/profiles            # on a terminal: pick among its profiles
-lola profile go --add https://example.com/p.tar.gz --path team    # team/profiles/go.yml in an archive
-lola profile go --add https://github.com/example/profiles -n      # show it, keep nothing
-lola profile remote:go --on                                       # adding turns nothing on
-lola profile go --update                                          # fetch it again, show the change, ask, apply in each scope that uses it
-lola profile --update --all                                       # every remote profile, each asked on its own
-lola profile go --remove                                          # delete it; asks (-y)
+lola profile add https://github.com/example/profiles go         # fetch profiles/go.yml, show it, ask
+lola profile add https://github.com/example/profiles            # on a terminal: pick among its profiles
+lola profile add https://example.com/p.tar.gz go --path team    # team/profiles/go.yml in an archive
+lola profile add https://github.com/example/profiles go -n      # show it, keep nothing
+lola profile on remote:go                                       # adding turns nothing on
+lola profile update go                                          # fetch it again, show the change, ask, apply in each scope that uses it
+lola profile update --all                                       # every remote profile, each asked on its own
+lola profile rm go                                          # delete it; asks (-y)
 ```
 
-- **Adding.** `lola profile <name> --add <source>` (alias `--get`; `go` or `remote:go`) fetches a
+- **Adding.** `lola profile add <source> <name>` (alias `get`; `go` or `remote:go`) fetches a
   remote profile, shows it, and asks before keeping it.
   - It fetches the source, at `--ref` (a branch, tag or commit of a git source), into lola's
     staging and reads `profiles/<name>.yml` under its root, or under `--path`.
@@ -51,7 +51,7 @@ lola profile go --remove                                          # delete it; a
       `lock.json` says, which only notes when it has this version installed;
     - in the viewer, as `lola sync`'s diff is. Printed without it, the files are capped with the
       `-n --json` command that lists them all, which names the profile even when you picked it:
-      `lola profile remote:go --add <source> -n --json`.
+      `lola profile add <source> remote:go -n --json`.
   - Then it asks. Nothing is kept or cached before you say yes: a No or Ctrl+C leaves no trace.
     Other lola commands go on while it asks.
   - Without a name, a terminal offers the source's profiles to pick from (filterable, nothing
@@ -64,16 +64,16 @@ lola profile go --remove                                          # delete it; a
     - `--trust` accepts only the `profiles` [trust kind](install-trust-kinds.md); any other kind,
       `--trust=entries,profiles` written out included, is refused.
     - Off a terminal `--trust` accepts what it shows, after its receipt, which on a terminal asks
-      `Proceed?` (`--add` takes no `-y`).
+      `Proceed?` (`add` takes no `-y`).
     - Without it lola refuses off a terminal before any network contact, hinting the run with
       `--trust=profiles`.
     - `-n` shows it and keeps nothing.
   - **Refused names.**
-    - A remote profile of that name already kept is refused (`lola profile remote:<name>
-      --update` fetches it again; the hint keeps the run's flags except `--trust`, which answered the
+    - A remote profile of that name already kept is refused (`lola profile update
+      remote:<name>` fetches it again; the hint keeps the run's flags except `--trust`, which answered the
       add and never covers an update's change).
     - So are the names `default` and `base`, a `user:` or `project:` name, and a file in the profile's place.
-  - **Scope.** `--add` asks no scope: the profile is shared by every scope.
+  - **Scope.** `add` asks no scope: the profile is shared by every scope.
     - `--project`, `--user` or `-C <dir>` only names the scope its content is compared with.
       Without them it is the project found from the working directory, else user scope
       (`--scope both` is refused).
@@ -84,22 +84,22 @@ lola profile go --remove                                          # delete it; a
       skipped, with a notice (`<home> has .lola/, but it is your home directory, where user scope
       installs; it is not taken as a project`).
     - When the found project cannot be read (its `lock.json` tracked by git, say), the refusal
-      also offers the run at user scope (`or compare with user scope: lola profile --user go --add
+      also offers the run at user scope (`or compare with user scope: lola profile --user add go
       <source>`).
-  - Adding turns nothing on (`turn it on: lola profile --project remote:go --on`):
-    - With a profile already on, the hint is `--switch`, which replaces it; the hint says what it
+  - Adding turns nothing on (`turn it on: lola profile --project on remote:go`):
+    - With a profile already on, the hint is `switch`, which replaces it; the hint says what it
       switches off (`turn it on (switches go-review off, removing its modules): lola profile --user
-      remote:go --switch`).
+      switch remote:go`).
     - It never carries `-y`: the switch asks before it removes anything, and off a terminal it is
       refused with a hint that adds `-y`.
     - No hint is given when that switch would need a hook's consent, would need trust, or would
       fail its dry run.
   - `--json` gives `remote_profiles` (`profile`, `file`, `source`, `ref`, `path`, `commit`,
-    `digest`, `previous_commit` and `previous_digest` (both `""` for `--add`), `compared_with`,
-    `description`, `changes` as in the trust diff, `written`), `trusted` (`[]` for `--add`), `notices`
+    `digest`, `previous_commit` and `previous_digest` (both `""` for `add`), `compared_with`,
+    `description`, `changes` as in the trust diff, `written`), `trusted` (`[]` for `add`), `notices`
     and `dry_run`.
 
-How `--update` reaches each scope that uses the profile:
+How `update` reaches each scope that uses the profile:
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {
@@ -134,7 +134,7 @@ flowchart TD
   class N,K sysF
 ```
 
-- **Updating.** `lola profile <name>... --update` (alias `--upgrade`; `go` or `remote:go`) takes one
+- **Updating.** `lola profile update <name>...` (alias `upgrade`; `go` or `remote:go`) takes one
   or more remote profiles' names, or `--all` for every remote profile you have, and fetches each
   again from the source, ref and `--path` its `source.json` records, which are checked as a typed
   source is.
@@ -180,13 +180,13 @@ flowchart TD
       written is kept, and the next `lola sync` of each scope applies it.
   - **Naming profiles.**
     - Without names or `--all` it refuses, listing your remote profiles with both forms (`name
-      them: lola profile remote:docs remote:go --update`, `or every one: lola profile --update
+      them: lola profile update remote:docs remote:go`, `or every one: lola profile update
       --all`), which drop `--trust` and `-y`: those answered only for what you named.
     - Names with `--all`, and a name given twice, are refused, and `--all` is refused with every
       other action.
-    - `--update` of `user:go` or `project:go` is refused: those are files you edit.
+    - `update` of `user:go` or `project:go` is refused: those are files you edit.
   - The new profile replaces the old one in one step.
-  - **Applying it.** `--update` asks no scope: the profile is shared by every scope, so lola then
+  - **Applying it.** `update` asks no scope: the profile is shared by every scope, so lola then
     applies it in each scope it knows of that uses the profile (it is on, or a member of the
     bundle on): the project found from the working directory, then user scope, as
     `lola sync --scope both` does.
@@ -218,7 +218,7 @@ flowchart TD
       stop.
   - **A scope lola cannot read.** A known scope lola cannot read refuses the update before the
     question, with the command that updates it in the other scope only (`or update it at user
-    scope only: lola profile --user remote:go --update`), without `-y` or `--trust`, since the
+    scope only: lola profile --user update remote:go`), without `-y` or `--trust`, since the
     run's answers were given for every scope at once. Without a scope flag, the message names the
     changes in the project you have not trusted.
   - **Scope flags.**
@@ -226,7 +226,7 @@ flowchart TD
       scope).
     - With no `.lola/` project to name, or your home directory as that project (never taken as a
       found project either, with a notice), `--scope both` is refused, hinting the run with
-      `--user` in its place (`update at user scope only: lola profile go --update --user`; `-C`,
+      `--user` in its place (`update at user scope only: lola profile update go --user`; `-C`,
       `-y` and `--trust` are dropped too).
     - `--project`, `--user` or `-C <dir>` alone narrows the update to that scope.
     - `--project` or `-C` naming your home directory is refused before anything is fetched
@@ -260,7 +260,7 @@ flowchart TD
     - A `lola sync` hint keeps `--trust` (the kinds that answer a sync) and `-y` only when it names
       the modules the update moves; a whole scope's sync carries none, since it would answer for
       changes you never saw.
-    - A `--remove` hint carries `-y` only as the `confirm it` hint of its refusal off a terminal,
+    - A `rm` hint carries `-y` only as the `confirm it` hint of its refusal off a terminal,
       which asks for exactly that answer.
   - **`--json`** gives:
     - `remote_profiles` (with `previous_commit` and `previous_digest`);
@@ -275,16 +275,16 @@ flowchart TD
       that document as its error document, beside `error` and `hints`.
   - `--plain` prints one row per profile: its outcome (`updated`, `up-to-date`, …), the profile
     and its file.
-- **Removing.** `lola profile <name> --remove` (aliases `--rm`, `--delete`, `--del`, `--erase`,
-  `--uninstall`) deletes a remote profile's directory, after asking on a terminal; `-y` confirms,
+- **Removing.** `lola profile rm <name>` (aliases `remove`, `delete`, `del`,
+  `erase`) deletes a remote profile's directory, after asking on a terminal; `-y` confirms,
   and off a terminal without it lola refuses.
   - It is refused while the scope you run it in, user scope, or the project found from the working
     directory uses the profile (`remote:go is on at user scope`, `remote:go is on in project
     <dir>`, or `remote:go is in bundle user:mine, on at user scope`), and while one of them cannot be
     read to tell.
-    - The refusal hints the `--off` that frees it (`turn the bundle off first: …`), then, for
+    - The refusal hints the `off` that frees it (`turn the bundle off first: …`), then, for
       each bundle of yours that lists it, the run that takes it out (`or take remote:go out of
-      bundle mine: lola profile mine --edit --bundle …`, the members left in place of the
+      bundle mine: lola profile edit mine --bundle …`, the members left in place of the
       `…`); a project's bundle is the team's to edit, so it keeps the hand edit, naming the
       file's `bundle:` list (`or remove remote:go from the bundle: of <file>`; with several
       files, each is named as it spells the member).
@@ -303,16 +303,16 @@ flowchart TD
   `$XDG_CONFIG_HOME/lola/pins.yaml` (`remotes:`), with the source, ref, path, commit and digest
   `source.json` holds, so the profile follows `~/.config/lola` to your other machines
   ([Syncing lola between machines](sync-and-trust.md#syncing-lola-between-machines)).
-  - `--add` and `--update` write the record and `--remove` drops it. A remote profile on disk with
+  - `add` and `update` write the record and `rm` drops it. A remote profile on disk with
     no record is recorded by the next write. If the record cannot be written, the run says so and
     the profile is kept.
   - A run that needs a profile you have recorded and this machine lacks restores it at the
-    recorded commit, after the same host checks as `--add` and before planning, and only when its
+    recorded commit, after the same host checks as `add` and before planning, and only when its
     digest is the recorded one (`→ restored remote profile go from pins.yaml (<source> @ <commit>)`).
     It asks nothing: the digest proves these are the bytes you accepted.
   - Until then, `lola list` and `lola profile` say `profile remote:go (not on this machine yet →
     lola sync --user)` in the context line. A source that no longer serves the recorded version
-    refuses, hinting `lola profile go --add <source>` to review what it serves now.
+    refuses, hinting `lola profile add <source> go` to review what it serves now.
   - A file or link at the profile's place is never written over: a run that needs the profile
     refuses before it plans, naming it, and the context line says it is in the way.
 - **Your consent is its pin.** A remote profile is yours once you accept it, so its entries are
@@ -324,14 +324,14 @@ flowchart TD
     `0x7f.1`, which git still connects to, is refused.
   - A remote profile with an entry that does not, or whose `profile.yml` no longer has the digest
     `source.json` records, refuses every run that uses it, hinting the commands that replace it:
-    - `remove it: lola profile remote:go --remove --force` (it is in use wherever it was read, and
+    - `remove it: lola profile rm remote:go --force` (it is in use wherever it was read, and
       no check of that can pass; `--force` answers its question, so the hint needs no `-y`);
-    - then `then add it again: lola profile go --add <its source>` when `--add` accepts the source
+    - then `then add it again: lola profile add <its go source>` when `add` accepts the source
       `source.json` records, or why it does not.
   - An entry's URL is never looked up on disk, so a directory a checkout names like it never
     stands in for it.
   - `lola sync --update <module>` refuses a module whose pin a remote profile sets (`update it:
-    lola profile remote:<name> --update`).
+    lola profile update remote:<name>`).
   - lola does not resolve host names: a name that points inside your network, or a server that
     redirects there, is still fetched; add profiles only from sources you trust to that extent.
 
@@ -370,16 +370,16 @@ flowchart LR
 - **Local beats remote.** A profile of yours, or of the project at its scope, shadows a remote
   profile of the same name.
   - A bare name means the local one, and listings say `(shadowed by user:go)`.
-  - `lola profile remote:go --on` is refused while it is shadowed (`use yours: lola profile
-    user:go --on`, or use both, bundled: `lola profile go-both --switch --new --bundle
+  - `lola profile on remote:go` is refused while it is shadowed (`use yours: lola profile
+    on user:go`, or use both, bundled: `lola profile switch go-both --new --bundle
     user:go,remote:go`, or rename or delete yours).
   - When you write a profile with the name of a remote one that is on, yours is used in its place
     from then on (`user:go now replaces remote:go`), while `lock.json` keeps `remote:go`:
     - delete yours and the remote one is used again;
-    - `--off` of it takes `remote:go`;
-    - `--on` of yours changes nothing (`user:go is already on, in place of remote:go`).
+    - `off` of it takes `remote:go`;
+    - `on` of yours changes nothing (`user:go is already on, in place of remote:go`).
   - A project profile never replaces it on its own: as for your profiles, lola says `project:go
-    also exists → lola profile project:go --on`. Turning that on puts it in the remote profile's
+    also exists → lola profile on project:go`. Turning that on puts it in the remote profile's
     place as a trust change.
 - **Seeing them.** `lola profile` lists them with kind `remote`.
   - `lola profile remote:go` shows the source, ref, commit and digest (`source`, `ref`, `commit`
@@ -388,6 +388,6 @@ flowchart LR
     user:go; its modules:` and lists the remote profile's own modules.
   - One that a project profile shadows stays in effect until you turn that on: `project (<dir>):
     on, in effect; project:go would take its place if turned on`, with `to use project:go
-    instead: lola profile --project project:go --on`.
+    instead: lola profile --project on project:go`.
   - A name in `$XDG_DATA_HOME/lola/profiles/` that is not a valid profile name is counted, never
     shown; a name starting with `.` is a directory lola is writing.

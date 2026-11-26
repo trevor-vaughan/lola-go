@@ -260,7 +260,7 @@ var errPassedOver = errors.New("member passed over")
 // again.
 func (e *Engine) unbundleRun(sc Scope, infos []profile.Info, i profile.Info, members []string, k int, again []string) string {
 	rest := slices.Delete(slices.Clone(members), k, k+1)
-	return e.Command(sc, "profile", append([]string{editName(infos, i), "--edit", "--bundle", strings.Join(rest, ",")}, again...)...)
+	return e.Command(sc, "profile", append([]string{"edit", editName(infos, i), "--bundle", strings.Join(rest, ",")}, again...)...)
 }
 
 // unlistRuns is, for each of listed, a bundle file that lists a member, the run that takes it out

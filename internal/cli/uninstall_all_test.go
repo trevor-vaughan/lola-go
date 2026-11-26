@@ -36,7 +36,7 @@ var _ = Describe("uninstall --all", func() {
 		writeTree(p.UserProfiles, map[string]string{
 			"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + src["a"] + "}\n  - {name: b, source: " + src["b"] + "}\n",
 			"go.yml":      "version: 1\nmodules:\n  - {name: c, source: " + src["c"] + "}\n"})
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 		r := lola("sync", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		for _, n := range []string{"a", "b", "c"} {

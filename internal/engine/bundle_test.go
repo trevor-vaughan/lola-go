@@ -65,7 +65,7 @@ var _ = Describe("bundles", func() {
 	}
 	yes := func([]engine.Removal) (bool, error) { return true, nil }
 	trustAll := func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }
-	// switchTo runs lola profile <name> --switch in s, answering removals and trust yes.
+	// switchTo runs lola profile switch <name> in s, answering removals and trust yes.
 	switchTo := func(s engine.Scope, name string) (*engine.SyncResult, error) {
 		return e.Sync(ctx, engine.SyncRequest{Scope: s, Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: name},
 			ConfirmRemovals: yes, Trust: trustAll})
@@ -299,7 +299,7 @@ var _ = Describe("bundles", func() {
 		writeProfile("docs", "version: 1\n")
 		_, err := switchTo(sc, "work")
 		Expect(err).To(MatchError(work + ":4: bundle: review is not a profile of yours or a remote profile you have"))
-		Expect(errs.Hints(err)).To(Equal([]string{"see the profiles: lola profile --project", "or take it out: lola profile --project work --edit --bundle docs"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"see the profiles: lola profile --project", "or take it out: lola profile --project edit work --bundle docs"}))
 		_, err = e.EditBundle(ctx, engine.BundleEditRequest{Scope: sc, Name: "work", Members: []string{"docs"}, ConfirmRemovals: yes})
 		Expect(err).NotTo(HaveOccurred(), "the hint runs as printed")
 		Expect(os.ReadFile(work)).To(Equal([]byte("version: 1\nbundle:\n  - docs\n")))
@@ -329,9 +329,9 @@ var _ = Describe("bundles", func() {
 		writeProfile("go", "version: 1\n")
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
 		Expect(err).To(MatchError(def + ":2: default is the base and lists modules; to combine profiles make a bundle and switch to it"))
-		Expect(errs.Hints(err)).To(Equal([]string{"remove bundle: from " + def + ", then switch to a bundle of them: lola profile --user default-bundle --switch --new --bundle go"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"remove bundle: from " + def + ", then switch to a bundle of them: lola profile --user switch default-bundle --new --bundle go"}))
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Options: engine.Options{DryRun: true}, Display: []string{"--json"}})
-		Expect(errs.Hints(err)).To(Equal([]string{"remove bundle: from " + def + ", then switch to a bundle of them: lola profile --user default-bundle --switch --new --bundle go -n --json"}),
+		Expect(errs.Hints(err)).To(Equal([]string{"remove bundle: from " + def + ", then switch to a bundle of them: lola profile --user switch default-bundle --new --bundle go -n --json"}),
 			"the hint keeps the run's -n and output flags")
 		writeProfile("default", "version: 1\nbundle:\n  - go\n")
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
@@ -532,7 +532,7 @@ var _ = Describe("bundles", func() {
 			Expect(err).NotTo(HaveOccurred(), "the hint runs as printed")
 			_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "none", Yes: true})
 			Expect(err).To(MatchError("none is a bundle with no profile lola can write; move into another profile"))
-			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user --move notes --to base"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user move notes --to base"}))
 			_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "docs", Yes: true})
 			Expect(err).NotTo(HaveOccurred())
 			_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "base", Yes: true})
@@ -596,7 +596,7 @@ var _ = Describe("bundles", func() {
 			Expect(err).NotTo(HaveOccurred())
 			_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "work", Yes: true})
 			Expect(err).To(MatchError("work is a bundle; move into one of its members"))
-			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user --move notes --to go-review", "lola profile --user --move notes --to docs"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola profile --user move notes --to go-review", "lola profile --user move notes --to docs"}))
 			_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "go-review", Yes: true})
 			Expect(err).NotTo(HaveOccurred(), "the hint runs as printed")
 			Expect(installed(user)).To(HaveKeyWithValue("notes", "profile:user:go-review"))
@@ -614,7 +614,7 @@ var _ = Describe("bundles", func() {
 				Expect(err).To(MatchError("bundle work has no profile lola can write; lola install needs to know whether to write to the base (default), and there is no terminal to ask on"), bundle)
 				members := strings.TrimSuffix(strings.TrimPrefix(bundle, "version: 1\nbundle: ["), "]\n")
 				Expect(errs.Hints(err)).To(Equal([]string{"lola install --user " + notes + " --profile base",
-					"or add a profile of yours to it, made empty: lola profile --user work --edit --bundle " + strings.TrimPrefix(members+",work-extras", ",")}), bundle)
+					"or add a profile of yours to it, made empty: lola profile --user edit work --bundle " + strings.TrimPrefix(members+",work-extras", ",")}), bundle)
 				Expect(installed(user)).NotTo(HaveKey("notes"), bundle)
 				var asked []engine.WhereQuestion
 				_, err = install(user, notes, engine.Options{AskWhere: func(q engine.WhereQuestion) (engine.WhereChoice, error) {
@@ -645,7 +645,7 @@ var _ = Describe("bundles", func() {
 			res, err := install(user, notes, engine.Options{DryRun: true, Force: true})
 			Expect(err).To(MatchError("bundle work has no profile lola can write; lola install needs to know whether to write to the base (default), and there is no terminal to ask on"))
 			Expect(errs.Hints(err)).To(Equal([]string{"lola install --user " + notes + " --profile base",
-				"or add a profile of yours to it, made empty: lola profile --user work --edit --bundle remote:x,work-extras"}))
+				"or add a profile of yours to it, made empty: lola profile --user edit work --bundle remote:x,work-extras"}))
 			Expect(res).To(BeNil())
 			var asked []engine.WhereQuestion
 			_, err = install(user, notes, engine.Options{DryRun: true, AskWhere: func(q engine.WhereQuestion) (engine.WhereChoice, error) {
@@ -818,8 +818,8 @@ var _ = Describe("bundles", func() {
 			go1 := writeProfile("go", "version: 1\n")
 			_, err := newSwitch(user, engine.ProfileChange{Name: "go", Bundle: []string{"docs"}}, engine.Options{})
 			Expect(err).To(MatchError("go names user:go (" + go1 + "); --new makes a profile that does not exist yet"))
-			Expect(errs.Hints(err)).To(Equal([]string{"switch to it: lola profile --user user:go --switch",
-				"or make another: lola profile --user go-2 --switch --new --bundle docs"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"switch to it: lola profile --user switch user:go",
+				"or make another: lola profile --user switch go-2 --new --bundle docs"}))
 			_, err = newSwitch(user, engine.ProfileChange{Name: "work", Bundle: []string{"docs", "work"}}, engine.Options{})
 			Expect(err).To(MatchError("--bundle: work is the bundle itself; a bundle cannot name itself"))
 			for _, n := range []string{"base", "default"} {
@@ -834,7 +834,7 @@ var _ = Describe("bundles", func() {
 			Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
 			_, err := newSwitch(user, engine.ProfileChange{Name: "dir"}, engine.Options{})
 			Expect(err).To(MatchError("dir names user:dir (" + dir + ", a directory); --new makes a profile that does not exist yet"))
-			Expect(errs.Hints(err)).To(Equal([]string{"or make another: lola profile --user dir-2 --switch --new"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"or make another: lola profile --user switch dir-2 --new"}))
 			_, err = newSwitch(user, engine.ProfileChange{Name: "dir-2"}, engine.Options{})
 			Expect(err).NotTo(HaveOccurred(), "the hint runs as printed")
 		})
@@ -852,7 +852,7 @@ var _ = Describe("bundles", func() {
 			Expect(err).To(MatchError(ContainSubstring("mine.yml:2: bundle: user:me is a profile of yours; a project's bundle names project and remote profiles only")))
 			_, err = newSwitch(user, engine.ProfileChange{Name: "project:x"}, engine.Options{})
 			Expect(err).To(MatchError("project:x is a project's profile; --new makes one in a project only"))
-			Expect(errs.Hints(err)).To(Equal([]string{"make it yours: lola profile --user x --switch --new"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"make it yours: lola profile --user switch x --new"}))
 		})
 
 		It("refuses a project: member that names no profile, hinting the run that makes it first, which runs as printed", func() {
@@ -860,7 +860,7 @@ var _ = Describe("bundles", func() {
 			bundle := engine.ProfileChange{Action: engine.ProfileSwitch, Name: "project:team", New: true, Bundle: []string{"review", "project:lint"}}
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &bundle, ConfirmRemovals: yes})
 			Expect(err).To(MatchError("--bundle: project:lint is not a profile of this project"))
-			Expect(errs.Hints(err)).To(Equal([]string{"make it first: lola profile --project project:lint --switch --new"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"make it first: lola profile --project switch project:lint --new"}))
 			Expect(filepath.Join(proj, ".lola", "profiles", "lint.yml")).NotTo(BeAnExistingFile(), "a shared file is never made on the side")
 			Expect(filepath.Join(proj, ".lola", "profiles", "team.yml")).NotTo(BeAnExistingFile())
 
@@ -876,7 +876,7 @@ var _ = Describe("bundles", func() {
 		It("refuses a remote member you do not have, hinting yours, and names the line of a member that is a base", func() {
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: user, Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: "work", New: true,
 				Bundle: []string{"remote:nope"}}, Options: engine.Options{DryRun: true}, Display: []string{"--json"}})
-			Expect(err).To(MatchError("--bundle: remote:nope is not a remote profile you have; lola profile --add fetches one"))
+			Expect(err).To(MatchError("--bundle: remote:nope is not a remote profile you have; lola profile add fetches one"))
 			Expect(errs.Hints(err)).To(Equal([]string{"see yours: lola profile --user --json"}), "a listing keeps --json and takes no -n")
 			for _, n := range []string{"default", "base"} {
 				_, err = newSwitch(user, engine.ProfileChange{Name: "work", Bundle: []string{"docs", n}}, engine.Options{})
@@ -885,7 +885,7 @@ var _ = Describe("bundles", func() {
 			Expect(filepath.Join(p.UserProfiles, "docs.yml")).NotTo(BeAnExistingFile(), "a refused --new makes nothing")
 		})
 	})
-	Describe("--split", func() {
+	Describe("split", func() {
 		mixed := func() string {
 			GinkgoHelper()
 			n := mod("notes", "notes", "N")
@@ -904,12 +904,12 @@ var _ = Describe("bundles", func() {
 			Expect(ok).To(BeTrue(), "%v", err)
 			Expect(offer.Name).To(Equal("work"))
 			Expect(err).To(MatchError(work + ":3: work has both bundle: and modules:; a bundle combines profiles and a profile lists modules"))
-			Expect(errs.Hints(err)).To(Equal([]string{"move its modules into a profile of their own: lola profile --user work --split"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"move its modules into a profile of their own: lola profile --user split work"}))
 
 			_, err = e.Split(ctx, engine.SplitRequest{Scope: user, Name: "work"})
-			Expect(err).To(MatchError("lola profile --split rewrites " + work + " and makes " + filepath.Join(p.UserProfiles, "work-modules.yml") +
+			Expect(err).To(MatchError("lola profile split rewrites " + work + " and makes " + filepath.Join(p.UserProfiles, "work-modules.yml") +
 				", and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(Equal([]string{"split it: lola profile --user work --split -y"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"split it: lola profile --user split work -y"}))
 
 			res, err := e.Split(ctx, engine.SplitRequest{Scope: user, Name: "work", Yes: true, ConfirmRemovals: yes})
 			Expect(err).NotTo(HaveOccurred())
@@ -925,7 +925,7 @@ var _ = Describe("bundles", func() {
 		It("hints --split from every run that reads the mixed file while it is off: an edit of it, a copy of it and a move out of it", func() {
 			work := mixed()
 			notes := mod("notes2", "notes2", "N")
-			hint := []string{"move its modules into a profile of their own: lola profile --user work --split"}
+			hint := []string{"move its modules into a profile of their own: lola profile --user split work"}
 			why := work + ":3: work has both bundle: and modules:; a bundle combines profiles and a profile lists modules"
 			ch := engine.ProfileChange{Name: "try", Action: engine.ProfileSwitch, New: true, From: "work"}
 			_, edit := e.InstallAll(ctx, engine.InstallSpec{Cwd: tmp, Modules: []engine.InstallRequest{{Arg: notes}},
@@ -944,7 +944,7 @@ var _ = Describe("bundles", func() {
 		It("finishes a project profile's extends: edit with --split, named as the project resolves it, which runs as printed", func() {
 			team := writeProject("team", "version: 1\nextends: [go]\nmodules:\n  - {name: r, source: ../../mods/r}\n")
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Name: "project:team", Action: engine.ProfileSwitch}})
-			split := "lola profile --project project:team --split"
+			split := "lola profile --project split project:team"
 			Expect(err).To(MatchError(team + ":2: extends: is no longer a key; a bundle combines profiles now"))
 			Expect(errs.Hints(err)).To(Equal([]string{"make it a bundle: in " + team + " replace extends: with bundle: [remote:go]; then move its modules: into a profile of their own: " + split}))
 			Expect(os.WriteFile(team, []byte("version: 1\nbundle: [remote:go]\nmodules:\n  - {name: r, source: ../../mods/r}\n"), 0o644)).To(Succeed())
@@ -974,7 +974,7 @@ var _ = Describe("bundles", func() {
 			offer, ok := errors.AsType[*engine.SplitOfferError](err)
 			Expect(ok).To(BeTrue(), "%v", err)
 			Expect(offer.Name).To(Equal("user:work"), "a bare work is ambiguous beside project:work")
-			Expect(errs.Hints(err)).To(Equal([]string{"move its modules into a profile of their own: lola profile --project user:work --split"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"move its modules into a profile of their own: lola profile --project split user:work"}))
 			res, err := e.Split(ctx, engine.SplitRequest{Scope: sc, Name: "user:work", Yes: true, ConfirmRemovals: yes})
 			Expect(err).NotTo(HaveOccurred(), "the hint runs as printed")
 			Expect(res.Plan.Profile.Name).To(Equal("user:work-modules-3"), "project:work-modules has -modules, and pins.yaml records remote:work-modules-2")
@@ -986,7 +986,7 @@ var _ = Describe("bundles", func() {
 			work := mixed()
 			_, err := e.Split(ctx, engine.SplitRequest{Scope: user, Name: "work", To: "go", Yes: true})
 			Expect(err).To(MatchError("go names a profile already; --to names the new one"))
-			Expect(errs.Hints(err)).To(Equal([]string{"name another: lola profile --user work --split --to go-2"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"name another: lola profile --user split work --to go-2"}))
 			_, err = e.Split(ctx, engine.SplitRequest{Scope: user, Name: "work", To: "go-2", Yes: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.ReadFile(work)).To(Equal([]byte("version: 1\nbundle: [go, go-2]\n")))
@@ -995,7 +995,7 @@ var _ = Describe("bundles", func() {
 			writeProfile(long, "version: 1\n")
 			writeProfile("work", "version: 1\nbundle: [go]\nmodules:\n"+entry("notes", mod("notes", "notes", "N")))
 			_, err = e.Split(ctx, engine.SplitRequest{Scope: user, Name: "work", To: long, Yes: true})
-			Expect(errs.Hints(err)).To(Equal([]string{"name another: lola profile --user work --split --to " + long[:60]}), "a name of 64 characters at most")
+			Expect(errs.Hints(err)).To(Equal([]string{"name another: lola profile --user split work --to " + long[:60]}), "a name of 64 characters at most")
 			_, err = e.Split(ctx, engine.SplitRequest{Scope: user, Name: "work", To: long[:60], Yes: true})
 			Expect(err).NotTo(HaveOccurred(), "the hint runs as printed")
 		})
@@ -1054,7 +1054,7 @@ var _ = Describe("bundles", func() {
 			writeProfile("go", "version: 1\n")
 			for _, n := range []string{"base", "default"} {
 				_, err := e.Split(ctx, engine.SplitRequest{Scope: user, Name: n, Yes: true})
-				Expect(err).To(MatchError("the base lists modules and bundles nothing; --split splits a profile that does both"), n)
+				Expect(err).To(MatchError("the base lists modules and bundles nothing; lola profile split splits a profile that does both"), n)
 			}
 			_, err := e.Split(ctx, engine.SplitRequest{Scope: user, Name: "go", Yes: true})
 			Expect(err).To(MatchError(filepath.Join(p.UserProfiles, "go.yml") + " does not have both bundle: and modules:; there is nothing to split"))
@@ -1065,7 +1065,7 @@ var _ = Describe("bundles", func() {
 			writeTree(filepath.Join(p.RemoteProfiles, "team"), map[string]string{profile.RemoteFile: content, profile.OriginFile: string(o)})
 			_, err = e.Split(ctx, engine.SplitRequest{Scope: user, Name: "team", Yes: true})
 			Expect(err).To(MatchError("remote:team is read-only; lola does not edit remote profiles, and none has a bundle: key"))
-			Expect(errs.Hints(err)).To(Equal([]string{"switch to a copy of yours, which you can edit: lola profile --user team-2 --switch --new --from remote:team"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"switch to a copy of yours, which you can edit: lola profile --user switch team-2 --new --from remote:team"}))
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, ConfirmRemovals: yes,
 				Profiles: &engine.ProfileChange{Name: "team-2", Action: engine.ProfileSwitch, New: true, From: "remote:team"}})
 			Expect(err).NotTo(HaveOccurred(), "the hint runs as printed")
@@ -1084,7 +1084,7 @@ var _ = Describe("bundles", func() {
 			Expect(offered).To(BeFalse(), "no split makes the base a bundle")
 			Expect(err).To(MatchError(def + ":3: default has both bundle: and modules:; a bundle combines profiles and a profile lists modules"))
 			Expect(errs.Hints(err)).To(Equal([]string{"remove bundle: from " + def + ", then switch to a bundle of them and mine, the profile on now, " +
-				"which the switch keeps: lola profile --user default-bundle --switch --new --bundle go,mine"}))
+				"which the switch keeps: lola profile --user switch default-bundle --new --bundle go,mine"}))
 			writeProfile("default", "version: 1\ntargets: [claude-code]\nmodules:\n"+notes)
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, ConfirmRemovals: yes,
 				Profiles: &engine.ProfileChange{Name: "default-bundle", Action: engine.ProfileSwitch, New: true, Bundle: []string{"go", "mine"}}})
@@ -1162,13 +1162,13 @@ var _ = Describe("bundles", func() {
 			_, err = e.Split(ctx, engine.SplitRequest{Scope: sc, Name: "project:team", Yes: true, ConfirmRemovals: yes})
 			refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 			Expect(ok).To(BeTrue(), "the pulled bundle: is asked about; -y is no trust: %v", err)
-			Expect(err.Error()).To(HavePrefix("lola profile needs your trust"), "the run is lola profile --split")
+			Expect(err.Error()).To(HavePrefix("lola profile needs your trust"), "the run is lola profile split")
 			Expect(refusal.Report.ProfileTargets).To(ContainElement(engine.ProfileTargets{Profile: "project:team",
 				FieldChange: trust.FieldChange{Field: "bundle", To: []string{"lint", "team-modules"}}}))
 			Expect(refusal.Report.Changes).NotTo(ContainElement(HaveField("Module", "r")), "r moves with the trust it had")
 			Expect(os.ReadFile(team)).To(ContainSubstring("modules:"), "a refused run writes nothing")
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --project project:team --split -n",
-				"then accept them: lola profile --project project:team --split --trust=profiles -y"}), "lola sync cannot load the file: the hints split")
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --project split project:team -n",
+				"then accept them: lola profile --project split project:team --trust=profiles -y"}), "lola sync cannot load the file: the hints split")
 
 			res, err := e.Split(ctx, engine.SplitRequest{Scope: sc, Name: "project:team", Options: engine.Options{DryRun: true}})
 			Expect(err).NotTo(HaveOccurred())

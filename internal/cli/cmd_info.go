@@ -57,7 +57,7 @@ func (a *app) infoCmd() *cobra.Command {
 	return cmd
 }
 
-// showInfo is lola info <arg>, which lola market <name> <entry> runs as lola info
+// showInfo is lola info <arg>, which lola market show <name> <entry> runs as lola info
 // @<name>/<entry>. It reads --target, --ref and --path from cmd by name, which both
 // commands define, and every hint it builds names lola info with the run's flags, so the two
 // commands print the same.
@@ -66,13 +66,13 @@ func (a *app) showInfo(cmd *cobra.Command, arg string) error {
 	if err != nil {
 		return err
 	}
-	ref, err := cmd.Flags().GetString("ref")
-	if err != nil {
-		return err
+	// ref and path are lola info's flags; lola market show has neither.
+	var ref, path string
+	if f := cmd.Flags().Lookup("ref"); f != nil {
+		ref = f.Value.String()
 	}
-	path, err := cmd.Flags().GetString("path")
-	if err != nil {
-		return err
+	if f := cmd.Flags().Lookup("path"); f != nil {
+		path = f.Value.String()
 	}
 	words, args := []string{"lola", "info"}, []string{arg}
 	if _, isAddr, err := market.ParseAddress(arg); err != nil {

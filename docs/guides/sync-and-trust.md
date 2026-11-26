@@ -43,7 +43,7 @@ A teammate's sync installs the components `project.yml` and the project's profil
 yours: the picks you save for a `project.yml` module (`--only`, `--skip`, the component page) are
 personal, kept in your `selections.yaml` under the project's repository, so they follow you to
 every clone of it but never to a teammate. To share picks, put the module in a project profile
-(`lola profile --move <module> --to project:<name>`), whose entries are committed with the project
+(`lola profile move <module> --to project:<name>`), whose entries are committed with the project
 ([`config.yaml` and `selections.yaml`](choosing-what-to-install.md#configyaml-and-selectionsyaml)).
 
 ```mermaid
@@ -414,8 +414,8 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
     leaves your cache as it was, as every refusal does). Off a terminal it goes on, and under `--json` it prints
     neither (`trust` and `trusted` hold them).
   - `--scope both` asks one receipt for both scopes and applies neither before its yes.
-  - `sync`, `update` and `profile --update` always ask it; only `lola install`'s review (and
-    `profile --edit`'s) stands for it, for the items its Apply confirmed
+  - `sync`, `update` and `profile update` always ask it; only `lola install`'s review (and
+    `profile edit`'s) stands for it, for the items its Apply confirmed
     ([Trust kinds](install-trust-kinds.md)).
 - **A run without the answers it needs** is refused once, before it fetches anything a pull
   asked for, naming every one: `lola sync needs your trust for changes to .lola/project.yml; and
@@ -541,8 +541,8 @@ module as installed (no files, copy or hooks touched), with a warning and its re
 | `fetch-failed`    | its source could not be fetched                                  | what the fetch says to fix, then `lola update <module> --fetch` |
 | `source-gone`     | its source folder is gone, so the version installed was rendered | restore the folder, or `lola uninstall <module>`                |
 
-An entry that comes from a remote profile is left too, with a notice to run `lola profile <name>
---update`. `lola update` fetches the rest and exits `1` when any fetch failed. To render again at
+An entry that comes from a remote profile is left too, with a notice to run `lola profile update
+<name>`. `lola update` fetches the rest and exits `1` when any fetch failed. To render again at
 the installed versions without fetching anything, run `lola sync`: it refuses the whole run when it
 cannot load an installed module, hinting `remove it: lola uninstall <name>`. When only your cache's
 record of a module (its `index.yml`) does not read, it hints `lola cache rm <name>` and then your

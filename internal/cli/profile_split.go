@@ -9,17 +9,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
-	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// profileSplit runs lola profile <name> --split: one name, the scope as
-// --switch resolves it, the plan shown and "Split <name>?" asked on a terminal (-y and --force
+// profileSplit runs lola profile split <name>: one name, the scope as
+// switch resolves it, the plan shown and "Split <name>?" asked on a terminal (-y and --force
 // answer it), then, when the bundle is on there, the scope's apply with sync's questions.
 func (a *app) profileSplit(cmd *cobra.Command, eng *engine.Engine, args []string, to string, f syncFlags) error {
-	if len(args) != 1 {
-		return errs.WithHints(errors.New("--split takes the name of one profile"), "see them: lola profile")
-	}
 	scs, err := a.scopes(cmd, eng, args, "Split where?", false, true)
 	if err != nil {
 		return err
@@ -87,7 +83,7 @@ func printSplitPlan(w io.Writer, s style, plan engine.SplitPlan) {
 // offerSplit wraps run, a command's RunE, with the offer: a run refused by
 // a profile with both bundle: and modules: shows, on a terminal, the split's plan and asks "Split
 // <name> now?"; yes writes the two files and runs the command again, once. Off a terminal, under
-// --json or -n, and when the answer is no, the refusal stands, with its --split hint. The other
+// --json or -n, and when the answer is no, the refusal stands, with its split hint. The other
 // command's -y and --force never answer it.
 func (a *app) offerSplit(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
@@ -112,7 +108,7 @@ func (a *app) offerSplit(run func(*cobra.Command, []string) error) func(*cobra.C
 				yes, asking = ok, cerr
 				return ok, cerr
 			}}
-		// The split's own apply asks on this terminal what lola profile --split would (trust in a
+		// The split's own apply asks on this terminal what lola profile split would (trust in a
 		// project's member list, say); the other command's -y never answers it.
 		name := manifestName(offer.Scope)
 		diff := func(rep engine.TrustReport) func(io.Writer, style) {
@@ -124,7 +120,7 @@ func (a *app) offerSplit(run func(*cobra.Command, []string) error) func(*cobra.C
 			switch {
 			case asking != nil: // the question itself failed (an interrupt, say)
 				return asking
-			case !yes: // declined, or refused before asking: the run's refusal, with its --split hint
+			case !yes: // declined, or refused before asking: the run's refusal, with its split hint
 				return err
 			}
 			return serr

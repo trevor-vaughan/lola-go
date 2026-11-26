@@ -21,7 +21,7 @@ argument at that index, unless after `--` (`TrustArgument`).
 
 `Options.Trust` covers items as they are planned: sync's trust report by kind (`TrustReport.split`,
 `consents`), install hooks (`allowed`), runtime hooks (`runtimeHookConsent`), and a remote profile's
-`--add` or `--update` (`consentRemote`). A covered item goes to `Result.Trusted` (a `Consent`: kind,
+`add` or `update` (`consentRemote`). A covered item goes to `Result.Trusted` (a `Consent`: kind,
 item, `new` or `changed`) and, for consent.json, a pending `grant`; an uncovered one is asked as
 without the flag, its yes a pending `grant` too, or refused or declined (`Result.needs` keeps
 the kinds that would refuse, for a dry run's command).
@@ -118,12 +118,12 @@ second run, which asks nothing, takes a hook whose key and digest the batch hold
 (`allowed`, `runtimeHookConsent`) and records it the same way, while a hook changed in between is
 refused as one never answered.
 
-`lola migrate` does so per destination; `sync --scope both` and `profile --update` (with `--trust`)
+`lola migrate` does so per destination; `sync --scope both` and `profile update` (with `--trust`)
 also replay each scope's answers to trust and removals in the second run (`syncPass`). A failure
 carries what was recorded so far as `trusted` (`syncedScopesError`, `updateError`, migrate's
 `TrustedError`).
 
-`profile --update` keeps the profiles it accepts staged in the engine (`Engine.staged`, read by
+`profile update` keeps the profiles it accepts staged in the engine (`Engine.staged`, read by
 `loadStack` in place of the files) until `CommitStaged` writes them after that receipt, in the order
 they were asked about, each refused when its `source.json` changed since it was read; refusing after
 a write stops the run as an `UpdateStoppedError` that names what was written and applies nothing.

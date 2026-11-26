@@ -66,7 +66,7 @@ var _ = Describe("scope context", func() {
 
 	It("names no file an edit writes while a remote profile is on, and the --profile named", func() {
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\n"})
-		// a remote profile as lola profile --add keeps it, so the context reads it
+		// a remote profile as lola profile add keeps it, so the context reads it
 		body := "version: 1\n"
 		o, err := json.Marshal(profile.Origin{Version: profile.OriginVersion, Source: "https://example.com/profiles.git",
 			Commit: strings.Repeat("a", 40), Digest: profile.Digest([]byte(body))})

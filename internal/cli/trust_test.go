@@ -152,9 +152,9 @@ var _ = Describe("typed --trust", func() {
 			"lola install never asks for entries trust; it takes --trust=scripts,hooks,runtime-hooks", "lola install KIT --root PROJ --trust=hooks"),
 		Entry("migrate", func() []string { return []string{"migrate", "--trust=entries,profiles,hooks", "-n"} },
 			"lola migrate never asks for profiles trust; it takes --trust=entries,scripts,hooks,runtime-hooks", "lola migrate --dry-run --trust=entries,hooks"),
-		Entry("profile --add", func() []string {
-			return []string{"profile", "go", "--add", "https://example.com/profiles.git", "--user", "--trust=entries"}
-		}, "lola profile --add never asks for entries trust; it takes --trust=profiles", "lola profile go --add https://example.com/profiles.git --user"),
+		Entry("profile add", func() []string {
+			return []string{"profile", "add", "https://example.com/profiles.git", "go", "--user", "--trust=entries"}
+		}, "lola profile add never asks for entries trust; it takes --trust=profiles", "lola profile add https://example.com/profiles.git go --user"),
 	)
 
 	DescribeTable("--trust followed by a kind name as its own argument is refused, hinting --trust=<kind>",
@@ -175,9 +175,9 @@ var _ = Describe("typed --trust", func() {
 		Entry("install, a kind it never asks", func() []string { return []string{"install", "-C", proj, "--trust", "entries"} },
 			"error: lola install never asks for entries trust; it takes --trust=scripts,hooks,runtime-hooks\n  hint: lola install --root PROJ\n"),
 		Entry("profile --add, a kind it never asks", func() []string {
-			return []string{"profile", "go", "--add", "https://example.com/profiles.git", "--user", "--trust", "hooks"}
-		}, "error: lola profile --add never asks for hooks trust; it takes --trust=profiles\n"+
-			"  hint: lola profile go --add https://example.com/profiles.git --user\n"),
+			return []string{"profile", "add", "https://example.com/profiles.git", "go", "--user", "--trust", "hooks"}
+		}, "error: lola profile add never asks for hooks trust; it takes --trust=profiles\n"+
+			"  hint: lola profile add https://example.com/profiles.git go --user\n"),
 		Entry("update, as sync", func() []string { return []string{"update", "-C", proj, "--trust", "hooks"} },
 			"error: \"hooks\" is a kind of trust, not a module: write --trust=hooks\n  hint: lola update --root PROJ --trust=hooks\n"),
 		Entry("migrate, which takes no arguments", func() []string { return []string{"migrate", "-n", "--trust", "Hooks"} },
@@ -190,9 +190,10 @@ var _ = Describe("typed --trust", func() {
 	})
 
 	It("help shows --trust[=entries,profiles] where bare --trust grants them (migrate: --trust[=entries]), and --trust=<kinds> where it is refused", func() {
-		for _, c := range []string{"sync", "update", "profile"} {
-			Expect(lola(c, "--help").out).To(ContainSubstring("--trust[=entries,profiles]"), c)
+		for _, c := range [][]string{{"sync"}, {"update"}, {"profile", "on"}, {"profile", "update"}} {
+			Expect(lola(append(c, "--help")...).out).To(ContainSubstring("--trust[=entries,profiles]"), c)
 		}
+		Expect(lola("profile", "add", "--help").out).To(ContainSubstring("--trust[=profiles]"), "add asks profiles trust only")
 		out := lola("install", "--help").out
 		Expect(out).To(ContainSubstring("--trust=<kinds>"))
 		Expect(out).NotTo(ContainSubstring("[=entries,profiles]"))
@@ -204,11 +205,11 @@ var _ = Describe("typed --trust", func() {
 	It("profile --update without a scope flag refuses --trust=entries, naming the scope flags", func() {
 		writeTree(p.RemoteProfiles, map[string]string{"go/profile.yml": "version: 1\nmodules: []\n",
 			"go/source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`}) // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
-		r := lola("profile", "go", "--update", "--trust=entries,hooks")
+		r := lola("profile", "update", "go", "--trust=entries,hooks")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: --trust=entries trusts a project's changes, which lola profile --update answers only in a scope a flag names\n" +
-			"  hint: name the project: lola profile go --trust=entries,hooks --update --project\n" +
-			"  hint: or with user scope too: lola profile go --trust=entries,hooks --update --scope both\n"))
+		Expect(r.err).To(Equal("error: --trust=entries trusts a project's changes, which lola profile update answers only in a scope a flag names\n" +
+			"  hint: name the project: lola profile update go --trust=entries,hooks --project\n" +
+			"  hint: or with user scope too: lola profile update go --trust=entries,hooks --scope both\n"))
 	})
 
 	It("a failure after the grants were written carries trusted in its --json error", func() {
@@ -353,15 +354,15 @@ var _ = Describe("typed --trust", func() {
 			"then accept them: lola sync -C PROJ --trust=entries --at plain=sha256:DIGEST --plain"),
 		Entry("profiles", func() []string {
 			writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: plain, source: ../../mods/plain}\n"})
-			return []string{"profile", "go", "--on", "-C", proj, "--no-pager"}
-		}, "then accept them: lola profile -C PROJ project:go --on --trust=profiles --no-pager"),
+			return []string{"profile", "on", "go", "-C", proj, "--no-pager"}
+		}, "then accept them: lola profile -C PROJ on project:go --trust=profiles --no-pager"),
 		Entry("hooks", func() []string { pull("kit"); return []string{"sync", "-C", proj, "--trust=entries"} },
 			"lola has not shown you this hook; add -n to see it first, then consent to it: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
 		Entry("entries+hooks", func() []string { pull("kit"); return []string{"sync", "-C", proj} },
 			"then accept them: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
 		Entry("remote --add", func() []string {
-			return []string{"profile", "go", "--add", "https://example.com/profiles.git", "--user", "--plain"}
-		}, "then add it unasked: lola profile --user go --add https://example.com/profiles.git --trust=profiles --plain"),
+			return []string{"profile", "add", "https://example.com/profiles.git", "go", "--user", "--plain"}
+		}, "then add it unasked: lola profile --user add https://example.com/profiles.git go --trust=profiles --plain"),
 	)
 
 	It("a project profile's top-level targets a teammate committed are trusted through lola sync, then an install takes them with no -t", func() {
@@ -391,7 +392,7 @@ var _ = Describe("typed --trust", func() {
 	It("shows a pulled change of a project bundle's members in the diff, as a profile's targets are, and lola sync --trust=profiles takes it", func() {
 		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n", ".lola/profiles/lint.yml": "version: 1\n",
 			".lola/profiles/team.yml": "version: 1\nbundle: [review]\n"})
-		Expect(lola("profile", "project:team", "--switch", "-C", proj, "--trust=profiles").code).To(Equal(0))
+		Expect(lola("profile", "switch", "project:team", "-C", proj, "--trust=profiles").code).To(Equal(0))
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\nbundle: [review, lint]\n"})
 
 		r := lola("sync", "-C", proj)
@@ -407,7 +408,7 @@ var _ = Describe("typed --trust", func() {
 	It("asks about a project bundle's members put in another order, since the order decides which wins", func() {
 		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n", ".lola/profiles/lint.yml": "version: 1\n",
 			".lola/profiles/team.yml": "version: 1\nbundle: [review, lint]\n"})
-		Expect(lola("profile", "project:team", "--switch", "-C", proj, "--trust=profiles").code).To(Equal(0))
+		Expect(lola("profile", "switch", "project:team", "-C", proj, "--trust=profiles").code).To(Equal(0))
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\nbundle: [lint, review]\n"})
 
 		r := lola("sync", "-C", proj)
@@ -418,7 +419,7 @@ var _ = Describe("typed --trust", func() {
 	It("judges a nested project bundle's members in its own part", func() {
 		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n", ".lola/profiles/lint.yml": "version: 1\n",
 			".lola/profiles/inner.yml": "version: 1\nbundle: [review]\n", ".lola/profiles/team.yml": "version: 1\nbundle: [inner]\n"})
-		Expect(lola("profile", "project:team", "--switch", "-C", proj, "--trust=profiles").code).To(Equal(0))
+		Expect(lola("profile", "switch", "project:team", "-C", proj, "--trust=profiles").code).To(Equal(0))
 		writeTree(proj, map[string]string{".lola/profiles/inner.yml": "version: 1\nbundle: [review, lint]\n"})
 
 		r := lola("sync", "-C", proj)
@@ -430,7 +431,7 @@ var _ = Describe("typed --trust", func() {
 	It("-y and --force do not take a pulled change of a project bundle's members", func() {
 		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n", ".lola/profiles/lint.yml": "version: 1\n",
 			".lola/profiles/team.yml": "version: 1\nbundle: [review]\n"})
-		Expect(lola("profile", "project:team", "--switch", "-C", proj, "--trust=profiles").code).To(Equal(0))
+		Expect(lola("profile", "switch", "project:team", "-C", proj, "--trust=profiles").code).To(Equal(0))
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\nbundle: [review, lint]\n"})
 
 		r := lola("sync", "-C", proj, "-y", "--force")
@@ -477,10 +478,10 @@ var _ = Describe("typed --trust", func() {
 		writeTree(p.RemoteProfiles, map[string]string{"go/profile.yml": "version: 1\nmodules: []\n",
 			"go/source.json": `{"version":1,"source":"https://example.com/profiles.git","commit":"0000000000000000000000000000000000000000","digest":"sha256:00"}`}) // DevSkim: ignore DS173237 - fake commit ID fixture, not a key
 		GinkgoT().Chdir(proj)
-		r := lola("profile", "go", "--update", "--trust=all")
+		r := lola("profile", "update", "go", "--trust=all")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("has changes you have not trusted (plain and project.yml's targets), which its sync asks about, and no flag named it"))
-		Expect(r.err).To(ContainSubstring("  hint: name it, and trust them: lola profile --project remote:go --update --trust=entries,profiles,scripts,hooks,runtime-hooks\n"))
+		Expect(r.err).To(ContainSubstring("  hint: name it, and trust them: lola profile --project update remote:go --trust=entries,profiles,scripts,hooks,runtime-hooks\n"))
 	})
 
 	Describe("sync --scope both after its one receipt", func() {
@@ -555,11 +556,12 @@ var _ = Describe("typed --trust", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
 		r := lola("profile", "go", "--on", "--off", "--trust=hooks")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("keep --on: lola profile go --on --trust=hooks\n"))
+		Expect(r.err).To(Equal("error: --on is not a flag of lola profile\n  hint: lola profile on go --trust=hooks\n  hint: lola profile off go --trust=hooks\n"))
 	})
 
 	It("sync, update, profile, install and migrate have --trust; uninstall, market, tidy, info and every cache command do not; no command has --allow-hooks or --allow-runtime-hooks", func() {
-		with := []string{"lola sync", "lola profile", "lola install", "lola update", "lola migrate"}
+		with := []string{"lola sync", "lola install", "lola update", "lola migrate", "lola profile on", "lola profile off", "lola profile switch",
+			"lola profile edit", "lola profile move", "lola profile split", "lola profile add", "lola profile update"}
 		var has []string
 		for _, c := range commands() {
 			Expect(c.Flags().Lookup("allow-hooks")).To(BeNil(), c.CommandPath())

@@ -9,19 +9,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
-	"github.com/trevor-vaughan/lola-go/internal/errs"
 )
 
-// profileRemove runs lola profile <name> --remove: one scope,
+// profileRemove runs lola profile rm <name>: one scope,
 // resolved as every action's is, which with user scope and the project found from here the engine
 // checks the profile is not in use in (--force overrides that); then the question, on a terminal,
 // or -y. --force answers it too (user decision, 2026-10-22). A profile of yours goes to the trash;
 // a remote one is deleted.
 func (a *app) profileRemove(cmd *cobra.Command, eng *engine.Engine, args []string, f syncFlags) error {
-	if len(args) != 1 {
-		return errs.WithHints(errors.New("--remove takes one profile's name"),
-			"see yours: "+runWithout(cmd, nil, "remove", "yes", "trust", "dry-run", "force", "unseen"))
-	}
 	scs, err := a.scopes(cmd, eng, args, "Check which scope before removing it?", false, true)
 	if err != nil {
 		return err

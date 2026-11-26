@@ -134,8 +134,9 @@ func (e Entry) Spec() source.Spec {
 		FromCatalog: e.Relative == "", Components: e.Components}
 }
 
-// verbs are the Python lola's `lola market` subcommands which none of your
-// marketplaces can be named.
+// verbs are the Python lola's `lola market` subcommands which none of your marketplaces can be
+// named. Registry loading refuses them as it always did; lola's own verbs and aliases, and the
+// words it coaches (engine.CoachedMarketWords), are refused at creation by Engine.RefuseReserved.
 var verbs = []string{"add", "ls", "list", "rm", "remove", "update", "set", "show", "search"}
 
 // Verbs is the Python lola's `lola market` subcommands, a copy.
@@ -148,8 +149,7 @@ func ValidateName(name string) error {
 		return err
 	}
 	if slices.Contains(verbs, name) {
-		return fmt.Errorf("marketplace name %s is reserved: lola market %s answers with the lola command to run instead, so it cannot name a marketplace",
-			name, name)
+		return fmt.Errorf("marketplace name %s is reserved: it is a word of lola market, so it cannot name a marketplace", name)
 	}
 	return nil
 }

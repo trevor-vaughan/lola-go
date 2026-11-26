@@ -364,7 +364,7 @@ func selectionFlags(t editTarget, edits, global []SelectionEdit, dry bool) []str
 
 // mentionNotice names, in one info notice, what gaps, module name's at sc, leave out, with the
 // install that adds them: lola install (or the run's lola profile <name>
-// --edit, installRun) with the run's --profile, sc's flags, words (mentionArgs),
+// edit, installRun) with the run's --profile, sc's flags, words (mentionArgs),
 // --with-mentions and flags (selectionFlags), keeping the run's -t, --rules or --no-rules, -n and
 // output flags. The mentioners are in picker order, the components left out sorted by kind/name;
 // check is the argument the notice's lola check names the module by ("" for none). None without

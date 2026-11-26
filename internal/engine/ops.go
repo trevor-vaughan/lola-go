@@ -75,7 +75,7 @@ func (e *Engine) noTargets() error {
 }
 
 // withRetry tells the user that fetched modules stayed in the cache, and how to install them at
-// each scope of spec from where they are, one command per scope; for lola profile --edit, the run
+// each scope of spec from where they are, one command per scope; for lola profile edit, the run
 // as given (its Rerun, with its --override and --new), whose picks the retry needs. A refusal for
 // want of trust (a project's entry kept out of your files included), for conflicts, or of a cached
 // version that does not match its digest, keeps only its own hints, the way forward: retrying would
@@ -161,14 +161,14 @@ type InstallSpec struct {
 	// one, the call fetches into a run of its own and caches what it fetches at once (lola migrate,
 	// lola info's plan).
 	Staged *StagedRun
-	// then, set by InstallAll for lola profile <name> --edit applied in several scopes, is the
+	// then, set by InstallAll for lola profile edit <name> applied in several scopes, is the
 	// scopes after the first, which sync the profile the first writes instead of planning their own
 	// edit of it: no hint names them as scopes the profile is also on in (alsoOn). profiles, when
 	// set, receives each profile file the install writes, as it would write it.
 	then     []Scope
 	profiles *[]fileEdit
 	// ConfirmRemovals asks about the files a pick change deletes (confirmDeletes) and, for lola
-	// profile <name> --edit applied in several scopes, the removals a later scope's sync makes,
+	// profile edit <name> applied in several scopes, the removals a later scope's sync makes,
 	// before anything is written (confirmEdited), as a sync's ConfirmRemovals does; nil cannot
 	// ask, and -y gives one that answers yes.
 	ConfirmRemovals func([]Removal) (bool, error)
@@ -314,7 +314,7 @@ type resolvedRequest struct {
 // target, judged once the install has released its locks, in the state it leaves
 // (installMoveHints).
 //
-// lola profile <name> --edit in several scopes (Options.Target.Edit) plans the edit once, at the
+// lola profile edit <name> in several scopes (Options.Target.Edit) plans the edit once, at the
 // first scope, from the profile's file, and writes it there; each other scope then syncs the
 // modules it edited from the file as written (under -n, as it would be written), so the one file is
 // never planned twice.
@@ -376,7 +376,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 	return out, nil
 }
 
-// editedSync is the sync of si's scope that applies what lola profile --edit wrote at the first
+// editedSync is the sync of si's scope that applies what lola profile edit wrote at the first
 // scope (wrote) into a profile of yours loaded there: the modules it wrote into such a file, nil
 // for none (an edit answered into the first scope's own files, project.yml or its selections,
 // leaves si's scope as it is). pending reads the files as wrote would write them (-n, or the check
@@ -505,7 +505,7 @@ func (e *Engine) confirmEdited(ctx context.Context, spec InstallSpec, then []Sco
 			continue
 		}
 		if spec.ConfirmRemovals == nil {
-			err := errs.NeedsAnswer(fmt.Errorf("lola profile --edit needs your confirmation to remove %s %s, and there is no terminal to ask on; nothing was written",
+			err := errs.NeedsAnswer(fmt.Errorf("lola profile edit needs your confirmation to remove %s %s, and there is no terminal to ask on; nothing was written",
 				strings.Join(removalNames(res.Removals), ", "), scopeWhere(si.Scope)))
 			if t := spec.Options.Target; t.Rerun != nil {
 				return nil, errs.WithHints(err, "see what goes: "+t.Rerun(append(t.ownFlags(), "-n")...),
@@ -525,7 +525,7 @@ func (e *Engine) confirmEdited(ctx context.Context, spec InstallSpec, then []Sco
 	return confirmed, nil
 }
 
-// syncEdited applies at si's scope what lola profile --edit wrote at spec's first scope into a
+// syncEdited applies at si's scope what lola profile edit wrote at spec's first scope into a
 // profile of yours loaded there too (InstallAll; editedSync, none to apply, no sync), its result
 // added to out. Its removals were asked before the write (confirmEdited: confirmed). A real run
 // that fails here has written the file and applied it at the first scope: the refusal says so and

@@ -65,8 +65,8 @@ func baseTarget(base Layer) writeTo {
 // its own --to out. Again is what a hint naming another command keeps of the run, as Rerun does: -n
 // and its output flags.
 //
-// Edit says the run is lola profile <Profile> --edit: a hint that would
-// name lola install names lola profile <name> --edit (installRun), Rerun takes "--profile <name>" in
+// Edit says the run is lola profile edit <Profile>: a hint that would
+// name lola install names lola profile edit <name> (installRun), Rerun takes "--profile <name>" in
 // extra as the profile the run names, and the flag form of Override names the write target. New is
 // --new with it: Profile names a profile to make, of yours or with project:<name> the project's,
 // which the run writes in its transaction (namedTarget). Catalog is the names your catalogs list,
@@ -89,7 +89,7 @@ type TargetRequest struct {
 	Yes bool
 }
 
-// ownFlags is what Rerun leaves out of a lola profile --edit run that a run repeating it keeps:
+// ownFlags is what Rerun leaves out of a lola profile edit run that a run repeating it keeps:
 // its --override and --new.
 func (t TargetRequest) ownFlags() []string {
 	var out []string
@@ -102,17 +102,17 @@ func (t TargetRequest) ownFlags() []string {
 	return out
 }
 
-// verb is the command a run with t is, as its refusals name it: install, or profile --edit.
+// verb is the command a run with t is, as its refusals name it: install, or profile edit.
 func (t TargetRequest) verb() string {
 	if t.Edit {
-		return "profile --edit"
+		return "profile edit"
 	}
 	return "install"
 }
 
 // installRun is the command a hint of a run with req names to install args at sc: lola install with
-// the scope's flags and the run's --profile, or for lola profile --edit (req.Edit) lola profile <the
-// profile args name with --profile, else req.Profile> --edit and the rest of args.
+// the scope's flags and the run's --profile, or for lola profile edit (req.Edit) lola profile <the
+// profile args name with --profile, else req.Profile> and the rest of args, after edit.
 func (e *Engine) installRun(sc Scope, req TargetRequest, args ...string) string {
 	if !req.Edit {
 		if req.Profile != "" && !slices.Contains(args, "--profile") { // the run's own target, kept
@@ -122,18 +122,18 @@ func (e *Engine) installRun(sc Scope, req TargetRequest, args ...string) string 
 	}
 	name, rest := ProfileFlag(args)
 	name = cmp.Or(name, req.Profile)
-	words := []string{"--edit"}
+	words := []string{"edit"}
 	if name != "" {
-		words = []string{name, "--edit"}
+		words = []string{"edit", name}
 	}
 	return e.Command(sc, "profile", append(words, rest...)...)
 }
 
 // repickRun is the run that changes the picks of module where from provides it at sc, args
-// following the module, sc's flags kept: lola profile <name> --edit <module> for a profile of
+// following the module, sc's flags kept: lola profile edit <name> <module> for a profile of
 // yours, the project's or your default (named as editArg names it among infos, the profiles sc can
 // use, and layers' entries); for project.yml's, lola install <module> while no profile is on at sc
-// (on), else lola profile base --edit <module>, which asks nothing about where the change goes; for
+// (on), else lola profile edit base <module>, which asks nothing about where the change goes; for
 // a remote profile's, which lola does not edit, the switch to a copy of yours (remoteReadOnly's
 // run), without args.
 func (e *Engine) repickRun(sc Scope, layers []Layer, infos []profile.Info, on bool, from, module string, args ...string) string {
@@ -143,21 +143,21 @@ func (e *Engine) repickRun(sc Scope, layers []Layer, infos []profile.Info, on bo
 	case !isProfile && !on:
 		return e.Command(sc, "install", rest...)
 	case !isProfile:
-		return e.Command(sc, "profile", append([]string{baseName, "--edit"}, rest...)...)
+		return e.Command(sc, "profile", append([]string{"edit", baseName}, rest...)...)
 	case remoteLayer(from):
-		return e.Command(sc, "profile", freeName(infos, bareName(q)+"-mine"), "--switch", "--new", "--from", q)
+		return e.Command(sc, "profile", "switch", freeName(infos, bareName(q)+"-mine"), "--new", "--from", q)
 	case q == profile.DefaultName:
-		return e.Command(sc, "profile", append([]string{q, "--edit"}, rest...)...)
+		return e.Command(sc, "profile", append([]string{"edit", q}, rest...)...)
 	}
 	name := bareName(q)
 	if namesake(infos, q) {
 		name = q
 	}
-	return e.Command(sc, "profile", append([]string{e.editArg(sc, layers, infos, nil, false, name), "--edit"}, rest...)...)
+	return e.Command(sc, "profile", append([]string{"edit", e.editArg(sc, layers, infos, nil, false, name)}, rest...)...)
 }
 
 // ProfileFlag splits args, a hint's words, into the profile their "--profile <name>" names ("" for
-// none) and the rest, in order: lola profile <name> --edit puts that profile first instead.
+// none) and the rest, in order: lola profile edit <name> puts that profile first instead.
 func ProfileFlag(args []string) (string, []string) {
 	var name string
 	rest := []string{}
@@ -290,7 +290,7 @@ func (e *Engine) placeEdit(sp *scopePlan, w *Wanted, picksOnly *bool, opts Optio
 	switch {
 	case sp.target.Bundle != "": // a member, which --override alone would ask about again (memberTarget)
 		override.Flags = []string{"--profile", own, "--override"}
-	case opts.Target.Edit && sp.target.Profile && !sp.target.Base: // lola profile <target> --edit <module> --override
+	case opts.Target.Edit && sp.target.Profile && !sp.target.Base: // lola profile edit <target> <module> --override
 		override.Flags = []string{"--profile", cmp.Or(opts.Target.Profile, e.editArg(sp.sc, sp.layers, sp.infos, opts.Target.Catalog, opts.Target.CatalogPartial, own)), "--override"}
 	}
 	verb := opts.Target.verb()
@@ -369,7 +369,7 @@ func (e *Engine) uninstallTarget(sc Scope, layers []Layer, req TargetRequest) (w
 // once ask says so (flag form --profile <it>), which --force does not answer; -y answers it only
 // when w's is the one layer that lists the module. Under -t (partial), which keeps the
 // entry with fewer targets, the question is about changing it there, and -y does not answer it. A
-// remote profile's entry, on or a bundle's member, is refused, hinting the --off that turns the
+// remote profile's entry, on or a bundle's member, is refused, hinting the off that turns the
 // profile on off. A refusal's hints keep the run's output flags (opts.Display).
 func (e *Engine) removeFrom(sc Scope, layers []Layer, infos []profile.Info, t writeTo, w *Wanted, partial bool, opts Options) (*writeTo, error) {
 	if opts.Target.Profile != "" {
@@ -417,12 +417,12 @@ func (e *Engine) removeFrom(sc Scope, layers []Layer, infos []profile.Info, t wr
 // member goes off with its bundle. display is the run's output flags, which each keeps.
 func (e *Engine) remoteOnHints(sc Scope, infos []profile.Info, l Layer, display []string) []string {
 	if l.Bundle != "" { // or take the member out of the bundle files of yours that list it
-		return append([]string{"turn bundle " + bundleLabel(infos, l.Bundle) + " off: " + e.Command(sc, "profile", append([]string{"--off"}, display...)...)},
+		return append([]string{"turn bundle " + bundleLabel(infos, l.Bundle) + " off: " + e.Command(sc, "profile", append([]string{"off"}, display...)...)},
 			e.unlistRuns(sc, l.listed, display)...)
 	}
 	q := strings.TrimPrefix(l.Name, ledger.FromProfile(""))
-	return []string{"turn it off: " + e.Command(sc, "profile", append([]string{"--off"}, display...)...),
-		"or switch to a copy of yours: " + e.Command(sc, "profile", append([]string{freeName(infos, bareName(q)+"-mine"), "--switch", "--new", "--from", q},
+	return []string{"turn it off: " + e.Command(sc, "profile", append([]string{"off"}, display...)...),
+		"or switch to a copy of yours: " + e.Command(sc, "profile", append([]string{"switch", freeName(infos, bareName(q)+"-mine"), "--new", "--from", q},
 			display...)...)}
 }
 
@@ -624,12 +624,12 @@ func (e *Engine) memberTarget(sc Scope, layers []Layer, infos []profile.Info, on
 			"), and there is no terminal to ask on"
 		_, err := e.ask(ask, q, refused, req, verb)
 		if he, ok := errors.AsType[*errs.Error](err); ok && ask == nil {
-			// Or give a bundle of yours a profile of yours that takes the edit (--edit --bundle).
+			// Or give a bundle of yours a profile of yours that takes the edit (edit --bundle).
 			if k := activeInfo(infos, on); k >= 0 && infos[k].Kind == profile.KindUser {
 				if p, _, rerr := e.readFile(infos[k]); rerr == nil && len(p.Bundle) < profile.MaxMembers {
 					extra := freeName(infos, bareName(on)+"-extras")
 					he.Hints = append(he.Hints, "or add a profile of yours to it, made empty: "+e.Command(sc, "profile",
-						append([]string{editName(infos, infos[k]), "--edit", "--bundle", strings.Join(append(slices.Clone(p.Bundle), extra), ",")}, req.Again...)...))
+						append([]string{"edit", editName(infos, infos[k]), "--bundle", strings.Join(append(slices.Clone(p.Bundle), extra), ",")}, req.Again...)...))
 				}
 			}
 		}
@@ -735,7 +735,7 @@ func (e *Engine) namedTarget(sc Scope, layers []Layer, infos []profile.Info, req
 	return writeTo{Layer: l, label: layerLabel(infos, name)}, nil
 }
 
-// madeTarget is namedTarget for lola profile <req.Profile> --edit --new: the
+// madeTarget is namedTarget for lola profile edit <req.Profile> --new: the
 // profile --new makes, yours or with project:<name> the project's, refused as --switch --new
 // refuses it (newTarget), with the hints worded as the run words them (req.Rerun): a file of yours,
 // or the project's, that the run creates in its transaction and does not apply (it is not on).
@@ -815,7 +815,7 @@ func (e *Engine) readProfile(i profile.Info) (p *profile.Profile, dir string, er
 
 // coachExtends hints err again when it refuses a file that still has extends: (a
 // *profile.ExtendsError), knowing what the profile package cannot: the remote profiles, so the
-// profile its edit makes shadows none, the --split that finishes the edit of i, yours or the
+// profile its edit makes shadows none, the split that finishes the edit of i, yours or the
 // project's (named as its scope resolves it: a bare name finds yours before a remote one, and the
 // project's is named qualified), and, for default.yml, the profile on at user scope, which
 // the bundle it switches to keeps. Any other err is returned as it is.
@@ -839,10 +839,10 @@ func (e *Engine) coachExtends(err error, i profile.Info) error {
 	split := ""
 	switch i.Kind {
 	case profile.KindUser:
-		split = e.Command(Scope{Kind: target.User}, "profile", i.Name, "--split")
+		split = e.Command(Scope{Kind: target.User}, "profile", "split", i.Name)
 	case profile.KindProject:
 		root := strings.TrimSuffix(filepath.Dir(i.Path), string(filepath.Separator)+profile.ProjectDir)
-		split = e.Command(Scope{Kind: target.Project, ProjectDir: root}, "profile", i.Qualified(), "--split")
+		split = e.Command(Scope{Kind: target.Project, ProjectDir: root}, "profile", "split", i.Qualified())
 	}
 	h, herr := ee.Hint(taken, on, split)
 	if herr != nil {
@@ -903,7 +903,7 @@ func targetsFile(t writeTo) string {
 // switchRun is the command that turns t, a profile that is not on at sc, on there (lola profile
 // <name> --switch): what reviews a project profile's trust and applies what an install saved.
 func (e *Engine) switchRun(sc Scope, t writeTo) string {
-	return e.Command(sc, "profile", strings.TrimPrefix(t.label, "profile "), "--switch")
+	return e.Command(sc, "profile", "switch", strings.TrimPrefix(t.label, "profile "))
 }
 
 // layerEntry is t's entry for name as the scope reads it (local source resolved), with the targets

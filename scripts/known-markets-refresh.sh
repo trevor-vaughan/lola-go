@@ -2,7 +2,7 @@
 # Checks the known marketplaces lola ships (internal/market/known.yaml, docs/maintainers/known-markets.md)
 # against the network. For every entry it prints the upstream head, whether that differs from the
 # pinned commit, and proves the pin still works: the source is a git repository, and
-# `lola market --enable <id> -n -y` fetches the pinned commit and reads its catalog, in a
+# `lola market enable <id> -n -y` fetches the pinned commit and reads its catalog, in a
 # throwaway HOME and XDG_* so no real configuration is touched. A moved head is a note, not a
 # failure: whether to re-pin is the maintainer's call. So is a source that redirects (git follows
 # redirects silently, so a renamed repository still passes while the shipped URL is stale). A
@@ -27,7 +27,7 @@ export HOME="$home" XDG_CONFIG_HOME="$home/config" XDG_DATA_HOME="$home/data" \
   XDG_CACHE_HOME="$home/cache" XDG_STATE_HOME="$home/state"
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0
 
-entries="$("$lola" market --known --json | jq -r '.known[] | [.id, .source, .commit] | @tsv')" || {
+entries="$("$lola" market known --json | jq -r '.known[] | [.id, .source, .commit] | @tsv')" || {
   echo "error: cannot list the known marketplaces with $lola" >&2
   exit 1
 }
@@ -77,7 +77,7 @@ while IFS=$'\t' read -r id source pin; do
   else
     echo "  note: the head has moved on; review the changes before re-pinning"
   fi
-  if out="$(timeout 300 "$lola" market --enable "$id" -n -y 2>&1)"; then
+  if out="$(timeout 300 "$lola" market enable "$id" -n -y 2>&1)"; then
     echo "  ok:   ${out%%$'\n'*}"
   else
     echo "  FAIL the pinned catalog does not enable:"

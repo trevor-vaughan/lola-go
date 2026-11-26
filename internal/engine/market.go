@@ -25,8 +25,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
-// MarketAction is one of lola market's actions; each is also the flag lola market
-// takes for it.
+// MarketAction is one of lola market's actions; each is also the subcommand lola market
+// has for it.
 type MarketAction string
 
 // lola market's actions.
@@ -35,7 +35,7 @@ const (
 	MarketUpdate MarketAction = "update"
 )
 
-// What became of one marketplace of an --add or --update run (MarketOutcome.Outcome).
+// What became of one marketplace of an add or update run (MarketOutcome.Outcome).
 const (
 	MarketAdded       = "added"        // fetched and registered
 	MarketWouldAdd    = "would_add"    // a dry run: it would be registered
@@ -145,7 +145,7 @@ type MarketOutcome struct {
 	Err     error    `json:"-"`
 }
 
-// MarketResult is what lola market --add and --update report: the marketplaces
+// MarketResult is what lola market add and update report: the marketplaces
 // fetched, the changes to their entries, every marketplace's outcome, and the notices.
 type MarketResult struct {
 	Markets []MarketRow     `json:"markets"`
@@ -164,7 +164,7 @@ type MarketRename struct {
 	Why, Suggest, Problem string
 }
 
-// MarketAddRequest is one lola market [<name>] --add <source>: fetch Source
+// MarketAddRequest is one lola market add <source> [<name>]: fetch Source
 // at Ref, find its catalog (under Path, a file or a directory), and register it as Name, else the
 // catalog's own name. Rename asks for another name when it is taken by another source, or when
 // the catalog's own name cannot name a marketplace; nil means it cannot ask, and the run is
@@ -186,7 +186,7 @@ type MarketAddRequest struct {
 	PickSSH  func(MarketSSHStep) ([]string, error)
 }
 
-// MarketUpdateRequest is one lola market <name>... --update, or --update --all.
+// MarketUpdateRequest is one lola market update <name>..., or update --all.
 type MarketUpdateRequest struct {
 	Names  []string
 	All    bool
@@ -199,7 +199,7 @@ type MarketUpdateRequest struct {
 	PickSSH  func(MarketSSHStep) ([]string, error)
 }
 
-// MarketRun is the lola market command with args, each through untrusted.Text, quoted for the
+// MarketRun is the lola market command with args (the verb first), each through untrusted.Text, quoted for the
 // user's shell: what a hint offers to run.
 func MarketRun(args ...string) string {
 	cmd := []string{"lola", "market"}
@@ -209,16 +209,15 @@ func MarketRun(args ...string) string {
 	return errs.ShellJoin(cmd)
 }
 
-// addRun is the arguments of an --add, as a hint repeats it with name (none when "") and path
-// (none when ""): the source, the ref, the ssh hosts, -n of a dry run (a slug,
+// addRun is the arguments of an add, as a hint repeats it with name (none when "") and path
+// (none when ""): add <source> [<name>], the ref, the ssh hosts, -n of a dry run (a slug,
 // collision and two-catalog hint keeps --ref, --path, --ssh-host and -n, never -y), and display,
 // the run's output flags.
 func addRun(name, src, ref, p string, hosts []string, dry bool, display []string) []string {
-	var out []string
+	out := []string{"add", src}
 	if name != "" {
 		out = append(out, name)
 	}
-	out = append(out, "--add", src)
 	if ref != "" {
 		out = append(out, "--ref", ref)
 	}
@@ -478,9 +477,9 @@ func (e *Engine) Markets(display []string) ([]MarketRow, []Notice, error) {
 		switch {
 		case err != nil:
 			notices = append(notices, Notice{Level: LevelWarn, Text: shown(r.Name) + ": " + shown(untrusted.CleanErr(err).Error()) +
-				" → " + MarketRun(append([]string{r.Name, "--update"}, display...)...)})
+				" → " + MarketRun(append([]string{"update", r.Name}, display...)...)})
 		case c == nil:
-			notices = append(notices, Notice{Level: LevelInfo, Text: shown(r.Name) + " is " + notFetched + " → " + MarketRun(append([]string{r.Name, "--update"}, display...)...)})
+			notices = append(notices, Notice{Level: LevelInfo, Text: shown(r.Name) + " is " + notFetched + " → " + MarketRun(append([]string{"update", r.Name}, display...)...)})
 		}
 		rows = append(rows, e.marketRow(r, c))
 	}
@@ -536,7 +535,7 @@ func (e *Engine) ShowMarket(name string, display []string) (*MarketView, error) 
 	if r == nil {
 		return nil, noMarket(reg, name, func(n string) []string { return []string{n} }, display)
 	}
-	update := MarketRun(append([]string{name, "--update"}, display...)...)
+	update := MarketRun(append([]string{"update", name}, display...)...)
 	c, err := e.loadMarket(*r)
 	if err != nil {
 		return nil, errs.WithHints(fmt.Errorf("marketplace %s: %w", shown(name), untrusted.CleanErr(err)), update)
@@ -568,7 +567,7 @@ func (e *Engine) ShowMarket(name string, display []string) (*MarketView, error) 
 	// unique in its catalog, so the order is total; a skip's may repeat, and keeps its order).
 	slices.SortFunc(v.Entries, func(a, b MarketEntry) int { return strings.Compare(a.Name, b.Name) })
 	if n := sshHint(c.cat, func(pending []string) []string {
-		return slices.Concat([]string{r.Name, "--update"}, sshFlags(pending), display)
+		return slices.Concat([]string{"update", r.Name}, sshFlags(pending), display)
 	}); n != nil {
 		v.Notices = append(v.Notices, *n)
 	}
@@ -658,7 +657,7 @@ func catalogIn(tree, name, p string, add func(string) string, install string) (s
 	if dir != "" {
 		where = "under --path " + untrusted.Text(dir, untrusted.MaxName)
 		if add == nil {
-			where = "under path " + untrusted.Text(dir, untrusted.MaxName) // markets.yaml's, on --update
+			where = "under path " + untrusted.Text(dir, untrusted.MaxName) // markets.yaml's, on update
 		}
 	}
 	var alts []string
@@ -1062,10 +1061,10 @@ func askName(reg market.Registry, step MarketRename, rename func(MarketRename) (
 	}
 }
 
-// alreadyThis refuses to add the marketplace name again, coaching its --update,
+// alreadyThis refuses to add the marketplace name again, coaching its update,
 // which keeps the ssh hosts, -n and display, the run's output flags.
 func alreadyThis(name string, hosts []string, dry bool, display []string) error {
-	args := slices.Concat([]string{name, "--update"}, sshFlags(hosts))
+	args := slices.Concat([]string{"update", name}, sshFlags(hosts))
 	if dry {
 		args = append(args, "-n")
 	}
@@ -1088,9 +1087,8 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 	}
 	if req.Name != "" {
 		if err := market.ValidateName(req.Name); err != nil {
-			// A source in the name's place is --add <name> <source> typed for <name> --add <source>:
-			// --add took the name as its value, so the source is what is left over.
-			if req.Source != "" && strings.ContainsAny(req.Name, ":/") {
+			// A source in the name's place is add <name> <source> typed for add <source> <name>.
+			if req.Source != "" && (strings.ContainsAny(req.Name, ":/") || strings.HasSuffix(req.Name, ".git")) {
 				return nil, errs.WithHints(err, MarketRun(addRun(req.Source, req.Name, req.Ref, req.Path, req.SSHHosts, req.DryRun, req.Display)...))
 			}
 			// Its lowercase form, when that is a name no marketplace has, is the run's likeliest
@@ -1178,10 +1176,10 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 					return nil, err
 				}
 			case free != "":
-				return nil, errs.WithHints(errors.New(why+"; give a name before --add"),
+				return nil, errs.WithHints(errors.New(why+"; give a name when you add it"),
 					MarketRun(addRun(free, req.Source, req.Ref, hintPath, req.SSHHosts, req.DryRun, req.Display)...))
 			default:
-				return nil, errors.New(why + "; give a name before --add")
+				return nil, errors.New(why + "; give a name when you add it")
 			}
 		} else {
 			name = f.cat.Name
@@ -1261,7 +1259,7 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 	// A dry run's marketplace is not registered, so its hint is the --add itself, with every host.
 	if n := sshHint(f.cat, func(pending []string) []string {
 		if !req.DryRun {
-			return slices.Concat([]string{name, "--update"}, sshFlags(pending), req.Display)
+			return slices.Concat([]string{"update", name}, sshFlags(pending), req.Display)
 		}
 		p := req.Path
 		if name != req.Name {
@@ -1385,7 +1383,7 @@ func (e *Engine) updateMarkets(ctx context.Context, req MarketUpdateRequest, pas
 	}
 	// rerun is the arguments of this run for names: --update, the --ssh-host values and -n.
 	rerun := func(names ...string) []string {
-		out := slices.Concat(names, []string{"--update"}, sshFlags(flagHosts))
+		out := slices.Concat([]string{"update"}, names, sshFlags(flagHosts))
 		if req.DryRun {
 			out = append(out, "-n")
 		}
@@ -1491,7 +1489,7 @@ func (e *Engine) updateMarkets(ctx context.Context, req MarketUpdateRequest, pas
 					if req.DryRun {
 						hosts = market.NormalizeHosts(slices.Concat(flagHosts, pending))
 					}
-					return slices.Concat([]string{r.Name, "--update"}, sshFlags(hosts), req.Display)
+					return slices.Concat([]string{"update", r.Name}, sshFlags(hosts), req.Display)
 				}); n != nil {
 					res.Notices = append(res.Notices, *n)
 				}

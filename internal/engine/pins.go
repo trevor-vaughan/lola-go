@@ -64,7 +64,7 @@ func (e *Engine) pinsWrite(planned *config.Pins, led *ledger.Ledger, names, kept
 // has a pin for its key: every other pin is kept as read, so a newer pin synced from another
 // machine survives a run that does not resolve its module, or keeps the version installed. Every pin whose key no file of yours lists is dropped
 // (ownKeys, man being the run's other writes), unless one of them does not load: then a warning.
-// The remote profiles' records follow (remoteRecords, drop being those a --remove drops).
+// The remote profiles' records follow (remoteRecords, drop being those a rm drops).
 // Unchanged bytes are no write (dotfile churn), nor is a file that held nothing and would hold
 // nothing.
 func (e *Engine) nextPins(pins *config.Pins, led *ledger.Ledger, names, kept []string, man []plan.ManifestWrite, drop []string) ([]byte, []Notice, bool, error) {
@@ -116,8 +116,8 @@ func (e *Engine) nextPins(pins *config.Pins, led *ledger.Ledger, names, kept []s
 	return data, notices, !pins.Same(data) && !nothing, nil
 }
 
-// writePinsNow writes pins.yaml outside a scope's apply (lola profile --add,
-// --update and --remove record your remote profiles): only remotes: changes, as remoteRecords says
+// writePinsNow writes pins.yaml outside a scope's apply (lola profile add,
+// update and rm record your remote profiles): only remotes: changes, as remoteRecords says
 // without the profiles named in drop; modules: is kept as read. It runs under pins.lock, checks the
 // file is unchanged since the read, writes atomically through a link, and writes nothing when the
 // bytes do not change.
@@ -165,7 +165,7 @@ type unreadPinsError struct{ error }
 
 func (e *unreadPinsError) Unwrap() error { return e.error }
 
-// unrecorded is the warning of an --add or --update that wrote the remote profiles names (done
+// unrecorded is the warning of an add or update that wrote the remote profiles names (done
 // says so) but could not record them in pins.yaml (writePinsNow's err): a pins.yaml that does not
 // load, where (its refusal's path:line), and that a sync records them once it is fixed by hand,
 // since every sync refuses it until then; any other failure, that a sync records them once the
@@ -265,7 +265,7 @@ func (e *Engine) ownKeys(man []plan.ManifestWrite) (keys map[string][]config.Pin
 }
 
 // remoteRecords is the remote profiles' records pins.yaml holds next:
-// those held, without the names in drop (a --remove), and each remote profile on disk recorded as
+// those held, without the names in drop (a rm), and each remote profile on disk recorded as
 // its source.json says. A record is never dropped for want of a profile on disk: it restores it.
 // A profile whose source.json does not read, or holds no record pins.yaml can keep (one today's
 // host rules refuse), keeps the record held, if any: LoadPins would refuse the file otherwise.

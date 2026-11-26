@@ -27,7 +27,7 @@ var _ = Describe("where an inherited edit goes", func() {
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n",
 			"go.yml": "version: 1\n"})
 		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
-		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "switch", "go", "--user", "-y").code).To(Equal(0))
 	})
 
 	It("reviews an override that takes every component as the entry it writes, never as a removal", func() {

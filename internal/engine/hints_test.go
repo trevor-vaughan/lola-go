@@ -154,8 +154,8 @@ var _ = Describe("hints", func() {
 				return err
 			},
 			func() []string {
-				return []string{"see them: lola profile --project project:review --on --json -n",
-					"then accept them: lola profile --project project:review --on --trust=profiles --json"}
+				return []string{"see them: lola profile --project on project:review --json -n",
+					"then accept them: lola profile --project on project:review --trust=profiles --json"}
 			}),
 		Entry("check's argument that is neither a source nor a module in your cache",
 			func() error {
