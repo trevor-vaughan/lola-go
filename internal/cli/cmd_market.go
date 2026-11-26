@@ -994,8 +994,14 @@ func (a *app) marketPick(cmd *cobra.Command, eng *engine.Engine) error {
 			err = a.pickerEnded(cmd, err)
 		case PickerUpdate:
 			err = a.marketPickUpdate(cmd, eng, own, ans)
-		case PickerEnter:
-			err = a.marketPickEnter(cmd, eng, p, ans)
+		case PickerEnter, PickerEnable:
+			err = a.marketPickEnter(cmd, eng, ans)
+		case PickerRemove:
+			for _, n := range ans.Own {
+				if err = a.pickerSaid(cmd, a.marketRemove(cmd, eng, []string{n}, false, false)); err != nil {
+					break
+				}
+			}
 		case PickerInstall, PickerUninstall:
 			err = a.pickerEnded(cmd, a.marketEntry(cmd, sc, ans, entries))
 			resume = PickerResume{Market: ans.Market, Entry: ans.Entry, OnEntries: ans.FromEntries}
@@ -1099,33 +1105,24 @@ func (a *app) marketPastPin(cmd *cobra.Command, eng *engine.Engine, name string)
 	return a.emit(cmd, func(w io.Writer, s style) { printMarketResult(w, s, res) }, res)
 }
 
-// marketPickEnter acts on the rows ticked at Enter, the known ones first: each is enabled as lola
-// market enable <id> does, asking first; then "Do what with these?" asks what to do with yours:
-// browse their entries (marketBrowse), update them, or remove each, asking first as rm does.
-func (a *app) marketPickEnter(cmd *cobra.Command, eng *engine.Engine, p Prompter, ans MarketPickerAnswer) error {
+// marketPickEnter enables the known rows ans names, each as lola market enable <id> does, asking
+// first; then, for Enter (PickerEnter, not a preview's PickerEnable), it opens the entries of the
+// rows of yours and of those it enabled through lola install's picker (marketBrowse).
+func (a *app) marketPickEnter(cmd *cobra.Command, eng *engine.Engine, ans MarketPickerAnswer) error {
+	open := slices.Clone(ans.Own)
 	for _, id := range ans.Known {
-		if err := a.pickerSaid(cmd, a.marketEnable(cmd, eng, nil, id, "", false, false, nil)); err != nil {
+		err := a.marketEnable(cmd, eng, nil, id, "", false, false, nil)
+		if err == nil {
+			open = append(open, id)
+		}
+		if err := a.pickerSaid(cmd, err); err != nil {
 			return err
 		}
 	}
-	if len(ans.Own) == 0 {
+	if ans.Action == PickerEnable || len(open) == 0 {
 		return nil
 	}
-	i, err := p.Where(WhereStep{Title: "Do what with these?", Options: []string{"Browse entries", "Update", "Remove"}, Nav: Nav{Back: true}})
-	switch {
-	case err != nil:
-		return a.pickerEnded(cmd, err)
-	case i == 0:
-		return a.pickerEnded(cmd, a.marketBrowse(cmd, ans.Own))
-	case i == 1:
-		return a.pickerEnded(cmd, a.marketUpdate(cmd, eng, ans.Own, false, false, nil))
-	}
-	for _, n := range ans.Own {
-		if err := a.pickerSaid(cmd, a.marketRemove(cmd, eng, []string{n}, false, false)); err != nil {
-			return err
-		}
-	}
-	return nil
+	return a.pickerEnded(cmd, a.marketBrowse(cmd, open))
 }
 
 // scopePin is the scope flags of a run, which marketEntry sets for an uninstall hand-off and puts back.

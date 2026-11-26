@@ -196,8 +196,9 @@ lola market enable superpowers                                                  
   - Tick rows with `x`, filter with `/`; Enter on one of yours opens its entries, and Enter on an
     entry its detail, where `i` installs it and `d` uninstalls it with their usual questions (the
     picker then reopens on that entry; installed is read for the scope the context line shows). Enter
-    on a known one enables it; `m`, or Enter with rows ticked, asks what to do with yours (browse their
-    entries, update, remove); `a` adds a source; Esc or `q` leaves, and `q` leaves from any page.
+    on a known one previews it; Enter with rows ticked enables the known ones, asking first, and opens
+    the entries of the rest and of those it enabled; `d` removes yours, asking first; `a` adds a
+    source; Esc or `q` leaves, and `q` leaves from any page.
   - Nothing contacts a host until you press `u` (the ticked rows, or the cursor's) or `U` (every
     row). Each git source's row shows its upstream status as it comes in: `up to date`, `update
     available`, `upstream moved` (a marketplace registered at a commit: `update` cannot move it, `u` moves it

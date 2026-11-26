@@ -99,8 +99,9 @@ poll for a marker, send keys, read the pane. Assertions belong in specs and `--p
   `tab`/`shift+tab` (fold highlight), `space` (open/close it; pages with none), `esc` (clears the
   highlight, else closes; back in a question), `q`. `ctrl+c` exits 4 with `nothing changed`. After
   `q` the viewer reprints its content to scrollback. Market picker: the picker keys, plus `a` add,
-  `u` (ticked or cursor rows) / `U` (all) check upstream (`git ls-remote`, so they need network),
-  then the footer offer `⏎/y yes · esc/n no`.
+  `d` remove (ticked or cursor rows of yours, asking first; Enter on ticked rows enables the known ones
+  and opens all their entries in the install picker), `u` (ticked or cursor rows) / `U` (all) check
+  upstream (`git ls-remote`, so they need network), then the footer offer `⏎/y yes · esc/n no`.
 
 ```bash
 sudo dnf install -y tmux; task build

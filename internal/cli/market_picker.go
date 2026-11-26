@@ -25,12 +25,14 @@ import (
 type MarketPickerAction int
 
 const (
-	PickerEnter     MarketPickerAction = iota // Enter: act on Own and Known
+	PickerEnter     MarketPickerAction = iota // Enter on ticked rows: enable Known, then open the entries of Own and those enabled
 	PickerAdd                                 // a, or Add a source…: add a marketplace
 	PickerUpdate                              // u's offer taken: update Own (Known is always empty)
 	PickerCancel                              // esc or q: do nothing
 	PickerInstall                             // i on an entry's page: install the entry (Market, Entry)
 	PickerUninstall                           // d on an entry's page: uninstall it (Market, Entry)
+	PickerRemove                              // d on the list: remove Own, asking first (Known is always empty)
+	PickerEnable                              // m in a preview: enable Known, opening nothing (Own is always empty)
 )
 
 // MarketPickerStep offers the marketplace picker's rows: Own, your marketplaces, then Known, the
@@ -90,7 +92,7 @@ type MarketPickerAnswer struct {
 // accessible line prompt.
 const (
 	networkBanner = "Several sources unreachable; check your network connection"
-	pickerPrompt  = "Choose marketplaces (numbers, comma separated; m1 for the menu; o1 for the web page): "
+	pickerPrompt  = "Choose marketplaces (numbers, comma separated; d1 removes; o1 for the web page): "
 	addSourceRow  = "Add a source…"
 	pickerIndent  = "      " // a row's detail lines: under its name, past the cursor and checkbox
 	nbsp          = "\u00a0" // a space ansi.Wrap never breaks at
@@ -105,9 +107,9 @@ const (
 // i and d say it is not added. Keys: x or space
 // ticks, ctrl+a ticks all or none of the rows shown, / types a filter (Enter keeps it, Esc drops
 // it), a adds, u checks then offers to update the ticked rows or else the cursor's, U does so for
-// every row (whatever the filter shows), Enter acts on the ticked rows or else the cursor's (adds
-// on Add a source…; m does so on a row of yours too, where Enter opens its entries), Esc clears a
-// filter and otherwise cancels, as q does; Ctrl+C aborts.
+// every row (whatever the filter shows), Enter with rows ticked answers them (PickerEnter; adds on
+// Add a source…), d removes the ticked rows of yours or else the cursor's (PickerRemove), Esc clears
+// a filter and otherwise cancels, as q does; Ctrl+C aborts.
 //
 // u (or U) starts a check run of its rows that Checkable; their statuses fill in live. Once every
 // result is in, unless the network banner shows, the footer offers to update those of yours that need it:
@@ -299,16 +301,26 @@ func (m marketPicker) key(msg tea.KeyPressMsg) (marketPicker, tea.Cmd) {
 				return next, cmd
 			}
 		}
-	case "enter", "m":
+	case "enter":
 		if row == len(m.rows) {
 			return m.leave(PickerAdd, nil)
 		}
-		if msg.String() == "enter" && !slices.Contains(m.ticked, true) {
-			if next, cmd, ok := m.drillRow(row); ok {
-				return next, cmd
-			}
+		if !slices.Contains(m.ticked, true) {
+			next, cmd, _ := m.drillRow(row)
+			return next, cmd
 		}
 		return m.leave(PickerEnter, m.chosen(row))
+	case "d":
+		var own []int
+		for _, i := range m.chosen(row) {
+			if i < m.own {
+				own = append(own, i)
+			}
+		}
+		if len(own) > 0 {
+			return m.leave(PickerRemove, own)
+		}
+		m.note = "tick one of your marketplaces, or move to one, to remove it"
 	case "esc":
 		if m.fetchID != "" {
 			m.note = "cancelled fetching " + oneLine(m.fetchID)
@@ -705,7 +717,7 @@ func (m marketPicker) footer() []string {
 	if m.note != "" {
 		lines = append(lines, m.noteLines(m.note)...)
 	}
-	keys := "u check+update · U all · x tick · / filter · a add · ⏎ open · o web · m menu · q quit"
+	keys := "u check+update · U all · x tick · / filter · a add · ⏎ open · d remove · o web · q quit"
 	if m.typing {
 		keys = "⏎ keep filter · esc clear · ↑↓ move"
 	}
@@ -775,13 +787,13 @@ func (m marketPicker) View() tea.View {
 // marketPickerLines is the picker in accessible mode: a page at a time under its title and the
 // scope's context line, each its items numbered, then its prompt under the accessible break, one
 // line of h.in at a time; an empty line goes back a page, and from the list cancels. The list's
-// rows come with their detail and no status, Add a source… last: several numbers, or m before them,
-// answer PickerEnter with their rows, Add a source…'s alone PickerAdd, and one number alone opens
-// that marketplace as the TUI's Enter does: one of yours its entries, a known one's its preview,
-// fetched first (previewPage). On an entries page a number opens the entry's detail, and i<n>, d<n>
-// and o<n> install, uninstall or open entry n, answering PickerInstall and PickerUninstall; on a
-// detail page i, d and o do so for it; in a preview m, on either page, answers PickerEnter for the
-// known row. Any other line prints what it takes and asks again. End of input, and Ctrl+C, are
+// rows come with their detail and no status, Add a source… last: several numbers answer PickerEnter
+// with their rows, as the TUI's Enter does with them ticked, d before numbers of yours PickerRemove,
+// Add a source…'s alone PickerAdd, and one number alone opens that marketplace as the TUI's Enter
+// does: one of yours its entries, a known one's its preview, fetched first (previewPage). On an
+// entries page a number opens the entry's detail, and i<n>, d<n> and o<n> install, uninstall or open
+// entry n, answering PickerInstall and PickerUninstall; on a detail page i, d and o do so for it; in a
+// preview m, on either page, answers PickerEnable for the known row. Any other line prints what it takes and asks again. End of input, and Ctrl+C, are
 // inputEnd's.
 func (h *huhForms) marketPickerLines(st MarketPickerStep) (MarketPickerAnswer, error) {
 	m := newMarketPicker(st, plainTheme(), 0, 0)
@@ -829,7 +841,7 @@ func (h *huhForms) listPage(m *marketPicker) error {
 	fmt.Fprintln(h.out, "Enter alone cancels.")
 	promptBreak(h.out, style{color: h.color, bold: h.bold}, h.width, true)
 	for {
-		fmt.Fprint(h.out, h.fitPrompt(pickerPrompt, "numbers, comma separated · m1 for the menu · o1 web", "Choose marketplaces: "))
+		fmt.Fprint(h.out, h.fitPrompt(pickerPrompt, "numbers, comma separated · d1 removes · o1 web", "Choose marketplaces: "))
 		text, err := readLine(h.in)
 		if err != nil {
 			return err
@@ -838,33 +850,32 @@ func (h *huhForms) listPage(m *marketPicker) error {
 			h.openRow(m, t[1:], add)
 			continue
 		}
-		menu := false
-		if t := strings.TrimSpace(text); t != "" && (t[0] == 'm' || t[0] == 'M') {
-			menu, text = true, t[1:]
+		if t := strings.TrimSpace(text); t != "" && (t[0] == 'd' || t[0] == 'D') {
+			if h.removeRows(m, t[1:]); m.done {
+				return nil
+			}
+			continue
 		}
 		picked, problem := pickedNumbers(text, add)
 		switch {
 		case problem != "":
 			fmt.Fprintln(h.out, problem)
-		case menu && len(picked) == 0:
-			fmt.Fprintln(h.out, "m takes numbers: m1, or m1,2")
 		case len(picked) == 0:
 			m.answer, m.done = MarketPickerAnswer{Action: PickerCancel}, true
 		case slices.Contains(picked, add) && len(picked) > 1:
 			fmt.Fprintln(h.out, addSourceRow+" goes alone: answer its number on its own")
 		case picked[0] == add:
 			m.answer, m.done = MarketPickerAnswer{Action: PickerAdd}, true
-		case !menu && len(picked) == 1 && picked[0] <= m.own:
+		case len(picked) == 1 && picked[0] <= m.own:
 			*m, _ = m.drill(picked[0] - 1)
 			if m.level == listLevel {
-				// u is the TUI's key; here the catalog is fetched from the menu (m<n>) or the command.
+				// u is the TUI's key; here the catalog is fetched by the command.
 				id := oneLine(m.rows[picked[0]-1].ID)
-				fmt.Fprintf(h.out, "%s has no entries; fetch its catalog with m%d (Update), or %s\n", id, picked[0],
-					errs.ShellJoin([]string{"lola", "market", "update", id}))
+				fmt.Fprintf(h.out, "%s has no entries; fetch its catalog with %s\n", id, errs.ShellJoin([]string{"lola", "market", "update", id}))
 				m.note = ""
 				continue
 			}
-		case !menu && len(picked) == 1:
+		case len(picked) == 1:
 			if err := h.previewPage(m, picked[0]-1); err != nil {
 				return err
 			}
@@ -897,6 +908,29 @@ func (h *huhForms) openRow(m *marketPicker, text string, add int) {
 			m.note = open().(openedMsg).note(0)
 		}
 		h.printNote(m)
+	}
+}
+
+// removeRows answers d<n> on the list's prompt, text being what follows the d: the numbers of rows
+// of yours, comma separated, answer PickerRemove, as the TUI's d does with them ticked; anything
+// else says what d takes.
+func (h *huhForms) removeRows(m *marketPicker, text string) {
+	if m.own == 0 {
+		fmt.Fprintln(h.out, "d removes your marketplaces, and none is listed")
+		return
+	}
+	picked, problem := pickedNumbers(text, m.own)
+	switch {
+	case problem != "":
+		fmt.Fprintln(h.out, "d removes your marketplaces: "+problem)
+	case len(picked) == 0:
+		fmt.Fprintln(h.out, "d takes numbers of your marketplaces: d1, or d1,2")
+	default:
+		rows := make([]int, len(picked))
+		for k, n := range picked {
+			rows[k] = n - 1
+		}
+		m.answer, m.done = m.answerFor(PickerRemove, rows), true
 	}
 }
 

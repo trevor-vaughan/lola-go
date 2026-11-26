@@ -510,9 +510,21 @@ var _ = Describe("the marketplace picker", func() {
 		Expect(drawn(m)).To(Equal(before))
 	})
 
-	It("acts on the cursor row on m when nothing is ticked", func() {
-		m, _ := pick(newPicker(&checker{}, 100), keyDown, keyDown, keyDown, keyM)
-		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}))
+	It("removes the cursor row on d when nothing is ticked, and the ticked rows of yours when some are", func() {
+		m, cmd := pick(newPicker(&checker{}, 100), keyD)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerRemove, Own: []string{"acme"}}))
+		Expect(cmd()).To(Equal(tea.QuitMsg{}))
+		m, _ = pick(newPicker(&checker{}, 100), keyDown, keyX, keyDown, keyDown, keyX, keyUp, keyUp, keyUp, keyD)
+		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerRemove, Own: []string{"beta"}}), "the ticks, not the cursor; never a known row")
+	})
+
+	It("says what d removes, and removes nothing, on a known row you have not enabled, on Add a source… and with only known rows ticked", func() {
+		for _, keys := range [][]tea.Msg{{keyDown, keyDown, keyDown, keyD}, {keyEnd, keyD}, {keyDown, keyDown, keyDown, keyX, keyUp, keyUp, keyUp, keyD}} {
+			m, cmd := pick(newPicker(&checker{}, 100), keys...)
+			Expect(m.done).To(BeFalse())
+			Expect(cmd).To(BeNil())
+			Expect(drawn(m)).To(ContainSubstring("tick one of your marketplaces, or move to one, to remove it"))
+		}
 	})
 
 	It("adds a source with a, or Enter on Add a source…", func() {
@@ -671,7 +683,8 @@ var _ = Describe("the marketplace picker", func() {
 			}
 		}
 		m := newPicker(&checker{}, 80)
-		Expect(ansi.Strip(strings.Join(m.footer(), " · "))).To(Equal("u check+update · U all · x tick · / filter · a add · ⏎ open · o web · m menu · q quit"))
+		Expect(ansi.Strip(strings.Join(m.footer(), " · "))).To(Equal("u check+update · U all · x tick · / filter · a add · ⏎ open · d remove · o web · q quit"))
+		Expect(newPicker(&checker{}, 120).footer()).To(HaveLen(1), "one row at 120 columns")
 		m, _ = pick(m, keySlash)
 		Expect(ansi.Strip(m.footer()[0])).To(Equal("⏎ keep filter · esc clear · ↑↓ move"))
 		m, _ = pick(newPicker(&checker{}, 80), keyCtrlA)
@@ -704,7 +717,7 @@ var _ = Describe("the marketplace picker", func() {
 			Expect(out.String()).To(ContainSubstring("1. acme"))
 			Expect(out.String()).To(ContainSubstring("curated skills\n    https://example.com/kn.git\n"))
 			Expect(out.String()).To(ContainSubstring("5. Add a source…"))
-			Expect(out.String()).To(ContainSubstring("Choose marketplaces (numbers, comma separated; m1 for the menu; o1 for the web page):"))
+			Expect(out.String()).To(ContainSubstring("Choose marketplaces (numbers, comma separated; d1 removes; o1 for the web page):"))
 			Expect(out.String()).To(MatchRegexp(`\n\n-+\nChoose marketplaces`)) // under the accessible break
 			Expect(out.String()).NotTo(ContainSubstring("check+update"))
 		})
@@ -721,10 +734,10 @@ var _ = Describe("the marketplace picker", func() {
 
 		It("asks again after an answer it cannot take", func() {
 			var out bytes.Buffer
-			got, err := accessible(&out, "9", "x", "1,5", "m2").MarketPicker(step())
+			got, err := accessible(&out, "9", "x", "1,5", "m2", "1,2").MarketPicker(step())
 			Expect(err).NotTo(HaveOccurred())
-			Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"beta"}}))
-			Expect(strings.Count(out.String(), "Choose marketplaces")).To(Equal(4))
+			Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme", "beta"}}))
+			Expect(strings.Count(out.String(), "Choose marketplaces")).To(Equal(5))
 			Expect(out.String()).To(ContainSubstring("answer numbers from 1 to 5"))
 			Expect(out.String()).To(ContainSubstring("Add a source… goes alone"))
 		})
@@ -790,17 +803,20 @@ var _ = Describe("the marketplace picker's entries and detail", func() {
 		Expect(out).NotTo(ContainSubstring("beta"))
 	})
 
-	It("keeps the menu on Enter with a row ticked, and on m", func() {
+	It("answers the ticked rows on Enter, not the cursor's, and takes m as no key on the list", func() {
 		m, _ := pick(entryPicker(&checker{}), keyDown, keyX, keyUp, keyEnter)
 		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"beta"}}))
 		Expect(m.done).To(BeTrue())
 
-		m, _ = pick(entryPicker(&checker{}), keyM)
-		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme"}}))
+		before := entryPicker(&checker{})
+		m, cmd := pick(before, keyM)
+		Expect(m.done).To(BeFalse())
+		Expect(cmd).To(BeNil())
+		Expect(drawn(m)).To(Equal(drawn(before)))
 	})
 
-	It("acts on a known row on m, and says a row without entries has none", func() {
-		m, _ := pick(entryPicker(&checker{}), keyDown, keyDown, keyDown, keyM)
+	It("answers a ticked known row on Enter, and says a row without entries has none", func() {
+		m, _ := pick(entryPicker(&checker{}), keyDown, keyDown, keyDown, keyX, keyEnter)
 		Expect(m.answer).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}))
 
 		m, _ = pick(entryPicker(&checker{}), keyDown, keyDown, keyEnter)
@@ -1110,7 +1126,7 @@ var _ = Describe("the marketplace picker's entries and detail", func() {
 		Expect(m.done).To(BeFalse())
 
 		m, _ = pick(entryPicker(&checker{}), keyDown, keyX, keyUp, keyRight)
-		Expect(m.level).To(Equal(listLevel), "a ticked row: Right does not enter the menu")
+		Expect(m.level).To(Equal(listLevel), "a ticked row: Right does not leave the picker")
 		Expect(m.done).To(BeFalse())
 		m, _ = pick(entryPicker(&checker{}), keyEnd, keyRight)
 		Expect(m.done).To(BeFalse(), "Add a source…")
@@ -1301,41 +1317,44 @@ var _ = Describe("the marketplace picker's entries in accessible mode", func() {
 		Expect(strings.Count(out, "Choose marketplaces")).To(Equal(2))
 	})
 
-	It("keeps m<N> for the menu answer", func() {
-		got, _, err := lines(entries(), PickerResume{}, "m1")
+	It("removes the marketplaces of yours d<N> names, and enables and opens several numbers", func() {
+		got, _, err := lines(entries(), PickerResume{}, "d1")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme"}}))
-		got, _, err = lines(entries(), PickerResume{}, "m1,2")
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerRemove, Own: []string{"acme"}}))
+		got, _, err = lines(entries(), PickerResume{}, "D2, 1")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme", "beta"}}))
-		got, _, err = lines(entries(), PickerResume{}, "m4")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Known: []string{"kn"}}), "a known row's menu acts as it did")
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerRemove, Own: []string{"acme", "beta"}}))
 		got, _, err = lines(entries(), PickerResume{}, "1,2")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(got.Own).To(Equal([]string{"acme", "beta"}), "several numbers act as they did")
+		Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme", "beta"}}))
 	})
 
-	It("says what m takes when it has no valid number, and asks again", func() {
-		for _, answer := range []string{"m", "M", "m,", "m  "} {
-			got, out, err := lines(entries(), PickerResume{}, answer, "m1")
+	It("says what d takes when it names no marketplace of yours, and asks again", func() {
+		for answer, said := range map[string]string{
+			"d": "d takes numbers of your marketplaces: d1, or d1,2", "D": "d takes numbers of your marketplaces: d1, or d1,2",
+			"d,": "d takes numbers of your marketplaces: d1, or d1,2", "d  ": "d takes numbers of your marketplaces: d1, or d1,2",
+			"d4":   "d removes your marketplaces: answer numbers from 1 to 3, comma separated",
+			"d1,5": "d removes your marketplaces: answer numbers from 1 to 3, comma separated",
+			"d9":   "d removes your marketplaces: answer numbers from 1 to 3, comma separated",
+		} {
+			got, out, err := lines(entries(), PickerResume{}, answer, "d1")
 			Expect(err).NotTo(HaveOccurred(), answer)
-			Expect(got).To(Equal(MarketPickerAnswer{Action: PickerEnter, Own: []string{"acme"}}), answer)
-			Expect(strings.Count(out, "m takes numbers: m1, or m1,2\n")).To(Equal(1), answer)
+			Expect(got).To(Equal(MarketPickerAnswer{Action: PickerRemove, Own: []string{"acme"}}), answer)
+			Expect(strings.Count(out, said+"\n")).To(Equal(1), answer)
 			Expect(strings.Count(out, pickerPrompt)).To(Equal(2), answer)
 		}
-		got, out, err := lines(entries(), PickerResume{}, "m9", "m1")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got.Action).To(Equal(PickerEnter))
-		Expect(out).To(ContainSubstring("answer numbers from 1 to"))
-		Expect(out).NotTo(ContainSubstring("m takes numbers"))
+		var out bytes.Buffer
+		_, known := pickerRows()
+		_, err := accessible(&out, "d1").MarketPicker(MarketPickerStep{Known: known})
+		Expect(err).To(MatchError(errInputEnded))
+		Expect(out.String()).To(ContainSubstring("d removes your marketplaces, and none is listed\n"))
 	})
 
 	It("says a marketplace has no entries and asks again", func() {
 		got, out, err := lines(entries(), PickerResume{}, "3", "m")
 		Expect(err).To(MatchError(errInputEnded))
 		Expect(got).To(Equal(MarketPickerAnswer{}))
-		Expect(out).To(ContainSubstring("local has no entries; fetch its catalog with m3 (Update), or lola market update local"))
+		Expect(out).To(ContainSubstring("local has no entries; fetch its catalog with lola market update local\n"))
 		Expect(strings.Count(out, "Choose marketplaces")).To(Equal(3))
 	})
 

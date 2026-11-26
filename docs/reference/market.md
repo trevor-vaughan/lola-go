@@ -241,8 +241,8 @@ Nothing is removed for you.
 | `U`       | Check every row, then offer to update those of yours that need it.                                              |
 | `o`       | Open the cursor row's web address in your browser (see [below](#entries-and-an-entry)); a row with none says `no web address for <id>`, and `Add a source…` says `nothing to open on Add a source…`. A local, archive or catalog-file source has no web address. |
 | `a`       | Add a source: asks its source and an optional ref, then runs `add` with its questions. The new marketplace is ticked when the picker opens again. Enter on `Add a source…` does the same. |
-| Enter     | With nothing ticked and the cursor on one of yours: open its [entries](#entries-and-an-entry). On a known row you have not enabled, [preview it](#previewing-a-known-marketplace): fetch its catalog at the pin and open its entries; nothing is added. With rows ticked: enable each known one, then `Do what with these?` for yours. |
-| `m`       | The menu for the ticked rows, or the cursor's (on a known row, this is how to enable it without previewing it): enable each known one you have not enabled, asking as `enable` does; then `Do what with these?` for yours: Browse entries (`lola install @<name>`'s picker), Update, Remove (asking as `rm` does), Cancel. |
+| Enter     | With nothing ticked and the cursor on one of yours: open its [entries](#entries-and-an-entry). On a known row you have not enabled, [preview it](#previewing-a-known-marketplace): fetch its catalog at the pin and open its entries; nothing is added. With rows ticked: enable each known one, asking as `enable` does, then open the entries of the ticked rows of yours and of those it enabled in `lola install @<name>...`'s picker. Tick a known row and press Enter to enable it without previewing it. |
+| `d`       | Remove the ticked rows of yours, or the cursor's, each asking as `rm` does. A known row you have not enabled is left out; with none of yours ticked or under the cursor, a note says `tick one of your marketplaces, or move to one, to remove it`. |
 | Esc, `q`  | Leave (Esc first clears a filter; `q` at the update question leaves too). Changes nothing; exit 0.              |
 | `→`       | The same as Enter on one of your marketplaces with nothing ticked: open its entries; on a known row you have not enabled, preview it as Enter does. It does nothing on `Add a source…` or with rows ticked. `←` does nothing here; it never leaves. |
 | Ctrl+C    | End the run: `✗ cancelled — nothing was changed`, exit 4, at every step but two. In a `[y/N]` question an action asks, it answers No and the picker opens again. At the ssh-host question that moving an `upstream moved` marketplace to its remote's tip can ask after `Update past the commit it is registered at?`, it writes nothing for that marketplace and the picker opens again, as No does. |
@@ -347,7 +347,7 @@ no filter.
 
 | Page    | Prompt                                                                                         | Answers |
 |---------|------------------------------------------------------------------------------------------------|---------|
-| list    | `Choose marketplaces (numbers, comma separated; m1 for the menu; o1 for the web page): `               | One number of yours opens its entries; one known row's number previews it (below). Several numbers, or `m1`, `m1,2` (also on a known row), answer the menu for those rows. `o1` opens row 1's web address as the TUI's `o` does, with the same notes, and the prompt comes again; `o` takes one number. `Add a source…`'s number alone adds one. Each row prints its description and source under its number, as the TUI does. |
+| list    | `Choose marketplaces (numbers, comma separated; d1 removes; o1 for the web page): `                    | One number of yours opens its entries (one without entries says `<name> has no entries; fetch its catalog with lola market update <name>`); one known row's number previews it (below). Several numbers act as Enter does with those rows ticked. `d1`, or `d1,2`, removes those marketplaces of yours as `d` does; a known row's number there is refused with what `d` takes, and the prompt comes again. `o1` opens row 1's web address as the TUI's `o` does, with the same notes, and the prompt comes again; `o` takes one number. `Add a source…`'s number alone adds one. Each row prints its description and source under its number, as the TUI does. |
 | entries | `Choose an entry (number or key above): ` under the line `i<n,n…> install · d<n,n…> uninstall from project · o<n> web · Enter alone goes back` | `n` opens entry n's detail; `i<n>` installs it, `d<n>` uninstalls it, `o<n>` opens its web page. `i` and `d` take several numbers, comma separated (`i1,3,5`, `d2,4`), and act on them as the TUI's do on ticked entries, in page order, in one call; `o` takes one. `i`, `d` and `o` apply as the TUI's keys do, so an entry that does not take one prints the same note (`already installed; d uninstalls`, `not installed; i installs`, `no web page for this entry`) and the prompt comes again; so does a letter with no number, a number out of range or a number named twice in a list (`name each number once`), or any other text. |
 | detail  | `i install · o web · Enter alone goes back: ` | The letters it names: `i` or `d` (only the one that applies is named, the other prints its note), `o` when the entry has a web page. |
 
@@ -356,7 +356,7 @@ at the wrap edge (with an unknown width nothing wraps). Lines wrap at spaces onl
 split, not at a hyphen either, so an address or a flag in a note stays whole even when it is wider
 than the line. The title, the context line, entry names and descriptions and the notes wrap this way
 under their numbers or indent. The entries page prints its keys as lines of that width, each key
-whole, above the short prompt; the list and detail prompts do the same (`Choose marketplaces: `, its keys then `numbers, comma separated · m1 for the menu · o1 web`;
+whole, above the short prompt; the list and detail prompts do the same (`Choose marketplaces: `, its keys then `numbers, comma separated · d1 removes · o1 web`;
 `Choose a key above: `) only when the full prompt is not narrower than the terminal. The
 `fetching…` line drops ` from <host>` for a source with no host (a `file://` one).
 
@@ -384,15 +384,15 @@ When the catalog lists entries lola does not offer (a source it does not take, a
 not allowed, a directory the tree lacks), a line says how many, `3 entries skipped · s shows why`, and `s`
 opens the [page that lists them](#skipped-entries); those entries are not in the list.
 What differs: `i` and `d` only say `not added yet; m enables <id>`, and `m` (named in the footer in
-place of `i` and `d`, and so on the accessible prompts) leaves the picker as `m` on the known row does, asking as `enable` does. Once
-enabled, the marketplace is one of yours, with its catalog cached. A preview you fetched stays for
+place of `i` and `d`, and so on the accessible prompts) leaves the picker to enable it, asking as `enable` does; the picker then
+opens again, with nothing else opened. Once enabled, the marketplace is one of yours, with its catalog cached. A preview you fetched stays for
 the session, so going back and in again fetches nothing; it is of a pinned commit, so it cannot go
 stale.
 
 When the fetch fails (offline, a pin the repository no longer has, a catalog lola cannot read) the
 list stays, with the note `could not fetch <id>:` and the reason (`<id>: could not fetch <url>: …` when the reason already says so), wrapped so all of it shows, and a
 command that retries it (`lola market enable <id> -n`); no empty entries page opens. A catalog with no entries says so the
-same way. A result that arrives while you type a filter or answer an update offer does not move the
+same way, naming the command that enables it anyway (`lola market enable <id>`). A result that arrives while you type a filter or answer an update offer does not move the
 screen: it is kept, the note says `<id> fetched; ⏎ opens it`, and Enter opens it. Opening a row of
 yours without entries while a fetch runs cancels it and says so.
 
@@ -403,7 +403,7 @@ asks again. On success it prints the `previewing <id> — not added; pinned to <
 <date>` title, the context line, the entries, the skipped-entries line and any warning, then the
 entries prompt, `Choose an entry (number or key above): ` under `m enable · s skipped · o<n> web · Enter alone goes back` (`s skipped` only when the catalog skipped entries). There `i<n>`
 and `d<n>` (`i` and `d` on a detail page) print `not added yet; m enables <id>`, `o<n>` opens the page,
-and `m` answers as `m` on the known row does. A fetched preview is kept for the session; going back
+and `m` enables the marketplace, as in the TUI. A fetched preview is kept for the session; going back
 and choosing the number again fetches nothing.
 
 ## Known marketplaces
