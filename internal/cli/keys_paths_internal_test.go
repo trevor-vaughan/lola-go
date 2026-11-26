@@ -220,11 +220,11 @@ var _ = Describe("the form keys' transitions", func() {
 	})
 
 	It("keys: picker --ctrl+a (a module picker)--> picker", func() {
-		got, err := onInput(paced("\x01", "\r", escKey)).Modules(modules)
+		got, err := onPaced(screen{"\x01", "\r", escKey}).Modules(modules)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ModuleAnswer{Names: []string{"kit", "docs"}}), "every module ticked, Add a source… not")
 
-		got, err = onInput(paced("j", "\x01", "x", "\r", escKey)).Modules(modules)
+		got, err = onPaced(screen{"j", "\x01", "x", "\r", escKey}).Modules(modules)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ModuleAnswer{Names: []string{"kit"}}), "the cursor stays on docs, which x then unticks")
 	})
@@ -232,13 +232,13 @@ var _ = Describe("the form keys' transitions", func() {
 	It("keeps a tick the user gave Add a source… through ctrl+a", func() {
 		// G and x tick Add a source…, the last option; ctrl+a ticks the modules beside it; Enter then
 		// asks for the source, whose Esc answers with the picks.
-		got, err := onInput(paced("G", "x", "\x01", "\r", escKey)).Modules(modules)
+		got, err := onPaced(screen{"G", "x", "\x01", "\r"}, screen{escKey}).Modules(modules)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ModuleAnswer{Names: []string{"kit", "docs"}, AddSource: true}))
 	})
 
 	It("keys: picker --ctrl+a (a module picker, every module shown ticked)--> picker", func() {
-		got, err := onInput(paced("\x01", "\x01", "\r", escKey)).Modules(modules)
+		got, err := onPaced(screen{"\x01", "\x01", "\r", escKey}).Modules(modules)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got.Names).To(BeEmpty(), "the second ctrl+a unticks every module")
 		Expect(got.AddSource).To(BeFalse())
@@ -247,14 +247,14 @@ var _ = Describe("the form keys' transitions", func() {
 	It("keys: picker --ctrl+a (a module picker above marketplace lists)--> picker", func() {
 		st := modules
 		st.Markets = []ModuleGroup{{Title: "acme", Options: []ModuleOption{{Name: "@acme/fmt", Label: "fmt"}}}}
-		got, err := onInput(paced("\x01", "\r", "\r", escKey)).Modules(st)
+		got, err := onPaced(screen{"\x01", "\r", "\r", escKey}).Modules(st)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ModuleAnswer{Names: []string{"kit", "docs"}}), "the cached modules ticked, Add a source… and the marketplace's not")
 	})
 
 	It("keys: filter --ctrl+a--> filter", func() {
 		// "o" shows docs and Add a source…, not kit.
-		got, err := onInput(paced("/o", "\x01", "\r", "\r", escKey)).Modules(modules)
+		got, err := onPaced(screen{"/o", "\x01", "\r", "\r", escKey}).Modules(modules)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ModuleAnswer{Names: []string{"docs"}}), "the shown module ticked, Add a source… not")
 	})

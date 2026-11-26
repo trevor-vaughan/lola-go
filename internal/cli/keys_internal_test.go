@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -33,25 +35,93 @@ func onInput(in io.Reader) *huhForms {
 	return &huhForms{stdin: in, in: &eofReader{r: strings.NewReader("")}, out: &bytes.Buffer{}, tty: true, height: 40}
 }
 
-// paced is a terminal's input typed in bursts, a pause after each: huh moves between a form's
-// fields, and lola between forms, after the key that asks it, so the keys for the next field or
-// form wait for it as a person typing does.
-func paced(bursts ...string) io.Reader {
+// screen is the keys typed at one form or question, in bursts.
+type screen []string
+
+// typist types a terminal's input screen by screen (paced).
+type typist struct {
+	in       *os.File
+	screens  int
+	returned chan struct{} // one per form or question that returned, up to screens
+	count    atomic.Int32  // every form or question that returned
+}
+
+// paced is a terminal's input typed screen by screen, for the huh adapter t.on watches. Within a
+// screen, each burst is followed by a pause: huh moves between a form's fields after the key that
+// asks it, so the keys for the next field wait for it as a person typing does. Each form, and each
+// question, runs its own program, which reads keys until it has stopped and drops those it read
+// past the key that ended it; so a screen's keys are typed only once the program before has
+// returned, however slow the machine. A program that does not return in time ends the input, so
+// the spec fails rather than waits; and when the spec ends, as many programs must have returned as
+// there are screens.
+func paced(screens ...screen) *typist {
 	r, w, err := os.Pipe()
 	Expect(err).NotTo(HaveOccurred())
+	closeW := sync.OnceValue(w.Close)
+	t := &typist{in: r, screens: len(screens), returned: make(chan struct{}, len(screens))}
+	done := make(chan struct{})
 	go func() {
-		for _, b := range bursts {
-			if _, err := w.WriteString(b); err != nil {
-				return
+		for i, keys := range screens {
+			if i > 0 {
+				select {
+				case <-t.returned:
+				case <-done:
+					return
+				case <-time.After(10 * time.Second):
+					// The program waiting for keys sees its input end and fails the spec; the
+					// cleanup checks the close, closeW returning it the same result.
+					_ = closeW()
+					return
+				}
 			}
-			time.Sleep(150 * time.Millisecond)
+			for _, b := range keys {
+				if _, err := w.WriteString(b); err != nil {
+					return
+				}
+				time.Sleep(150 * time.Millisecond)
+			}
 		}
 	}()
 	DeferCleanup(func() {
-		Expect(w.Close()).To(Succeed())
+		close(done)
+		Expect(closeW()).To(Succeed())
 		Expect(r.Close()).To(Succeed())
+		Expect(int(t.count.Load())).To(Equal(t.screens), "forms and questions that returned, against the screens typed at")
 	})
-	return r
+	return t
+}
+
+// on makes h report each form and question it runs returning, and returns h.
+func (t *typist) on(h *huhForms) *huhForms {
+	ret := func() {
+		t.count.Add(1)
+		select {
+		case t.returned <- struct{}{}:
+		default: // more returns than screens: the count fails the spec
+		}
+	}
+	hold := h.hold
+	h.hold = func() func() {
+		resume := func() {}
+		if hold != nil {
+			resume = hold()
+		}
+		return func() { resume(); ret() }
+	}
+	if ask := h.ask; ask != nil {
+		h.ask = func(q Question) (rune, error) {
+			defer ret()
+			return ask(q)
+		}
+	}
+	return h
+}
+
+// onPaced is the huh adapter on a full terminal, without color, with screens typed on its input
+// (paced).
+func onPaced(screens ...screen) *huhForms {
+	t := paced(screens...)
+	return t.on(onInput(t.in))
 }
 
 // isQuit reports whether err is the quit q answers, as against a Ctrl+C or a No.
@@ -180,7 +250,7 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 			{Kind: "command", Title: "Commands (1)", Options: []ComponentOption{{ID: "command/b", Label: "b"}}}}}
 		_, err := onTerminal("q").Components(pg)
 		Expect(isQuit(err)).To(BeTrue(), "the first list: one step answered")
-		got, err := onInput(paced("\r", "qn\r")).Components(pg)
+		got, err := onPaced(screen{"\r", "qn\r"}).Components(pg)
 		Expect(err).NotTo(HaveOccurred(), "the second list asks, and n stays")
 		Expect(got).To(BeEmpty())
 	})
@@ -223,19 +293,19 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 	It("the trash picker ticks runs and files with x, then Enter asks what to do with them; its key help says what each key does", func() {
 		st := TrashPickStep{Options: []TidyOption{{ID: "0", Label: "2026-11-03 12:00:00 UTC  lola tidy  project /p  1 file, 5 B"},
 			{ID: "0/0", Label: "    /p/a.md"}}}
-		got, err := onInput(paced("x\r", "\r")).TrashPick(st)
+		got, err := onPaced(screen{"x\r", "\r"}).TrashPick(st)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(TrashAnswer{Picked: []string{"0"}, Action: TrashRestore}))
-		got, err = onInput(paced("jx\r", "j\r")).TrashPick(st)
+		got, err = onPaced(screen{"jx\r", "j\r"}).TrashPick(st)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(TrashAnswer{Picked: []string{"0/0"}, Action: TrashEmpty}))
 		again := st
 		again.Preselect = []string{"0/0"}
-		got, err = onInput(paced("\r", "\r")).TrashPick(again)
+		got, err = onPaced(screen{"\r", "\r"}).TrashPick(again)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got.Picked).To(Equal([]string{"0/0"}), "the last answer stays ticked")
 		again.Action = TrashEmpty
-		got, err = onInput(paced("\r", "\r")).TrashPick(again)
+		got, err = onPaced(screen{"\r", "\r"}).TrashPick(again)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got.Action).To(Equal(TrashEmpty), "and the last action stays under the cursor")
 		again.Action = ""
@@ -268,14 +338,14 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 
 	It("tidy: move --esc--> move", func() {
 		st := TidyPickStep{Options: []TidyOption{{ID: "0", Label: "claude-code  skill/old  .claude/skills/old/"}}}
-		got, err := onInput(paced(escKey, "x\r")).TidyPick(st)
+		got, err := onPaced(screen{escKey, "x\r"}).TidyPick(st)
 		Expect(err).NotTo(HaveOccurred(), "a first screen, after the scope picker too: Esc stays")
 		Expect(got).To(Equal([]string{"0"}))
 	})
 
 	It("trash: pick --esc--> pick", func() {
 		st := TrashPickStep{Options: []TidyOption{{ID: "0", Label: "2026-11-03 12:00:00 UTC  lola tidy  project /p  1 file, 5 B"}}}
-		got, err := onInput(paced(escKey, "x\r", "\r")).TrashPick(st)
+		got, err := onPaced(screen{escKey, "x\r", "\r"}).TrashPick(st)
 		Expect(err).NotTo(HaveOccurred(), "a first screen: Esc stays")
 		Expect(got).To(Equal(TrashAnswer{Picked: []string{"0"}, Action: TrashRestore}))
 	})
@@ -283,7 +353,7 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 	It("asks the keep picker again with its last answer ticked", func() {
 		st := TidyKeepStep{Options: []TidyOption{{ID: "skill/a", Label: "skill/a  claude-code"}, {ID: "skill/b", Label: "skill/b  claude-code"}},
 			Preselect: []string{"skill/b"}}
-		got, err := onInput(paced("\r")).TidyKeep(st)
+		got, err := onPaced(screen{"\r"}).TidyKeep(st)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal([]string{"skill/b"}))
 	})
@@ -326,15 +396,15 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		pg := ComponentPage{Module: "m", Title: "m", Groups: []ComponentGroup{
 			{Kind: "skill", Title: "Skills (1)", Options: []ComponentOption{{ID: "skill/a", Label: "a"}}},
 			{Kind: "command", Title: "Commands (1)", Options: []ComponentOption{{ID: "command/b", Label: "b"}}}}}
-		got, err := onInput(paced("\r", escKey, "x\r", "\r")).Components(pg)
+		got, err := onPaced(screen{"\r", escKey, "x\r", "\r"}).Components(pg)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal([]string{"skill/a"}), "Esc on Commands went back to Skills, where x ticked a")
 
 		pg.Nav = Nav{Back: true}
-		_, err = onInput(paced("\r", escKey, escKey)).Components(pg)
+		_, err = onPaced(screen{"\r", escKey, escKey}).Components(pg)
 		Expect(err).To(MatchError(ErrBack))
 
-		src, err := onInput(paced("x\t", escKey, "y\r", "\r")).addSource(nil, Nav{Back: true})
+		src, err := onPaced(screen{"x\t", escKey, "y\r", "\r"}).addSource(nil, Nav{Back: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(src.Source).To(Equal("xy"), "Esc on Ref went back to Source")
 	})
@@ -367,7 +437,7 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 
 	It("trust: choose --esc (first list)--> trust", func() {
 		st := TrustStep{Changes: 2, Groups: []TrustGroup{{Title: "Scripts (1)", Options: []TrustOption{{Module: "m", Label: "m"}, {Module: "n", Label: "n"}}}}}
-		got, err := onInput(paced("k\r", "x", escKey, "\r", "\r")).Trust(st) // k from Cancel is Choose…
+		got, err := onPaced(screen{"k\r"}, screen{"x", escKey}, screen{"\r"}, screen{"\r"}).Trust(st) // k from Cancel is Choose…
 		Expect(err).NotTo(HaveOccurred(), "Enter on the question opens Choose… again: the cursor stayed on it")
 		Expect(got).To(Equal(engine.TrustAnswer{Modules: []string{"m"}}), "and m is still ticked")
 	})
@@ -375,19 +445,19 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 	It("asks the trust question again with its last answer under the cursor, the entries Choose… ticked still ticked", func() {
 		st := TrustStep{Changes: 2, Answer: engine.TrustAnswer{All: true}, Groups: []TrustGroup{{Title: "Scripts (2)",
 			Options: []TrustOption{{Module: "m", Label: "m"}, {Module: "n", Label: "n"}}}}}
-		got, err := onInput(paced("\r")).Trust(st)
+		got, err := onPaced(screen{"\r"}).Trust(st)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(engine.TrustAnswer{All: true}))
 
 		st.Answer = engine.TrustAnswer{Modules: []string{"n"}}
-		got, err = onInput(paced("\r", "\r")).Trust(st)
+		got, err = onPaced(screen{"\r"}, screen{"\r"}).Trust(st)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(engine.TrustAnswer{Modules: []string{"n"}}))
 	})
 
 	It("trust: trust --esc--> trust", func() {
 		st := TrustStep{Changes: 1}
-		_, err := onInput(paced(escKey, "\r")).Trust(st)
+		_, err := onPaced(screen{escKey, "\r"}).Trust(st)
 		Expect(err).To(MatchError(ErrAborted), "a first screen: Esc stays, the cursor still on Cancel, which Enter answers")
 		Expect(errors.Is(err, ErrBack)).To(BeFalse())
 	})
@@ -395,14 +465,14 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 	It("trust: choose --esc (a later list)--> choose", func() {
 		st := TrustStep{Changes: 2, Groups: []TrustGroup{{Title: "Added (1)", Options: []TrustOption{{Module: "a", Label: "a"}}},
 			{Title: "Scripts (1)", Options: []TrustOption{{Module: "m", Label: "m"}}}}}
-		got, err := onInput(paced("k\r", "\r", escKey, "x\r", "\r")).Trust(st)
+		got, err := onPaced(screen{"k\r"}, screen{"\r", escKey, "x\r", "\r"}).Trust(st)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(engine.TrustAnswer{Modules: []string{"a"}}), "Esc on Scripts went back to Added, where x ticked a")
 	})
 
 	It("trust: choose --ctrl+c--> cancelled", func() {
 		st := TrustStep{Changes: 2, Groups: []TrustGroup{{Title: "Scripts (1)", Options: []TrustOption{{Module: "m", Label: "m"}}}}}
-		_, err := onInput(paced("k\r", "x", "\x03")).Trust(st)
+		_, err := onPaced(screen{"k\r"}, screen{"x", "\x03"}).Trust(st)
 		Expect(err).To(MatchError(ErrAborted))
 	})
 
@@ -410,7 +480,7 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		st := TrustStep{Changes: 2, Groups: []TrustGroup{{Title: "Added (1)", Options: []TrustOption{{Module: "a", Label: "a"}}},
 			{Title: "Scripts (1)", Options: []TrustOption{{Module: "m", Label: "m"}}}}}
 		// Enter on the first list moves on, empty; on the last, with nothing ticked in any, it is refused.
-		got, err := onInput(paced("k\r", "\r", "\r", "x\r")).Trust(st)
+		got, err := onPaced(screen{"k\r"}, screen{"\r", "\r", "x\r"}).Trust(st)
 		Expect(err).NotTo(HaveOccurred(), "nothing ticked is refused and the lists stay; Cancel is the way out")
 		Expect(got).To(Equal(engine.TrustAnswer{Modules: []string{"m"}}))
 	})
@@ -520,7 +590,7 @@ var _ = Describe("a form's break", func() {
 	})
 
 	It("draws one break before a run of forms, which leave nothing behind, and one again after a question", func() {
-		h := onInput(paced("\x01\r", "\x01\r"))
+		h := onPaced(screen{"\x01\r"}, screen{"\x01\r"}, screen{"\x01\r"})
 		var asked int
 		h.ask = func(Question) (rune, error) { asked++; return 'y', nil }
 		_, err := h.Assistants(AssistantStep{Options: []string{"a", "b"}})
@@ -533,7 +603,6 @@ var _ = Describe("a form's break", func() {
 		_, err = h.Ask(Question{Prompt: "Go?", Answers: "yN"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(asked).To(Equal(1))
-		h.stdin = keys("\x01\r")
 		_, err = h.Assistants(AssistantStep{Options: []string{"a", "b"}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(strings.Count(ansiStrip(h.out.(*bytes.Buffer).String()), rule)).To(Equal(2), "a form after a question's prompt line draws its own")

@@ -801,8 +801,9 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			cmd.SetOut(&stdout)
 			cmd.SetErr(&stderr)
 			// c at the review, then the menu's first entry, Change components.
-			cmd.SetIn(paced("c\r", "\r"))
-			got, err := a.huhPrompter(cmd).Review(ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
+			t := paced(screen{"c\r"}, screen{"\r"})
+			cmd.SetIn(t.in)
+			got, err := t.on(a.huhPrompter(cmd).(*huhForms)).Review(ReviewStep{Summary: textReport("Summary:\n"), Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(ReviewComponents))
 			Expect(stderr.String()).To(HavePrefix("Summary:\n"), "printed above the question")
