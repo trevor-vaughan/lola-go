@@ -74,6 +74,14 @@ var _ = Describe("help, errors and output contract", func() {
 		Expect(lola([]string{}...).out).To(Equal(short))
 	})
 
+	It("the root's long help lists each environment variable by name, aligned", func() {
+		long := lola("--help").out
+		Expect(long).To(ContainSubstring("\nEnvironment:\n" +
+			"  LOLA_COLOR       1 or 0 forces color on or off\n" +
+			"  NO_COLOR         disable color when set (https://no-color.org)\n"))
+		Expect(long).To(ContainSubstring("\n  XDG_CACHE_HOME   the cache, marketplace catalogs, downloads and assistant versions (default ~/.cache)\n"))
+	})
+
 	It("piped help is not the tree; help --all is, with the global flags once", func() {
 		Expect(lola("help").out).NotTo(ContainSubstring("== lola install =="))
 		r := lola("help", "--all")

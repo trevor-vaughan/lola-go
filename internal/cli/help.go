@@ -44,24 +44,32 @@ var releaseTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 // majorSuffix is a Go module path's major-version element (/v2), not part of the repository URL.
 var majorSuffix = regexp.MustCompile(`^v[0-9]+$`)
 
-// environmentHelp is the root's long help's list of the environment variables lola reads.
-const environmentHelp = `
-Environment:
-  LOLA_COLOR=1|0   force color on or off
-  NO_COLOR         disable color when set (https://no-color.org)
-  LOLA_ACCESSIBLE  1 asks lola's questions and pickers as numbered line prompts and prints without the viewer (also TERM=dumb)
-  LOLA_PAGER       the pager for output taller than the terminal, instead of lola's viewer; cat prints it
-  NO_PAGER         set to a non-empty value, prints without the viewer or a pager
-  LOLA_HOME        the directory lola migrate reads (default ~/.lola)
-  HOME             user-scope root and base of the XDG defaults
-  PATH             where lola finds installed assistants; absolute entries only
-  COLUMNS          the width lola market <name> fits its lines to when stdout is not a terminal
-  LINES            the height lola's viewer takes the terminal to have when it cannot ask the terminal
-  XDG_CONFIG_HOME  config.yaml, selections.yaml, markets.yaml, keep.yaml, the user-scope manifest and OpenCode's user scope (default ~/.config)
-  XDG_DATA_HOME    user-scope module copies, plugin data and remote profiles (default ~/.local/share)
-  XDG_STATE_HOME   the user-scope ledger, hook consent, locks and the trash of lola migrate and lola tidy (default ~/.local/state)
-  XDG_CACHE_HOME   the cache, marketplace catalogs, downloads and assistant versions (default ~/.cache)
-`
+// helpEnv is one environment variable lola reads, as the root's long help lists it.
+type helpEnv struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// environment is the environment variables lola reads, in the order the root's long help lists
+// them; prose (writeLongHelp) and --json (helpDoc) both read it.
+func environment() []helpEnv {
+	return []helpEnv{
+		{"LOLA_COLOR", "1 or 0 forces color on or off"},
+		{"NO_COLOR", "disable color when set (https://no-color.org)"},
+		{"LOLA_ACCESSIBLE", "1 asks lola's questions and pickers as numbered line prompts and prints without the viewer (also TERM=dumb)"},
+		{"LOLA_PAGER", "the pager for output taller than the terminal, instead of lola's viewer; cat prints it"},
+		{"NO_PAGER", "set to a non-empty value, prints without the viewer or a pager"},
+		{"LOLA_HOME", "the directory lola migrate reads (default ~/.lola)"},
+		{"HOME", "user-scope root and base of the XDG defaults"},
+		{"PATH", "where lola finds installed assistants; absolute entries only"},
+		{"COLUMNS", "the width lola market <name> fits its lines to when stdout is not a terminal"},
+		{"LINES", "the height lola's viewer takes the terminal to have when it cannot ask the terminal"},
+		{"XDG_CONFIG_HOME", "config.yaml, selections.yaml, markets.yaml, keep.yaml, the user-scope manifest and OpenCode's user scope (default ~/.config)"},
+		{"XDG_DATA_HOME", "user-scope module copies, plugin data and remote profiles (default ~/.local/share)"},
+		{"XDG_STATE_HOME", "the user-scope ledger, hook consent, locks and the trash of lola migrate and lola tidy (default ~/.local/state)"},
+		{"XDG_CACHE_HOME", "the cache, marketplace catalogs, downloads and assistant versions (default ~/.cache)"},
+	}
+}
 
 // installHelp routes -h and `help` through renderHelp, shown as other output is (page), and makes
 // command lists show aliases.
@@ -316,7 +324,15 @@ func writeLongHelp(w io.Writer, c *cobra.Command, omit string) {
 	}
 	fmt.Fprintf(w, "%s\n\n%s", strings.TrimSpace(desc), usage)
 	if c == c.Root() {
-		fmt.Fprint(w, environmentHelp)
+		env := environment()
+		width := 0
+		for _, e := range env {
+			width = max(width, len(e.Name))
+		}
+		fmt.Fprint(w, "\nEnvironment:\n")
+		for _, e := range env {
+			fmt.Fprintf(w, "  %-*s  %s\n", width, e.Name, e.Description)
+		}
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {
 		ver := version
